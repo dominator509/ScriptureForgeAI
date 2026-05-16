@@ -1,0 +1,184 @@
+# BUILD_ROADMAP.md
+
+## 1. ROADMAP SUMMARY
+- This roadmap defines the comprehensive execution strategy for constructing ScriptureForge AI (BibleStudyOS), a multi-tenant, cloud-native collaborative Bible study environment.
+- The platform uses a polyglot architectural design consisting of Go (Golang 1.26+) for concurrent business services and real-time state synchronization, paired with a high-performance Rust service for complex original language morphological processing and lexical vector operations.
+- The user-facing ecosystem delivers unified multi-device access using a Next.js 15+ web core and a cross-platform React Native companion app built over Expo.
+- To strictly eliminate agentic drift, logic regression, and context hallucination during autonomous code generation loops, this architecture enforces a mandatory dual-layer orchestration workflow. Google Jules is restricted from introducing application layer mutations or database schema additions until a phase-specific sub-roadmap has been compiled and committed to the workspace file structure.
+
+## 2. JULES DEVELOPMENT PRINCIPLES
+- **Mandatory Sub-Roadmap Generation:** Prior to executing code mutations or provisioning infrastructural files for any phase, Jules must analyze the phase parameters, construct a highly localized task listing (e.g., `PHASE_01_SUB_ROADMAP.md`), and write it directly to the designated repository folder.
+- **Small, Verified Patches:** Code adjustments must occur in atomic increments accompanied by localized test assets. Compilation steps and test execution blocks must pass cleanly on each incremental commit before moving to sibling tasks.
+- **Strict Type Boundaries:** The use of implicit loosely typed interfaces such as `interface{}` in Go or dynamic escape types like `any` in TypeScript is strictly prohibited. Explicit data contracts, strongly typed structs, and compilation-enforced validation schemas must govern all internal network and service boundaries.
+- **Fail-Safe Ingestion:** All application ingress vectors must utilize decoupled validation validation handlers (e.g., Zod schemas or strong backend validation tags) to assert parameters prior to passing structures into business modules.
+- **Secret Hygiene:** Hardcoding environment details, cryptographic parameters, mock signing keys, or development credentials into the codebase is completely prohibited. All configuration values must resolve dynamically through secure ambient configuration maps or runtime injection paths.
+
+## 3. RECOMMENDED REPOSITORY STRUCTURE
+```text
+/
+├── docs/
+│   ├── BUILD_ROADMAP.md        # Master Engineering Roadmap Architecture
+│   └── sub_roadmaps/           # Directory for generated Phase-specific Task Roadmaps
+├── .github/workflows/          # Production CI/CD Git Automation Workflows
+├── build/                      # Container Orchestration Definitions & Deployment Configurations
+│   ├── docker/                 # Minimal Multi-Stage OCI Distroless Build Templates
+│   └── terraform/              # Declarative Infrastructure Configuration Framework Files
+├── cmd/
+│   └── platform-engine/        # Monolithic Go Business Engine Entrypoint Binary
+├── internal/
+│   ├── domain/                 # Pure Domain Entities & Immutable Business Rules
+│   │   ├── auth/               # Multi-Tenant Token Security Domain Entities
+│   │   ├── bible/              # Canonical Text Data and Structural Vectors
+│   │   └── room/               # High-TPS Synchronization and State Models
+│   ├── ports/                  # Inbound (Driving) and Outbound (Driven) Interface Declarations
+│   │   ├── driving_http.go     # Framework Agnostic Router Port Mappings
+│   │   └── driven_db.go        # Decoupled Persistence Port Layout Specifications
+│   └── adapters/               # Concrete Technology Implementation Infrastructure Providers
+│       ├── database_postgres/  # PostgreSQL Storage Core Driver Layer
+│       ├── cache_redis/        # Redis Ephemeral High-Speed Cache Provider
+│       └── integration_zoom/   # Strongly Typed Zoom API Integration Adapter Engine
+├── pkg/                        # Universal Shareable Core System Utilities
+│   └── crypto_utils/           # Client/Server Cryptographic Algorithms and Helpers
+├── proto/                      # Language-Agnostic Protobuf RPC Interface Definitions
+├── services/
+│   └── scripture-engine/       # Isolated Rust Lexical and Morphological Processor Workspace
+│       ├── src/                # High-Performance Text Ingestion Core Files
+│       └── Cargo.toml          # Rust System Dependency Specification File
+├── web/                        # Production Next.js 15 App Router Web Project Core
+├── mobile/                     # React Native Mobile Companion App Expo Core Workspace
+└── tests/                      # Dedicated Decoupled Universal Automated Verification Suites
+    ├── unit/                   # Zero-Dependency In-Memory Business Logic Assertions
+    ├── integration/            # Postgres Database and Live Cache Containerization Harnesses
+    └── e2e/                    # Complete Multi-Platform System Verification Paths
+
+5. DETAILED PHASE SPECIFICATIONS
+Phase 01: Infrastructure & Data Core
+• Goal: Establish the persistent multi-tenant data layer, active caching engines, and baseline infrastructure-as-code automation definitions.
+• Deliverables: /docs/sub_roadmaps/PHASE_01_SUB_ROADMAP.md, declarative Terraform deployment models, atomic SQL migration files, and structural container definitions.
+• Files/Folders Affected:
+• /docs/sub_roadmaps/
+• /build/terraform/
+• /internal/adapters/database_postgres/
+• migrations/
+• Step-by-Step Implementation Tasks:
+1.	Sub-Roadmap Generation Gate: Compile /docs/sub_roadmaps/PHASE_01_SUB_ROADMAP.md mapping tasks for schema creation, extensions configuration, and connection pooling tests.
+2.	Write declarative Terraform files defining aws_eks_cluster and aws_rds_cluster setups utilizing explicit static encryption keys.
+3.	Create structural database schema migration files establishing the foundational multi-tenant data boundaries, activating the uuid-ossp and vector database extensions natively.
+4.	Write explicit SQL scripts defining the organizations table, the core users schema, and the performance-tuned scripture_texts data repository.
+5.	Apply specialized index statements constructing HNSW vector-cosine optimization models across target column paths alongside standard coordinates tracking indices.
+• Acceptance Criteria: The localized multi-tenant environment completes initialization using isolated container structures, processing full relational migrations cleanly. The core Go initialization block establishes an active pool connection to PostgreSQL and Redis, processing normal shutdowns cleanly upon receiving standard OS termination signals.
+• Automated Validation & Tests: Integrate /tests/integration/db_ping_test.go confirming database pool connectivity, rollback behavior execution under standard constraint faults, and index usage validation maps.
+• Security & Isolation Checks: Enforce configuration reviews proving that public ingress access vectors are entirely deactivated inside relational database configuration setups, and that database storage partitions enforce encryption parameters.
+• Common Failure Modes: Proceeding to script SQL schemas without generating the local phase task map, or failing to activate the specific vector extension dependencies prior to injecting vector-typed coordinate pathways into database rows.
+• Anti-Drift Notes: Do not write active business application cache operations or route handlers. Limit scope strictly to persistent storage bootstrapping and basic validation loops.
+Phase 02: Auth, RBAC & Zero-Knowledge
+• Goal: Author and integrate robust tenant separation filters, cryptographically sound access controls, and zero-knowledge data containment engines.
+• Deliverables: /docs/sub_roadmaps/PHASE_02_SUB_ROADMAP.md, registration and authentication controllers, Argon2id encryption components, secure JWT validation engines, and client-side cryptographic derivation components.
+• Files/Folders Affected:
+• /docs/sub_roadmaps/
+• /internal/domain/auth/
+• /pkg/crypto_utils/
+• /web/src/lib/crypto.ts
+• Step-by-Step Implementation Tasks:
+1.	Sub-Roadmap Generation Gate: Write /docs/sub_roadmaps/PHASE_02_SUB_ROADMAP.md setting micro-tasks for Argon2id hashing parameters, JWT parsing middleware, and TypeScript cryptographic derivations.
+2.	Implement backend endpoint routers mapping registration parameters and session challenges, restricting parameters using validation rules.
+3.	Write memory-safe string hashing modules leveraging the Argon2id derivation methodology for storage user authentication strings.
+4.	Build core permission token validation wrappers issuing short-lived access structures paired with database-backed opaque tracking records.
+5.	Author robust backend permission analysis middleware intercepting inbound API routing paths, implicitly mapping context requests using verified token metadata parameters to eliminate parameters vulnerability.
+6.	Code browser-compliant cryptographic routines running on client layers that construct 256-bit isolation keys via PBKDF2 processing transformations using high iteration values and localized unique data salts.
+7.	Develop client-side storage processing routines using AES-256-GCM algorithms to seal sensitive personal structural text transformations prior to network transmission vectors.
+• Acceptance Criteria: Users register and authenticate securely across endpoint targets, receiving short-duration valid token assets. Route intercept layers deny operations failing baseline verification rules, processing parameters safely without system leaking anomalies. Personal content segments are transformed entirely into encrypted blocks prior to network ingestion.
+• Automated Validation & Tests: Construct /tests/unit/auth_rbac_test.go passing corrupted signatures, expired claims, and altered tenancy identities to assert that the filtering engine denies cross-tenant request attempts.
+• Security & Isolation Checks: Enforce strict system validation confirming that the backend database cluster stores zero plain-text journal data fragments, handling incoming personal logs strictly as opaque data payload values.
+• Common Failure Modes: Extracting target tenant identities from variable client-supplied input payloads rather than pulling them from cryptographically sealed context parameters.
+• Anti-Drift Notes: Ensure all encryption key generation and handling routines remain isolated in memory within client-side layers. No component may serialize plain-text decryption credentials to network interfaces.
+Phase 03: Rust Scripture Engine
+• Goal: Code the optimized lexical processing service to coordinate fast morphologic analysis and vector matching operations safely.
+• Deliverables: /docs/sub_roadmaps/PHASE_03_SUB_ROADMAP.md, Protocol Buffer message interfaces, Rust gRPC compilation outputs, and memory-safe vector retrieval models.
+• Files/Folders Affected:
+• /docs/sub_roadmaps/
+• /proto/scripture.proto
+• /services/scripture-engine/
+• Step-by-Step Implementation Tasks:
+1.	Sub-Roadmap Generation Gate: Build /docs/sub_roadmaps/PHASE_03_SUB_ROADMAP.md defining specific tasks for Protobuf definitions, tonic server integration, and pgvector retrieval handlers.
+2.	Author core scripture.proto contract definitions mapping structural parameters for textual queries, morphologic tracking variables, and multi-dimensional vector inputs.
+3.	Initialize the dedicated Rust compilation workspace, configuring framework extensions and mapping automated gRPC code injection profiles.
+4.	Build the core text handling modules in Rust executing direct retrieval procedures against target multi-tenant persistent storage infrastructures.
+5.	Implement internal text ingestion routines utilizing the explicit text_vector vector(1536) database definition format.
+6.	Code high-performance morphological comparison algorithms evaluating original lemmas and linguistic markers using direct CPU data allocation optimizations.
+• Acceptance Criteria: The compiled Rust processing runtime initialises and accepts concurrent request interactions over local network interfaces. The core Go service successfully dispatches network requests to the Rust application container using gRPC communication lines, completing query lookups within expected performance constraints.
+• Automated Validation & Tests: Integrate comprehensive memory safety test blocks inside the Rust workspace executing parallel data extraction operations against complex morphological text variations.
+• Security & Isolation Checks: Audit network integration flags to verify that internal microservices interaction pipelines enforce mutual transport layer authorization controls (mTLS) across boundaries.
+• Common Failure Modes: Improper handling of connection boundaries or loose string tracking blocks leading to memory fragmentation over long processing lifetimes.
+• Anti-Drift Notes: Restrict the functional scope of the Rust service purely to processing original text variables and vector transformations. Do not map access management configurations or external endpoint tracking fields into the engine.
+Phase 04: AI Orchestrator Pipeline
+• Goal: Construct a deterministic, zero-hallucination retrieval-augmented generation engine enforcing rigid guardrails and verifiable references.
+• Deliverables: /docs/sub_roadmaps/PHASE_04_SUB_ROADMAP.md, prompt validation controls, structured context compiler components, and absolute validation match tools.
+• Files/Folders Affected:
+• /docs/sub_roadmaps/
+• /internal/domain/ai/
+• /internal/adapters/llm/
+• Step-by-Step Implementation Tasks:
+1.	Sub-Roadmap Generation Gate: Publish /docs/sub_roadmaps/PHASE_04_SUB_ROADMAP.md detailing prompt processing, RAG assembly steps, MapReduce workflows, and citation matching regexes.
+2.	Implement backend endpoint paths capturing curriculum development structures, checking incoming text configurations and filtering criteria.
+3.	Create an active prompt ingestion filtering component designed to parse user inputs and completely neutralize potential text escape structures or prompt injection techniques.
+4.	Write the context compilation layout engine that interacts with the semantic vector space to assemble validated resource segments.
+5.	Implement explicit prompt structures binding execution engines to verified vector data boundaries, explicitly banning model output variations outside supplied citation inputs.
+6.	Code a response verification match subsystem that extracts text references from model outputs and matches them against reliable database coordinates using deterministic verification logic.
+7.	Develop an asynchronous MapReduce chunk processing worker capable of cleanly dividing extensive textual outlines into manageable data summaries to protect context window capacities.
+• Acceptance Criteria: The generation pipeline handles document inputs and returns structured response streams containing authentic citation pathways mapped to real database records. If the verification subsystem captures an unmatched reference or model halluncination, it immediately drops output score metrics and returns an explicit execution fault.
+• Automated Validation & Tests: Build unit components that feed synthetic hallucinated references into the verification module to verify that the fault execution intercept triggers appropriately.
+• Security & Isolation Checks: Assert that all outgoing model interactions run inside isolated network boundaries, stripping client parameters from connection frameworks to block configuration exposure.
+• Common Failure Modes: Sending raw, un-summarized text dumps directly to inference targets without applying the semantic MapReduce separation system, leading to prompt truncation or context blinding.
+• Anti-Drift Notes: Ensure that generation workflows match against the fixed theological profile configurations dictated by organization settings to maintain rigid denominational guardrails.
+Phase 05: Live Sockets & Zoom Sync
+• Goal: Build a highly concurrent real-time distribution framework handling low-latency state changes and integrated external system synchronization.
+• Deliverables: /docs/sub_roadmaps/PHASE_05_SUB_ROADMAP.md, state websocket infrastructure handlers, optimized caching scripts, multi-platform runtime adapters, and meeting lifecycle webhook controllers.
+• Files/Folders Affected:
+• /docs/sub_roadmaps/
+• /internal/domain/room/
+• /internal/ports/driving_wss.go
+• /internal/adapters/integration_zoom/
+• Step-by-Step Implementation Tasks:
+1.	Sub-Roadmap Generation Gate: Write /docs/sub_roadmaps/PHASE_05_SUB_ROADMAP.md organizing tasks for websocket connection lifecycles, single-threaded Redis Lua operations, and Zoom lifecycle state bindings.
+2.	Create specialized secure websocket routing blocks that enforce authentication handshake routines prior to connection lifecycle activation.
+3.	Code atomic, single-threaded Redis Lua update scripts capable of coordinating in-memory state mutations for live environments while eliminating data race conditions.
+4.	Implement the explicit structural MeetingAdapter domain layout interface to map external conference orchestration requirements.
+5.	Code concrete technology adapter routines managing authenticated token lookups, meeting environment creation configurations, and automated conference termination commands.
+6.	Write webhook listener paths capturing data endpoints from external systems, mapping participant duration updates to database entities.
+• Acceptance Criteria: The communication architecture handles thousands of simultaneous client synchronization actions over websocket paths while maintaining latency limits inside design tolerances. External orchestration adapters connect with target systems, safely handling API faults via fallback routes.
+• Automated Validation & Tests: Formulate isolated stress injection scripts firing thousands of concurrent state mutations to verify lockstep linearity and check circuit breaker triggers under connection faults.
+• Security & Isolation Checks: Confirm that socket connection pathways continuously validate room membership parameters, instantly discarding connection targets that drop or lose access validation claims.
+• Common Failure Modes: Utilizing multi-threaded in-memory variable sharing patterns across socket instances instead of passing mutations through single-threaded Redis Lua structures, resulting in data corruption under high concurrent loads.
+• Anti-Drift Notes: If communication layers drop or third-party interaction APIs respond with error codes, seamlessly degrade connection tracking metrics down to automated HTTP polling structures.
+Phase 06: Web & Mobile UX Assembly
+• Goal: Deliver reliable, multi-device frontend presentation layers that consume active caching modules and real-time synchronization pipelines seamlessly.
+• Deliverables: /docs/sub_roadmaps/PHASE_06_SUB_ROADMAP.md, server-rendered page configurations, mobile-ready component interfaces, modular client state machines, and synchronized network cache controllers.
+• Files/Folders Affected:
+• /docs/sub_roadmaps/
+• /web/
+• /mobile/
+• Step-by-Step Implementation Tasks:
+1.	Sub-Roadmap Generation Gate: Compile /docs/sub_roadmaps/PHASE_06_SUB_ROADMAP.md dividing tasks between Next.js server components, React Native client layers, and cryptographic sandbox environments.
+2.	Establish Next.js server routing environments configured to safely manage multi-tenant layout frameworks and optimize page delivery.
+3.	Create client user interface displays that alter displayed application parameters dynamically between structured presentation views based on active role configurations.
+4.	Code mobile application views utilizing specialized components capable of listening to streaming socket channels without processing loops.
+5.	Setup decoupled client state models using Zustand to manage local application layout options without conflicting with persistent database mirrors.
+6.	Implement the local client cryptographic container logic ensuring journal isolation calculations take place strictly inside unmapped ephemeral memory boundaries.
+• Acceptance Criteria: Web applications and mobile client environments compile cleanly and establish persistent connections to local socket systems. Screen layouts adapt dynamically to remote coordinator changes, rendering textual modifications and interactive parameters under correct isolation permissions.
+• Automated Validation & Tests: Configure cross-platform end-to-end interface execution flows (Playwright/Detox) confirming registration tasks, room synchronization events, and multi-tenant layout isolation behavior.
+• Security & Isolation Checks: Run automated memory profile scans proving that user encryption passphrases and plain-text decryption credentials vanish from client runtime scopes upon session teardown events.
+• Common Failure Modes: Allowing critical workspace permission verification tasks to execute solely within client-side browser logic loops, exposing endpoint pathways to unauthorized manipulation.
+• Anti-Drift Notes: Frontend modules must operate purely as reactive presentation surfaces reflecting trusted backend states. Do not implement authorization evaluation logic inside application view blocks.
+6. CODING AGENT OPERATING RULES (FOR JULES)
+• Sub-Roadmap Enforcement: Jules is strictly blocked from creating or modifying implementation source assets for a newly opened phase until the required PHASE_[X]_SUB_ROADMAP.md document has been written, validated, and placed inside the /docs/sub_roadmaps/ directory.
+• Look Before You Leap: Before executing textual changes, partial file rewrites, or code injection steps, Jules must parse the target code asset and all corresponding sibling interface declarations fully to maintain consistent architectural design boundaries.
+• Preserve Testing Footprints: Jules must never truncate, comment out, or disable previously passing test suites or type definitions to mask compilation errors or resolve configuration mismatches.
+• No Invisible Failures: Avoid catching errors using silent or unlogged catch blocks. Every logical exception must map directly to the standardized, strongly typed platform exception architecture, ensuring complete log tracing viability across systems.
+• Deterministic Mocks: When building logic paths that interact with external third-party infrastructure layouts or cloud system APIs, Jules must first construct a robust localized mock asset prior to building live network connectivity drivers.
+7. DEFINITION OF DONE (DoD)
+• Roadmap Verification: All tasks mapped within the generated Phase Sub-Roadmap must be marked complete and pass independent logic verification steps.
+• Compilation Metrics: System code must compile with zero errors, static analysis linting checks must pass cleanly, and strict typing structures must be preserved across languages.
+• Testing Coverage: Automated verification frameworks must demonstrate complete test coverage across updated logic vectors, core transaction pathways, and permission filters.
+• Security Validation: System security configurations must confirm that row-level data segregation rules are fully active, storage partitions are encrypted, and zero unauthenticated API scopes are exposed.
+• Traceability: Structural repository configuration modifications must resolve into atomic commits, completing with an update to the project's centralized CHANGELOG.md file detailing historical evolution paths.
