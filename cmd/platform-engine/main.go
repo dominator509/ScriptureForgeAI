@@ -14,6 +14,8 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"scriptureforge/internal/adapters/integration_zoom"
+	"scriptureforge/internal/adapters/llm"
+	"scriptureforge/internal/domain/ai"
 	"scriptureforge/internal/domain/auth"
 	"scriptureforge/internal/ports"
 )
@@ -42,6 +44,7 @@ type Config struct {
 	DatabaseURL string
 	RedisURL    string
 	Port        string
+	GRPCAddress string
 }
 
 func loadConfig() (*Config, *PlatformException) {
@@ -68,20 +71,38 @@ func loadConfig() (*Config, *PlatformException) {
 		port = "8080"
 	}
 
+	grpcAddr := os.Getenv("GRPC_ENGINE_ADDRESS")
+	if grpcAddr == "" {
+		grpcAddr = "localhost:50051"
+	}
+
 	return &Config{
 		DatabaseURL: dbURL,
 		RedisURL:    redisURL,
 		Port:        port,
+		GRPCAddress: grpcAddr,
 	}, nil
 }
 
-func setupRoutes(dbpool *pgxpool.Pool) *http.ServeMux {
+func setupRoutes(dbpool *pgxpool.Pool, vectorDB ai.VectorDB) *http.ServeMux {
 	mux := http.ServeMux{}
 
 	// Auth Endpoints
 	authHandler := &ports.AuthHandler{DB: dbpool}
 	mux.HandleFunc("/api/auth/register", authHandler.RegisterHandler)
 	mux.HandleFunc("/api/auth/login", authHandler.LoginHandler)
+
+	// AI Endpoints (Protected by RBAC)
+	ragEngine := ai.NewRAGEngine(vectorDB)
+	mapReduceWorker := ai.NewMapReduceWorker(4000) // 4000 char chunk size
+
+	aiHandler := &ports.AIHandler{
+		RAGEngine:       ragEngine,
+		Verifier:        ai.NewResponseVerificationSubsystem(),
+		LLMClient:       llm.NewLLMClient(),
+		MapReduceWorker: mapReduceWorker,
+	}
+	mux.Handle("/api/ai/curriculum", auth.RBACMiddleware(http.HandlerFunc(aiHandler.GenerateCurriculumHandler), ""))
 
 	// Zoom Webhook
 	mux.HandleFunc("/api/webhooks/zoom", integration_zoom.HandleZoomWebhook)
@@ -126,7 +147,18 @@ func main() {
 	}
 	log.Println("Successfully connected to Redis pool.")
 
-	router := setupRoutes(dbpool)
+	// Connect to Rust gRPC Scripture Engine natively implementing VectorDB interface
+	vectorClient, err := ai.NewGRPCScriptureClient(cfg.GRPCAddress)
+	if err != nil {
+		log.Printf("Warning: Failed to connect to Rust gRPC Scripture Engine at %s: %v. AI features will fail.", cfg.GRPCAddress, err)
+		// We don't fatal crash here to allow core HTTP/DB routing to stay up if the microservice is bouncing
+	} else {
+		defer vectorClient.Close()
+		log.Println("Successfully connected to Rust gRPC Scripture Engine.")
+	}
+
+	// Use actual Vector Client instead of dummy mock
+	router := setupRoutes(dbpool, vectorClient)
 	server := &http.Server{
 		Addr:    ":" + cfg.Port,
 		Handler: router,

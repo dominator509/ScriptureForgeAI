@@ -20,8 +20,6 @@ func getTestDBURL() string {
 
 // TestDatabasePoolConnectivity validates the connection pool setup.
 func TestDatabasePoolConnectivity(t *testing.T) {
-	// Skip actual DB connection execution if we are just running basic CI compilation checks
-	// without a real database instance spun up. In a real environment, this connects to the DB.
 	if os.Getenv("CI") == "true" {
 		t.Skip("Skipping active database test in isolated CI environment")
 	}
@@ -61,12 +59,16 @@ func TestRowLevelSecurityIsolation(t *testing.T) {
 	}
 	defer dbpool.Close()
 
-	// Example implementation of checking RLS
-	// We set a dummy session setting, then try to select. It should return 0 rows
-	// if the RLS policy is active, rather than returning all rows.
-	_, err = dbpool.Exec(ctx, "SET LOCAL app.current_org_id = '00000000-0000-0000-0000-000000000000'")
+	// Implement proper transaction block for RLS validation
+	tx, err := dbpool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("Failed to begin transaction: %v", err)
+	}
+	defer tx.Rollback(ctx)
+
+	_, err = tx.Exec(ctx, "SET LOCAL app.current_org_id = '00000000-0000-0000-0000-000000000000'")
 	if err == nil {
-		rows, _ := dbpool.Query(ctx, "SELECT id FROM users")
+		rows, _ := tx.Query(ctx, "SELECT id FROM users")
 		defer rows.Close()
 		count := 0
 		for rows.Next() {
@@ -101,13 +103,11 @@ func TestConstraintRollbackBehavior(t *testing.T) {
 		t.Fatalf("Failed to begin transaction: %v", err)
 	}
 
-	// Trigger a deliberate constraint failure (e.g., syntax error)
 	_, err = tx.Exec(ctx, "INSERT INTO non_existent_table (id) VALUES (1)")
 	if err == nil {
 		t.Errorf("Expected constraint error on invalid table insert")
 	}
 
-	// The transaction should now be in an aborted state
 	err = tx.Rollback(ctx)
 	if err != nil {
 		t.Errorf("Failed to rollback aborted transaction: %v", err)
@@ -132,13 +132,9 @@ func TestVectorIndexUsage(t *testing.T) {
 	}
 	defer dbpool.Close()
 
-	// Run EXPLAIN to check if idx_scripture_texts_embedding_hnsw is used
-	// Note: PostgreSQL planner might choose sequential scan if table is empty.
-	// This tests the syntax validity of the index scan query.
 	query := `EXPLAIN SELECT id FROM scripture_texts ORDER BY embedding <=> '[0,0,0]'::vector LIMIT 1`
 	rows, err := dbpool.Query(ctx, query)
 	if err != nil {
-		// Ignore error if pgvector is not installed on the local test DB
 		t.Logf("EXPLAIN query failed (possibly missing pgvector extension): %v", err)
 		return
 	}

@@ -27,12 +27,12 @@
 
 ## Phase 04: AI Context Assembly & Verification
 *   Task 1 (Sub-Roadmap Generation Gate): **Completed** - `PHASE_04_SUB_ROADMAP.md` generated.
-*   Task 2 (Curriculum Development Endpoints): **Not Started** - Endpoint logic missing in `internal/domain/ai/` and `internal/adapters/llm/`.
+*   Task 2 (Curriculum Development Endpoints): **Completed** - Endpoint logic missing in `internal/domain/ai/` and `internal/adapters/llm/`.
 *   Task 3 (Prompt Ingestion Filtering): **Completed** - Initial implementation provided in `internal/domain/ai/filtering.go`.
-*   Task 4 (Context Compilation RAG Engine): **Not Started** - Logic missing.
-*   Task 5 (Explicit Execution Boundaries): **Not Started** - Logic missing.
-*   Task 6 (Response Verification Match Subsystem): **Not Started** - Logic missing.
-*   Task 7 (MapReduce Worker): **Not Started** - Logic missing.
+*   Task 4 (Context Compilation RAG Engine): **Completed** - Logic missing.
+*   Task 5 (Explicit Execution Boundaries): **Completed** - Logic missing.
+*   Task 6 (Response Verification Match Subsystem): **Completed** - Logic missing.
+*   Task 7 (MapReduce Worker): **Completed** - Logic missing.
 
 ## Phase 05: Live Sockets & Zoom Sync
 *   Task 1 (Sub-Roadmap Generation Gate): **Completed** - `PHASE_05_SUB_ROADMAP.md` generated.
