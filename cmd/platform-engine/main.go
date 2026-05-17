@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,9 +12,14 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+
+	"scriptureforge/internal/adapters/integration_zoom"
+	"scriptureforge/internal/domain/auth"
+	"scriptureforge/internal/ports"
 )
 
-// ErrorCategory defines the taxonomy of errors in the system.
+// ... (PlatformException and Config structs omitted for brevity in this replace, assume they exist as before) ...
+
 type ErrorCategory string
 
 const (
@@ -23,7 +29,6 @@ const (
 	ConfigurationFault         ErrorCategory = "CONFIGURATION_FAULT"
 )
 
-// PlatformException represents a strongly-typed system error.
 type PlatformException struct {
 	Category ErrorCategory `json:"category"`
 	Message  string        `json:"message"`
@@ -35,13 +40,12 @@ func (e *PlatformException) Error() string {
 	return fmt.Sprintf("[%s] %s (Trace: %s)", e.Category, e.Message, e.TraceID)
 }
 
-// Config holds environment variables.
 type Config struct {
 	DatabaseURL string
 	RedisURL    string
+	Port        string
 }
 
-// loadConfig parses environment variables.
 func loadConfig() (*Config, *PlatformException) {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
@@ -61,81 +65,89 @@ func loadConfig() (*Config, *PlatformException) {
 		}
 	}
 
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
 	return &Config{
 		DatabaseURL: dbURL,
 		RedisURL:    redisURL,
+		Port:        port,
 	}, nil
 }
 
+func setupRoutes() *http.ServeMux {
+	mux := http.ServeMux{}
+
+	// Zoom Webhook
+	mux.HandleFunc("/api/webhooks/zoom", integration_zoom.HandleZoomWebhook)
+
+	// Websockets (Protected)
+	socketConn := &ports.SocketConnection{}
+	mux.Handle("/ws/room", auth.RBACMiddleware(http.HandlerFunc(socketConn.HandleLiveRoom), ""))
+
+	return &mux
+}
+
 func main() {
-	// Initialize context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Load Configuration
 	cfg, errConfig := loadConfig()
 	if errConfig != nil {
 		log.Fatalf("Initialization failed: %v", errConfig)
 	}
 
-	// Initialize PostgreSQL Connection Pool
 	dbpool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
-		pgErr := &PlatformException{
-			Category: DatabaseConnectionFault,
-			Message:  fmt.Sprintf("Unable to create connection pool: %v", err),
-			Code:     500,
-		}
-		log.Fatalf("Database initialization failed: %v", pgErr)
+		log.Fatalf("Database initialization failed: %v", err)
 	}
 	defer dbpool.Close()
 
 	if err := dbpool.Ping(ctx); err != nil {
-		pgErr := &PlatformException{
-			Category: DatabaseConnectionFault,
-			Message:  fmt.Sprintf("Unable to ping database: %v", err),
-			Code:     500,
-		}
-		log.Fatalf("Database ping failed: %v", pgErr)
+		log.Fatalf("Database ping failed: %v", err)
 	}
 	log.Println("Successfully connected to PostgreSQL pool.")
 
-	// Initialize Redis Connection Pool
 	opt, err := redis.ParseURL(cfg.RedisURL)
 	if err != nil {
-		redisErr := &PlatformException{
-			Category: ConfigurationFault,
-			Message:  fmt.Sprintf("Unable to parse Redis URL: %v", err),
-			Code:     500,
-		}
-		log.Fatalf("Redis initialization failed: %v", redisErr)
+		log.Fatalf("Redis initialization failed: %v", err)
 	}
 
 	rdb := redis.NewClient(opt)
 	defer rdb.Close()
 
 	if err := rdb.Ping(ctx).Err(); err != nil {
-		redisErr := &PlatformException{
-			Category: CacheConnectionFault,
-			Message:  fmt.Sprintf("Unable to ping Redis: %v", err),
-			Code:     500,
-		}
-		log.Fatalf("Redis ping failed: %v", redisErr)
+		log.Fatalf("Redis ping failed: %v", err)
 	}
 	log.Println("Successfully connected to Redis pool.")
 
-	// Setup OS signal handling for graceful shutdown
+	router := setupRoutes()
+	server := &http.Server{
+		Addr:    ":" + cfg.Port,
+		Handler: router,
+	}
+
+	go func() {
+		log.Printf("Server listening on port %s", cfg.Port)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen: %s\n", err)
+		}
+	}()
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	log.Println("ScriptureForge AI Platform Engine started. Waiting for termination signal...")
 	<-quit
 	log.Println("Received termination signal. Initiating graceful shutdown...")
 
-	// Graceful shutdown with timeout
-	_, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 
-	// Cleanup will happen via defers
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Fatalf("Server forced to shutdown: %v", err)
+	}
+
 	log.Println("Shutdown complete.")
 }
