@@ -11,7 +11,7 @@
 
 ## Phase 02: Auth, RBAC & Zero-Knowledge
 *   Task 1 (Sub-Roadmap Generation Gate): **Completed** - `PHASE_02_SUB_ROADMAP.md` generated.
-*   Task 2 (Backend Endpoint Routers): **Not Started** - Endpoint routers mapping registration parameters are missing.
+*   Task 2 (Backend Endpoint Routers): **Completed** - Implemented in `internal/ports/auth_http.go`.
 *   Task 3 (Argon2id Hashing): **Completed** - Implemented in `internal/domain/auth/hash.go`.
 *   Task 4 (JWT Validation Wrappers): **Completed** - Implemented in `internal/domain/auth/jwt.go`.
 *   Task 5 (RBAC Middleware): **Completed** - Implemented in `internal/domain/auth/middleware.go`.

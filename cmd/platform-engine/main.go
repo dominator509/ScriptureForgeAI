@@ -18,8 +18,6 @@ import (
 	"scriptureforge/internal/ports"
 )
 
-// ... (PlatformException and Config structs omitted for brevity in this replace, assume they exist as before) ...
-
 type ErrorCategory string
 
 const (
@@ -77,8 +75,13 @@ func loadConfig() (*Config, *PlatformException) {
 	}, nil
 }
 
-func setupRoutes() *http.ServeMux {
+func setupRoutes(dbpool *pgxpool.Pool) *http.ServeMux {
 	mux := http.ServeMux{}
+
+	// Auth Endpoints
+	authHandler := &ports.AuthHandler{DB: dbpool}
+	mux.HandleFunc("/api/auth/register", authHandler.RegisterHandler)
+	mux.HandleFunc("/api/auth/login", authHandler.LoginHandler)
 
 	// Zoom Webhook
 	mux.HandleFunc("/api/webhooks/zoom", integration_zoom.HandleZoomWebhook)
@@ -123,7 +126,7 @@ func main() {
 	}
 	log.Println("Successfully connected to Redis pool.")
 
-	router := setupRoutes()
+	router := setupRoutes(dbpool)
 	server := &http.Server{
 		Addr:    ":" + cfg.Port,
 		Handler: router,
