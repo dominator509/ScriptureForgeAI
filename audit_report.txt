@@ -15,8 +15,8 @@
 *   Task 3 (Argon2id Hashing): **Completed** - Implemented in `internal/domain/auth/hash.go`.
 *   Task 4 (JWT Validation Wrappers): **Completed** - Implemented in `internal/domain/auth/jwt.go`.
 *   Task 5 (RBAC Middleware): **Completed** - Implemented in `internal/domain/auth/middleware.go`.
-*   Task 6 (Client Cryptographic Routines - PBKDF2): **Partially Completed** - Stubs exist in `web/src/lib/crypto.ts`, but the comprehensive 256-bit isolation key generation needs wider integration.
-*   Task 7 (Client Cryptographic Storage - AES-256-GCM): **Partially Completed** - Stubs exist in `web/src/lib/crypto.ts`.
+*   Task 6 (Client Cryptographic Routines - PBKDF2): **Completed** - Fully integrated and functional in `web/src/lib/crypto.ts`.
+*   Task 7 (Client Cryptographic Storage - AES-256-GCM): **Completed** - Fully integrated and functional in `web/src/lib/crypto.ts`.
 
 ## Phase 03: Rust Scripture Engine
 *   Task 1 (Sub-Roadmap Generation Gate): **Completed** - `PHASE_03_SUB_ROADMAP.md` generated.

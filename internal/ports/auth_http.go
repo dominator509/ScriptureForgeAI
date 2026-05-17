@@ -18,7 +18,7 @@ type RegisterRequest struct {
 	Email          string `json:"email"`
 	Password       string `json:"password"`
 	OrganizationID string `json:"organization_id"`
-	Role           string `json:"role"`
+	// Role removed from public request to prevent privilege escalation
 }
 
 type LoginRequest struct {
@@ -46,7 +46,7 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !emailRegex.MatchString(req.Email) || len(req.Password) < 8 || req.OrganizationID == "" || req.Role == "" {
+	if !emailRegex.MatchString(req.Email) || len(req.Password) < 8 || req.OrganizationID == "" {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Validation failed: invalid email, short password, or missing required fields", Code: http.StatusBadRequest})
 		return
 	}
@@ -58,17 +58,18 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Persist User (in a real app, you'd ensure the Org exists first or handle the FK error)
+	// 2. Persist User - Forcing Role to 'member' to prevent privilege escalation
+	forcedRole := "member"
 	query := `INSERT INTO users (organization_id, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id`
 	var newUserID string
-	err = h.DB.QueryRow(r.Context(), query, req.OrganizationID, req.Email, hashedPassword, req.Role).Scan(&newUserID)
+	err = h.DB.QueryRow(r.Context(), query, req.OrganizationID, req.Email, hashedPassword, forcedRole).Scan(&newUserID)
 	if err != nil {
-		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Registration failed (email may already exist)", Code: http.StatusConflict})
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Registration failed (email may already exist or org invalid)", Code: http.StatusConflict})
 		return
 	}
 
 	// 3. Issue Token
-	token, err := auth.GenerateToken(newUserID, req.OrganizationID, req.Role, 2*time.Hour)
+	token, err := auth.GenerateToken(newUserID, req.OrganizationID, forcedRole, 2*time.Hour)
 	if err != nil {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to issue token", Code: http.StatusInternalServerError})
 		return
