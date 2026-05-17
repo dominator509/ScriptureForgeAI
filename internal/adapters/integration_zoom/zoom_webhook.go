@@ -7,8 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
+
+	"scriptureforge/internal/domain/room"
 )
 
 type WebhookPayload struct {
@@ -20,6 +23,14 @@ type WebhookPayload struct {
 			StartTime string `json:"start_time"`
 		} `json:"object"`
 	} `json:"payload"`
+}
+
+type WebhookHandler struct {
+	StateManager *room.RoomStateManager
+}
+
+func NewWebhookHandler(sm *room.RoomStateManager) *WebhookHandler {
+	return &WebhookHandler{StateManager: sm}
 }
 
 // verifyZoomSignature validates the Zoom webhook signature to ensure authenticity
@@ -41,7 +52,7 @@ func verifyZoomSignature(r *http.Request, body []byte) bool {
 	return hmac.Equal([]byte(expectedSignature), []byte(zoomSignature))
 }
 
-func HandleZoomWebhook(w http.ResponseWriter, r *http.Request) {
+func (h *WebhookHandler) HandleZoomWebhook(w http.ResponseWriter, r *http.Request) {
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -50,6 +61,7 @@ func HandleZoomWebhook(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	if !verifyZoomSignature(r, bodyBytes) {
+		log.Println("Unauthorized Zoom webhook signature")
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
@@ -60,6 +72,19 @@ func HandleZoomWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Process the webhook payload (e.g., meeting started, meeting ended)
+	meetingID := payload.Payload.Object.Id
+
+	// Map Zoom business logic events to local Redis state mutations
+	switch payload.Event {
+	case "meeting.started":
+		log.Printf("Webhook: Meeting %s started", meetingID)
+		h.StateManager.SetRoomActiveState(r.Context(), meetingID, true)
+	case "meeting.ended":
+		log.Printf("Webhook: Meeting %s ended", meetingID)
+		h.StateManager.SetRoomActiveState(r.Context(), meetingID, false)
+	default:
+		log.Printf("Webhook: Unhandled event %s for meeting %s", payload.Event, meetingID)
+	}
+
 	w.WriteHeader(http.StatusOK)
 }

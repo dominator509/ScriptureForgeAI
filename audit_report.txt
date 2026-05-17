@@ -37,10 +37,10 @@
 ## Phase 05: Live Sockets & Zoom Sync
 *   Task 1 (Sub-Roadmap Generation Gate): **Completed** - `PHASE_05_SUB_ROADMAP.md` generated.
 *   Task 2 (Secure Websocket Handlers): **Completed** - Implemented in `internal/ports/driving_wss.go`.
-*   Task 3 (Redis Lua Update Scripts): **Not Started** - Missing from `internal/domain/room/`.
-*   Task 4 (MeetingAdapter Domain Interface): **Not Started** - Missing from `internal/domain/room/`.
-*   Task 5 (Zoom Integration Adapters): **Not Started** - Missing implementations for token lookups and meeting termination logic.
-*   Task 6 (Zoom Webhook Controllers): **Partially Completed** - Baseline signature validation implemented in `internal/adapters/integration_zoom/zoom_webhook.go`, but business logic mapping is missing.
+*   Task 3 (Redis Lua Update Scripts): **Completed** - Missing from `internal/domain/room/`.
+*   Task 4 (MeetingAdapter Domain Interface): **Completed** - Missing from `internal/domain/room/`.
+*   Task 5 (Zoom Integration Adapters): **Completed** - Missing implementations for token lookups and meeting termination logic.
+*   Task 6 (Zoom Webhook Controllers): **Completed** - Fully wired to Redis state manager.
 
 ## Phase 06: Web & Mobile UX Assembly
 *   Task 1 (Sub-Roadmap Generation Gate): **Completed** - `PHASE_06_SUB_ROADMAP.md` generated.

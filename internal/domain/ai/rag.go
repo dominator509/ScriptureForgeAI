@@ -60,10 +60,16 @@ func generateEmbedding(ctx context.Context, text string) ([]float32, error) {
 		return nil, fmt.Errorf("OPENAI_API_KEY is required for embedding generation")
 	}
 
-	reqBody := map[string]interface{}{
-		"input": text,
-		"model": "text-embedding-3-small",
+	type embedRequest struct {
+		Input string `json:"input"`
+		Model string `json:"model"`
 	}
+
+	reqBody := embedRequest{
+		Input: text,
+		Model: "text-embedding-3-small",
+	}
+
 	jsonBody, _ := json.Marshal(reqBody)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.openai.com/v1/embeddings", bytes.NewBuffer(jsonBody))
