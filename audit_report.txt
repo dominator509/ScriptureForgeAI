@@ -1,0 +1,51 @@
+# Sub-Roadmap Implementation Audit Report
+
+## Phase 01: Infrastructure & Data Core
+*   Task 1 (Sub-Roadmap Generation Gate): **Completed** - `PHASE_01_SUB_ROADMAP.md` was created (and subsequently removed per later instructions to proceed).
+*   Task 2 (Terraform aws_eks_cluster/aws_rds_cluster): **Completed** - Implemented in `build/terraform/main.tf`.
+*   Task 3 (SQL Extensions Migration): **Completed** - Implemented in `migrations/000001_init_extensions.*.sql`.
+*   Task 4 (SQL Core Schema Migration): **Completed** - Implemented in `migrations/000002_core_schema.*.sql`.
+*   Task 5 (HNSW Vector Indexing): **Completed** - Handled in `migrations/000002_core_schema.up.sql`.
+*   Task 6 (Go Entrypoint & Pool Connection): **Completed** - Implemented in `cmd/platform-engine/main.go`.
+*   Task 7 (Integration Testing db_ping_test.go): **Completed** - Implemented in `tests/integration/db_ping_test.go`.
+
+## Phase 02: Auth, RBAC & Zero-Knowledge
+*   Task 1 (Sub-Roadmap Generation Gate): **Completed** - `PHASE_02_SUB_ROADMAP.md` generated.
+*   Task 2 (Backend Endpoint Routers): **Not Started** - Endpoint routers mapping registration parameters are missing.
+*   Task 3 (Argon2id Hashing): **Completed** - Implemented in `internal/domain/auth/hash.go`.
+*   Task 4 (JWT Validation Wrappers): **Completed** - Implemented in `internal/domain/auth/jwt.go`.
+*   Task 5 (RBAC Middleware): **Completed** - Implemented in `internal/domain/auth/middleware.go`.
+*   Task 6 (Client Cryptographic Routines - PBKDF2): **Partially Completed** - Stubs exist in `web/src/lib/crypto.ts`, but the comprehensive 256-bit isolation key generation needs wider integration.
+*   Task 7 (Client Cryptographic Storage - AES-256-GCM): **Partially Completed** - Stubs exist in `web/src/lib/crypto.ts`.
+
+## Phase 03: Rust Scripture Engine
+*   Task 1 (Sub-Roadmap Generation Gate): **Completed** - `PHASE_03_SUB_ROADMAP.md` generated.
+*   Task 2 (Protobuf Definitions): **Completed** - Implemented in `proto/scripture.proto`.
+*   Task 3 (Rust Workspace Initialization): **Completed** - Implemented via `Cargo.toml` and `build.rs` in `services/scripture-engine/`.
+*   Task 4 (gRPC Server Integration): **Completed** - Implemented in `services/scripture-engine/src/main.rs`.
+*   Task 5 (pgvector Retrieval Handlers): **Completed** - Implemented logic in `services/scripture-engine/src/main.rs`.
+
+## Phase 04: AI Context Assembly & Verification
+*   Task 1 (Sub-Roadmap Generation Gate): **Completed** - `PHASE_04_SUB_ROADMAP.md` generated.
+*   Task 2 (Curriculum Development Endpoints): **Not Started** - Endpoint logic missing in `internal/domain/ai/` and `internal/adapters/llm/`.
+*   Task 3 (Prompt Ingestion Filtering): **Completed** - Initial implementation provided in `internal/domain/ai/filtering.go`.
+*   Task 4 (Context Compilation RAG Engine): **Not Started** - Logic missing.
+*   Task 5 (Explicit Execution Boundaries): **Not Started** - Logic missing.
+*   Task 6 (Response Verification Match Subsystem): **Not Started** - Logic missing.
+*   Task 7 (MapReduce Worker): **Not Started** - Logic missing.
+
+## Phase 05: Live Sockets & Zoom Sync
+*   Task 1 (Sub-Roadmap Generation Gate): **Completed** - `PHASE_05_SUB_ROADMAP.md` generated.
+*   Task 2 (Secure Websocket Handlers): **Completed** - Implemented in `internal/ports/driving_wss.go`.
+*   Task 3 (Redis Lua Update Scripts): **Not Started** - Missing from `internal/domain/room/`.
+*   Task 4 (MeetingAdapter Domain Interface): **Not Started** - Missing from `internal/domain/room/`.
+*   Task 5 (Zoom Integration Adapters): **Not Started** - Missing implementations for token lookups and meeting termination logic.
+*   Task 6 (Zoom Webhook Controllers): **Partially Completed** - Baseline signature validation implemented in `internal/adapters/integration_zoom/zoom_webhook.go`, but business logic mapping is missing.
+
+## Phase 06: Web & Mobile UX Assembly
+*   Task 1 (Sub-Roadmap Generation Gate): **Completed** - `PHASE_06_SUB_ROADMAP.md` generated.
+*   Task 2 (Next.js Server Routing): **Not Started** - Broad Next.js layouts missing.
+*   Task 3 (Client UI Displays): **Partially Completed** - Scaffolded `RoomLayout.tsx` in Next.js, but wider view components are missing.
+*   Task 4 (Mobile Application Views): **Not Started** - Missing logic in `/mobile/`.
+*   Task 5 (Zustand State Models): **Partially Completed** - Baseline implementation inside `web/src/lib/store.ts`.
+*   Task 6 (Client Cryptographic Container Logic): **Not Started** - Missing dedicated React/React Native component implementations tying UI to the crypto routines.
