@@ -13,7 +13,7 @@ func getTestDBURL() string {
 	url := os.Getenv("DATABASE_URL")
 	if url == "" {
 		// Fallback for local testing if not explicitly set
-		return "postgres://forge_admin_root:testpassword@localhost/scriptureforge_prod"
+		return "postgres://${DB_USER}:${DB_PASS}@${DB_HOST}/${DB_NAME}"
 	}
 	return url
 }

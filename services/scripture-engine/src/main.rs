@@ -94,7 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = "[::1]:50051".parse()?;
 
     let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_|
-        "postgres://forge_admin_root:testpassword@localhost/scriptureforge_prod".to_string()
+        "postgres://${DB_USER}:${DB_PASS}@${DB_HOST}/${DB_NAME}".to_string()
     );
 
     let db_pool = PgPoolOptions::new()
