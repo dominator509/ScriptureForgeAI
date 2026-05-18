@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package scriptureforge.engine;
+
+option go_package = "scriptureforge/proto;engine";
+
+// Request for processing structural text into embeddings
+message EmbedTextRequest {
+    string organization_id = 1;
+    string book = 2;
+    int32 chapter = 3;
+    int32 verse = 4;
+    string text_content = 5;
+}
+
+// Response detailing the vector generation success
+message EmbedTextResponse {
+    string reference_id = 1;
+    bool success = 2;
+    string error_message = 3;
+}
+
+// Query for retrieving matching text via vector cosine operations
+message VectorSearchRequest {
+    string organization_id = 1;
+    repeated float query_vector = 2; // Assuming 1536 dimension size
+    int32 top_k_results = 3;
+    float minimum_similarity_threshold = 4;
+}
+
+message VectorSearchResponse {
+    repeated SearchResult results = 1;
+}
+
+message SearchResult {
+    string book = 1;
+    int32 chapter = 2;
+    int32 verse = 3;
+    string text_content = 4;
+    float similarity_score = 5;
+}
+
+service ScriptureEngine {
+    // Process text and generate embeddings
+    rpc ProcessTextEmbedding (EmbedTextRequest) returns (EmbedTextResponse);
+    // Perform fast semantic vector match operations
+    rpc SearchByVector (VectorSearchRequest) returns (VectorSearchResponse);
+}
