@@ -1,36 +1,42 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
-
-// NOTE: In a true React Native environment, `window.crypto` is not available natively.
-// We mock the interface here for the sake of the structural implementation, but in production,
-// libraries like `react-native-crypto` or `expo-crypto` are required.
-const mockEncrypt = async (text: string) => {
-  return { ciphertext: btoa(text), iv: 'mock-iv' };
-};
+import { deriveIsolationKey, encryptJournalData, EncryptedPayload } from '../lib/crypto';
 
 export const SecureJournalContainer: React.FC = () => {
   const [plaintext, setPlaintext] = useState('');
   const [passphrase, setPassphrase] = useState('');
   const [status, setStatus] = useState('Awaiting passphrase');
+  const [keyMaterial, setKeyMaterial] = useState<string | null>(null);
+
+  const userSalt = "mobile-static-salt-123";
 
   useEffect(() => {
+    let isMounted = true;
     if (passphrase.length >= 8) {
-      setStatus("Isolation Key Derived Successfully");
+      deriveIsolationKey(passphrase, userSalt).then(k => {
+        if (isMounted) {
+          setKeyMaterial(k);
+          setStatus("Isolation Key Derived Successfully");
+        }
+      });
     } else {
       setStatus("Awaiting valid passphrase (min 8 chars)");
+      setKeyMaterial(null);
     }
+    return () => { isMounted = false; };
   }, [passphrase]);
 
   const handleSave = async () => {
-    if (passphrase.length >= 8 && plaintext) {
-      const encrypted = await mockEncrypt(plaintext);
-      setStatus(`Saved securely! Cipher: ${encrypted.ciphertext.substring(0, 10)}...`);
+    if (keyMaterial && plaintext) {
+      const encrypted: EncryptedPayload = await encryptJournalData(plaintext, keyMaterial);
+      setStatus(`Saved securely! IV: ${encrypted.iv.substring(0, 10)}...`);
+      // In production, dispatch payload to API over HTTPS
     }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Zero-Knowledge Journal</Text>
+      <Text style={styles.title}>Zero-Knowledge Journal (Mobile)</Text>
 
       <TextInput
         style={styles.input}
@@ -50,9 +56,9 @@ export const SecureJournalContainer: React.FC = () => {
       />
 
       <TouchableOpacity
-        style={[styles.button, (passphrase.length < 8 || !plaintext) && styles.disabled]}
-        onPress={handleSave}
-        disabled={passphrase.length < 8 || !plaintext}
+        style={[styles.button, (!keyMaterial || !plaintext) && styles.disabled]}
+        onPress={() => void handleSave()}
+        disabled={!keyMaterial || !plaintext}
       >
         <Text style={styles.buttonText}>Encrypt & Save</Text>
       </TouchableOpacity>

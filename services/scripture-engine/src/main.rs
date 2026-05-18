@@ -56,7 +56,7 @@ impl ScriptureEngine for MyScriptureEngine {
         let query = format!(
             "SELECT book, chapter, verse, content, 1 - (embedding <=> $1::vector) as similarity
              FROM scripture_texts
-             WHERE organization_id = $2::uuid
+             WHERE organization_id = $2::uuid AND 1 - (embedding <=> $1::vector) >= $4
              ORDER BY embedding <=> $1::vector
              LIMIT $3"
         );
@@ -67,6 +67,7 @@ impl ScriptureEngine for MyScriptureEngine {
             .bind(vector_string)
             .bind(req.organization_id)
             .bind(req.top_k_results)
+            .bind(req.minimum_similarity_threshold)
             .fetch_all(pool)
             .await
             .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
