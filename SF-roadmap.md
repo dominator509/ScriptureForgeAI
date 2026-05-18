@@ -171,7 +171,7 @@ Phase 06: Web & Mobile UX Assembly
 • Common Failure Modes: Allowing critical workspace permission verification tasks to execute solely within client-side browser logic loops, exposing endpoint pathways to unauthorized manipulation.
 • Anti-Drift Notes: Frontend modules must operate purely as reactive presentation surfaces reflecting trusted backend states. Do not implement authorization evaluation logic inside application view blocks.
 6. CODING AGENT OPERATING RULES (FOR JULES)
-• Sub-Roadmap Enforcement: Jules is strictly blocked from creating or modifying implementation source assets for a newly opened phase until the required PHASE_[X]_SUB_ROADMAP.md document has been written, validated, and placed inside the /docs/sub_roadmaps/ directory.
+•
 • Look Before You Leap: Before executing textual changes, partial file rewrites, or code injection steps, Jules must parse the target code asset and all corresponding sibling interface declarations fully to maintain consistent architectural design boundaries.
 • Preserve Testing Footprints: Jules must never truncate, comment out, or disable previously passing test suites or type definitions to mask compilation errors or resolve configuration mismatches.
 • No Invisible Failures: Avoid catching errors using silent or unlogged catch blocks. Every logical exception must map directly to the standardized, strongly typed platform exception architecture, ensuring complete log tracing viability across systems.
