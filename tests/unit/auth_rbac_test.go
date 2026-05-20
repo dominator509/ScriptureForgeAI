@@ -1,6 +1,7 @@
 package unit
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -38,7 +39,12 @@ func TestArgon2idHashing(t *testing.T) {
 
 // TestJWTValidation validates the JWT creation and parsing components
 func TestJWTValidation(t *testing.T) {
+	os.Setenv("JWT_SECRET_KEY", "test-secret")
+	defer os.Clearenv()
 	userID := "user-123"
+
+
+
 	orgID := "org-456"
 	role := "admin"
 

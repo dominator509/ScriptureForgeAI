@@ -27,3 +27,7 @@ An Elite End-to-End Sanity & Build Verification was executed against the current
 The fundamental logic and routing of the platform engine remain intact and functionally sound. The system correctly isolates components and handles state via its defined handlers.
 
 **Recommendation:** Proceed to deeper regression and E2E testing.
+
+## Post-Verification Security Audit
+* **Vulnerability Detected:** During the review of `SANITY_VERIFICATION_REPORT.md` and related code, a hardcoded fallback (`"test-secret"`) for the `JWT_SECRET_KEY` was found in `internal/domain/auth/jwt.go` disguised under a `GO_ENV == "testing"` conditional. This is a strict violation of the security guidelines which dictate that no hardcoded fallbacks are permitted.
+* **Remediation:** Removed the fallback from `jwt.go`. Updated unit test files (`tests/unit/auth_rbac_test.go` and `tests/unit/auth_rbac_middleware_test.go`) to explicitly set the `JWT_SECRET_KEY` using `os.Setenv` to satisfy the tests while maintaining absolute environmental boundary enforcement.

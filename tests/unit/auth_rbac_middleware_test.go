@@ -1,6 +1,7 @@
 package unit
 
 import (
+	"os"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,7 +10,10 @@ import (
 	"scriptureforge/internal/domain/auth"
 )
 
+
 func TestRBACMiddleware(t *testing.T) {
+	os.Setenv("JWT_SECRET_KEY", "test-secret")
+	defer os.Clearenv()
 	// Create a dummy handler that returns 200 OK
 	dummyHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

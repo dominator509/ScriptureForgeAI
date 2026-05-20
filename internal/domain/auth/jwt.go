@@ -39,10 +39,6 @@ type TokenClaims struct {
 func getSecretKey() ([]byte, error) {
 	secret := os.Getenv("JWT_SECRET_KEY")
 	if secret == "" {
-		// In tests this might be empty, but in prod it MUST be set. We'll fallback to a dummy only for tests
-		if os.Getenv("GO_ENV") == "testing" {
-			return []byte("test-secret"), nil
-		}
 		return nil, fmt.Errorf("JWT_SECRET_KEY environment variable is missing")
 	}
 	return []byte(secret), nil
