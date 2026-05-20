@@ -1,0 +1,31 @@
+name: Security Pipeline Verification
+on:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  security-audit:
+    name: Continuous Security Execution
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.22'
+
+    - name: Run Fuzz Testing Matrix
+      run: GO_ENV=testing CI=true go test -fuzz=FuzzSanitizeInput -fuzztime=10s ./tests/unit/
+
+    - name: Static Security Scan (SAST)
+      run: go vet ./...
+
+    - name: TruffleHog Secret Scanning
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: ${{ github.event.repository.default_branch }}
+        head: HEAD
