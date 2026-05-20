@@ -33,12 +33,13 @@
     *   MapReduce chunking engine must be used to prevent context window overflow.
     *   Output must adhere strictly to predefined theological filter isolation to prevent model poisoning.
 
-### 2.4 Synchronized Live Bible Study Rooms (Architecture 5.4)
-*   **Workflow:** Real-time event distribution and state tracking.
+### 2.4 Synchronized Live Bible Study Rooms & Webhooks (Architecture 5.4)
+*   **Workflow:** Real-time event distribution, state tracking, and 3rd party coordination.
 *   **Immutable Contract:**
     *   Connection established via secure WebSockets (`github.com/gorilla/websocket`).
     *   Token authorization must occur inside the initial WebSocket upgrade handshake. Socket identifiers must match active database user accounts.
     *   State race conditions must be mitigated by processing mutations through single-threaded Redis Lua scripts to achieve lockstep linear event tracking.
+    *   Zoom webhook integrations must validate payloads using HMAC SHA256 signature verification against `ZOOM_WEBHOOK_SECRET_TOKEN`.
 
 ### 2.5 Rust Scripture Engine (Roadmap Phase 03)
 *   **Workflow:** Lexical processing and vector matching.
@@ -57,6 +58,7 @@
     *   `live_rooms`
     *   `room_participants`
     *   `journal_entries` (encrypted payloads)
+*   **Connections:** Database connection strings and credentials must use environment variables (e.g., `${DB_USER}:${DB_PASS}@${DB_HOST}/${DB_NAME}`) rather than hardcoded secrets.
 
 ## 4. Failure Handling & Degradation (Architecture 13.2)
 *   **AI Outage:** Must block prompt execution, show service disruption message, and shift to a deterministic local template engine.

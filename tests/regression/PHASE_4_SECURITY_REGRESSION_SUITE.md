@@ -39,5 +39,12 @@ This document defines the automated Red-Team security tests (Tier Gamma) that mu
 *   **Expected Assertion:**
     *   Plain-text decryption credentials and the 256-bit passphrase key vanish entirely from the client runtime scope upon session teardown.
 
+### 2.5 Hardcoded Secrets Audit
+*   **Test Case ID:** `SEC-CFG-005`
+*   **Objective:** Guarantee that no database credentials or API keys are hardcoded in the repository.
+*   **Action:** Run a secrets scanning regex across the repository looking for plain text database URIs or static connection variables.
+*   **Expected Assertion:**
+    *   All database connection strings and credentials exclusively resolve using environment variables (e.g., `${DB_USER}:${DB_PASS}@${DB_HOST}/${DB_NAME}`).
+
 ## 3. Continuous Integration Configuration
 These regression tests are mandated to execute within the `.github/workflows/security.yml` pipeline on every Pull Request to `main`. Failure of any security assertion acts as a hard gate preventing deployment.

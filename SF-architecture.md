@@ -121,7 +121,7 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
 ## 6. Recommended Tech Stack
 
 ### 6.1 Backend API Layer & Core Business Services
-*   **Technology:** **Go (Golang 1.26+)**
+*   **Technology:** **Go (Golang 1.22.0)**
 *   **Justification:** Go establishes memory-safe data allocation models, guarantees stellar multi-threaded concurrent performance through native lightweight green threads (goroutines), and provides low baseline latency numbers without complex runtime overhead. It ensures predictable performance profile under heavy WebSocket communication flows.
 
 ### 6.2 Scripture Engine & Morphological Processor

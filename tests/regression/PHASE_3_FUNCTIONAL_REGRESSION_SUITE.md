@@ -17,13 +17,14 @@ This document defines the critical functional boundaries and edge-case verificat
 
 ### 2.2 Live Room Sync & External Webhook Handling
 *   **Test Case ID:** `E2E-SYNC-002`
-*   **Objective:** Validate WebSocket state synchronization across multiple clients when a Zoom room is active.
+*   **Objective:** Validate WebSocket state synchronization across multiple clients when a Zoom room is active, and ensure secure webhook reception.
 *   **Action:**
     1.  Host triggers `POST /api/v1/rooms/create`.
-    2.  System stubs Zoom API webhook firing back to backend.
+    2.  System stubs Zoom API webhook firing back to backend with valid and invalid HMAC SHA256 signatures.
     3.  Three mock clients connect via `WSS /api/v1/rooms/stream/{room_id}`.
     4.  Host mutates state (e.g., changes current verse focus).
 *   **Expected Assertion:**
+    *   Invalid HMAC SHA256 webhook signatures are rejected with a 401 Unauthorized status.
     *   Single-threaded Redis Lua scripts process the mutation sequentially.
     *   All three clients receive the precise payload mutation simultaneously.
     *   Token authorization during the WSS upgrade correctly rejects a mock client using an expired JWT.
