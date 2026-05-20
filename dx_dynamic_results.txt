@@ -1,0 +1,18 @@
+Testing Study Plan Generation (Missing payload)...
+
+Testing Zoom Webhook (Missing Signature)...
+
+Output Analysis:
+Study Plan Error Payload:
+{
+  "code": "ERR_VALIDATION_FAILED",
+  "message": "The provided payload is invalid.",
+  "details": "Missing required field: 'topic'"
+}
+
+
+Zoom Webhook Error Payload:
+{
+  "code": "ERR_UNAUTHORIZED",
+  "message": "Webhook signature verification failed."
+}
