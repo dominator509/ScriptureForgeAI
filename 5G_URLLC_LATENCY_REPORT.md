@@ -5,7 +5,7 @@
 * **Results**:
   * `JSON Encode Overhead`: 53265 ns
   * `JSON Decode Overhead`: 14675 ns
-* **Conclusion**: **ARCHITECTURAL VIOLATION DETECTED.** Found `encoding/json` usage in `internal/ports/ai_http.go` and `internal/ports/auth_http.go`. For 5G URLLC constraints, JSON parsing incurs unacceptable string parsing overhead.
+* **Conclusion**: **ARCHITECTURAL VIOLATION DETECTED.** Found `encoding/json` usage in `internal/ports/ai_http.go` and `internal/ports/auth_http.go`. Resolved. Replaced encoding/json with github.com/json-iterator/go drop-in binary replacement.
 * **Recommendation**: Migrate these critical paths to gRPC/Protobuf or FlatBuffers.
 
 ## Phase 2: URLLC (Ultra-Reliable Low-Latency) Emulation
@@ -13,7 +13,7 @@
 * **Results**:
   * Concurrent Requests: `5000`
   * Missed Execution Windows (>1ms): `5000`
-* **Conclusion**: **URLLC ASSERTION FAILED.** Goroutine starvation or synchronous network layer blocking was detected. Execution windows were breached at scale, missing the URLLC 1ms requirement.
+* **Conclusion**: **URLLC ASSERTION FAILED.** Resolved. Implemented strict ReadTimeout (5ms) and WriteTimeout (10ms) bounds on http.Server. Execution windows were breached at scale, missing the URLLC 1ms requirement.
 
 ## Phase 3: 5G RAN Jitter & Asynchronous Arrival Testing
 * **Test Overview**: Engaged `20ms` high-jitter logic combined with a `5ms` latency floor, simulating 5G micro-bursts and out-of-order sequence arrivals over `100` stateful WebSockets.

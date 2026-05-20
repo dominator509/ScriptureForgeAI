@@ -158,9 +158,13 @@ func main() {
 	}
 
 	router := setupRoutes(dbpool, vectorClient, rdb)
-	server := &http.Server{
+		server := &http.Server{
 		Addr:    ":" + cfg.Port,
 		Handler: router,
+		ReadTimeout:  5 * time.Millisecond,
+		WriteTimeout: 10 * time.Millisecond,
+		IdleTimeout:  120 * time.Second,
+		MaxHeaderBytes: 1 << 20,
 	}
 
 	go func() {

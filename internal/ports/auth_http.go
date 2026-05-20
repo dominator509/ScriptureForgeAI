@@ -1,7 +1,7 @@
 package ports
 
 import (
-	"encoding/json"
+	jsoniter "github.com/json-iterator/go"
 	"net/http"
 	"regexp"
 	"time"
@@ -31,7 +31,7 @@ var emailRegex = regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,4}$`
 func sendAuthError(w http.ResponseWriter, pe *auth.PlatformException) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(pe.Code)
-	json.NewEncoder(w).Encode(pe)
+	jsoniter.NewEncoder(w).Encode(pe)
 }
 
 func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
@@ -41,7 +41,7 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req RegisterRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := jsoniter.NewDecoder(r.Body).Decode(&req); err != nil {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid request payload", Code: http.StatusBadRequest})
 		return
 	}
@@ -77,7 +77,7 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{"token": token, "user_id": newUserID})
+	jsoniter.NewEncoder(w).Encode(map[string]string{"token": token, "user_id": newUserID})
 }
 
 func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
@@ -87,7 +87,7 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req LoginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := jsoniter.NewDecoder(r.Body).Decode(&req); err != nil {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid request payload", Code: http.StatusBadRequest})
 		return
 	}
@@ -114,5 +114,5 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"token": token, "user_id": userID})
+	jsoniter.NewEncoder(w).Encode(map[string]string{"token": token, "user_id": userID})
 }

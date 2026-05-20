@@ -1,7 +1,7 @@
 package ports
 
 import (
-	"encoding/json"
+	jsoniter "github.com/json-iterator/go"
 	"net/http"
 
 	"scriptureforge/internal/adapters/llm"
@@ -23,7 +23,7 @@ type CurriculumRequest struct {
 func sendAIError(w http.ResponseWriter, pe *ai.PlatformException) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(pe.Code)
-	json.NewEncoder(w).Encode(pe)
+	jsoniter.NewEncoder(w).Encode(pe)
 }
 
 func (h *AIHandler) GenerateCurriculumHandler(w http.ResponseWriter, r *http.Request) {
@@ -39,7 +39,7 @@ func (h *AIHandler) GenerateCurriculumHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	var req CurriculumRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := jsoniter.NewDecoder(r.Body).Decode(&req); err != nil {
 		sendAIError(w, &ai.PlatformException{Category: "PAYLOAD_FAULT", Message: "Invalid request payload", Code: http.StatusBadRequest})
 		return
 	}
@@ -82,5 +82,5 @@ func (h *AIHandler) GenerateCurriculumHandler(w http.ResponseWriter, r *http.Req
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"generated_curriculum": completeCurriculum})
+	jsoniter.NewEncoder(w).Encode(map[string]string{"generated_curriculum": completeCurriculum})
 }
