@@ -1,1 +1,1 @@
-security(audit): phase 5 - complete Black Box verification
+security(audit): phase 6 - complete WebSocket CSWSH Mitigation

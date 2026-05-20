@@ -25,9 +25,9 @@ Based on the `EXTERNAL_INTERFACE_MAP`:
 - `POST /api/auth/login`: **Covered** (Transitions)
 - `POST /api/ai/curriculum`: **Covered** (Authorization Boundaries, State Context via JWT)
 - `POST /api/webhooks/zoom`: **Covered** (Signature verification failures, Leakage)
-- `GET /ws/room`: **Pending UI WebSocket instrumentation**
+- `GET /ws/room`: **Covered (Authorization Boundaries, Origin Mitigation)**
 
-**Overall API Contract Coverage:** 80%
+**Overall API Contract Coverage:** 100%
 
 ## 4. Exceptions and Deviations
 - *Rust gRPC Downstream dependency:* Because the Rust engine is mocked (socat fork), the `/api/ai/curriculum` endpoint successfully passes API authorization but returns a platform exception when attempting backend generation. The Go server correctly catches this and formats it into the standardized `PlatformException` (Code 500) rather than panic crashing, satisfying the black-box leakage requirements.
