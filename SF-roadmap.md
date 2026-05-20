@@ -2,7 +2,7 @@
 
 ## 1. ROADMAP SUMMARY
 - This roadmap defines the comprehensive execution strategy for constructing ScriptureForge AI (BibleStudyOS), a multi-tenant, cloud-native collaborative Bible study environment.
-- The platform uses a polyglot architectural design consisting of Go (Golang 1.26+) for concurrent business services and real-time state synchronization, paired with a high-performance Rust service for complex original language morphological processing and lexical vector operations.
+- The platform uses a polyglot architectural design consisting of Go (Golang 1.22.0) for concurrent business services and real-time state synchronization, paired with a high-performance Rust service for complex original language morphological processing and lexical vector operations.
 - The user-facing ecosystem delivers unified multi-device access using a Next.js 15+ web core and a cross-platform React Native companion app built over Expo.
 - To strictly eliminate agentic drift, logic regression, and context hallucination during autonomous code generation loops, this architecture enforces a mandatory dual-layer orchestration workflow. Google Jules is restricted from introducing application layer mutations or database schema additions until a phase-specific sub-roadmap has been compiled and committed to the workspace file structure.
 
