@@ -37,23 +37,10 @@ func NewRoomStateManager(rdb *redis.Client) *RoomStateManager {
 // UpdateParticipantDuration safely increments a user's duration in a room using a Lua script
 // to avoid data race conditions under high concurrent WebSocket loads.
 func (rsm *RoomStateManager) UpdateParticipantDuration(ctx context.Context, roomID, userID string, durationSeconds int) error {
-	// Lua script: Increment duration safely.
-	// KEYS[1] = room key
-	// ARGV[1] = user ID
-	// ARGV[2] = duration to add
-	script := redis.NewScript(`
-		local current = redis.call("HGET", KEYS[1], ARGV[1])
-		if current then
-			redis.call("HINCRBY", KEYS[1], ARGV[1], ARGV[2])
-		else
-			redis.call("HSET", KEYS[1], ARGV[1], ARGV[2])
-		end
-		return 1
-	`)
-
+	// Replacing Lua script with direct atomic HINCRBY
 	roomKey := fmt.Sprintf("room:%s:participants", roomID)
 
-	err := script.Run(ctx, rsm.client, []string{roomKey}, userID, durationSeconds).Err()
+	err := rsm.client.HIncrBy(ctx, roomKey, userID, int64(durationSeconds)).Err()
 	if err != nil {
 		return &PlatformException{
 			Category: RoomStateFault,
@@ -66,18 +53,13 @@ func (rsm *RoomStateManager) UpdateParticipantDuration(ctx context.Context, room
 
 // SetRoomActiveState atomically updates the active status of a room
 func (rsm *RoomStateManager) SetRoomActiveState(ctx context.Context, roomID string, active bool) error {
-	script := redis.NewScript(`
-		redis.call("HSET", KEYS[1], "active", ARGV[1])
-		return 1
-	`)
-
 	roomKey := fmt.Sprintf("room:%s:meta", roomID)
 	activeStr := "false"
 	if active {
 		activeStr = "true"
 	}
 
-	err := script.Run(ctx, rsm.client, []string{roomKey}, activeStr).Err()
+	err := rsm.client.HSet(ctx, roomKey, "active", activeStr).Err()
 	if err != nil {
 		return &PlatformException{
 			Category: RoomStateFault,

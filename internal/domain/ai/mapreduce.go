@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"unicode/utf8"
 )
 
 // MapReduceWorker asynchronously divides extensive textual outlines into manageable chunks.
@@ -20,9 +21,9 @@ func NewMapReduceWorker(maxChunkSize int) *MapReduceWorker {
 }
 
 // Chunk splits a large string into smaller slices based on the configured MaxChunkSize.
-// It attempts to split safely on paragraph or sentence boundaries.
+// It uses rune slicing to ensure safe UTF-8 boundaries.
 func (m *MapReduceWorker) Chunk(text string) []string {
-	if len(text) <= m.MaxChunkSize {
+	if utf8.RuneCountInString(text) <= m.MaxChunkSize {
 		return []string{text}
 	}
 
@@ -32,20 +33,41 @@ func (m *MapReduceWorker) Chunk(text string) []string {
 	paragraphs := strings.Split(text, "\n\n")
 
 	for _, p := range paragraphs {
-		if currentChunk.Len()+len(p) > m.MaxChunkSize && currentChunk.Len() > 0 {
+		pRuneCount := utf8.RuneCountInString(p)
+		currRuneCount := utf8.RuneCountInString(currentChunk.String())
+
+		if currRuneCount+pRuneCount > m.MaxChunkSize && currRuneCount > 0 {
 			chunks = append(chunks, currentChunk.String())
 			currentChunk.Reset()
 		}
 
 		// If a single paragraph exceeds the chunk size, we must hard split it
-		if len(p) > m.MaxChunkSize {
+		if pRuneCount > m.MaxChunkSize {
 			sentences := strings.Split(p, ". ")
 			for _, s := range sentences {
-				if currentChunk.Len()+len(s) > m.MaxChunkSize && currentChunk.Len() > 0 {
+				sRuneCount := utf8.RuneCountInString(s)
+				currRuneCount = utf8.RuneCountInString(currentChunk.String())
+
+				if currRuneCount+sRuneCount > m.MaxChunkSize && currRuneCount > 0 {
 					chunks = append(chunks, currentChunk.String())
 					currentChunk.Reset()
 				}
-				currentChunk.WriteString(s + ". ")
+
+				// Handle extremely long sentences that are larger than MaxChunkSize
+				if sRuneCount > m.MaxChunkSize {
+					runes := []rune(s)
+					for i := 0; i < len(runes); i += m.MaxChunkSize {
+						end := i + m.MaxChunkSize
+						if end > len(runes) {
+							end = len(runes)
+						}
+						chunks = append(chunks, string(runes[i:end]))
+					}
+					// Add the final period space if there are more sentences
+					currentChunk.WriteString(". ")
+				} else {
+					currentChunk.WriteString(s + ". ")
+				}
 			}
 		} else {
 			currentChunk.WriteString(p + "\n\n")
