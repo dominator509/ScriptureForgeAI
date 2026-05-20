@@ -1,0 +1,29 @@
+API_TOPOLOGY_MAP:
+
+1. [REST] POST /api/auth/register
+   - Content-Type: application/json
+   - Headers: None (Public)
+   - Payload: RegisterRequest { email, password, organization_id }
+
+2. [REST] POST /api/auth/login
+   - Content-Type: application/json
+   - Headers: None (Public)
+   - Payload: LoginRequest { email, password }
+
+3. [REST] POST /api/ai/curriculum
+   - Content-Type: application/json
+   - Headers: Authorization: Bearer <JWT>
+   - Payload: CurriculumRequest { topic }
+
+4. [REST] POST /api/webhooks/zoom
+   - Content-Type: application/json
+   - Headers: x-zm-signature, x-zm-request-timestamp
+   - Payload: WebhookPayload { event, payload.object.id/topic/start_time }
+
+5. [WebSocket] GET /ws/room
+   - Content-Type: None (Upgrade to websocket)
+   - Headers: Authorization: Bearer <JWT> OR Query Param: ?ticket=<JWT>
+
+6. [gRPC] ScriptureEngine (localhost:50051)
+   - rpc ProcessTextEmbedding (EmbedTextRequest) returns (EmbedTextResponse)
+   - rpc SearchByVector (VectorSearchRequest) returns (VectorSearchResponse)
