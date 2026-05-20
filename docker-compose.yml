@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  db:
+    image: ankane/pgvector:v0.5.1
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: scriptureforge
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d scriptureforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  rust-grpc-mock:
+    image: alpine/socat
+    command: tcp-listen:50051,fork,reuseaddr stdout
+    ports:
+      - "50051:50051"
+
+  platform-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    environment:
+      DATABASE_URL: "postgres://root:password@db:5432/scriptureforge?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+      PORT: "8080"
+      GRPC_ENGINE_ADDRESS: "rust-grpc-mock:50051"
+      JWT_SECRET_KEY: "super-secret-blackbox-key-for-testing"
+      ZOOM_WEBHOOK_SECRET_TOKEN: "zoom-secret-token"
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./web
+      dockerfile: ../Dockerfile.frontend
+    environment:
+      NEXT_PUBLIC_API_URL: "http://platform-engine:8080"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - platform-engine
