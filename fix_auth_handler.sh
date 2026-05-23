@@ -1,0 +1,1 @@
+sed -i 's/func getIP(r \*http.Request) string {/func getIP(r \*http.Request) string {\n\tip := r.RemoteAddr\n\tif idx := strings.LastIndex(ip, ":"); idx != -1 {\n\t\tip = ip[:idx]\n\t}\n\treturn ip\n}\n\nfunc oldGetIP(r \*http.Request) string {/g' services/platform-engine/auth_handler.go

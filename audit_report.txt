@@ -1,0 +1,3 @@
+- Implemented strict IP-based Rate Limiting on /login and /register before hashing.
+- Implemented isolated bounded Goroutine Worker Pool for Argon2id hashing to prevent CPU starvation.
+- Implemented account lockout with mandatory password recovery after 5 failed attempts.
