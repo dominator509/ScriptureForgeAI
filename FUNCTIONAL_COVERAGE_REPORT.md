@@ -1,6 +1,8 @@
 # Functional Coverage Report
 **Project:** ScriptureForge AI
 
+> Historical snapshot: this report predates the 2026-06-23 functionality audit remediation. Treat completion claims here as superseded unless they are backed by current CI/local gate evidence.
+
 ## 1. Feature Topology & State Mapping
 * **Status:** Verified. Behavioral contracts outputted and aligned to actual state mutations across the application (Postgres tracking, Redis ephemeral states, Web UI boundaries).
 

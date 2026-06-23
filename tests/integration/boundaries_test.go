@@ -39,4 +39,8 @@ func TestAILogicBoundary(t *testing.T) {
 			t.Errorf("Expected PlatformException with AI_ORCHESTRATION_ENGINE_FAULT, got: %v", err)
 		}
 	}
+
+	if err := verifier.Verify("This answer has no citations.", validContext); err == nil {
+		t.Errorf("Expected citation-first verifier to reject responses without citations")
+	}
 }

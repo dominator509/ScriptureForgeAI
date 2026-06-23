@@ -8,7 +8,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"scriptureforge/internal/domain/ai"
 )
@@ -17,7 +19,9 @@ import (
 type LLMClient struct {
 	APIKey     string
 	Endpoint   string
+	Model      string
 	HTTPClient *http.Client
+	MaxRetries int
 }
 
 type openaiRequest struct {
@@ -40,15 +44,32 @@ type openaiResponse struct {
 // NewLLMClient initializes the explicit boundary client.
 func NewLLMClient() *LLMClient {
 	key := os.Getenv("OPENAI_API_KEY")
-	// If the key is missing in test mode, we allow initialization but it will fail on execute
-	if key == "" && os.Getenv("GO_ENV") != "testing" {
-		panic("OPENAI_API_KEY environment variable must be set in production")
+	endpoint := os.Getenv("AI_CHAT_ENDPOINT")
+	if endpoint == "" {
+		endpoint = "https://api.openai.com/v1/chat/completions"
 	}
-
+	model := os.Getenv("AI_CHAT_MODEL")
+	if model == "" {
+		model = "gpt-4"
+	}
+	timeout := 3500 * time.Millisecond
+	if configured := os.Getenv("AI_HTTP_TIMEOUT_MS"); configured != "" {
+		if millis, err := strconv.Atoi(configured); err == nil && millis > 0 {
+			timeout = time.Duration(millis) * time.Millisecond
+		}
+	}
+	maxRetries := 1
+	if configured := os.Getenv("AI_MAX_RETRIES"); configured != "" {
+		if retries, err := strconv.Atoi(configured); err == nil && retries >= 0 {
+			maxRetries = retries
+		}
+	}
 	return &LLMClient{
 		APIKey:     key,
-		Endpoint:   "https://api.openai.com/v1/chat/completions",
-		HTTPClient: &http.Client{},
+		Endpoint:   endpoint,
+		Model:      model,
+		HTTPClient: &http.Client{Timeout: timeout},
+		MaxRetries: maxRetries,
 	}
 }
 
@@ -76,13 +97,17 @@ func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledCont
 			// Fail-safe for test environments lacking network connectivity
 			return "As stated, [Genesis 1:1] In the beginning God created the heaven and the earth.", nil
 		}
-		return "", fmt.Errorf("missing API key")
+		return "", &ai.PlatformException{
+			Category: "AI_CONFIGURATION_FAULT",
+			Message:  "OPENAI_API_KEY is not configured",
+			Code:     503,
+		}
 	}
 
 	messages := c.BuildRigorousPrompt(safePrompt, compiledContext)
 
 	reqBody := openaiRequest{
-		Model:    "gpt-4",
+		Model:    c.Model,
 		Messages: messages,
 		Temp:     0.0, // Zero temperature for deterministic output bounding
 	}
@@ -100,9 +125,23 @@ func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledCont
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.APIKey)
 
-	resp, err := c.HTTPClient.Do(req)
+	var resp *http.Response
+	var err error
+	for attempt := 0; attempt <= c.MaxRetries; attempt++ {
+		resp, err = c.HTTPClient.Do(req)
+		if err == nil {
+			break
+		}
+		if attempt < c.MaxRetries {
+			time.Sleep(time.Duration(attempt+1) * 100 * time.Millisecond)
+		}
+	}
 	if err != nil {
-		return "", err
+		return "", &ai.PlatformException{
+			Category: "AI_ORCHESTRATION_ENGINE_FAULT",
+			Message:  fmt.Sprintf("LLM request failed: %v", err),
+			Code:     503,
+		}
 	}
 	defer resp.Body.Close()
 

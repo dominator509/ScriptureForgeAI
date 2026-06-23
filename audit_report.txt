@@ -1,5 +1,7 @@
 # Sub-Roadmap Implementation Audit Report
 
+Historical snapshot: this report predates the 2026-06-23 functionality audit remediation. Treat completion claims here as superseded unless they are backed by current CI/local gate evidence.
+
 ## Phase 01: Infrastructure & Data Core
 *   Task 1 (Sub-Roadmap Generation Gate): **Completed**
 *   Task 2 (Terraform aws_eks_cluster/aws_rds_cluster): **Completed**

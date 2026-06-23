@@ -22,7 +22,11 @@ func (v *ResponseVerificationSubsystem) Verify(generatedText string, providedCon
 	matches := citationRegex.FindAllStringSubmatch(generatedText, -1)
 
 	if len(matches) == 0 {
-		return nil // No citations generated, valid.
+		return &PlatformException{
+			Category: "AI_ORCHESTRATION_ENGINE_FAULT",
+			Message:  "verification failed: citation-first response did not include any source citation",
+			Code:     403,
+		}
 	}
 
 	for _, match := range matches {

@@ -8,7 +8,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"scriptureforge/scriptureforge/proto/engine"
 	"google.golang.org/grpc"
@@ -27,6 +29,21 @@ type SearchResult struct {
 // VectorDB defines the required behavior for interacting with semantic space
 type VectorDB interface {
 	Search(ctx context.Context, orgID string, query string, topK int) ([]SearchResult, error)
+}
+
+type UnavailableVectorDB struct {
+	Reason string
+}
+
+func (u UnavailableVectorDB) Search(ctx context.Context, orgID string, query string, topK int) ([]SearchResult, error) {
+	if u.Reason == "" {
+		u.Reason = "scripture vector engine is unavailable"
+	}
+	return nil, &PlatformException{
+		Category: "RAG_SEARCH_FAULT",
+		Message:  u.Reason,
+		Code:     503,
+	}
 }
 
 // GRPCScriptureClient implements VectorDB using the Rust gRPC engine
@@ -65,14 +82,29 @@ func generateEmbedding(ctx context.Context, text string) ([]float32, error) {
 		Model string `json:"model"`
 	}
 
+	model := os.Getenv("AI_EMBEDDING_MODEL")
+	if model == "" {
+		model = "text-embedding-3-small"
+	}
+	endpoint := os.Getenv("AI_EMBEDDING_ENDPOINT")
+	if endpoint == "" {
+		endpoint = "https://api.openai.com/v1/embeddings"
+	}
+	timeout := 3500 * time.Millisecond
+	if configured := os.Getenv("AI_HTTP_TIMEOUT_MS"); configured != "" {
+		if millis, err := strconv.Atoi(configured); err == nil && millis > 0 {
+			timeout = time.Duration(millis) * time.Millisecond
+		}
+	}
+
 	reqBody := embedRequest{
 		Input: text,
-		Model: "text-embedding-3-small",
+		Model: model,
 	}
 
 	jsonBody, _ := json.Marshal(reqBody)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.openai.com/v1/embeddings", bytes.NewBuffer(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +112,8 @@ func generateEmbedding(ctx context.Context, text string) ([]float32, error) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: timeout}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}

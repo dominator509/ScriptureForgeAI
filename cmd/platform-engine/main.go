@@ -90,29 +90,45 @@ func setupRoutes(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisClient *redis.
 
 	// Auth Endpoints
 	authHandler := &ports.AuthHandler{DB: dbpool}
+	mux.HandleFunc("/api/v1/auth/register", authHandler.RegisterHandler)
+	mux.HandleFunc("/api/v1/auth/login", authHandler.LoginHandler)
+	mux.HandleFunc("/api/v1/auth/refresh", authHandler.RefreshHandler)
+	mux.HandleFunc("/api/v1/auth/logout", authHandler.LogoutHandler)
+	mux.Handle("/api/v1/auth/mfa/verify", auth.RBACMiddleware(http.HandlerFunc(authHandler.MFAEnrollHandler), ""))
 	mux.HandleFunc("/api/auth/register", authHandler.RegisterHandler)
 	mux.HandleFunc("/api/auth/login", authHandler.LoginHandler)
+
+	journalHandler := &ports.JournalHandler{DB: dbpool}
+	mux.Handle("/api/v1/journal_entries", auth.RBACMiddleware(http.HandlerFunc(journalHandler.ServeJournalEntries), ""))
+	mux.Handle("/api/v1/journal_entries/", auth.RBACMiddleware(http.HandlerFunc(journalHandler.ServeJournalEntry), ""))
 
 	// AI Endpoints (Protected by RBAC)
 	ragEngine := ai.NewRAGEngine(vectorDB)
 	mapReduceWorker := ai.NewMapReduceWorker(4000)
 
 	aiHandler := &ports.AIHandler{
+		DB:              dbpool,
 		RAGEngine:       ragEngine,
 		Verifier:        ai.NewResponseVerificationSubsystem(),
 		LLMClient:       llm.NewLLMClient(),
 		MapReduceWorker: mapReduceWorker,
 	}
+	mux.Handle("/api/v1/ai/generate/study", auth.RBACMiddleware(http.HandlerFunc(aiHandler.GenerateCurriculumHandler), ""))
 	mux.Handle("/api/ai/curriculum", auth.RBACMiddleware(http.HandlerFunc(aiHandler.GenerateCurriculumHandler), ""))
 
 	// Room & Zoom Webhook Initialization
 	roomStateManager := room.NewRoomStateManager(redisClient)
-	zoomWebhookHandler := integration_zoom.NewWebhookHandler(roomStateManager)
+	roomHandler := &ports.RoomHandler{DB: dbpool, StateManager: roomStateManager}
+	mux.Handle("/api/v1/rooms/create", auth.RBACMiddleware(http.HandlerFunc(roomHandler.CreateRoomHandler), ""))
+	mux.Handle("/api/v1/rooms/active", auth.RBACMiddleware(http.HandlerFunc(roomHandler.ActiveRoomsHandler), ""))
+	mux.Handle("/api/v1/rooms/state/", auth.RBACMiddleware(http.HandlerFunc(roomHandler.RoomStateHandler), ""))
+
+	zoomWebhookHandler := integration_zoom.NewWebhookHandler(roomStateManager, dbpool)
 	mux.HandleFunc("/api/webhooks/zoom", zoomWebhookHandler.HandleZoomWebhook)
 
 	// Websockets (Protected)
-	socketConn := &ports.SocketConnection{}
-	mux.Handle("/ws/room", auth.RBACMiddleware(http.HandlerFunc(socketConn.HandleLiveRoom), ""))
+	socketConn := &ports.SocketConnection{DB: dbpool, StateManager: roomStateManager}
+	mux.Handle("/api/v1/rooms/stream/", auth.RBACMiddleware(http.HandlerFunc(socketConn.HandleLiveRoom), ""))
 
 	return &mux
 }
@@ -150,15 +166,18 @@ func main() {
 	}
 	log.Println("Successfully connected to Redis pool.")
 
+	var vectorDB ai.VectorDB
 	vectorClient, err := ai.NewGRPCScriptureClient(cfg.GRPCAddress)
 	if err != nil {
 		log.Printf("Warning: Failed to connect to Rust gRPC Scripture Engine at %s: %v. AI features will fail.", cfg.GRPCAddress, err)
+		vectorDB = ai.UnavailableVectorDB{Reason: "Rust gRPC Scripture Engine is unavailable"}
 	} else {
 		defer vectorClient.Close()
+		vectorDB = vectorClient
 		log.Println("Successfully connected to Rust gRPC Scripture Engine.")
 	}
 
-	router := setupRoutes(dbpool, vectorClient, rdb)
+	router := setupRoutes(dbpool, vectorDB, rdb)
 	server := &http.Server{
 		Addr:    ":" + cfg.Port,
 		Handler: router,

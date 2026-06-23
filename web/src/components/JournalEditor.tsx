@@ -1,23 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { deriveIsolationKey, encryptJournalData, decryptJournalData, EncryptedPayload } from '../lib/crypto';
+import { apiRequest } from '../lib/api';
 import { useAppStore } from '../lib/store';
 
 // A fully functional component demonstrating Zero-Knowledge containment integrations
 export const JournalEditor: React.FC = () => {
-  const { currentRole } = useAppStore();
+  const { currentRole, token, userId } = useAppStore();
   const [plaintext, setPlaintext] = useState<string>('');
   const [passphrase, setPassphrase] = useState<string>('');
   const [encryptedData, setEncryptedData] = useState<EncryptedPayload | null>(null);
+  const [entries, setEntries] = useState<Array<EncryptedPayload & { id: string; salt_id: string; salt_version: number }>>([]);
   const [cryptoKey, setCryptoKey] = useState<CryptoKey | null>(null);
   const [status, setStatus] = useState<string>('');
 
-  // The salt would normally be deterministic per user (e.g., their user ID)
-  const userSalt = "static-user-salt-12345";
+  const userSalt = userId ? `journal:${userId}:v1` : '';
 
   // Derive the key automatically when passphrase is provided
   useEffect(() => {
     let isMounted = true;
-    if (passphrase.length >= 8) {
+    if (passphrase.length >= 8 && userSalt) {
       deriveIsolationKey(passphrase, userSalt)
         .then((key) => {
           if (isMounted) {
@@ -33,7 +34,14 @@ export const JournalEditor: React.FC = () => {
       setStatus("Awaiting valid passphrase (min 8 chars)");
     }
     return () => { isMounted = false; };
-  }, [passphrase]);
+  }, [passphrase, userSalt]);
+
+  useEffect(() => {
+    if (!token) return;
+    apiRequest<Array<EncryptedPayload & { id: string; salt_id: string; salt_version: number }>>('/api/v1/journal_entries', token)
+      .then(setEntries)
+      .catch(() => setEntries([]));
+  }, [token]);
 
   // Ensure key is cleared upon dismount (Zero-Knowledge rule)
   useEffect(() => {
@@ -51,19 +59,29 @@ export const JournalEditor: React.FC = () => {
       setEncryptedData(payload);
       setStatus("Successfully encrypted to opaque payload. Ready for network.");
 
-      // Functional Integration: Here is where the API call to standard backend would go
-      // fetch('/api/journal', { method: 'POST', body: JSON.stringify(payload) })
+      if (token) {
+        const saved = await apiRequest<EncryptedPayload & { id: string; salt_id: string; salt_version: number }>(
+          '/api/v1/journal_entries',
+          token,
+          {
+            method: 'POST',
+            body: JSON.stringify({ ...payload, salt_id: userSalt, salt_version: 1 }),
+          },
+        );
+        setEntries((current) => [saved, ...current]);
+      }
 
     } catch (err) {
       setStatus("Encryption failed");
     }
   };
 
-  const handleReadFromNetwork = async (): Promise<void> => {
-    if (!cryptoKey || !encryptedData) return;
+  const handleReadFromNetwork = async (entry?: EncryptedPayload): Promise<void> => {
+    const payload = entry ?? encryptedData;
+    if (!cryptoKey || !payload) return;
 
     try {
-      const decodedText = await decryptJournalData(encryptedData, cryptoKey);
+      const decodedText = await decryptJournalData(payload, cryptoKey);
       setPlaintext(decodedText);
       setStatus("Successfully decrypted from network payload.");
     } catch (err) {
@@ -75,6 +93,7 @@ export const JournalEditor: React.FC = () => {
     <div className="p-6 max-w-2xl mx-auto bg-white rounded-xl shadow-md space-y-4">
       <h2 className="text-2xl font-bold text-gray-900">Zero-Knowledge Journal</h2>
       <p className="text-sm text-gray-500">Current Role: {currentRole}</p>
+      {!token && <p className="text-sm text-red-600">Sign in before saving encrypted journal entries.</p>}
 
       <div>
         <label className="block text-sm font-medium text-gray-700">Decryption Passphrase</label>
@@ -102,7 +121,7 @@ export const JournalEditor: React.FC = () => {
       <div className="flex space-x-4">
         <button
           onClick={() => void handleSaveToNetwork()}
-          disabled={!cryptoKey || plaintext === ''}
+          disabled={!token || !cryptoKey || plaintext === ''}
           className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
         >
           Encrypt & Save
@@ -122,6 +141,20 @@ export const JournalEditor: React.FC = () => {
           <span className="font-mono text-gray-700">
             {JSON.stringify(encryptedData)}
           </span>
+        </div>
+      )}
+      {entries.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-gray-800">Saved Entries</h3>
+          {entries.map((entry) => (
+            <button
+              key={entry.id}
+              onClick={() => void handleReadFromNetwork(entry)}
+              className="block w-full text-left px-3 py-2 border rounded text-xs text-gray-700"
+            >
+              {entry.id}
+            </button>
+          ))}
         </div>
       )}
     </div>

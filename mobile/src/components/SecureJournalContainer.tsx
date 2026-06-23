@@ -1,18 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { deriveIsolationKey, encryptJournalData, EncryptedPayload } from '../lib/crypto';
+import { apiRequest } from '../lib/api';
 
 export const SecureJournalContainer: React.FC = () => {
   const [plaintext, setPlaintext] = useState('');
   const [passphrase, setPassphrase] = useState('');
   const [status, setStatus] = useState('Awaiting passphrase');
   const [keyMaterial, setKeyMaterial] = useState<string | null>(null);
+  const [token, setToken] = useState('');
+  const [userId, setUserId] = useState('');
 
-  const userSalt = "mobile-static-salt-123";
+  const userSalt = userId ? `journal:${userId}:v1` : '';
 
   useEffect(() => {
     let isMounted = true;
-    if (passphrase.length >= 8) {
+    if (passphrase.length >= 8 && userSalt) {
       deriveIsolationKey(passphrase, userSalt).then(k => {
         if (isMounted) {
           setKeyMaterial(k);
@@ -24,19 +27,37 @@ export const SecureJournalContainer: React.FC = () => {
       setKeyMaterial(null);
     }
     return () => { isMounted = false; };
-  }, [passphrase]);
+  }, [passphrase, userSalt]);
 
   const handleSave = async () => {
     if (keyMaterial && plaintext) {
       const encrypted: EncryptedPayload = await encryptJournalData(plaintext, keyMaterial);
+      if (token) {
+        await apiRequest('/api/v1/journal_entries', token, {
+          method: 'POST',
+          body: JSON.stringify({ ...encrypted, salt_id: userSalt, salt_version: 1 }),
+        });
+      }
       setStatus(`Saved securely! IV: ${encrypted.iv.substring(0, 10)}...`);
-      // In production, dispatch payload to API over HTTPS
     }
   };
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Zero-Knowledge Journal (Mobile)</Text>
+
+      <TextInput
+        style={styles.input}
+        placeholder="Access Token"
+        value={token}
+        onChangeText={setToken}
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="User ID"
+        value={userId}
+        onChangeText={setUserId}
+      />
 
       <TextInput
         style={styles.input}
@@ -58,7 +79,7 @@ export const SecureJournalContainer: React.FC = () => {
       <TouchableOpacity
         style={[styles.button, (!keyMaterial || !plaintext) && styles.disabled]}
         onPress={() => void handleSave()}
-        disabled={!keyMaterial || !plaintext}
+        disabled={!token || !keyMaterial || !plaintext}
       >
         <Text style={styles.buttonText}>Encrypt & Save</Text>
       </TouchableOpacity>

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"scriptureforge/internal/domain/room"
 )
 
@@ -27,10 +28,15 @@ type WebhookPayload struct {
 
 type WebhookHandler struct {
 	StateManager *room.RoomStateManager
+	DB           *pgxpool.Pool
 }
 
-func NewWebhookHandler(sm *room.RoomStateManager) *WebhookHandler {
-	return &WebhookHandler{StateManager: sm}
+func NewWebhookHandler(sm *room.RoomStateManager, db ...*pgxpool.Pool) *WebhookHandler {
+	handler := &WebhookHandler{StateManager: sm}
+	if len(db) > 0 {
+		handler.DB = db[0]
+	}
+	return handler
 }
 
 // verifyZoomSignature validates the Zoom webhook signature to ensure authenticity
@@ -73,15 +79,19 @@ func (h *WebhookHandler) HandleZoomWebhook(w http.ResponseWriter, r *http.Reques
 	}
 
 	meetingID := payload.Payload.Object.Id
+	roomID := meetingID
+	if h.DB != nil {
+		_ = h.DB.QueryRow(r.Context(), `SELECT id FROM live_rooms WHERE meeting_external_id = $1`, meetingID).Scan(&roomID)
+	}
 
 	// Map Zoom business logic events to local Redis state mutations
 	switch payload.Event {
 	case "meeting.started":
 		log.Printf("Webhook: Meeting %s started", meetingID)
-		h.StateManager.SetRoomActiveState(r.Context(), meetingID, true)
+		h.StateManager.SetRoomActiveState(r.Context(), roomID, true)
 	case "meeting.ended":
 		log.Printf("Webhook: Meeting %s ended", meetingID)
-		h.StateManager.SetRoomActiveState(r.Context(), meetingID, false)
+		h.StateManager.SetRoomActiveState(r.Context(), roomID, false)
 	default:
 		log.Printf("Webhook: Unhandled event %s for meeting %s", payload.Event, meetingID)
 	}

@@ -3,13 +3,16 @@ package ports
 import (
 	"encoding/json"
 	"net/http"
+	"regexp"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"scriptureforge/internal/adapters/llm"
 	"scriptureforge/internal/domain/ai"
 	"scriptureforge/internal/domain/auth"
 )
 
 type AIHandler struct {
+	DB              *pgxpool.Pool
 	RAGEngine       *ai.RAGEngine
 	Verifier        *ai.ResponseVerificationSubsystem
 	LLMClient       *llm.LLMClient
@@ -24,6 +27,48 @@ func sendAIError(w http.ResponseWriter, pe *ai.PlatformException) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(pe.Code)
 	json.NewEncoder(w).Encode(pe)
+}
+
+var auditCitationRegex = regexp.MustCompile(`\[([a-zA-Z\s]+)\s(\d+):(\d+)\]`)
+
+func (h *AIHandler) writeAIRequestLog(r *http.Request, claims *auth.TokenClaims, prompt, status, errorMessage, response string) {
+	if h.DB == nil {
+		return
+	}
+	tx, err := h.DB.Begin(r.Context())
+	if err != nil {
+		return
+	}
+	defer tx.Rollback(r.Context())
+	if err := auth.SetTenantContext(r.Context(), tx, claims.OrganizationID); err != nil {
+		return
+	}
+	var logID string
+	err = tx.QueryRow(
+		r.Context(),
+		`INSERT INTO ai_request_logs (organization_id, user_id, prompt, status, error_message)
+		 VALUES ($1, $2, $3, $4, $5)
+		 RETURNING id`,
+		claims.OrganizationID,
+		claims.UserID,
+		prompt,
+		status,
+		errorMessage,
+	).Scan(&logID)
+	if err != nil {
+		return
+	}
+	for _, match := range auditCitationRegex.FindAllString(response, -1) {
+		_, _ = tx.Exec(
+			r.Context(),
+			`INSERT INTO citation_trails (organization_id, ai_request_log_id, citation, verified)
+			 VALUES ($1, $2, $3, TRUE)`,
+			claims.OrganizationID,
+			logID,
+			match,
+		)
+	}
+	_ = tx.Commit(r.Context())
 }
 
 func (h *AIHandler) GenerateCurriculumHandler(w http.ResponseWriter, r *http.Request) {
@@ -58,6 +103,7 @@ func (h *AIHandler) GenerateCurriculumHandler(w http.ResponseWriter, r *http.Req
 		// 2. RAG Compilation per chunk
 		compiledContext, err := h.RAGEngine.CompileContext(r.Context(), claims.OrganizationID, chunk)
 		if err != nil {
+			h.writeAIRequestLog(r, claims, chunk, "failed", err.Error(), "")
 			if pe, ok := err.(*ai.PlatformException); ok {
 				sendAIError(w, pe)
 			} else {
@@ -69,6 +115,7 @@ func (h *AIHandler) GenerateCurriculumHandler(w http.ResponseWriter, r *http.Req
 		// 3. Execute via explicit boundaries and strict response verification per chunk
 		response, err := h.LLMClient.Execute(r.Context(), chunk, compiledContext, h.Verifier)
 		if err != nil {
+			h.writeAIRequestLog(r, claims, chunk, "failed", err.Error(), "")
 			if pe, ok := err.(*ai.PlatformException); ok {
 				sendAIError(w, pe)
 			} else {
@@ -78,6 +125,7 @@ func (h *AIHandler) GenerateCurriculumHandler(w http.ResponseWriter, r *http.Req
 		}
 
 		completeCurriculum += response + "\n\n"
+		h.writeAIRequestLog(r, claims, chunk, "succeeded", "", response)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

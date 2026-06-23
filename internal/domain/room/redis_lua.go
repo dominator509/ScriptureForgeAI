@@ -3,6 +3,7 @@ package room
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -86,4 +87,45 @@ func (rsm *RoomStateManager) SetRoomActiveState(ctx context.Context, roomID stri
 		}
 	}
 	return nil
+}
+
+// AppendRoomEvent stores the latest room event atomically and returns the new sequence number.
+func (rsm *RoomStateManager) AppendRoomEvent(ctx context.Context, roomID, eventJSON string) (int64, error) {
+	script := redis.NewScript(`
+		local seq = redis.call("INCR", KEYS[1])
+		redis.call("SET", KEYS[2], ARGV[1])
+		redis.call("EXPIRE", KEYS[1], ARGV[2])
+		redis.call("EXPIRE", KEYS[2], ARGV[2])
+		return seq
+	`)
+
+	seqKey := fmt.Sprintf("room:%s:sequence", roomID)
+	stateKey := fmt.Sprintf("room:%s:latest", roomID)
+	ttlSeconds := int((24 * time.Hour).Seconds())
+	seq, err := script.Run(ctx, rsm.client, []string{seqKey, stateKey}, eventJSON, ttlSeconds).Int64()
+	if err != nil {
+		return 0, &PlatformException{
+			Category: RoomStateFault,
+			Message:  fmt.Sprintf("Failed to append room event: %v", err),
+			Code:     500,
+		}
+	}
+	return seq, nil
+}
+
+// GetLatestRoomEvent retrieves the last accepted event for HTTP polling fallback.
+func (rsm *RoomStateManager) GetLatestRoomEvent(ctx context.Context, roomID string) (string, error) {
+	stateKey := fmt.Sprintf("room:%s:latest", roomID)
+	value, err := rsm.client.Get(ctx, stateKey).Result()
+	if err == redis.Nil {
+		return "{}", nil
+	}
+	if err != nil {
+		return "", &PlatformException{
+			Category: RoomStateFault,
+			Message:  fmt.Sprintf("Failed to load room state: %v", err),
+			Code:     500,
+		}
+	}
+	return value, nil
 }
