@@ -234,8 +234,8 @@ Add environment-driven API base URLs, auth screens, room creation/listing, activ
 
 Status last updated: 2026-06-23
 
-- F-AUD-001: In progress. Tenant-scoped handlers now use `auth.SetTenantContext` for journal, room, AI audit, registration, and refresh-token writes. Handler-level DB tests still need a runnable Go/Postgres environment.
-- F-AUD-002: In progress. Canonical `/api/v1/auth/*` routes, 15-minute access tokens, refresh rotation, logout, and privileged-role TOTP enforcement have been added.
+- F-AUD-001: In progress. Tenant-scoped handlers now use `auth.SetTenantContext` for journal, room, AI audit, registration, login, refresh-token rotation, logout, and MFA writes. Handler-level DB tests still need a runnable Go/Postgres environment.
+- F-AUD-002: In progress. Canonical `/api/v1/auth/*` routes, 15-minute access tokens, refresh rotation, logout, privileged-role TOTP enforcement, and organization-scoped login/refresh/logout payloads have been added.
 - F-AUD-003: In progress. The echo WebSocket has been replaced with room membership checks, configured origin validation, JSON room events, and Redis-backed latest-state persistence.
 - F-AUD-004: In progress. Backend encrypted journal endpoints and web/mobile API integration have been added; mobile still needs a production-grade native AES-GCM binding beyond the existing Expo structural placeholder.
 - F-AUD-005: In progress. AI startup no longer panics on missing API keys, model/endpoint/timeout settings are environment-driven, citation-free outputs fail verification, and AI request/citation audit rows are persisted.

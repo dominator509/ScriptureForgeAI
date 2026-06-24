@@ -5,6 +5,7 @@ export interface AuthSession {
   token: string;
   refresh_token: string;
   user_id: string;
+  organization_id: string;
 }
 
 export async function apiRequest<T>(

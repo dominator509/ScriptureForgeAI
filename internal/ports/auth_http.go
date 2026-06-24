@@ -32,20 +32,23 @@ type RegisterRequest struct {
 }
 
 type LoginRequest struct {
-	Email   string `json:"email"`
-	Password string `json:"password"`
-	MFACode string `json:"mfa_code,omitempty"`
+	Email          string `json:"email"`
+	Password       string `json:"password"`
+	OrganizationID string `json:"organization_id"`
+	MFACode        string `json:"mfa_code,omitempty"`
 }
 
 type RefreshRequest struct {
-	RefreshToken string `json:"refresh_token"`
+	RefreshToken   string `json:"refresh_token"`
+	OrganizationID string `json:"organization_id"`
 }
 
 type AuthResponse struct {
-	Token        string `json:"token,omitempty"`
-	RefreshToken string `json:"refresh_token,omitempty"`
-	UserID       string `json:"user_id,omitempty"`
-	RequiresMFA bool   `json:"requires_mfa,omitempty"`
+	Token          string `json:"token,omitempty"`
+	RefreshToken   string `json:"refresh_token,omitempty"`
+	UserID         string `json:"user_id,omitempty"`
+	OrganizationID string `json:"organization_id,omitempty"`
+	RequiresMFA    bool   `json:"requires_mfa,omitempty"`
 }
 
 const (
@@ -225,7 +228,7 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(AuthResponse{Token: token, RefreshToken: refreshToken, UserID: newUserID})
+	_ = json.NewEncoder(w).Encode(AuthResponse{Token: token, RefreshToken: refreshToken, UserID: newUserID, OrganizationID: req.OrganizationID})
 }
 
 func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
@@ -240,13 +243,31 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	if req.OrganizationID == "" {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Organization ID is required", Code: http.StatusBadRequest})
+		return
+	}
+
+	tx, err := h.DB.Begin(r.Context())
+	if err != nil {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to open login transaction", Code: http.StatusInternalServerError})
+		return
+	}
+	defer tx.Rollback(r.Context())
+	if err := auth.SetTenantContext(r.Context(), tx, req.OrganizationID); err != nil {
+		sendAuthError(w, err.(*auth.PlatformException))
+		return
+	}
 
 	var userID, orgID, role, hash, mfaSecret string
 	var mfaEnabled bool
-	err := h.DB.QueryRow(
+	err = tx.QueryRow(
 		r.Context(),
-		`SELECT id, organization_id, role, password_hash, COALESCE(mfa_secret, ''), mfa_enabled FROM users WHERE email = $1`,
+		`SELECT id, organization_id, role, password_hash, COALESCE(mfa_secret, ''), mfa_enabled
+		 FROM users
+		 WHERE email = $1 AND organization_id = $2`,
 		req.Email,
+		req.OrganizationID,
 	).Scan(&userID, &orgID, &role, &hash, &mfaSecret, &mfaEnabled)
 	if err != nil {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid credentials", Code: http.StatusUnauthorized})
@@ -262,7 +283,7 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	if privilegedRole(role) && (!mfaEnabled || !verifyTOTP(mfaSecret, req.MFACode, time.Now())) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		_ = json.NewEncoder(w).Encode(AuthResponse{UserID: userID, RequiresMFA: true})
+		_ = json.NewEncoder(w).Encode(AuthResponse{UserID: userID, OrganizationID: orgID, RequiresMFA: true})
 		return
 	}
 
@@ -278,7 +299,7 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(AuthResponse{Token: token, RefreshToken: refreshToken, UserID: userID})
+	_ = json.NewEncoder(w).Encode(AuthResponse{Token: token, RefreshToken: refreshToken, UserID: userID, OrganizationID: orgID})
 }
 
 func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
@@ -288,22 +309,8 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req RefreshRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RefreshToken == "" {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RefreshToken == "" || req.OrganizationID == "" {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid refresh payload", Code: http.StatusBadRequest})
-		return
-	}
-
-	var tokenID, userID, orgID, role string
-	err := h.DB.QueryRow(
-		r.Context(),
-		`SELECT rt.id, rt.user_id, rt.organization_id, u.role
-		 FROM refresh_tokens rt
-		 JOIN users u ON u.id = rt.user_id
-		 WHERE rt.token_hash = $1 AND rt.revoked_at IS NULL AND rt.expires_at > CURRENT_TIMESTAMP`,
-		hashToken(req.RefreshToken),
-	).Scan(&tokenID, &userID, &orgID, &role)
-	if err != nil {
-		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid or expired refresh token", Code: http.StatusUnauthorized})
 		return
 	}
 
@@ -313,8 +320,26 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(r.Context())
-	if err := auth.SetTenantContext(r.Context(), tx, orgID); err != nil {
+	if err := auth.SetTenantContext(r.Context(), tx, req.OrganizationID); err != nil {
 		sendAuthError(w, err.(*auth.PlatformException))
+		return
+	}
+
+	var tokenID, userID, orgID, role string
+	err = tx.QueryRow(
+		r.Context(),
+		`SELECT rt.id, rt.user_id, rt.organization_id, u.role
+		 FROM refresh_tokens rt
+		 JOIN users u ON u.id = rt.user_id
+		 WHERE rt.token_hash = $1
+		   AND rt.organization_id = $2
+		   AND rt.revoked_at IS NULL
+		   AND rt.expires_at > CURRENT_TIMESTAMP`,
+		hashToken(req.RefreshToken),
+		req.OrganizationID,
+	).Scan(&tokenID, &userID, &orgID, &role)
+	if err != nil {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid or expired refresh token", Code: http.StatusUnauthorized})
 		return
 	}
 
@@ -339,7 +364,7 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(AuthResponse{Token: token, RefreshToken: refreshToken, UserID: userID})
+	_ = json.NewEncoder(w).Encode(AuthResponse{Token: token, RefreshToken: refreshToken, UserID: userID, OrganizationID: orgID})
 }
 
 func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
@@ -349,11 +374,22 @@ func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req RefreshRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RefreshToken == "" {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RefreshToken == "" || req.OrganizationID == "" {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid logout payload", Code: http.StatusBadRequest})
 		return
 	}
-	_, _ = h.DB.Exec(r.Context(), `UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE token_hash = $1`, hashToken(req.RefreshToken))
+	tx, err := h.DB.Begin(r.Context())
+	if err != nil {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to open logout transaction", Code: http.StatusInternalServerError})
+		return
+	}
+	defer tx.Rollback(r.Context())
+	if err := auth.SetTenantContext(r.Context(), tx, req.OrganizationID); err != nil {
+		sendAuthError(w, err.(*auth.PlatformException))
+		return
+	}
+	_, _ = tx.Exec(r.Context(), `UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE token_hash = $1 AND organization_id = $2`, hashToken(req.RefreshToken), req.OrganizationID)
+	_ = tx.Commit(r.Context())
 	w.WriteHeader(http.StatusNoContent)
 }
 
