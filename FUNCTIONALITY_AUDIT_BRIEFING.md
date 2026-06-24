@@ -236,7 +236,7 @@ Status last updated: 2026-06-23
 
 - F-AUD-001: In progress. Tenant-scoped handlers now use `auth.SetTenantContext` for journal, room, AI audit, registration, login, refresh-token rotation, logout, and MFA writes. Handler-level DB tests still need a runnable Go/Postgres environment.
 - F-AUD-002: In progress. Canonical `/api/v1/auth/*` routes, 15-minute access tokens, refresh rotation, logout, privileged-role TOTP enforcement, and organization-scoped login/refresh/logout payloads have been added.
-- F-AUD-003: In progress. The echo WebSocket has been replaced with room membership checks, configured origin validation, JSON room events, and Redis-backed latest-state persistence.
+- F-AUD-003: In progress. The echo WebSocket has been replaced with room membership checks, configured origin validation, JSON room events, Redis-backed latest-state persistence, and membership-gated HTTP room polling/listing.
 - F-AUD-004: In progress. Backend encrypted journal endpoints and web/mobile API integration have been added; mobile still needs a production-grade native AES-GCM binding beyond the existing Expo structural placeholder.
 - F-AUD-005: In progress. AI startup no longer panics on missing API keys, model/endpoint/timeout settings are environment-driven, citation-free outputs fail verification, and AI request/citation audit rows are persisted.
 - F-AUD-006: External blocker. CI and docs now provision `protoc`; local verification still depends on `protoc` being installed on the active shell path.
@@ -244,7 +244,7 @@ Status last updated: 2026-06-23
 - F-AUD-008: External blocker. CI now targets Go `1.24.3`; local verification still depends on Go being available in the active shell path.
 - F-AUD-009: In progress. Terraform placeholders were replaced with a variable-driven validated skeleton for EKS/RDS/Redis boundaries.
 - F-AUD-010: In progress. Zoom now uses bounded HTTP calls, circuit-breaker state, offline meeting fallback, and webhook meeting-to-room lookup.
-- F-AUD-011: In progress. Mobile now uses environment-driven API config and authenticated encrypted journal save inputs; full auth and room screens remain a follow-up.
+- F-AUD-011: In progress. Mobile now uses environment-driven API config, register/login bootstrap, authenticated encrypted journal saves, and room list/create/select screens; production-grade native AES-GCM remains a follow-up beyond the existing Expo structural placeholder.
 - F-AUD-012: In progress. Web now has minimal auth bootstrap, room create/list/select, environment-driven WS config, and journal persistence integration.
 
 ## Current Production Readiness Verdict

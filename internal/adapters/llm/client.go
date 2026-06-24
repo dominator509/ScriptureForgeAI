@@ -25,9 +25,9 @@ type LLMClient struct {
 }
 
 type openaiRequest struct {
-	Model    string        `json:"model"`
+	Model    string          `json:"model"`
 	Messages []openaiMessage `json:"messages"`
-	Temp     float32       `json:"temperature"`
+	Temp     float32         `json:"temperature"`
 }
 
 type openaiMessage struct {
@@ -126,7 +126,6 @@ func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledCont
 	req.Header.Set("Authorization", "Bearer "+c.APIKey)
 
 	var resp *http.Response
-	var err error
 	for attempt := 0; attempt <= c.MaxRetries; attempt++ {
 		resp, err = c.HTTPClient.Do(req)
 		if err == nil {

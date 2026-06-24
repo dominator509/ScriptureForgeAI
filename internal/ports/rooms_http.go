@@ -26,6 +26,31 @@ type RoomResponse struct {
 	CreatedAt string `json:"created_at,omitempty"`
 }
 
+func (h *RoomHandler) validateRoomMembership(r *http.Request, claims *auth.TokenClaims, roomID string) bool {
+	if roomID == "" || strings.Contains(roomID, "/") {
+		return false
+	}
+	tx, err := h.DB.Begin(r.Context())
+	if err != nil {
+		return false
+	}
+	defer tx.Rollback(r.Context())
+	if err := auth.SetTenantContext(r.Context(), tx, claims.OrganizationID); err != nil {
+		return false
+	}
+	var count int
+	err = tx.QueryRow(
+		r.Context(),
+		`SELECT COUNT(*)
+		 FROM room_participants
+		 WHERE organization_id = $1 AND room_id = $2 AND user_id = $3`,
+		claims.OrganizationID,
+		roomID,
+		claims.UserID,
+	).Scan(&count)
+	return err == nil && count > 0
+}
+
 func (h *RoomHandler) CreateRoomHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Method not allowed", Code: http.StatusMethodNotAllowed})
@@ -113,10 +138,17 @@ func (h *RoomHandler) ActiveRoomsHandler(w http.ResponseWriter, r *http.Request)
 		r.Context(),
 		`SELECT id, title, is_active, created_at::text
 		 FROM live_rooms
-		 WHERE organization_id = $1 AND is_active = TRUE
+		 WHERE organization_id = $1
+		   AND is_active = TRUE
+		   AND id IN (
+		       SELECT room_id
+		       FROM room_participants
+		       WHERE organization_id = $1 AND user_id = $2
+		   )
 		 ORDER BY created_at DESC
 		 LIMIT 50`,
 		claims.OrganizationID,
+		claims.UserID,
 	)
 	if err != nil {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to list rooms", Code: http.StatusInternalServerError})
@@ -144,6 +176,15 @@ func (h *RoomHandler) RoomStateHandler(w http.ResponseWriter, r *http.Request) {
 	roomID := strings.TrimPrefix(r.URL.Path, "/api/v1/rooms/state/")
 	if roomID == "" || strings.Contains(roomID, "/") {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Invalid room id", Code: http.StatusBadRequest})
+		return
+	}
+	claims, ok := r.Context().Value(auth.ContextKeyUser).(*auth.TokenClaims)
+	if !ok || claims == nil {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Unauthorized access", Code: http.StatusUnauthorized})
+		return
+	}
+	if !h.validateRoomMembership(r, claims, roomID) {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Room membership required", Code: http.StatusForbidden})
 		return
 	}
 	state, err := h.StateManager.GetLatestRoomEvent(r.Context(), roomID)
