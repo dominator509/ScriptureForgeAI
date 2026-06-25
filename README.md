@@ -211,13 +211,13 @@ For artifacts that are not emitted by a JSON probe, record a single explicit evi
 ```bash
 rtk node tools/record-staging-evidence.mjs \
   --manifest production-readiness/staging-evidence.staging.json \
-  --item-id DEPLOY-TF-001 \
-  --artifact artifacts/terraform-plan.txt \
-  --command "terraform plan -var-file=terraform.tfvars" \
-  --summary "remote backend initialized and staging plan artifact captured"
+  --item-id SEC-SIGNOFF-001 \
+  --artifact artifacts/release-signoff.txt \
+  --command "security review signoff" \
+  --summary "owner and security approved release risk record"
 ```
 
-Use this mode for human-reviewed release artifacts that do not have a dedicated JSON probe, such as Terraform plan/apply logs (`DEPLOY-TF-001`) and owner/security signoff (`SEC-SIGNOFF-001`). Probe-backed items, including CI, TLS, Kubernetes rollout, Secrets Store/IRSA, scoped DB user, tenant RLS, observability, web/mobile client smokes, Zoom, AI, load, rollback, and backup/restore evidence, must be recorded from their dedicated JSON probe reports so their strict artifact checks cannot be bypassed. The command marks only the named item as `passed`; blocked, failed, and accepted-risk decisions must still be written with owner/blocker or decision references so the validator can enforce them.
+Use this mode for human-reviewed release artifacts that do not have a dedicated JSON probe, such as owner/security signoff (`SEC-SIGNOFF-001`). Probe-backed items, including CI, Terraform deployment, TLS, Kubernetes rollout, Secrets Store/IRSA, scoped DB user, tenant RLS, observability, web/mobile client smokes, Zoom, AI, load, rollback, and backup/restore evidence, must be recorded from their dedicated JSON probe reports so their strict artifact checks cannot be bypassed. The command marks only the named item as `passed`; blocked, failed, and accepted-risk decisions must still be written with owner/blocker or decision references so the validator can enforce them.
 
 To record a real blocker or accepted residual risk without weakening the readiness claim:
 
@@ -265,6 +265,7 @@ rtk go run ./tools/deploymentprobe \
 ```
 
 Passing reports include `DEPLOY-TF-001`, `DEPLOY-K8S-001`, or both in `evidence_items` so they can be attached with `tools/record-staging-evidence.mjs`. This validates captured deployment artifacts; it does not replace `tools/stagingprobe` TLS/readiness checks against the deployed API and web hostnames.
+The recorder rejects `DEPLOY-TF-001` unless the Terraform deployment probe includes exactly the remote-backend init, staging plan, and apply-or-approval probes, all passing with HTTP 200 from HTTPS non-local artifact URLs.
 
 The Terraform skeleton requires an ACM certificate ARN for public ALB ingresses:
 

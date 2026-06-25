@@ -82,6 +82,7 @@ const productionPerformanceTargets = {
 
 const probeBackedEvidenceItems = new Set([
   'SRC-CI-001',
+  'DEPLOY-TF-001',
   'DEPLOY-TLS-001',
   'DEPLOY-K8S-001',
   'SEC-SECRETS-001',
@@ -194,6 +195,29 @@ function validateKubernetesEvidence(report) {
     assert.match(target, /^https:\/\//, `${name} target must be an HTTPS artifact URL`);
     assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(target), `${name} target must not be local/self-test: ${target}`);
   }
+}
+
+function validateTerraformEvidence(report) {
+  const evidenceItems = report.evidence_items ?? [];
+  if (!evidenceItems.includes('DEPLOY-TF-001')) {
+    return;
+  }
+  const requiredProbes = new Set([
+    'terraform-remote-backend-init',
+    'terraform-staging-plan',
+    'terraform-staging-apply-or-approval',
+  ]);
+  const probes = Array.isArray(report.probes) ? report.probes : [];
+  assert.equal(probes.length, requiredProbes.size, 'DEPLOY-TF-001 report must include exactly the required Terraform probes');
+  for (const probe of probes) {
+    assert.ok(requiredProbes.delete(probe.name), `DEPLOY-TF-001 report includes unexpected or duplicate probe ${probe.name}`);
+    assert.equal(probe.passed, true, `${probe.name} must pass`);
+    assert.equal(probe.status_code, 200, `${probe.name} must return HTTP 200`);
+    const target = String(probe.target ?? '');
+    assert.match(target, /^https:\/\//, `${probe.name} target must be an HTTPS artifact URL`);
+    assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(target), `${probe.name} target must not be local/self-test: ${target}`);
+  }
+  assert.equal(requiredProbes.size, 0, `DEPLOY-TF-001 report missing probes: ${[...requiredProbes].join(', ')}`);
 }
 
 function validateWebClientEvidence(report) {
@@ -488,6 +512,7 @@ function recordEvidence(manifest, report, artifact, command) {
   assert.match(report.observed_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, 'probe report observed_at must be ISO UTC without milliseconds');
   validateCIEvidence(report);
   validateTLSEvidence(report);
+  validateTerraformEvidence(report);
   validateKubernetesEvidence(report);
   validateWebClientEvidence(report);
   validateTenantRLSEvidence(report);

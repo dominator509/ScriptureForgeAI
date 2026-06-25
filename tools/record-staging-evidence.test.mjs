@@ -464,6 +464,66 @@ test('recordEvidence rejects TLS evidence without DNS and ACM artifacts', () => 
   );
 });
 
+test('recordEvidence records production-grade Terraform deployment evidence', () => {
+  const manifest = {
+    items: [{ id: 'DEPLOY-TF-001', status: 'pending_external' }],
+  };
+
+  const updated = recordEvidence(
+    manifest,
+    {
+      observed_at: '2026-06-25T12:00:00Z',
+      threshold_pass: true,
+      evidence_items: ['DEPLOY-TF-001'],
+      probes: [
+        {
+          name: 'terraform-remote-backend-init',
+          passed: true,
+          target: 'https://artifacts.staging.example/deploy/terraform-init.txt',
+          status_code: 200,
+        },
+        {
+          name: 'terraform-staging-plan',
+          passed: true,
+          target: 'https://artifacts.staging.example/deploy/terraform-plan.txt',
+          status_code: 200,
+        },
+        {
+          name: 'terraform-staging-apply-or-approval',
+          passed: true,
+          target: 'https://artifacts.staging.example/deploy/terraform-apply-or-approval.txt',
+          status_code: 200,
+        },
+      ],
+    },
+    'artifacts/deploymentprobe-terraform.json',
+    'go run ./tools/deploymentprobe -probe-terraform',
+  );
+
+  assert.equal(updated.items[0].status, 'passed');
+});
+
+test('recordEvidence rejects Terraform deployment evidence without remote artifacts', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DEPLOY-TF-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        evidence_items: ['DEPLOY-TF-001'],
+        probes: [
+          { name: 'terraform-remote-backend-init', passed: true, target: 'https://artifacts.staging.example/deploy/terraform-init.txt', status_code: 200 },
+          { name: 'terraform-staging-plan', passed: true, target: 'http://localhost/deploy/terraform-plan.txt', status_code: 200 },
+          { name: 'terraform-staging-apply-or-approval', passed: true, target: 'https://artifacts.staging.example/deploy/terraform-apply.txt', status_code: 200 },
+        ],
+      },
+      'artifacts/deploymentprobe-terraform.json',
+      'go run ./tools/deploymentprobe -probe-terraform',
+    ),
+    /terraform-staging-plan target must be an HTTPS artifact URL/,
+  );
+});
+
 test('recordEvidence records production-grade Kubernetes deployment evidence', () => {
   const manifest = {
     items: [{ id: 'DEPLOY-K8S-001', status: 'pending_external' }],
@@ -940,11 +1000,11 @@ test('recordManualEvidence marks one explicit manifest item as passed', () => {
     generated_at: '2026-06-25T00:00:00Z',
     items: [
       {
-        id: 'DEPLOY-TF-001',
-        category: 'deployment',
+        id: 'SEC-SIGNOFF-001',
+        category: 'security',
         status: 'pending_external',
-        description: 'Terraform proof',
-        required_evidence: ['plan'],
+        description: 'Owner/security signoff',
+        required_evidence: ['release signoff'],
       },
       {
         id: 'DR-BACKUP-001',
@@ -958,22 +1018,33 @@ test('recordManualEvidence marks one explicit manifest item as passed', () => {
 
   const updated = recordManualEvidence(
     manifest,
-    'DEPLOY-TF-001',
-    'artifacts/terraform-plan.txt',
-    'terraform plan -var-file=terraform.tfvars',
-    'remote backend initialized and staging plan produced no destructive changes',
+    'SEC-SIGNOFF-001',
+    'artifacts/release-signoff.txt',
+    'security review signoff',
+    'owner and security approved release risk record',
     '2026-06-25T13:00:00Z',
   );
 
-  const terraform = updated.items.find((item) => item.id === 'DEPLOY-TF-001');
+  const signoff = updated.items.find((item) => item.id === 'SEC-SIGNOFF-001');
   const backup = updated.items.find((item) => item.id === 'DR-BACKUP-001');
-  assert.equal(terraform.status, 'passed');
-  assert.equal(terraform.evidence.length, 1);
-  assert.equal(terraform.evidence[0].result_summary, 'remote backend initialized and staging plan produced no destructive changes');
+  assert.equal(signoff.status, 'passed');
+  assert.equal(signoff.evidence.length, 1);
+  assert.equal(signoff.evidence[0].result_summary, 'owner and security approved release risk record');
   assert.equal(backup.status, 'pending_external');
 });
 
 test('recordManualEvidence rejects probe-backed production evidence items', () => {
+  assert.throws(
+    () => recordManualEvidence(
+      { items: [{ id: 'DEPLOY-TF-001', status: 'pending_external' }] },
+      'DEPLOY-TF-001',
+      'artifacts/terraform-plan.txt',
+      'terraform plan',
+      'manual terraform summary',
+      '2026-06-25T13:00:00Z',
+    ),
+    /DEPLOY-TF-001 must be recorded from its dedicated probe report/,
+  );
   assert.throws(
     () => recordManualEvidence(
       { items: [{ id: 'CLIENT-WEB-001', status: 'pending_external' }] },
@@ -1000,11 +1071,11 @@ test('recordManualEvidence rejects probe-backed production evidence items', () =
 
 test('recordManualEvidence rejects invalid timestamps and unknown items', () => {
   assert.throws(
-    () => recordManualEvidence({ items: [] }, 'DEPLOY-TF-001', 'artifact', 'command', 'summary', 'today'),
+    () => recordManualEvidence({ items: [] }, 'SEC-SIGNOFF-001', 'artifact', 'command', 'summary', 'today'),
     /observedAt must be ISO UTC/,
   );
   assert.throws(
-    () => recordManualEvidence({ items: [] }, 'DEPLOY-TF-001', 'artifact', 'command', 'summary', '2026-06-25T13:00:00Z'),
+    () => recordManualEvidence({ items: [] }, 'SEC-SIGNOFF-001', 'artifact', 'command', 'summary', '2026-06-25T13:00:00Z'),
     /manifest missing evidence item/,
   );
 });
