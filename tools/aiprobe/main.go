@@ -69,10 +69,10 @@ func run(cfg config, output io.Writer) error {
 	client := &http.Client{Timeout: cfg.Timeout}
 	probes := []probeResult{
 		probeArtifact(client, "ai-provider-config", cfg.ProviderArtifactURL, []string{"AI_CHAT_MODEL", "AI_CHAT_ENDPOINT", "AI_HTTP_TIMEOUT_MS", "AI_MAX_RETRIES", "configured"}, forbiddenSecretMarkers()),
-		probeArtifact(client, "ai-generation-route", cfg.GenerationArtifactURL, []string{"/api/v1/ai/generate/study", "200", "generated_curriculum", "[Genesis 1:1]"}, forbiddenSecretMarkers()),
-		probeArtifact(client, "ai-timeout-degradation", cfg.DegradationArtifactURL, []string{"timeout", "degradation", "503", "AI_ORCHESTRATION_ENGINE_FAULT"}, forbiddenSecretMarkers()),
+		probeArtifact(client, "ai-generation-route", cfg.GenerationArtifactURL, []string{"/api/v1/ai/generate/study", "authenticated", "tenant", "200", "generated_curriculum", "[Genesis 1:1]"}, forbiddenSecretMarkers()),
+		probeArtifact(client, "ai-timeout-degradation", cfg.DegradationArtifactURL, []string{"timeout", "degradation", "retry", "503", "AI_ORCHESTRATION_ENGINE_FAULT"}, forbiddenSecretMarkers()),
 		probeArtifact(client, "ai-citation-verification", cfg.CitationArtifactURL, []string{"no-citation", "rejected", "hallucinated citation", "verified citation"}, nil),
-		probeArtifact(client, "ai-audit-persistence", cfg.AuditArtifactURL, []string{"ai_request_logs", "citation_trails", "succeeded", "failed", "verified"}, nil),
+		probeArtifact(client, "ai-audit-persistence", cfg.AuditArtifactURL, []string{"ai_request_logs", "citation_trails", "organization_id", "user_id", "request_id", "succeeded", "failed", "verified"}, nil),
 	}
 
 	result := report{

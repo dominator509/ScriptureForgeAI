@@ -204,9 +204,10 @@
         "tools/aiprobe JSON report with EXT-AI-001 evidence item",
         "tools/stagingprobe -probe-ai JSON report",
         "Provider readiness probe",
-        "Timeout/degradation probe",
+        "Authenticated tenant generation probe",
+        "Timeout/retry/degradation probe",
         "Citation verification output",
-        "ai_request_logs and citation_trails query output"
+        "ai_request_logs and citation_trails query output with request_id, organization_id, and user_id proof"
       ]
     },
     {
