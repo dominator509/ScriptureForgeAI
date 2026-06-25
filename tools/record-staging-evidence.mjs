@@ -65,6 +65,49 @@ function summarizeProbeReport(report) {
   return `${passed} probes passed, ${failed} probes failed (${names})`;
 }
 
+const productionPerformanceTargets = {
+  'PERF-HTTP-001': {
+    minRPS: 5000,
+    maxP99MS: 200,
+    targetPattern: /^https:\/\//,
+    targetDescription: 'HTTPS staging target',
+  },
+  'PERF-WS-001': {
+    minRPS: 500,
+    maxP99MS: 200,
+    targetPattern: /^wss:\/\//,
+    targetDescription: 'WSS staging target',
+  },
+};
+
+function assertNoLocalTarget(report, id) {
+  const target = String(report.target ?? '');
+  assert.ok(target.length > 0, `${id} load report must include target`);
+  assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(target), `${id} load report target must not be local/self-test: ${target}`);
+}
+
+function validatePerformanceEvidence(report) {
+  const evidenceItems = report.evidence_items ?? [];
+  for (const [id, target] of Object.entries(productionPerformanceTargets)) {
+    if (!evidenceItems.includes(id)) {
+      continue;
+    }
+    assertNoLocalTarget(report, id);
+    assert.match(String(report.target), target.targetPattern, `${id} load report must use ${target.targetDescription}`);
+    assert.equal(typeof report.min_rps, 'number', `${id} load report must include configured min_rps`);
+    assert.equal(typeof report.max_p99_ms, 'number', `${id} load report must include configured max_p99_ms`);
+    assert.equal(typeof report.rps, 'number', `${id} load report must include observed rps`);
+    assert.equal(typeof report.p99_ms, 'number', `${id} load report must include observed p99_ms`);
+    assert.ok(report.min_rps >= target.minRPS, `${id} min_rps ${report.min_rps} is below required ${target.minRPS}`);
+    assert.ok(report.max_p99_ms > 0 && report.max_p99_ms <= target.maxP99MS, `${id} max_p99_ms ${report.max_p99_ms} must be <= ${target.maxP99MS}`);
+    assert.ok(report.rps >= target.minRPS, `${id} observed rps ${report.rps} is below required ${target.minRPS}`);
+    assert.ok(report.p99_ms <= target.maxP99MS, `${id} observed p99_ms ${report.p99_ms} is above required ${target.maxP99MS}`);
+  }
+  if (evidenceItems.includes('DATA-REDIS-001')) {
+    assert.ok(evidenceItems.includes('PERF-WS-001'), 'DATA-REDIS-001 load evidence must be paired with PERF-WS-001');
+  }
+}
+
 async function readJSON(path) {
   const content = await readFile(path, 'utf8');
   return JSON.parse(content.replace(/^\uFEFF/, ''));
@@ -75,6 +118,7 @@ function recordEvidence(manifest, report, artifact, command) {
   assert.ok(Array.isArray(report.evidence_items), 'probe report must include evidence_items');
   assert.ok(report.evidence_items.length > 0, 'probe report must include at least one evidence item');
   assert.match(report.observed_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, 'probe report observed_at must be ISO UTC without milliseconds');
+  validatePerformanceEvidence(report);
 
   const itemsById = new Map(manifest.items.map((item) => [item.id, item]));
   for (const id of report.evidence_items) {

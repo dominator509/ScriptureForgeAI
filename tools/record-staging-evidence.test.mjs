@@ -100,6 +100,116 @@ test('recordEvidence rejects failed probe reports', () => {
   );
 });
 
+test('recordEvidence rejects under-target HTTP performance evidence', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'PERF-HTTP-001' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        evidence_items: ['PERF-HTTP-001'],
+        target: 'https://api.staging.example/health',
+        min_rps: 100,
+        max_p99_ms: 200,
+        rps: 120,
+        p99_ms: 50,
+      },
+      'artifacts/load-http.json',
+      'go run ./tools/loadtest',
+    ),
+    /PERF-HTTP-001 min_rps 100 is below required 5000/,
+  );
+});
+
+test('recordEvidence rejects local performance evidence targets', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'PERF-HTTP-001' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        evidence_items: ['PERF-HTTP-001'],
+        target: 'http://127.0.0.1:8080/health',
+        min_rps: 5000,
+        max_p99_ms: 200,
+        rps: 6000,
+        p99_ms: 80,
+      },
+      'artifacts/load-http.json',
+      'go run ./tools/loadtest',
+    ),
+    /target must not be local\/self-test/,
+  );
+});
+
+test('recordEvidence records production-grade HTTP performance evidence', () => {
+  const manifest = {
+    items: [{ id: 'PERF-HTTP-001', status: 'pending_external' }],
+  };
+
+  const updated = recordEvidence(
+    manifest,
+    {
+      observed_at: '2026-06-25T12:00:00Z',
+      threshold_pass: true,
+      evidence_items: ['PERF-HTTP-001'],
+      target: 'https://api.staging.example/health',
+      min_rps: 5000,
+      max_p99_ms: 200,
+      rps: 5200,
+      p99_ms: 180,
+    },
+    'artifacts/load-http.json',
+    'go run ./tools/loadtest -target=https://api.staging.example/health -min-rps=5000 -max-p99=200ms',
+  );
+
+  assert.equal(updated.items[0].status, 'passed');
+});
+
+test('recordEvidence records production-grade WebSocket performance and Redis evidence together', () => {
+  const manifest = {
+    items: [
+      { id: 'PERF-WS-001', status: 'pending_external' },
+      { id: 'DATA-REDIS-001', status: 'pending_external' },
+    ],
+  };
+
+  const updated = recordEvidence(
+    manifest,
+    {
+      observed_at: '2026-06-25T12:00:00Z',
+      threshold_pass: true,
+      evidence_items: ['PERF-WS-001', 'DATA-REDIS-001'],
+      target: 'wss://api.staging.example/api/v1/rooms/stream/room-1',
+      min_rps: 500,
+      max_p99_ms: 200,
+      rps: 620,
+      p99_ms: 140,
+    },
+    'artifacts/load-ws.json',
+    'go run ./tools/loadtest -websocket -target=wss://api.staging.example/api/v1/rooms/stream/room-1',
+  );
+
+  assert.equal(updated.items[0].status, 'passed');
+  assert.equal(updated.items[1].status, 'passed');
+});
+
+test('recordEvidence rejects Redis sequencing evidence without WebSocket load evidence', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DATA-REDIS-001' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        evidence_items: ['DATA-REDIS-001'],
+      },
+      'artifacts/load-ws.json',
+      'go run ./tools/loadtest',
+    ),
+    /DATA-REDIS-001 load evidence must be paired with PERF-WS-001/,
+  );
+});
+
 test('recordManualEvidence marks one explicit manifest item as passed', () => {
   const manifest = {
     schema_version: 1,

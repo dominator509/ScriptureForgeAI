@@ -398,7 +398,7 @@ For staging readiness, run the same harness against the deployed API health endp
 rtk go run ./tools/loadtest -target=https://api.example.com/health -duration=5m -concurrency=512 -min-rps=5000 -max-p99=200ms
 ```
 
-The command emits JSON with request count, failures, RPS, P50/P95/P99, and threshold status. A passing local self-test does not prove the production 5,000 req/s target; that requires a staging run against real ingress, API, network, and dependency infrastructure.
+The command emits JSON with request count, failures, RPS, P50/P95/P99, and threshold status. A passing local self-test does not prove the production 5,000 req/s target; that requires a staging run against real ingress, API, network, and dependency infrastructure. The staging evidence recorder refuses `PERF-HTTP-001` unless the report targets HTTPS, is not local/self-test, sets `min_rps` to at least `5000`, sets `max_p99_ms` to at most `200`, and the observed `rps`/`p99_ms` meet those same thresholds.
 
 External HTTP load reports include `PERF-HTTP-001` in `evidence_items`, so a passing staging report can be attached with `tools/record-staging-evidence.mjs`.
 
@@ -427,4 +427,4 @@ rtk go run ./tools/loadtest \
 
 The staging WebSocket command uses the same JSON report shape as HTTP load tests and verifies accepted event broadcasts over real upgrade/origin/auth behavior. A production readiness claim still needs the run output captured against real API replicas and Redis.
 
-External WebSocket load reports include `PERF-WS-001` and `DATA-REDIS-001` in `evidence_items`, so passing staging reports can be attached to the evidence manifest with the same recorder. Local `-self-test` and `-websocket-self-test` reports intentionally omit `evidence_items` so they cannot be mistaken for staging proof.
+External WebSocket load reports include `PERF-WS-001` and `DATA-REDIS-001` in `evidence_items`, so passing staging reports can be attached to the evidence manifest with the same recorder. Local `-self-test` and `-websocket-self-test` reports intentionally omit `evidence_items` so they cannot be mistaken for staging proof. The recorder also requires `PERF-WS-001` reports to target WSS, avoid local/self-test targets, set `min_rps` to at least `500`, set `max_p99_ms` to at most `200`, and include observed results meeting those thresholds; `DATA-REDIS-001` cannot be recorded from load evidence unless paired with `PERF-WS-001`.
