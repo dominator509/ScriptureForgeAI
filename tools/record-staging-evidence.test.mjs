@@ -391,6 +391,62 @@ test('recordEvidence rejects Zoom evidence without HTTPS artifact proof', () => 
   );
 });
 
+test('recordEvidence records production-grade AI evidence', () => {
+  const manifest = {
+    items: [{ id: 'EXT-AI-001', status: 'pending_external' }],
+  };
+
+  const probeNames = [
+    'ai-provider-config',
+    'ai-generation-route',
+    'ai-timeout-degradation',
+    'ai-citation-verification',
+    'ai-audit-persistence',
+  ];
+
+  const updated = recordEvidence(
+    manifest,
+    {
+      observed_at: '2026-06-25T12:00:00Z',
+      threshold_pass: true,
+      evidence_items: ['EXT-AI-001'],
+      probes: probeNames.map((name) => ({
+        name,
+        passed: true,
+        target: `https://artifacts.staging.example/ai/${name}.txt`,
+        status_code: 200,
+      })),
+    },
+    'artifacts/aiprobe.json',
+    'go run ./tools/aiprobe',
+  );
+
+  assert.equal(updated.items[0].status, 'passed');
+});
+
+test('recordEvidence rejects AI evidence without HTTPS artifact proof', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'EXT-AI-001' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        evidence_items: ['EXT-AI-001'],
+        probes: [
+          { name: 'ai-provider-config', passed: true, target: 'https://artifacts.staging.example/ai/provider.txt', status_code: 200 },
+          { name: 'ai-generation-route', passed: true, target: 'https://artifacts.staging.example/ai/generation.txt', status_code: 200 },
+          { name: 'ai-timeout-degradation', passed: true, target: 'http://localhost/ai/degradation.txt', status_code: 200 },
+          { name: 'ai-citation-verification', passed: true, target: 'https://artifacts.staging.example/ai/citation.txt', status_code: 200 },
+          { name: 'ai-audit-persistence', passed: true, target: 'https://artifacts.staging.example/ai/audit.txt', status_code: 200 },
+        ],
+      },
+      'artifacts/aiprobe.json',
+      'go run ./tools/aiprobe',
+    ),
+    /ai-timeout-degradation target must be an HTTPS artifact URL/,
+  );
+});
+
 test('recordEvidence rejects TLS evidence without DNS and ACM artifacts', () => {
   assert.throws(
     () => recordEvidence(

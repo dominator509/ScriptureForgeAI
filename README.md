@@ -189,6 +189,7 @@ rtk go run ./tools/aiprobe \
 ```
 
 The generation artifact must show the canonical route was called with authenticated tenant context and returned cited `generated_curriculum`. The degradation artifact must include timeout, retry, `503`, and `AI_ORCHESTRATION_ENGINE_FAULT` markers. The audit artifact must prove `ai_request_logs` and `citation_trails` persistence with request, organization, user, success/failure, and verification markers. Provider and generation artifacts must be redacted; the probe rejects obvious API key or bearer-token leaks. A passing report includes `EXT-AI-001` in `evidence_items`.
+The recorder rejects `EXT-AI-001` reports unless all five AI probes pass and point at HTTPS non-local artifacts covering provider config, authenticated generation, timeout/degradation, citation verification, and audit persistence.
 
 After saving a probe report, attach it to an environment-specific evidence manifest with:
 
