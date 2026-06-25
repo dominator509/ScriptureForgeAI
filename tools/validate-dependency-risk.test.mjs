@@ -56,6 +56,9 @@ function register(uuidVersion, expoVersion) {
 - Current locked versions: expo@${expoVersion}, uuid@${uuidVersion}
 - Advisory: GHSA-w5hq-g745-h8pq
 - Severity: Moderate
+- Current result: \`npm audit --audit-level=high\` passes, but reports 10 moderate findings.
+- Current moderate audit recheck: \`npm.cmd audit --audit-level=moderate --json --cache C:\\dev\\ScriptureForgeAI\\.npm-cache\` on 2026-06-25 reports 10 moderate findings, 0 high, and 0 critical.
+- Dry-run remediation recheck: \`npm.cmd audit fix --package-lock-only --dry-run --json --cache C:\\dev\\ScriptureForgeAI\\.npm-cache\` on 2026-06-25 reports \`changed: 0\` and keeps the same \`expo@46.0.21\` semver-major fix recommendation.
 - Risk decision: Accepted temporarily because high-or-worse audit gating is enforced in CI.
 - Required closure: Remove this accepted risk when Expo resolves uuid >=11.1.1.
 `;
