@@ -215,6 +215,37 @@ function validateWebClientEvidence(report) {
   }
 }
 
+function validateTenantRLSEvidence(report) {
+  const evidenceItems = report.evidence_items ?? [];
+  if (!evidenceItems.includes('DATA-RLS-001')) {
+    return;
+  }
+  const apiTarget = String(report.api_target ?? '');
+  assert.match(apiTarget, /^https:\/\//, 'DATA-RLS-001 report must use HTTPS api_target');
+  assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(apiTarget), `DATA-RLS-001 api_target must not be local/self-test: ${apiTarget}`);
+
+  const requiredProbes = new Set([
+    'owner-create-encrypted-journal',
+    'owner-read-created-journal',
+    'blocked-read-created-journal',
+    'blocked-list-excludes-created-journal',
+    'database-rls-context-proof',
+  ]);
+  const probes = Array.isArray(report.probes) ? report.probes : [];
+  assert.equal(probes.length, requiredProbes.size, 'DATA-RLS-001 report must include exactly the required tenant isolation probes');
+  for (const probe of probes) {
+    assert.ok(requiredProbes.delete(probe.name), `DATA-RLS-001 report includes unexpected or duplicate probe ${probe.name}`);
+    assert.equal(probe.passed, true, `${probe.name} must pass`);
+    if (probe.name === 'database-rls-context-proof') {
+      const target = String(probe.target ?? '');
+      assert.match(target, /^https:\/\//, 'DATA-RLS-001 database-rls-context-proof target must be an HTTPS artifact URL');
+      assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(target), `DATA-RLS-001 database RLS artifact must not be local/self-test: ${target}`);
+      assert.equal(probe.status_code, 200, 'database-rls-context-proof must return HTTP 200');
+    }
+  }
+  assert.equal(requiredProbes.size, 0, `DATA-RLS-001 report missing probes: ${[...requiredProbes].join(', ')}`);
+}
+
 function validateAbuseEvidence(report) {
   const evidenceItems = report.evidence_items ?? [];
   if (!evidenceItems.includes('ABUSE-LIMIT-001')) {
@@ -262,6 +293,7 @@ function recordEvidence(manifest, report, artifact, command) {
   validateTLSEvidence(report);
   validateKubernetesEvidence(report);
   validateWebClientEvidence(report);
+  validateTenantRLSEvidence(report);
   validatePerformanceEvidence(report);
   validateAbuseEvidence(report);
 

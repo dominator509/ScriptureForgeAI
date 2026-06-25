@@ -157,6 +157,62 @@ test('recordEvidence rejects web client evidence without browser smoke artifacts
   );
 });
 
+test('recordEvidence records production-grade tenant RLS evidence', () => {
+  const manifest = {
+    items: [{ id: 'DATA-RLS-001', status: 'pending_external' }],
+  };
+
+  const updated = recordEvidence(
+    manifest,
+    {
+      observed_at: '2026-06-25T12:00:00Z',
+      threshold_pass: true,
+      api_target: 'https://api.staging.example',
+      evidence_items: ['DATA-RLS-001'],
+      probes: [
+        { name: 'owner-create-encrypted-journal', passed: true, target: 'https://api.staging.example/api/v1/journal_entries', status_code: 201 },
+        { name: 'owner-read-created-journal', passed: true, target: 'https://api.staging.example/api/v1/journal_entries/entry-1', status_code: 200 },
+        { name: 'blocked-read-created-journal', passed: true, target: 'https://api.staging.example/api/v1/journal_entries/entry-1', status_code: 404 },
+        { name: 'blocked-list-excludes-created-journal', passed: true, target: 'https://api.staging.example/api/v1/journal_entries', status_code: 200 },
+        {
+          name: 'database-rls-context-proof',
+          passed: true,
+          target: 'https://artifacts.staging.example/data/rls-db-proof.txt',
+          status_code: 200,
+        },
+      ],
+    },
+    'artifacts/tenantprobe.json',
+    'go run ./tools/tenantprobe',
+  );
+
+  assert.equal(updated.items[0].status, 'passed');
+});
+
+test('recordEvidence rejects tenant RLS evidence without deployed API and DB proof', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DATA-RLS-001' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        api_target: 'http://localhost:8080',
+        evidence_items: ['DATA-RLS-001'],
+        probes: [
+          { name: 'owner-create-encrypted-journal', passed: true },
+          { name: 'owner-read-created-journal', passed: true },
+          { name: 'blocked-read-created-journal', passed: true },
+          { name: 'blocked-list-excludes-created-journal', passed: true },
+          { name: 'database-rls-context-proof', passed: true, target: 'http://localhost/rls.txt', status_code: 200 },
+        ],
+      },
+      'artifacts/tenantprobe.json',
+      'go run ./tools/tenantprobe',
+    ),
+    /must use HTTPS api_target/,
+  );
+});
+
 test('recordEvidence rejects TLS evidence without DNS and ACM artifacts', () => {
   assert.throws(
     () => recordEvidence(
