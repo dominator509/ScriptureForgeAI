@@ -4,9 +4,17 @@ import { formatText, parseArgs, summarizeGaps } from './report-staging-evidence-
 import { requiredIds } from './validate-staging-evidence.mjs';
 
 test('parseArgs supports manifest and output format', () => {
-  const args = parseArgs(['--manifest', 'staging.json', '--format', 'json']);
+  const args = parseArgs([
+    '--manifest',
+    'staging.json',
+    '--format',
+    'json',
+    '--expected-release-candidate',
+    'abcdef0123456789abcdef0123456789abcdef01',
+  ]);
   assert.equal(args.manifest, 'staging.json');
   assert.equal(args.format, 'json');
+  assert.equal(args.expectedReleaseCandidate, 'abcdef0123456789abcdef0123456789abcdef01');
 });
 
 test('summarizeGaps reports pending release blockers with required evidence', () => {
@@ -58,6 +66,23 @@ test('formatText prints counts and evidence checklist', () => {
   assert.match(text, /strict release ready: no/);
   assert.match(text, /CLIENT-MOBILE-001/);
   assert.match(text, /required: artifact for CLIENT-MOBILE-001/);
+});
+
+test('summarizeGaps treats stale release candidate as release blocker', () => {
+  const manifest = baseManifest({
+    statusFor: () => 'passed',
+  });
+
+  const summary = summarizeGaps(manifest, {
+    expectedReleaseCandidate: 'fedcba9876543210fedcba9876543210fedcba98',
+  });
+
+  assert.equal(summary.strict_release_ready, false);
+  assert.equal(summary.release_candidate_matches_expected, false);
+  assert.equal(summary.blocking_items[0].id, 'RELEASE-CANDIDATE-SHA');
+  assert.equal(summary.blocking_items[0].actual_release_candidate, manifest.release_candidate);
+  assert.equal(summary.blocking_items[0].expected_release_candidate, 'fedcba9876543210fedcba9876543210fedcba98');
+  assert.match(formatText(summary), /expected release candidate: fedcba9876543210fedcba9876543210fedcba98 \(mismatch\)/);
 });
 
 function baseManifest({ statusFor }) {

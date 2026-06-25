@@ -64,7 +64,7 @@ rtk node tools/report-staging-evidence-gaps.mjs \
   --manifest production-readiness/staging-evidence.staging.json
 ```
 
-Use `--format json` when a release handoff needs machine-readable counts and evidence requirements. The command exits non-zero until every strict-release item is passed, except `SEC-SIGNOFF-001` may be recorded as `accepted_risk`.
+The reporter compares the manifest `release_candidate` to the current `git rev-parse HEAD` by default and prints a SHA mismatch as its own blocker. Use `--expected-release-candidate <sha>` when checking a manifest for a different release checkout, and use `--format json` when a release handoff needs machine-readable counts and evidence requirements. The command exits non-zero until every strict-release item is passed, except `SEC-SIGNOFF-001` may be recorded as `accepted_risk`.
 
 Before claiming production readiness, run the same validator in strict release mode:
 
