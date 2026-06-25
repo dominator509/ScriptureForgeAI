@@ -84,6 +84,8 @@ const probeBackedEvidenceItems = new Set([
   'SRC-CI-001',
   'DEPLOY-TLS-001',
   'DEPLOY-K8S-001',
+  'SEC-SECRETS-001',
+  'SEC-DBUSER-001',
   'ABUSE-LIMIT-001',
   'DATA-RLS-001',
   'DATA-REDIS-001',
@@ -390,6 +392,57 @@ function validateObservabilityEvidence(report) {
   assert.equal(requiredProbes.size, 0, `observability report missing probes: ${[...requiredProbes].join(', ')}`);
 }
 
+function validateSecurityEvidence(report) {
+  const evidenceItems = report.evidence_items ?? [];
+  const requiredArtifactProbes = new Set();
+  if (evidenceItems.includes('SEC-SECRETS-001')) {
+    for (const name of [
+      'irsa-service-account',
+      'secret-provider-class',
+      'synced-secret-metadata-redacted',
+      'iam-secrets-policy',
+      'scoped-secrets-access-test',
+    ]) {
+      requiredArtifactProbes.add(name);
+    }
+  }
+  const requiresDBUser = evidenceItems.includes('SEC-DBUSER-001');
+  if (requiredArtifactProbes.size === 0 && !requiresDBUser) {
+    return;
+  }
+  const expectedProbeCount = requiredArtifactProbes.size + (requiresDBUser ? 1 : 0);
+  const probes = Array.isArray(report.probes) ? report.probes : [];
+  assert.equal(probes.length, expectedProbeCount, 'security report must include exactly the required probes for requested evidence items');
+
+  let sawDBUser = false;
+  for (const probe of probes) {
+    assert.equal(probe.passed, true, `${probe.name} must pass`);
+    if (requiredArtifactProbes.has(probe.name)) {
+      requiredArtifactProbes.delete(probe.name);
+      assert.equal(probe.status_code, 200, `${probe.name} must return HTTP 200`);
+      const target = String(probe.target ?? '');
+      assert.match(target, /^https:\/\//, `${probe.name} target must be an HTTPS artifact URL`);
+      assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(target), `${probe.name} target must not be local/self-test: ${target}`);
+      continue;
+    }
+    if (probe.name === 'database-scoped-user' && requiresDBUser && !sawDBUser) {
+      sawDBUser = true;
+      assert.equal(String(probe.target ?? ''), 'redacted-database-url', 'database-scoped-user target must stay redacted');
+      const summary = String(probe.result_summary ?? '');
+      assert.match(summary, /connected as/i, 'database-scoped-user summary must prove a live connection');
+      assert.match(summary, /superuser=false/i, 'database-scoped-user summary must prove superuser=false');
+      assert.match(summary, /createrole=false/i, 'database-scoped-user summary must prove createrole=false');
+      assert.match(summary, /createdb=false/i, 'database-scoped-user summary must prove createdb=false');
+      continue;
+    }
+    assert.fail(`security report includes unexpected or duplicate probe ${probe.name}`);
+  }
+  assert.equal(requiredArtifactProbes.size, 0, `security report missing probes: ${[...requiredArtifactProbes].join(', ')}`);
+  if (requiresDBUser) {
+    assert.equal(sawDBUser, true, 'SEC-DBUSER-001 report missing database-scoped-user probe');
+  }
+}
+
 function validateAbuseEvidence(report) {
   const evidenceItems = report.evidence_items ?? [];
   if (!evidenceItems.includes('ABUSE-LIMIT-001')) {
@@ -443,6 +496,7 @@ function recordEvidence(manifest, report, artifact, command) {
   validateZoomEvidence(report);
   validateAIEvidence(report);
   validateObservabilityEvidence(report);
+  validateSecurityEvidence(report);
   validatePerformanceEvidence(report);
   validateAbuseEvidence(report);
 

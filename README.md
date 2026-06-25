@@ -217,7 +217,7 @@ rtk node tools/record-staging-evidence.mjs \
   --summary "remote backend initialized and staging plan artifact captured"
 ```
 
-Use this mode for human-reviewed release artifacts that do not have a dedicated JSON probe, such as Terraform plan/apply logs (`DEPLOY-TF-001`), Secrets Store CSI/IRSA proof (`SEC-SECRETS-001`), scoped database user proof (`SEC-DBUSER-001`), and owner/security signoff (`SEC-SIGNOFF-001`). Probe-backed items, including CI, TLS, Kubernetes rollout, tenant RLS, observability, web/mobile client smokes, Zoom, AI, load, rollback, and backup/restore evidence, must be recorded from their dedicated JSON probe reports so their strict artifact checks cannot be bypassed. The command marks only the named item as `passed`; blocked, failed, and accepted-risk decisions must still be written with owner/blocker or decision references so the validator can enforce them.
+Use this mode for human-reviewed release artifacts that do not have a dedicated JSON probe, such as Terraform plan/apply logs (`DEPLOY-TF-001`) and owner/security signoff (`SEC-SIGNOFF-001`). Probe-backed items, including CI, TLS, Kubernetes rollout, Secrets Store/IRSA, scoped DB user, tenant RLS, observability, web/mobile client smokes, Zoom, AI, load, rollback, and backup/restore evidence, must be recorded from their dedicated JSON probe reports so their strict artifact checks cannot be bypassed. The command marks only the named item as `passed`; blocked, failed, and accepted-risk decisions must still be written with owner/blocker or decision references so the validator can enforce them.
 
 To record a real blocker or accepted residual risk without weakening the readiness claim:
 
@@ -337,6 +337,7 @@ STAGING_DATABASE_URL="$DATABASE_URL" \
 ```
 
 Passing reports include `SEC-SECRETS-001`, `SEC-DBUSER-001`, or both in `evidence_items` so they can be attached with `tools/record-staging-evidence.mjs`. This proves the observed staging artifacts and database principal; it still needs clean CI secret scanning and owner review of cloud-side access roles.
+The recorder rejects `SEC-SECRETS-001` unless all five secret/IRSA probes pass against HTTPS non-local artifacts, and rejects `SEC-DBUSER-001` unless the database probe target stays redacted and the live connection summary proves `superuser=false`, `createrole=false`, and `createdb=false`.
 
 For deployed abuse/rate-limit evidence, run the abuse probe against staging with a valid bearer token. The probe repeats auth, AI, journal, rooms, and room-stream requests until each profile returns `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers:
 

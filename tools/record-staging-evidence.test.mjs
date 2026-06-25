@@ -576,6 +576,98 @@ test('recordEvidence rejects observability evidence from local telemetry surface
   );
 });
 
+test('recordEvidence records production-grade security evidence', () => {
+  const manifest = {
+    items: [
+      { id: 'SEC-SECRETS-001', status: 'pending_external' },
+      { id: 'SEC-DBUSER-001', status: 'pending_external' },
+    ],
+  };
+
+  const artifactProbeNames = [
+    'irsa-service-account',
+    'secret-provider-class',
+    'synced-secret-metadata-redacted',
+    'iam-secrets-policy',
+    'scoped-secrets-access-test',
+  ];
+
+  const updated = recordEvidence(
+    manifest,
+    {
+      observed_at: '2026-06-25T12:00:00Z',
+      threshold_pass: true,
+      evidence_items: ['SEC-SECRETS-001', 'SEC-DBUSER-001'],
+      probes: [
+        ...artifactProbeNames.map((name) => ({
+          name,
+          passed: true,
+          target: `https://artifacts.staging.example/security/${name}.txt`,
+          status_code: 200,
+        })),
+        {
+          name: 'database-scoped-user',
+          passed: true,
+          target: 'redacted-database-url',
+          result_summary: 'connected as "scriptureforge_app" in 25ms; superuser=false createrole=false createdb=false',
+        },
+      ],
+    },
+    'artifacts/securityprobe.json',
+    'go run ./tools/securityprobe -probe-secrets -probe-db-user',
+  );
+
+  assert.equal(updated.items[0].status, 'passed');
+  assert.equal(updated.items[1].status, 'passed');
+});
+
+test('recordEvidence rejects security evidence with local secret artifacts', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'SEC-SECRETS-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        evidence_items: ['SEC-SECRETS-001'],
+        probes: [
+          { name: 'irsa-service-account', passed: true, target: 'https://artifacts.staging.example/security/service-account.txt', status_code: 200 },
+          { name: 'secret-provider-class', passed: true, target: 'https://artifacts.staging.example/security/secret-provider.txt', status_code: 200 },
+          { name: 'synced-secret-metadata-redacted', passed: true, target: 'http://localhost/security/synced-secret.txt', status_code: 200 },
+          { name: 'iam-secrets-policy', passed: true, target: 'https://artifacts.staging.example/security/iam.txt', status_code: 200 },
+          { name: 'scoped-secrets-access-test', passed: true, target: 'https://artifacts.staging.example/security/access-test.txt', status_code: 200 },
+        ],
+      },
+      'artifacts/securityprobe.json',
+      'go run ./tools/securityprobe -probe-secrets',
+    ),
+    /synced-secret-metadata-redacted target must be an HTTPS artifact URL/,
+  );
+});
+
+test('recordEvidence rejects database user evidence without non-admin role proof', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'SEC-DBUSER-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        evidence_items: ['SEC-DBUSER-001'],
+        probes: [
+          {
+            name: 'database-scoped-user',
+            passed: true,
+            target: 'redacted-database-url',
+            result_summary: 'connected as "scriptureforge_app" in 25ms; superuser=false createrole=false',
+          },
+        ],
+      },
+      'artifacts/securityprobe-db.json',
+      'go run ./tools/securityprobe -probe-db-user',
+    ),
+    /database-scoped-user summary must prove createdb=false/,
+  );
+});
+
 test('recordEvidence rejects failed probe reports', () => {
   assert.throws(
     () => recordEvidence(
