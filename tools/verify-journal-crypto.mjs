@@ -30,6 +30,9 @@ for (const requiredLifecycleSnippet of [
   'finally',
   'wipeBytes(passphraseBytes)',
   'wipeBytes(saltBytes)',
+  'wipeBytes(plaintextBytes)',
+  'wipeBytes(ciphertextBytes)',
+  'wipeBytes(ivBytes)',
   'createJournalCryptoKeyHandle',
   'disposeJournalCryptoKey',
 ]) {

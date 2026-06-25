@@ -46,7 +46,7 @@ interface SubtleCryptoLike {
   decrypt(
     algorithm: { name: string; iv: Uint8Array },
     key: JournalCryptoKey,
-    data: ArrayBuffer,
+    data: ArrayBuffer | Uint8Array,
   ): Promise<ArrayBuffer>;
 }
 
@@ -168,16 +168,22 @@ export async function encryptJournalData(
 ): Promise<EncryptedPayload> {
   const provider = getCryptoProvider();
   const iv = provider.getRandomValues(new Uint8Array(12));
-  const ciphertext = await provider.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    stringToBytes(plaintext),
-  );
+  const plaintextBytes = stringToBytes(plaintext);
+  try {
+    const ciphertext = await provider.subtle.encrypt(
+      { name: 'AES-GCM', iv },
+      key,
+      plaintextBytes,
+    );
 
-  return {
-    ciphertext: bufferToBase64(ciphertext),
-    iv: bufferToBase64(iv),
-  };
+    return {
+      ciphertext: bufferToBase64(ciphertext),
+      iv: bufferToBase64(iv),
+    };
+  } finally {
+    wipeBytes(plaintextBytes);
+    wipeBytes(iv);
+  }
 }
 
 /**
@@ -185,10 +191,22 @@ export async function encryptJournalData(
  */
 export async function decryptJournalData(payload: EncryptedPayload, key: JournalCryptoKey): Promise<string> {
   const provider = getCryptoProvider();
-  const plaintext = await provider.subtle.decrypt(
-    { name: 'AES-GCM', iv: new Uint8Array(base64ToBuffer(payload.iv)) },
-    key,
-    base64ToBuffer(payload.ciphertext),
-  );
-  return new TextDecoder().decode(plaintext);
+  const ivBytes = new Uint8Array(base64ToBuffer(payload.iv));
+  const ciphertextBytes = new Uint8Array(base64ToBuffer(payload.ciphertext));
+  try {
+    const plaintext = await provider.subtle.decrypt(
+      { name: 'AES-GCM', iv: ivBytes },
+      key,
+      ciphertextBytes,
+    );
+    const plaintextBytes = new Uint8Array(plaintext);
+    try {
+      return new TextDecoder().decode(plaintextBytes);
+    } finally {
+      wipeBytes(plaintextBytes);
+    }
+  } finally {
+    wipeBytes(ciphertextBytes);
+    wipeBytes(ivBytes);
+  }
 }
