@@ -213,6 +213,66 @@ test('recordEvidence rejects tenant RLS evidence without deployed API and DB pro
   );
 });
 
+test('recordEvidence records production-grade mobile evidence', () => {
+  const manifest = {
+    items: [{ id: 'CLIENT-MOBILE-001', status: 'pending_external' }],
+  };
+
+  const updated = recordEvidence(
+    manifest,
+    {
+      observed_at: '2026-06-25T12:00:00Z',
+      threshold_pass: true,
+      evidence_items: ['CLIENT-MOBILE-001'],
+      probes: [
+        {
+          name: 'mobile-eas-or-device-run',
+          passed: true,
+          target: 'https://artifacts.staging.example/mobile/eas-build.txt',
+          status_code: 200,
+        },
+        {
+          name: 'mobile-native-crypto-smoke',
+          passed: true,
+          target: 'https://artifacts.staging.example/mobile/native-crypto-smoke.txt',
+          status_code: 200,
+        },
+        {
+          name: 'mobile-staging-config',
+          passed: true,
+          target: 'https://artifacts.staging.example/mobile/staging-config.txt',
+          status_code: 200,
+        },
+      ],
+    },
+    'artifacts/mobileprobe.json',
+    'go run ./tools/mobileprobe',
+  );
+
+  assert.equal(updated.items[0].status, 'passed');
+});
+
+test('recordEvidence rejects mobile evidence without native HTTPS artifacts', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'CLIENT-MOBILE-001' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        evidence_items: ['CLIENT-MOBILE-001'],
+        probes: [
+          { name: 'mobile-eas-or-device-run', passed: true, target: 'https://artifacts.staging.example/mobile/eas-build.txt', status_code: 200 },
+          { name: 'mobile-native-crypto-smoke', passed: true, target: 'http://localhost/native-crypto.txt', status_code: 200 },
+          { name: 'mobile-staging-config', passed: true, target: 'https://artifacts.staging.example/mobile/staging-config.txt', status_code: 200 },
+        ],
+      },
+      'artifacts/mobileprobe.json',
+      'go run ./tools/mobileprobe',
+    ),
+    /mobile-native-crypto-smoke target must be an HTTPS artifact URL/,
+  );
+});
+
 test('recordEvidence rejects TLS evidence without DNS and ACM artifacts', () => {
   assert.throws(
     () => recordEvidence(

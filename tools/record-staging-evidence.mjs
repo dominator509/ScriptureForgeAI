@@ -246,6 +246,29 @@ function validateTenantRLSEvidence(report) {
   assert.equal(requiredProbes.size, 0, `DATA-RLS-001 report missing probes: ${[...requiredProbes].join(', ')}`);
 }
 
+function validateMobileEvidence(report) {
+  const evidenceItems = report.evidence_items ?? [];
+  if (!evidenceItems.includes('CLIENT-MOBILE-001')) {
+    return;
+  }
+  const requiredProbes = new Set([
+    'mobile-eas-or-device-run',
+    'mobile-native-crypto-smoke',
+    'mobile-staging-config',
+  ]);
+  const probes = Array.isArray(report.probes) ? report.probes : [];
+  assert.equal(probes.length, requiredProbes.size, 'CLIENT-MOBILE-001 report must include exactly the required mobile probes');
+  for (const probe of probes) {
+    assert.ok(requiredProbes.delete(probe.name), `CLIENT-MOBILE-001 report includes unexpected or duplicate probe ${probe.name}`);
+    assert.equal(probe.passed, true, `${probe.name} must pass`);
+    assert.equal(probe.status_code, 200, `${probe.name} must return HTTP 200`);
+    const target = String(probe.target ?? '');
+    assert.match(target, /^https:\/\//, `${probe.name} target must be an HTTPS artifact URL`);
+    assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(target), `${probe.name} target must not be local/self-test: ${target}`);
+  }
+  assert.equal(requiredProbes.size, 0, `CLIENT-MOBILE-001 report missing probes: ${[...requiredProbes].join(', ')}`);
+}
+
 function validateAbuseEvidence(report) {
   const evidenceItems = report.evidence_items ?? [];
   if (!evidenceItems.includes('ABUSE-LIMIT-001')) {
@@ -294,6 +317,7 @@ function recordEvidence(manifest, report, artifact, command) {
   validateKubernetesEvidence(report);
   validateWebClientEvidence(report);
   validateTenantRLSEvidence(report);
+  validateMobileEvidence(report);
   validatePerformanceEvidence(report);
   validateAbuseEvidence(report);
 
