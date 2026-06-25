@@ -157,18 +157,19 @@ rtk go run ./tools/stagingprobe \
 
 The Zoom probe always verifies invalid-signature denial and, when a webhook secret is supplied, sends a signed no-op webhook event. The AI probe is intentionally opt-in because it calls the deployed generation route and may invoke the configured provider.
 
-For full Zoom staging evidence, pair `tools/stagingprobe -probe-zoom` with `tools/zoomprobe`. The dedicated Zoom probe validates captured artifacts for OAuth readiness, meeting creation or offline fallback, webhook delivery/signature checks, duplicate webhook idempotency, and meeting-to-room mapping:
+For full Zoom staging evidence, pair `tools/stagingprobe -probe-zoom` with `tools/zoomprobe`. The dedicated Zoom probe validates captured artifacts for OAuth readiness, meeting creation or offline fallback, timeout/circuit-open fallback behavior, webhook delivery/signature checks, duplicate webhook idempotency, and meeting-to-room mapping:
 
 ```bash
 rtk go run ./tools/zoomprobe \
   -oauth-artifact-url=https://artifacts.staging.example/zoom/oauth.txt \
   -meeting-artifact-url=https://artifacts.staging.example/zoom/meeting-or-fallback.txt \
+  -resilience-artifact-url=https://artifacts.staging.example/zoom/timeout-circuit-fallback.txt \
   -webhook-artifact-url=https://artifacts.staging.example/zoom/webhook-signature.txt \
   -duplicate-artifact-url=https://artifacts.staging.example/zoom/duplicate-idempotency.txt \
   -room-mapping-artifact-url=https://artifacts.staging.example/zoom/meeting-room-mapping.txt
 ```
 
-The probe rejects artifacts that expose obvious Zoom secret values such as `client_secret` or `ZOOM_WEBHOOK_SECRET_TOKEN`. A passing report includes `EXT-ZOOM-001` in `evidence_items`.
+The resilience artifact must include timeout, circuit-open, fallback, and `offline://in-person` markers so staging evidence proves the failure path, not only successful meeting creation. The probe rejects artifacts that expose obvious Zoom secret values such as `client_secret` or `ZOOM_WEBHOOK_SECRET_TOKEN`. A passing report includes `EXT-ZOOM-001` in `evidence_items`.
 
 For full AI staging evidence, pair `tools/stagingprobe -probe-ai` with `tools/aiprobe`. The dedicated AI probe validates captured artifacts for provider/model configuration, authenticated generation, timeout/degradation behavior, citation verification, and persisted `ai_request_logs`/`citation_trails`:
 

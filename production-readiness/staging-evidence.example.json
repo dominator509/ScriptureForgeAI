@@ -189,6 +189,7 @@
         "tools/stagingprobe -probe-zoom JSON report",
         "Zoom OAuth probe output",
         "Meeting create or fallback output",
+        "Zoom timeout/circuit-open fallback output",
         "Webhook delivery/signature proof",
         "Duplicate webhook idempotency proof",
         "Meeting-to-room mapping proof"

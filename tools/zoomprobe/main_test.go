@@ -25,6 +25,8 @@ func TestRunEmitsZoomEvidenceWhenArtifactsPass(t *testing.T) {
 			_, _ = w.Write([]byte("Zoom oauth account_credentials status ok token redacted"))
 		case "/meeting":
 			_, _ = w.Write([]byte("meeting created join_url=https://zoom.us/j/123456789"))
+		case "/resilience":
+			_, _ = w.Write([]byte("timeout drill opened circuit; circuit open fallback returned offline://in-person"))
 		case "/webhook":
 			_, _ = w.Write([]byte("webhook signature invalid returned 401; signed webhook returned 200"))
 		case "/duplicate":
@@ -41,6 +43,7 @@ func TestRunEmitsZoomEvidenceWhenArtifactsPass(t *testing.T) {
 	err := run(config{
 		OAuthArtifactURL:       server.URL + "/oauth",
 		MeetingArtifactURL:     server.URL + "/meeting",
+		ResilienceArtifactURL:  server.URL + "/resilience",
 		WebhookArtifactURL:     server.URL + "/webhook",
 		DuplicateArtifactURL:   server.URL + "/duplicate",
 		RoomMappingArtifactURL: server.URL + "/mapping",
@@ -68,6 +71,8 @@ func TestRunAcceptsOfflineMeetingFallbackEvidence(t *testing.T) {
 			_, _ = w.Write([]byte("Zoom oauth account_credentials status ok token redacted"))
 		case "/meeting":
 			_, _ = w.Write([]byte("Zoom unavailable fallback offline://in-person"))
+		case "/resilience":
+			_, _ = w.Write([]byte("timeout drill opened circuit; circuit open fallback returned offline://in-person"))
 		case "/webhook":
 			_, _ = w.Write([]byte("webhook signature invalid 401 signed 200"))
 		case "/duplicate":
@@ -82,6 +87,7 @@ func TestRunAcceptsOfflineMeetingFallbackEvidence(t *testing.T) {
 	err := run(config{
 		OAuthArtifactURL:       server.URL + "/oauth",
 		MeetingArtifactURL:     server.URL + "/meeting",
+		ResilienceArtifactURL:  server.URL + "/resilience",
 		WebhookArtifactURL:     server.URL + "/webhook",
 		DuplicateArtifactURL:   server.URL + "/duplicate",
 		RoomMappingArtifactURL: server.URL + "/mapping",
@@ -99,6 +105,8 @@ func TestRunFailsWhenOAuthArtifactLeaksSecret(t *testing.T) {
 			_, _ = w.Write([]byte("Zoom oauth account_credentials status ok client_secret=leaked"))
 		case "/meeting":
 			_, _ = w.Write([]byte("meeting created join_url=https://zoom.us/j/123456789"))
+		case "/resilience":
+			_, _ = w.Write([]byte("timeout drill opened circuit; circuit open fallback returned offline://in-person"))
 		case "/webhook":
 			_, _ = w.Write([]byte("webhook signature invalid 401 signed 200"))
 		case "/duplicate":
@@ -113,6 +121,7 @@ func TestRunFailsWhenOAuthArtifactLeaksSecret(t *testing.T) {
 	err := run(config{
 		OAuthArtifactURL:       server.URL + "/oauth",
 		MeetingArtifactURL:     server.URL + "/meeting",
+		ResilienceArtifactURL:  server.URL + "/resilience",
 		WebhookArtifactURL:     server.URL + "/webhook",
 		DuplicateArtifactURL:   server.URL + "/duplicate",
 		RoomMappingArtifactURL: server.URL + "/mapping",
@@ -123,5 +132,42 @@ func TestRunFailsWhenOAuthArtifactLeaksSecret(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), `"threshold_pass": false`) {
 		t.Fatalf("failing report did not mark threshold false:\n%s", output.String())
+	}
+}
+
+func TestRunFailsWhenResilienceArtifactMissingCircuitFallback(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth":
+			_, _ = w.Write([]byte("Zoom oauth account_credentials status ok token redacted"))
+		case "/meeting":
+			_, _ = w.Write([]byte("meeting created join_url=https://zoom.us/j/123456789"))
+		case "/resilience":
+			_, _ = w.Write([]byte("timeout drill observed slow response but no fallback proof"))
+		case "/webhook":
+			_, _ = w.Write([]byte("webhook signature invalid 401 signed 200"))
+		case "/duplicate":
+			_, _ = w.Write([]byte("duplicate webhook idempotent 200 no duplicate side effects"))
+		case "/mapping":
+			_, _ = w.Write([]byte("meeting_external_id mapped live_rooms room"))
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := run(config{
+		OAuthArtifactURL:       server.URL + "/oauth",
+		MeetingArtifactURL:     server.URL + "/meeting",
+		ResilienceArtifactURL:  server.URL + "/resilience",
+		WebhookArtifactURL:     server.URL + "/webhook",
+		DuplicateArtifactURL:   server.URL + "/duplicate",
+		RoomMappingArtifactURL: server.URL + "/mapping",
+		Timeout:                time.Second,
+	}, &output)
+	if err == nil {
+		t.Fatalf("expected missing circuit fallback proof to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "zoom-timeout-circuit-fallback") {
+		t.Fatalf("report missing resilience probe:\n%s", output.String())
 	}
 }

@@ -16,6 +16,7 @@ import (
 type config struct {
 	OAuthArtifactURL       string
 	MeetingArtifactURL     string
+	ResilienceArtifactURL  string
 	WebhookArtifactURL     string
 	DuplicateArtifactURL   string
 	RoomMappingArtifactURL string
@@ -50,6 +51,7 @@ func parseFlags() config {
 	cfg := config{}
 	flag.StringVar(&cfg.OAuthArtifactURL, "oauth-artifact-url", os.Getenv("STAGING_ZOOM_OAUTH_ARTIFACT_URL"), "Zoom OAuth readiness artifact URL")
 	flag.StringVar(&cfg.MeetingArtifactURL, "meeting-artifact-url", os.Getenv("STAGING_ZOOM_MEETING_ARTIFACT_URL"), "Zoom meeting create or offline fallback artifact URL")
+	flag.StringVar(&cfg.ResilienceArtifactURL, "resilience-artifact-url", os.Getenv("STAGING_ZOOM_RESILIENCE_ARTIFACT_URL"), "Zoom timeout/circuit-open fallback artifact URL")
 	flag.StringVar(&cfg.WebhookArtifactURL, "webhook-artifact-url", os.Getenv("STAGING_ZOOM_WEBHOOK_ARTIFACT_URL"), "Zoom webhook signature validation/delivery artifact URL")
 	flag.StringVar(&cfg.DuplicateArtifactURL, "duplicate-artifact-url", os.Getenv("STAGING_ZOOM_DUPLICATE_ARTIFACT_URL"), "duplicate webhook idempotency artifact URL")
 	flag.StringVar(&cfg.RoomMappingArtifactURL, "room-mapping-artifact-url", os.Getenv("STAGING_ZOOM_ROOM_MAPPING_ARTIFACT_URL"), "meeting-to-room mapping artifact URL")
@@ -62,8 +64,8 @@ func run(cfg config, output io.Writer) error {
 	if cfg.Timeout <= 0 {
 		return errors.New("timeout must be positive")
 	}
-	if cfg.OAuthArtifactURL == "" || cfg.MeetingArtifactURL == "" || cfg.WebhookArtifactURL == "" || cfg.DuplicateArtifactURL == "" || cfg.RoomMappingArtifactURL == "" {
-		return errors.New("Zoom proof requires OAuth, meeting, webhook, duplicate idempotency, and room mapping artifact URLs")
+	if cfg.OAuthArtifactURL == "" || cfg.MeetingArtifactURL == "" || cfg.ResilienceArtifactURL == "" || cfg.WebhookArtifactURL == "" || cfg.DuplicateArtifactURL == "" || cfg.RoomMappingArtifactURL == "" {
+		return errors.New("Zoom proof requires OAuth, meeting, timeout/circuit fallback, webhook, duplicate idempotency, and room mapping artifact URLs")
 	}
 
 	client := &http.Client{Timeout: cfg.Timeout}
@@ -73,6 +75,7 @@ func run(cfg config, output io.Writer) error {
 			{"meeting", "join_url", "zoom.us"},
 			{"offline://in-person", "fallback", "Zoom"},
 		}, forbiddenSecretMarkers()),
+		probeArtifact(client, "zoom-timeout-circuit-fallback", cfg.ResilienceArtifactURL, []string{"timeout", "circuit", "open", "fallback", "offline://in-person"}, forbiddenSecretMarkers()),
 		probeArtifact(client, "zoom-webhook-signature-delivery", cfg.WebhookArtifactURL, []string{"webhook", "signature", "invalid", "401", "signed", "200"}, forbiddenSecretMarkers()),
 		probeArtifact(client, "zoom-duplicate-webhook-idempotency", cfg.DuplicateArtifactURL, []string{"duplicate", "idempotent", "200", "no duplicate side effects"}, nil),
 		probeArtifact(client, "zoom-meeting-room-mapping", cfg.RoomMappingArtifactURL, []string{"meeting_external_id", "live_rooms", "room", "mapped"}, nil),
