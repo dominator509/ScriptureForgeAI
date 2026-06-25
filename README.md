@@ -144,6 +144,7 @@ rtk go run ./tools/stagingprobe \
 ```
 
 The probe requires HTTPS targets, checks API `/live` and `/ready`, checks the web root, records TLS version/certificate expiry, verifies HTTP-to-HTTPS redirects, and carries same-run HTTPS artifacts proving DNS records plus ACM certificate status/TLS policy. When `-web-base` is supplied, it also requires browser-smoke artifacts for login/register, journal save/load, and room create/select/WebSocket flows before emitting `CLIENT-WEB-001`. It is an evidence collector for deployed service reachability, not a substitute for Terraform apply, Kubernetes rollout/resource artifacts, load, observability, or external-service proof. `DEPLOY-K8S-001` must come from `tools/deploymentprobe -probe-kubernetes`, which proves rollout status plus deploy/service/ingress/HPA/PDB resources.
+The recorder rejects `DEPLOY-TLS-001` reports unless the claimed API/web targets include the expected live/readiness, TLS handshake, and HTTP-to-HTTPS redirect probes, and rejects `CLIENT-WEB-001` unless web root, web TLS, web redirect, and browser-smoke artifacts are all present.
 
 Optional external-service probes can attach evidence for `EXT-ZOOM-001` and `EXT-AI-001`:
 

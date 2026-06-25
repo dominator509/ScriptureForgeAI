@@ -74,8 +74,9 @@ test('recordEvidence marks referenced manifest items as passed with artifact det
     web_journal_smoke_url: 'https://artifacts.staging.example/web/journal-smoke.txt',
     web_room_smoke_url: 'https://artifacts.staging.example/web/room-smoke.txt',
     probes: [
-      { name: 'api-tls', passed: true },
-      { name: 'web-root', passed: true },
+      { name: 'web-root', passed: true, target: 'https://app.staging.example', status_code: 200 },
+      { name: 'web-tls', passed: true, target: 'https://app.staging.example', tls_version: 'TLS1.3', cert_not_after: '2026-12-25T00:00:00Z' },
+      { name: 'web-http-redirect', passed: true, target: 'http://app.staging.example', status_code: 301, redirect_to: 'https://app.staging.example' },
     ],
   };
 
@@ -86,7 +87,7 @@ test('recordEvidence marks referenced manifest items as passed with artifact det
     assert.equal(item.evidence.length, 1);
     assert.equal(item.evidence[0].artifact, 'artifacts/stagingprobe.json');
     assert.equal(item.evidence[0].command_or_probe, 'go run ./tools/stagingprobe');
-    assert.match(item.evidence[0].result_summary, /2 probes passed/);
+    assert.match(item.evidence[0].result_summary, /3 probes passed/);
   }
 });
 
@@ -148,7 +149,11 @@ test('recordEvidence rejects web client evidence without browser smoke artifacts
         threshold_pass: true,
         evidence_items: ['CLIENT-WEB-001'],
         web_target: 'https://app.staging.example',
-        probes: [{ name: 'web-root', passed: true }],
+        probes: [
+          { name: 'web-root', passed: true, target: 'https://app.staging.example', status_code: 200 },
+          { name: 'web-tls', passed: true, target: 'https://app.staging.example', tls_version: 'TLS1.3', cert_not_after: '2026-12-25T00:00:00Z' },
+          { name: 'web-http-redirect', passed: true, target: 'http://app.staging.example', status_code: 301, redirect_to: 'https://app.staging.example' },
+        ],
       },
       'artifacts/stagingprobe.json',
       'go run ./tools/stagingprobe',
@@ -461,6 +466,69 @@ test('recordEvidence rejects TLS evidence without DNS and ACM artifacts', () => 
       'go run ./tools/stagingprobe',
     ),
     /must include HTTPS dns_artifact_url/,
+  );
+});
+
+test('recordEvidence records production-grade TLS and web reachability evidence', () => {
+  const manifest = {
+    items: [
+      { id: 'DEPLOY-TLS-001', status: 'pending_external' },
+      { id: 'CLIENT-WEB-001', status: 'pending_external' },
+    ],
+  };
+
+  const updated = recordEvidence(
+    manifest,
+    {
+      observed_at: '2026-06-25T12:00:00Z',
+      threshold_pass: true,
+      evidence_items: ['DEPLOY-TLS-001', 'CLIENT-WEB-001'],
+      api_target: 'https://api.staging.example',
+      web_target: 'https://app.staging.example',
+      dns_artifact_url: 'https://artifacts.staging.example/tls/dns.txt',
+      acm_artifact_url: 'https://artifacts.staging.example/tls/acm.txt',
+      web_auth_smoke_url: 'https://artifacts.staging.example/web/auth-smoke.txt',
+      web_journal_smoke_url: 'https://artifacts.staging.example/web/journal-smoke.txt',
+      web_room_smoke_url: 'https://artifacts.staging.example/web/room-smoke.txt',
+      probes: [
+        { name: 'api-live', passed: true, target: 'https://api.staging.example/live', status_code: 200 },
+        { name: 'api-ready', passed: true, target: 'https://api.staging.example/ready', status_code: 200 },
+        { name: 'api-tls', passed: true, target: 'https://api.staging.example', tls_version: 'TLS1.3', cert_not_after: '2026-12-25T00:00:00Z' },
+        { name: 'api-http-redirect', passed: true, target: 'http://api.staging.example', status_code: 301, redirect_to: 'https://api.staging.example' },
+        { name: 'web-root', passed: true, target: 'https://app.staging.example', status_code: 200 },
+        { name: 'web-tls', passed: true, target: 'https://app.staging.example', tls_version: 'TLS1.3', cert_not_after: '2026-12-25T00:00:00Z' },
+        { name: 'web-http-redirect', passed: true, target: 'http://app.staging.example', status_code: 301, redirect_to: 'https://app.staging.example' },
+      ],
+    },
+    'artifacts/stagingprobe.json',
+    'go run ./tools/stagingprobe -api-base=https://api.staging.example -web-base=https://app.staging.example',
+  );
+
+  assert.equal(updated.items[0].status, 'passed');
+  assert.equal(updated.items[1].status, 'passed');
+});
+
+test('recordEvidence rejects TLS evidence without API readiness proof', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DEPLOY-TLS-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        evidence_items: ['DEPLOY-TLS-001'],
+        api_target: 'https://api.staging.example',
+        dns_artifact_url: 'https://artifacts.staging.example/tls/dns.txt',
+        acm_artifact_url: 'https://artifacts.staging.example/tls/acm.txt',
+        probes: [
+          { name: 'api-live', passed: true, target: 'https://api.staging.example/live', status_code: 200 },
+          { name: 'api-tls', passed: true, target: 'https://api.staging.example', tls_version: 'TLS1.3', cert_not_after: '2026-12-25T00:00:00Z' },
+          { name: 'api-http-redirect', passed: true, target: 'http://api.staging.example', status_code: 301, redirect_to: 'https://api.staging.example' },
+        ],
+      },
+      'artifacts/stagingprobe.json',
+      'go run ./tools/stagingprobe -api-base=https://api.staging.example',
+    ),
+    /must include api-ready probe/,
   );
 });
 

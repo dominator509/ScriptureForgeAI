@@ -162,6 +162,53 @@ function validateTLSEvidence(report) {
     assert.match(artifactURL, /^https:\/\//, `DEPLOY-TLS-001 report must include HTTPS ${field}`);
     assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(artifactURL), `DEPLOY-TLS-001 ${label} artifact must not be local/self-test: ${artifactURL}`);
   }
+  const probes = Array.isArray(report.probes) ? report.probes : [];
+  const probesByName = new Map(probes.map((probe) => [probe.name, probe]));
+  const apiTarget = String(report.api_target ?? '');
+  const webTarget = String(report.web_target ?? '');
+  assert.ok(apiTarget || webTarget, 'DEPLOY-TLS-001 report must include api_target or web_target');
+  if (apiTarget) {
+    assert.match(apiTarget, /^https:\/\//, 'DEPLOY-TLS-001 api_target must use HTTPS');
+    assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(apiTarget), `DEPLOY-TLS-001 api_target must not be local/self-test: ${apiTarget}`);
+    assertHTTPProbe(probesByName, 'api-live', `${apiTarget}/live`, 200);
+    assertHTTPProbe(probesByName, 'api-ready', `${apiTarget}/ready`, 200);
+    assertTLSProbe(probesByName, 'api-tls', apiTarget);
+    assertRedirectProbe(probesByName, 'api-http-redirect');
+  }
+  if (webTarget) {
+    assert.match(webTarget, /^https:\/\//, 'DEPLOY-TLS-001 web_target must use HTTPS');
+    assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(webTarget), `DEPLOY-TLS-001 web_target must not be local/self-test: ${webTarget}`);
+    assertHTTPProbe(probesByName, 'web-root', webTarget, 200);
+    assertTLSProbe(probesByName, 'web-tls', webTarget);
+    assertRedirectProbe(probesByName, 'web-http-redirect');
+  }
+}
+
+function assertHTTPProbe(probesByName, name, expectedTarget, expectedStatus) {
+  const probe = probesByName.get(name);
+  assert.ok(probe, `DEPLOY-TLS-001 report must include ${name} probe`);
+  assert.equal(probe.passed, true, `${name} must pass`);
+  assert.equal(probe.status_code, expectedStatus, `${name} must return HTTP ${expectedStatus}`);
+  assert.equal(String(probe.target ?? ''), expectedTarget, `${name} target must match ${expectedTarget}`);
+}
+
+function assertTLSProbe(probesByName, name, expectedTarget) {
+  const probe = probesByName.get(name);
+  assert.ok(probe, `DEPLOY-TLS-001 report must include ${name} probe`);
+  assert.equal(probe.passed, true, `${name} must pass`);
+  assert.equal(String(probe.target ?? ''), expectedTarget, `${name} target must match ${expectedTarget}`);
+  assert.ok(String(probe.tls_version ?? '').trim(), `${name} must include tls_version`);
+  assert.match(String(probe.cert_not_after ?? ''), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, `${name} must include cert_not_after`);
+}
+
+function assertRedirectProbe(probesByName, name) {
+  const probe = probesByName.get(name);
+  assert.ok(probe, `DEPLOY-TLS-001 report must include ${name} probe`);
+  assert.equal(probe.passed, true, `${name} must pass`);
+  assert.ok(probe.status_code >= 300 && probe.status_code < 400, `${name} must observe an HTTP redirect`);
+  assert.match(String(probe.target ?? ''), /^http:\/\//, `${name} target must be the HTTP endpoint`);
+  assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(String(probe.target ?? '')), `${name} target must not be local/self-test: ${probe.target}`);
+  assert.match(String(probe.redirect_to ?? ''), /^https:\/\//, `${name} must redirect to HTTPS`);
 }
 
 function validateCIEvidence(report) {
@@ -229,9 +276,13 @@ function validateWebClientEvidence(report) {
   const webRoot = probes.find((probe) => probe.name === 'web-root');
   assert.ok(webRoot, 'CLIENT-WEB-001 report must include web-root probe');
   assert.equal(webRoot.passed, true, 'web-root must pass');
+  assert.equal(webRoot.status_code, 200, 'web-root must return HTTP 200');
   const webTarget = String(report.web_target ?? '');
   assert.match(webTarget, /^https:\/\//, 'CLIENT-WEB-001 report must include HTTPS web_target');
   assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(webTarget), `CLIENT-WEB-001 web_target must not be local/self-test: ${webTarget}`);
+  const probesByName = new Map(probes.map((probe) => [probe.name, probe]));
+  assertTLSProbe(probesByName, 'web-tls', webTarget);
+  assertRedirectProbe(probesByName, 'web-http-redirect');
   for (const [field, label] of [
     ['web_auth_smoke_url', 'auth browser smoke'],
     ['web_journal_smoke_url', 'journal browser smoke'],
