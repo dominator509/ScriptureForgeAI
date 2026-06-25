@@ -120,7 +120,7 @@ func TestCIProbeRequiresFullCommitSHA(t *testing.T) {
 }
 
 func TestCIProbeRejectsMissingGateMarker(t *testing.T) {
-	artifact := strings.ReplaceAll(successfulRunArtifact(), "terraform validate", "terraform plan")
+	artifact := strings.ReplaceAll(successfulRunArtifact(), "gate: terraform-validate", "gate: terraform-plan")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(artifact))
@@ -148,15 +148,29 @@ commit: 0123456789abcdef0123456789abcdef01234567
 status: completed
 conclusion: success
 required gates:
-- go test ./...
-- go vet ./...
-- npm audit --audit-level=moderate
-- npm run smoke
-- npm run typecheck
-- npm run build
-- cargo test
-- terraform fmt -check
-- terraform validate
+- gate: go-test
+- gate: go-vet
+- gate: evidence-probes
+- gate: web-audit
+- gate: web-smoke
+- gate: web-typecheck
+- gate: web-build
+- gate: mobile-audit
+- gate: mobile-smoke
+- gate: mobile-build-check
+- gate: rust-cargo-test
+- gate: terraform-fmt
+- gate: terraform-init-validate
+- gate: terraform-validate
+- gate: observability-validation
+- gate: deployment-skeleton-validation
+- gate: staging-evidence-validation
+- gate: ci-workflow-validation
+- gate: security-artifacts-validation
+- gate: dependency-risk-validation
+- gate: secret-hygiene-validation
+- gate: journal-crypto-validation
+- gate: tooling-tests
 - TruffleHog Secret Scanning
 `
 }

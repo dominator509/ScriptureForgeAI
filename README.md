@@ -125,7 +125,7 @@ rtk go run ./tools/ciprobe `
   -commit-sha 0123456789abcdef0123456789abcdef01234567
 ```
 
-The report emits `SRC-CI-001` in `evidence_items` only when the artifact proves the exact release commit completed the required CI gates successfully and does not include failed/cancelled/stale/dirty-run markers.
+The report emits `SRC-CI-001` in `evidence_items` only when the artifact proves the exact release commit completed the required CI gates successfully and does not include failed/cancelled/stale/dirty-run markers. The CI artifact must list the gate IDs from `tools/run-local-gates.mjs` plus the TruffleHog secret scan marker; broad summaries such as "Go, web, and Terraform passed" are not enough for release evidence.
 
 The workflow writes this artifact with `tools/write-ci-release-evidence.mjs` after the required local gates and TruffleHog step complete, immediately validates the local file with `tools/ciprobe`, and then uploads it as the `ci-release-evidence` artifact. The artifact names the full commit SHA, workflow, job, run URL, successful conclusion, and required gate markers so it can be recorded into the staging evidence manifest with `tools/record-staging-evidence.mjs`.
 

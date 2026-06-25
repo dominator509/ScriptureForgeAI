@@ -1,19 +1,10 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { gateDefinitions } from './run-local-gates.mjs';
 
 export const requiredGates = [
-  'go test ./...',
-  'go vet ./...',
-  'npm audit --audit-level=moderate',
-  'npm audit --audit-level=high',
-  'npm run smoke',
-  'npm run typecheck',
-  'npm run build',
-  'npm run build:check',
-  'cargo test',
-  'terraform fmt -check',
-  'terraform validate',
+  ...gateDefinitions.map((gate) => `gate: ${gate.id}`),
   'TruffleHog Secret Scanning',
 ];
 
