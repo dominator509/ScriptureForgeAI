@@ -23,6 +23,7 @@ type config struct {
 	SecretProviderURL string
 	SyncedSecretURL   string
 	IAMPolicyURL      string
+	AccessTestURL     string
 	DatabaseURL       string
 	Timeout           time.Duration
 }
@@ -59,6 +60,7 @@ func parseFlags() config {
 	flag.StringVar(&cfg.SecretProviderURL, "secret-provider-url", os.Getenv("STAGING_SECRET_PROVIDER_URL"), "URL for SecretProviderClass artifact")
 	flag.StringVar(&cfg.SyncedSecretURL, "synced-secret-url", os.Getenv("STAGING_SYNCED_SECRET_URL"), "URL for redacted Kubernetes synced-secret metadata artifact")
 	flag.StringVar(&cfg.IAMPolicyURL, "iam-policy-url", os.Getenv("STAGING_IAM_POLICY_URL"), "URL for app workload IAM policy or access-analyzer artifact")
+	flag.StringVar(&cfg.AccessTestURL, "access-test-url", os.Getenv("STAGING_SECRETS_ACCESS_TEST_URL"), "URL for scoped Secrets Manager allow/deny access test artifact")
 	flag.StringVar(&cfg.DatabaseURL, "database-url", os.Getenv("STAGING_DATABASE_URL"), "staging application DATABASE_URL; never emitted in the report")
 	flag.DurationVar(&cfg.Timeout, "timeout", 5*time.Second, "per-probe timeout")
 	flag.Parse()
@@ -73,8 +75,8 @@ func run(cfg config, output io.Writer) error {
 		return errors.New("at least one of -probe-secrets or -probe-db-user is required")
 	}
 	if cfg.ProbeSecrets {
-		if cfg.ServiceAccountURL == "" || cfg.SecretProviderURL == "" || cfg.SyncedSecretURL == "" || cfg.IAMPolicyURL == "" {
-			return errors.New("-probe-secrets requires service account, SecretProviderClass, synced-secret, and IAM policy artifact URLs")
+		if cfg.ServiceAccountURL == "" || cfg.SecretProviderURL == "" || cfg.SyncedSecretURL == "" || cfg.IAMPolicyURL == "" || cfg.AccessTestURL == "" {
+			return errors.New("-probe-secrets requires service account, SecretProviderClass, synced-secret, IAM policy, and scoped access-test artifact URLs")
 		}
 	}
 	if cfg.ProbeDBUser && cfg.DatabaseURL == "" {
@@ -90,6 +92,7 @@ func run(cfg config, output io.Writer) error {
 			probeArtifact(client, "secret-provider-class", cfg.SecretProviderURL, []string{"SecretProviderClass", "secrets-store.csi.k8s.io", "DATABASE_URL", "JWT_SECRET_KEY", "OPENAI_API_KEY", "ZOOM_WEBHOOK_SECRET_TOKEN"}, highConfidenceSecretValueMarkers()),
 			probeArtifact(client, "synced-secret-metadata-redacted", cfg.SyncedSecretURL, []string{"scriptureforge-runtime-secrets", "DATABASE_URL", "JWT_SECRET_KEY"}, forbiddenSecretMarkers()),
 			probeArtifact(client, "iam-secrets-policy", cfg.IAMPolicyURL, []string{"secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret", "arn:aws:secretsmanager:"}, nil),
+			probeArtifact(client, "scoped-secrets-access-test", cfg.AccessTestURL, []string{"allowed", "configured secret", "denied", "unscoped secret", "AccessDenied"}, forbiddenSecretMarkers()),
 		)
 		evidenceItems = append(evidenceItems, "SEC-SECRETS-001")
 	}

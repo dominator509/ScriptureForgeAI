@@ -40,6 +40,8 @@ data:
   JWT_SECRET_KEY: REDACTED`))
 		case "/iam":
 			_, _ = w.Write([]byte(`{"Action":["secretsmanager:GetSecretValue","secretsmanager:DescribeSecret"],"Resource":"arn:aws:secretsmanager:us-east-1:123456789012:secret:scriptureforge/staging/*"}`))
+		case "/access-test":
+			_, _ = w.Write([]byte(`allowed configured secret DATABASE_URL; denied unscoped secret /other/app/master using AccessDenied`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -53,6 +55,7 @@ data:
 		SecretProviderURL: server.URL + "/secret-provider",
 		SyncedSecretURL:   server.URL + "/synced-secret",
 		IAMPolicyURL:      server.URL + "/iam",
+		AccessTestURL:     server.URL + "/access-test",
 		Timeout:           time.Second,
 	}, &output)
 	if err != nil {
@@ -81,6 +84,8 @@ func TestRunFailsWhenSyncedSecretLeaksPlaintext(t *testing.T) {
 			_, _ = w.Write([]byte(`scriptureforge-runtime-secrets DATABASE_URL JWT_SECRET_KEY postgres://scriptureforge_app:secret@example/db`))
 		case "/iam":
 			_, _ = w.Write([]byte(`secretsmanager:GetSecretValue secretsmanager:DescribeSecret arn:aws:secretsmanager:`))
+		case "/access-test":
+			_, _ = w.Write([]byte(`allowed configured secret; denied unscoped secret AccessDenied`))
 		}
 	}))
 	defer server.Close()
@@ -92,6 +97,7 @@ func TestRunFailsWhenSyncedSecretLeaksPlaintext(t *testing.T) {
 		SecretProviderURL: server.URL + "/secret-provider",
 		SyncedSecretURL:   server.URL + "/synced-secret",
 		IAMPolicyURL:      server.URL + "/iam",
+		AccessTestURL:     server.URL + "/access-test",
 		Timeout:           time.Second,
 	}, &output)
 	if err == nil {
@@ -99,6 +105,41 @@ func TestRunFailsWhenSyncedSecretLeaksPlaintext(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), `"threshold_pass": false`) {
 		t.Fatalf("failing report did not mark threshold false:\n%s", output.String())
+	}
+}
+
+func TestRunFailsWhenScopedAccessTestDoesNotDenyUnscopedSecret(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/service-account":
+			_, _ = w.Write([]byte(`eks.amazonaws.com/role-arn scriptureforge`))
+		case "/secret-provider":
+			_, _ = w.Write([]byte(`SecretProviderClass secrets-store.csi.k8s.io DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY ZOOM_WEBHOOK_SECRET_TOKEN`))
+		case "/synced-secret":
+			_, _ = w.Write([]byte(`scriptureforge-runtime-secrets DATABASE_URL JWT_SECRET_KEY`))
+		case "/iam":
+			_, _ = w.Write([]byte(`secretsmanager:GetSecretValue secretsmanager:DescribeSecret arn:aws:secretsmanager:`))
+		case "/access-test":
+			_, _ = w.Write([]byte(`allowed configured secret but unscoped secret probe was not executed`))
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := run(config{
+		ProbeSecrets:      true,
+		ServiceAccountURL: server.URL + "/service-account",
+		SecretProviderURL: server.URL + "/secret-provider",
+		SyncedSecretURL:   server.URL + "/synced-secret",
+		IAMPolicyURL:      server.URL + "/iam",
+		AccessTestURL:     server.URL + "/access-test",
+		Timeout:           time.Second,
+	}, &output)
+	if err == nil {
+		t.Fatalf("expected missing unscoped denial proof to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "scoped-secrets-access-test") {
+		t.Fatalf("report missing access test probe:\n%s", output.String())
 	}
 }
 

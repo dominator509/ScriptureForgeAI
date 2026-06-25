@@ -312,8 +312,11 @@ rtk go run ./tools/securityprobe \
   -service-account-url=https://artifacts.staging.example/k8s/serviceaccount-api.yaml \
   -secret-provider-url=https://artifacts.staging.example/k8s/secret-provider-class.yaml \
   -synced-secret-url=https://artifacts.staging.example/k8s/runtime-secret-redacted.yaml \
-  -iam-policy-url=https://artifacts.staging.example/aws/app-secrets-policy.json
+  -iam-policy-url=https://artifacts.staging.example/aws/app-secrets-policy.json \
+  -access-test-url=https://artifacts.staging.example/aws/app-secrets-access-test.txt
 ```
+
+The access-test artifact must prove the workload role can read configured ScriptureForge secret ARNs and receives `AccessDenied` for an unscoped secret. This is separate from policy-shape review so `SEC-SECRETS-001` includes observed allow/deny behavior.
 
 The scoped database user mode connects with `STAGING_DATABASE_URL`, does not emit the URL, rejects root/admin/reserved principals, and verifies the connected role is not superuser, `CREATEROLE`, or `CREATEDB`:
 
