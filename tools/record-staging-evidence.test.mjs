@@ -273,6 +273,66 @@ test('recordEvidence rejects mobile evidence without native HTTPS artifacts', ()
   );
 });
 
+test('recordEvidence records production-grade Rust gRPC evidence', () => {
+  const manifest = {
+    items: [{ id: 'RUST-GRPC-001', status: 'pending_external' }],
+  };
+
+  const updated = recordEvidence(
+    manifest,
+    {
+      observed_at: '2026-06-25T12:00:00Z',
+      threshold_pass: true,
+      grpc_target: 'scriptureforge-rust-engine.staging.svc.cluster.local:50051',
+      metrics_target: 'http://scriptureforge-rust-engine.staging.svc.cluster.local:9102/metrics',
+      evidence_items: ['RUST-GRPC-001'],
+      probes: [
+        {
+          name: 'rust-grpc-health',
+          passed: true,
+          target: 'scriptureforge-rust-engine.staging.svc.cluster.local:50051',
+          status: 'SERVING',
+        },
+        {
+          name: 'rust-metrics',
+          passed: true,
+          target: 'http://scriptureforge-rust-engine.staging.svc.cluster.local:9102/metrics',
+          status_code: 200,
+        },
+      ],
+    },
+    'artifacts/rustprobe.json',
+    'go run ./tools/rustprobe',
+  );
+
+  assert.equal(updated.items[0].status, 'passed');
+});
+
+test('recordEvidence rejects Rust gRPC evidence without metrics proof', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'RUST-GRPC-001' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        grpc_target: '127.0.0.1:50051',
+        evidence_items: ['RUST-GRPC-001'],
+        probes: [
+          {
+            name: 'rust-grpc-health',
+            passed: true,
+            target: '127.0.0.1:50051',
+            status: 'SERVING',
+          },
+        ],
+      },
+      'artifacts/rustprobe.json',
+      'go run ./tools/rustprobe',
+    ),
+    /grpc_target must not be local\/self-test/,
+  );
+});
+
 test('recordEvidence rejects TLS evidence without DNS and ACM artifacts', () => {
   assert.throws(
     () => recordEvidence(

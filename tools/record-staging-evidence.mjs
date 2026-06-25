@@ -269,6 +269,34 @@ function validateMobileEvidence(report) {
   assert.equal(requiredProbes.size, 0, `CLIENT-MOBILE-001 report missing probes: ${[...requiredProbes].join(', ')}`);
 }
 
+function validateRustEvidence(report) {
+  const evidenceItems = report.evidence_items ?? [];
+  if (!evidenceItems.includes('RUST-GRPC-001')) {
+    return;
+  }
+  const grpcTarget = String(report.grpc_target ?? '');
+  assert.ok(grpcTarget.length > 0, 'RUST-GRPC-001 report must include grpc_target');
+  assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(grpcTarget), `RUST-GRPC-001 grpc_target must not be local/self-test: ${grpcTarget}`);
+
+  const metricsTarget = String(report.metrics_target ?? '');
+  assert.match(metricsTarget, /^https?:\/\//, 'RUST-GRPC-001 report must include metrics_target');
+  assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(metricsTarget), `RUST-GRPC-001 metrics_target must not be local/self-test: ${metricsTarget}`);
+
+  const probes = Array.isArray(report.probes) ? report.probes : [];
+  const probesByName = new Map(probes.map((probe) => [probe.name, probe]));
+  const health = probesByName.get('rust-grpc-health');
+  assert.ok(health, 'RUST-GRPC-001 report must include rust-grpc-health probe');
+  assert.equal(health.passed, true, 'rust-grpc-health must pass');
+  assert.equal(health.status, 'SERVING', 'rust-grpc-health must report SERVING');
+  assert.equal(String(health.target ?? ''), grpcTarget, 'rust-grpc-health target must match grpc_target');
+
+  const metrics = probesByName.get('rust-metrics');
+  assert.ok(metrics, 'RUST-GRPC-001 report must include rust-metrics probe');
+  assert.equal(metrics.passed, true, 'rust-metrics must pass');
+  assert.equal(metrics.status_code, 200, 'rust-metrics must return HTTP 200');
+  assert.equal(String(metrics.target ?? ''), metricsTarget, 'rust-metrics target must match metrics_target');
+}
+
 function validateAbuseEvidence(report) {
   const evidenceItems = report.evidence_items ?? [];
   if (!evidenceItems.includes('ABUSE-LIMIT-001')) {
@@ -318,6 +346,7 @@ function recordEvidence(manifest, report, artifact, command) {
   validateWebClientEvidence(report);
   validateTenantRLSEvidence(report);
   validateMobileEvidence(report);
+  validateRustEvidence(report);
   validatePerformanceEvidence(report);
   validateAbuseEvidence(report);
 

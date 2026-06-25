@@ -285,6 +285,7 @@ rtk go run ./tools/rustprobe \
 ```
 
 The report includes `RUST-GRPC-001` in `evidence_items`, verifies the standard gRPC health service reports `SERVING`, and optionally verifies the metrics endpoint exposes ScriptureForge Rust metric names. Attach the resulting JSON with `tools/record-staging-evidence.mjs`.
+The recorder rejects `RUST-GRPC-001` reports that use local loopback targets or omit the Rust metrics probe; release evidence must include deployed gRPC health plus metrics proof.
 
 For deployed tenant isolation evidence through the public API, run the tenant probe with two staging bearer tokens: one token that owns the created journal entry and a second token from another user or tenant that must not be able to read it.
 
