@@ -88,6 +88,8 @@ const probeBackedEvidenceItems = new Set([
   'DATA-RLS-001',
   'DATA-REDIS-001',
   'RUST-GRPC-001',
+  'OBS-OTEL-001',
+  'OBS-ALERT-001',
   'CLIENT-WEB-001',
   'CLIENT-MOBILE-001',
   'EXT-ZOOM-001',
@@ -348,6 +350,46 @@ function validateAIEvidence(report) {
   assert.equal(requiredProbes.size, 0, `EXT-AI-001 report missing probes: ${[...requiredProbes].join(', ')}`);
 }
 
+function validateObservabilityEvidence(report) {
+  const evidenceItems = report.evidence_items ?? [];
+  const requiredProbes = new Set();
+  if (evidenceItems.includes('OBS-OTEL-001')) {
+    for (const name of [
+      'collector-otlp-config',
+      'api-prometheus-metrics',
+      'rust-prometheus-metrics',
+      'trace-backend-search',
+      'log-backend-trace-correlation',
+    ]) {
+      requiredProbes.add(name);
+    }
+  }
+  if (evidenceItems.includes('OBS-ALERT-001')) {
+    for (const name of [
+      'dashboard-import',
+      'alert-rules-loaded',
+      'alert-delivery-status',
+      'telemetry-retention-policy',
+    ]) {
+      requiredProbes.add(name);
+    }
+  }
+  if (requiredProbes.size === 0) {
+    return;
+  }
+  const probes = Array.isArray(report.probes) ? report.probes : [];
+  assert.equal(probes.length, requiredProbes.size, 'observability report must include exactly the required probes for requested evidence items');
+  for (const probe of probes) {
+    assert.ok(requiredProbes.delete(probe.name), `observability report includes unexpected or duplicate probe ${probe.name}`);
+    assert.equal(probe.passed, true, `${probe.name} must pass`);
+    assert.equal(probe.status_code, 200, `${probe.name} must return HTTP 200`);
+    const target = String(probe.target ?? '');
+    assert.match(target, /^https?:\/\//, `${probe.name} target must be an HTTP(S) staging URL`);
+    assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(target), `${probe.name} target must not be local/self-test: ${target}`);
+  }
+  assert.equal(requiredProbes.size, 0, `observability report missing probes: ${[...requiredProbes].join(', ')}`);
+}
+
 function validateAbuseEvidence(report) {
   const evidenceItems = report.evidence_items ?? [];
   if (!evidenceItems.includes('ABUSE-LIMIT-001')) {
@@ -400,6 +442,7 @@ function recordEvidence(manifest, report, artifact, command) {
   validateRustEvidence(report);
   validateZoomEvidence(report);
   validateAIEvidence(report);
+  validateObservabilityEvidence(report);
   validatePerformanceEvidence(report);
   validateAbuseEvidence(report);
 

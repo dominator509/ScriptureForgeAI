@@ -217,7 +217,7 @@ rtk node tools/record-staging-evidence.mjs \
   --summary "remote backend initialized and staging plan artifact captured"
 ```
 
-Use this mode for human-reviewed release artifacts that do not have a dedicated JSON probe, such as Terraform plan/apply logs (`DEPLOY-TF-001`), Secrets Store CSI/IRSA proof (`SEC-SECRETS-001`), scoped database user proof (`SEC-DBUSER-001`), observability dashboard/alert/retention proof (`OBS-OTEL-001`, `OBS-ALERT-001`), and owner/security signoff (`SEC-SIGNOFF-001`). Probe-backed items, including CI, TLS, Kubernetes rollout, tenant RLS, web/mobile client smokes, Zoom, AI, load, rollback, and backup/restore evidence, must be recorded from their dedicated JSON probe reports so their strict artifact checks cannot be bypassed. The command marks only the named item as `passed`; blocked, failed, and accepted-risk decisions must still be written with owner/blocker or decision references so the validator can enforce them.
+Use this mode for human-reviewed release artifacts that do not have a dedicated JSON probe, such as Terraform plan/apply logs (`DEPLOY-TF-001`), Secrets Store CSI/IRSA proof (`SEC-SECRETS-001`), scoped database user proof (`SEC-DBUSER-001`), and owner/security signoff (`SEC-SIGNOFF-001`). Probe-backed items, including CI, TLS, Kubernetes rollout, tenant RLS, observability, web/mobile client smokes, Zoom, AI, load, rollback, and backup/restore evidence, must be recorded from their dedicated JSON probe reports so their strict artifact checks cannot be bypassed. The command marks only the named item as `passed`; blocked, failed, and accepted-risk decisions must still be written with owner/blocker or decision references so the validator can enforce them.
 
 To record a real blocker or accepted residual risk without weakening the readiness claim:
 
@@ -399,6 +399,7 @@ rtk go run ./tools/observabilityprobe \
 ```
 
 The report includes `OBS-OTEL-001`, `OBS-ALERT-001`, or both in `evidence_items` only for the requested passing modes. This is still proof collection, not a substitute for importing dashboards, firing a test alert, and confirming the staging telemetry backend retains traces, logs, and metrics for at least 30 days.
+The recorder rejects observability reports unless the requested OTEL and alert evidence items include exactly their required passing probes with HTTP 200 responses from non-local HTTP(S) staging telemetry surfaces.
 
 ## Performance Harness
 

@@ -512,6 +512,70 @@ test('recordEvidence rejects Kubernetes evidence without rollout and resource ar
   );
 });
 
+test('recordEvidence records production-grade observability evidence', () => {
+  const manifest = {
+    items: [
+      { id: 'OBS-OTEL-001', status: 'pending_external' },
+      { id: 'OBS-ALERT-001', status: 'pending_external' },
+    ],
+  };
+
+  const probeNames = [
+    'collector-otlp-config',
+    'api-prometheus-metrics',
+    'rust-prometheus-metrics',
+    'trace-backend-search',
+    'log-backend-trace-correlation',
+    'dashboard-import',
+    'alert-rules-loaded',
+    'alert-delivery-status',
+    'telemetry-retention-policy',
+  ];
+
+  const updated = recordEvidence(
+    manifest,
+    {
+      observed_at: '2026-06-25T12:00:00Z',
+      threshold_pass: true,
+      evidence_items: ['OBS-OTEL-001', 'OBS-ALERT-001'],
+      probes: probeNames.map((name) => ({
+        name,
+        passed: true,
+        target: `https://observability.staging.example/${name}`,
+        status_code: 200,
+      })),
+    },
+    'artifacts/observabilityprobe.json',
+    'go run ./tools/observabilityprobe -probe-otel -probe-alerts',
+  );
+
+  assert.equal(updated.items[0].status, 'passed');
+  assert.equal(updated.items[1].status, 'passed');
+});
+
+test('recordEvidence rejects observability evidence from local telemetry surfaces', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'OBS-OTEL-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        evidence_items: ['OBS-OTEL-001'],
+        probes: [
+          { name: 'collector-otlp-config', passed: true, target: 'https://observability.staging.example/collector', status_code: 200 },
+          { name: 'api-prometheus-metrics', passed: true, target: 'https://api.staging.example/metrics', status_code: 200 },
+          { name: 'rust-prometheus-metrics', passed: true, target: 'http://127.0.0.1:9102/metrics', status_code: 200 },
+          { name: 'trace-backend-search', passed: true, target: 'https://traces.staging.example/search', status_code: 200 },
+          { name: 'log-backend-trace-correlation', passed: true, target: 'https://logs.staging.example/search', status_code: 200 },
+        ],
+      },
+      'artifacts/observabilityprobe.json',
+      'go run ./tools/observabilityprobe -probe-otel',
+    ),
+    /rust-prometheus-metrics target must not be local\/self-test/,
+  );
+});
+
 test('recordEvidence rejects failed probe reports', () => {
   assert.throws(
     () => recordEvidence(
