@@ -150,6 +150,8 @@ func ciArtifactTextPasses(text string, cfg config) bool {
 		cfg.WorkflowName,
 		"github actions",
 		"security-audit",
+		"run_id:",
+		"run_url: https://github.com/",
 		"conclusion: success",
 		"status: completed",
 	}, requiredGateMarkers()...)

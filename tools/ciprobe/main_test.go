@@ -139,12 +139,34 @@ func TestCIProbeRejectsMissingGateMarker(t *testing.T) {
 	}
 }
 
+func TestCIProbeRejectsMissingRunURL(t *testing.T) {
+	artifact := strings.ReplaceAll(successfulRunArtifact(), "run_url: https://github.com/example/scriptureforgeai/actions/runs/1234567890\n", "")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(artifact))
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := run(config{
+		RunArtifactURL: server.URL,
+		CommitSHA:      testCommitSHA,
+		WorkflowName:   "Security Pipeline Verification",
+		Timeout:        time.Second,
+	}, &output)
+	if err == nil {
+		t.Fatalf("expected missing run URL to fail:\n%s", output.String())
+	}
+}
+
 func successfulRunArtifact() string {
 	return `
 GitHub Actions run summary
 workflow: Security Pipeline Verification
 job: security-audit
 commit: 0123456789abcdef0123456789abcdef01234567
+run_id: 1234567890
+run_url: https://github.com/example/scriptureforgeai/actions/runs/1234567890
 status: completed
 conclusion: success
 required gates:
