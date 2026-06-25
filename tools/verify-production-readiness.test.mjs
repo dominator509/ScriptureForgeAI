@@ -118,6 +118,32 @@ test('verifyProductionReadiness rejects manifest SHA drift', async () => {
   }
 });
 
+test('verifyProductionReadiness rejects local gate report SHA drift', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'scriptureforge-readiness-'));
+  try {
+    const manifestPath = join(dir, 'manifest.json');
+    const localGateReportPath = join(dir, 'local-gates.json');
+    await writeFile(manifestPath, JSON.stringify(strictManifest(sha)), 'utf8');
+    await writeFile(localGateReportPath, JSON.stringify(localGateReport({
+      gitHead: 'fedcba9876543210fedcba9876543210fedcba98',
+    })), 'utf8');
+    await assert.rejects(
+      () => verifyProductionReadiness({
+        manifestPath,
+        localGateReportPath,
+        cwd: dir,
+        git: fakeGit({
+          status: '## main...origin/main\n',
+          head: sha,
+        }),
+      }),
+      /local gate report git_head must equal current git HEAD SHA/,
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('verifyProductionReadiness rejects missing local gate report', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'scriptureforge-readiness-'));
   try {
@@ -176,9 +202,10 @@ function fakeGit({ status, head }) {
   };
 }
 
-function localGateReport({ dryRun = false } = {}) {
+function localGateReport({ dryRun = false, gitHead = sha } = {}) {
   return {
     schema_version: 1,
+    git_head: gitHead,
     observed_at: '2026-06-25T12:00:00Z',
     duration_ms: 100,
     threshold_pass: true,

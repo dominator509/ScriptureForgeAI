@@ -83,7 +83,7 @@ LOCAL_GATE_REPORT_FILE=artifacts/local-gate-report.json \
   rtk node tools/verify-production-readiness.mjs
 ```
 
-The verifier reruns strict manifest validation, validates the full non-dry-run local gate report, requires a clean git worktree, requires the branch to be neither ahead nor behind upstream, and requires `release_candidate` to equal the current `git rev-parse HEAD` SHA.
+The verifier reruns strict manifest validation, validates the full non-dry-run local gate report, requires a clean git worktree, requires the branch to be neither ahead nor behind upstream, requires `release_candidate` to equal the current `git rev-parse HEAD` SHA, and requires the local gate report `git_head` to match that same SHA.
 
 The CI workflow is also guarded against gate drift:
 
@@ -99,7 +99,7 @@ For repeatable local gate evidence, run the local gate runner:
 rtk node tools/run-local-gates.mjs --report artifacts/local-gate-report.json
 ```
 
-The runner executes the repo-local Go, web audit/smoke/typecheck/build, mobile high-severity audit/smoke/build-compatible, Rust, Terraform, observability, deployment skeleton, staging evidence, CI workflow, security artifact, secret hygiene, journal crypto, and tooling test gates and writes a JSON report. Use `--only go-test,go-vet` for a focused subset, `--dry-run` to print a pass-shaped plan without executing commands, and `--continue-on-failure` when you want one report containing every failure instead of stopping at the first failed gate.
+The runner executes the repo-local Go, web audit/smoke/typecheck/build, mobile high-severity audit/smoke/build-compatible, Rust, Terraform, observability, deployment skeleton, staging evidence, CI workflow, security artifact, secret hygiene, journal crypto, and tooling test gates and writes a JSON report stamped with the current `git_head`. Use `--only go-test,go-vet` for a focused subset, `--dry-run` to print a pass-shaped plan without executing commands, and `--continue-on-failure` when you want one report containing every failure instead of stopping at the first failed gate.
 
 Validate a full non-dry-run report before treating it as local readiness evidence:
 

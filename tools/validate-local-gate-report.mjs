@@ -6,6 +6,7 @@ const requiredGateIds = new Set(gateDefinitions.map((gate) => gate.id));
 
 export function validateLocalGateReport(report, { allowDryRun = false, requireAllGates = true } = {}) {
   assert.equal(report.schema_version, 1, 'local gate report schema_version must be 1');
+  assert.match(report.git_head, /^[a-fA-F0-9]{40}$/, 'git_head must be a full 40-character commit SHA');
   assert.match(report.observed_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, 'observed_at must be ISO UTC without milliseconds');
   assert.equal(typeof report.threshold_pass, 'boolean', 'threshold_pass is required');
   assert.equal(typeof report.dry_run, 'boolean', 'dry_run is required');
@@ -44,6 +45,7 @@ export function validateLocalGateReport(report, { allowDryRun = false, requireAl
   return {
     gateCount: report.results.length,
     dryRun: report.dry_run,
+    gitHead: report.git_head,
   };
 }
 

@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 
@@ -102,6 +102,7 @@ export async function runGatePlan(plan, { dryRun = false, continueOnFailure = fa
   const failed = results.filter((result) => result.exit_code !== 0);
   return {
     schema_version: 1,
+    git_head: readGitHead(),
     observed_at: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
     duration_ms: Date.now() - startedAt.getTime(),
     threshold_pass: failed.length === 0 && results.length === plan.length,
@@ -111,6 +112,10 @@ export async function runGatePlan(plan, { dryRun = false, continueOnFailure = fa
     gates_failed: failed.length,
     results,
   };
+}
+
+function readGitHead() {
+  return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
 }
 
 export async function writeReport(path, report) {

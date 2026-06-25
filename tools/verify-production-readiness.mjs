@@ -41,6 +41,7 @@ export async function verifyProductionReadiness({ manifestPath, localGateReportP
   assert.equal(gitState.ahead, 0, `git branch must not be ahead of upstream before production readiness claim: ahead ${gitState.ahead}`);
   assert.equal(gitState.behind, 0, `git branch must not be behind upstream before production readiness claim: behind ${gitState.behind}`);
   assert.equal(manifest.release_candidate, gitState.headSHA, 'manifest release_candidate must equal current git HEAD SHA');
+  assert.equal(localGateResult.gitHead, gitState.headSHA, 'local gate report git_head must equal current git HEAD SHA');
 
   return {
     releaseCandidate: manifest.release_candidate,

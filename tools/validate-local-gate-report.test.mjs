@@ -15,6 +15,7 @@ test('validateLocalGateReport accepts a complete passing report', () => {
   const result = validateLocalGateReport(report);
   assert.equal(result.gateCount, gateDefinitions.length);
   assert.equal(result.dryRun, false);
+  assert.equal(result.gitHead, '0123456789abcdef0123456789abcdef01234567');
 });
 
 test('validateLocalGateReport rejects dry-run reports unless allowed', () => {
@@ -32,6 +33,12 @@ test('validateLocalGateReport rejects failed or incomplete reports', () => {
     () => validateLocalGateReport(partialReport()),
     /gates_total must match results length/,
   );
+});
+
+test('validateLocalGateReport rejects missing git head', () => {
+  const report = completeReport();
+  delete report.git_head;
+  assert.throws(() => validateLocalGateReport(report), /git_head/);
 });
 
 test('validateLocalGateReport can validate focused subset reports', () => {
@@ -54,6 +61,7 @@ function completeReport({ dryRun = false, failedGateID = '' } = {}) {
   const failed = results.filter((result) => result.exit_code !== 0).length;
   return {
     schema_version: 1,
+    git_head: '0123456789abcdef0123456789abcdef01234567',
     observed_at: '2026-06-25T12:00:00Z',
     duration_ms: 100,
     threshold_pass: failed === 0,
@@ -69,6 +77,7 @@ function partialReport({ consistentTotals = false } = {}) {
   const results = completeReport().results.slice(0, 2);
   return {
     schema_version: 1,
+    git_head: '0123456789abcdef0123456789abcdef01234567',
     observed_at: '2026-06-25T12:00:00Z',
     duration_ms: 100,
     threshold_pass: true,
