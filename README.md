@@ -425,6 +425,8 @@ rtk go run ./tools/loadtest \
   -ws-room-id=room-id \
   -ws-token="$ACCESS_TOKEN" \
   -ws-origin=https://app.example.com \
+  -ws-replica-artifact-url=https://artifacts.staging.example/load/ws-replicas.txt \
+  -redis-telemetry-artifact-url=https://artifacts.staging.example/load/redis-telemetry.txt \
   -concurrency=128 \
   -ws-events-per-client=20 \
   -min-rps=500 \
@@ -433,4 +435,4 @@ rtk go run ./tools/loadtest \
 
 The staging WebSocket command uses the same JSON report shape as HTTP load tests and verifies accepted event broadcasts over real upgrade/origin/auth behavior. A production readiness claim still needs the run output captured against real API replicas and Redis.
 
-External WebSocket load reports include `PERF-WS-001` and `DATA-REDIS-001` in `evidence_items`, so passing staging reports can be attached to the evidence manifest with the same recorder. Local `-self-test` and `-websocket-self-test` reports intentionally omit `evidence_items` so they cannot be mistaken for staging proof. The recorder also requires `PERF-WS-001` reports to target WSS, avoid local/self-test targets, set `min_rps` to at least `500`, set `max_p99_ms` to at most `200`, and include observed results meeting those thresholds; `DATA-REDIS-001` cannot be recorded from load evidence unless paired with `PERF-WS-001`.
+External WebSocket load reports include `PERF-WS-001` and `DATA-REDIS-001` in `evidence_items`, so passing staging reports can be attached to the evidence manifest with the same recorder. Local `-self-test` and `-websocket-self-test` reports intentionally omit `evidence_items` so they cannot be mistaken for staging proof. The recorder also requires `PERF-WS-001` reports to target WSS, avoid local/self-test targets, set `min_rps` to at least `500`, set `max_p99_ms` to at most `200`, include observed results meeting those thresholds, and include an HTTPS non-local artifact proving API replica distribution. `DATA-REDIS-001` cannot be recorded from load evidence unless paired with `PERF-WS-001` and an HTTPS non-local Redis telemetry artifact from the same run.

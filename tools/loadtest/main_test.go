@@ -116,17 +116,19 @@ func TestWebSocketExternalRunUsesBearerAndOrigin(t *testing.T) {
 
 	var output bytes.Buffer
 	err := run(config{
-		WebSocket:         true,
-		Target:            "ws" + strings.TrimPrefix(server.URL, "http") + "/api/v1/rooms/stream/staging-room",
-		Duration:          time.Second,
-		Concurrency:       2,
-		Timeout:           time.Second,
-		WSEventsPerClient: 2,
-		WSRoomID:          "staging-room",
-		WSToken:           "staging-token",
-		WSOrigin:          "https://app.staging.example",
-		MinRPS:            1,
-		MaxP99:            time.Second,
+		WebSocket:                 true,
+		Target:                    "ws" + strings.TrimPrefix(server.URL, "http") + "/api/v1/rooms/stream/staging-room",
+		Duration:                  time.Second,
+		Concurrency:               2,
+		Timeout:                   time.Second,
+		WSEventsPerClient:         2,
+		WSRoomID:                  "staging-room",
+		WSToken:                   "staging-token",
+		WSOrigin:                  "https://app.staging.example",
+		WSReplicaArtifactURL:      "https://artifacts.staging.example/load/ws-replicas.txt",
+		RedisTelemetryArtifactURL: "https://artifacts.staging.example/load/redis-telemetry.txt",
+		MinRPS:                    1,
+		MaxP99:                    time.Second,
 	}, &output)
 	if err != nil {
 		t.Fatalf("external websocket run failed: %v\n%s", err, output.String())
@@ -139,6 +141,28 @@ func TestWebSocketExternalRunUsesBearerAndOrigin(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), `"PERF-WS-001"`) || !strings.Contains(output.String(), `"DATA-REDIS-001"`) {
 		t.Fatalf("external websocket report did not include staging evidence IDs:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), `"ws_replica_artifact_url"`) || !strings.Contains(output.String(), `"redis_telemetry_artifact_url"`) {
+		t.Fatalf("external websocket report did not include staging artifact URLs:\n%s", output.String())
+	}
+}
+
+func TestWebSocketExternalRunRequiresStagingArtifacts(t *testing.T) {
+	var output bytes.Buffer
+	err := run(config{
+		WebSocket:         true,
+		Target:            "wss://api.staging.example/api/v1/rooms/stream/staging-room",
+		Duration:          time.Second,
+		Concurrency:       1,
+		Timeout:           time.Second,
+		WSEventsPerClient: 1,
+		WSRoomID:          "staging-room",
+		WSOrigin:          "https://app.staging.example",
+		MinRPS:            1,
+		MaxP99:            time.Second,
+	}, &output)
+	if err == nil || !strings.Contains(err.Error(), "ws-replica-artifact-url") {
+		t.Fatalf("expected missing replica artifact URL error, got %v", err)
 	}
 }
 

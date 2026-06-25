@@ -185,6 +185,8 @@ test('recordEvidence records production-grade WebSocket performance and Redis ev
       max_p99_ms: 200,
       rps: 620,
       p99_ms: 140,
+      ws_replica_artifact_url: 'https://artifacts.staging.example/load/ws-replicas.txt',
+      redis_telemetry_artifact_url: 'https://artifacts.staging.example/load/redis-telemetry.txt',
     },
     'artifacts/load-ws.json',
     'go run ./tools/loadtest -websocket -target=wss://api.staging.example/api/v1/rooms/stream/room-1',
@@ -192,6 +194,32 @@ test('recordEvidence records production-grade WebSocket performance and Redis ev
 
   assert.equal(updated.items[0].status, 'passed');
   assert.equal(updated.items[1].status, 'passed');
+});
+
+test('recordEvidence rejects WebSocket and Redis performance evidence without staging artifacts', () => {
+  assert.throws(
+    () => recordEvidence(
+      {
+        items: [
+          { id: 'PERF-WS-001', status: 'pending_external' },
+          { id: 'DATA-REDIS-001', status: 'pending_external' },
+        ],
+      },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        evidence_items: ['PERF-WS-001', 'DATA-REDIS-001'],
+        target: 'wss://api.staging.example/api/v1/rooms/stream/room-1',
+        min_rps: 500,
+        max_p99_ms: 200,
+        rps: 620,
+        p99_ms: 140,
+      },
+      'artifacts/load-ws.json',
+      'go run ./tools/loadtest -websocket',
+    ),
+    /must include HTTPS ws_replica_artifact_url/,
+  );
 });
 
 test('recordEvidence records production-grade abuse evidence', () => {

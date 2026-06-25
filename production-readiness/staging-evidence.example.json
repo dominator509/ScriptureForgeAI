@@ -111,9 +111,9 @@
       "status": "pending_external",
       "description": "Redis-backed room sequencing is contiguous under deployed multi-client concurrency.",
       "required_evidence": [
-        "External WebSocket load report",
-        "Redis sequence ordering assertion output",
-        "No duplicate or skipped sequence proof"
+        "External WebSocket load report with DATA-REDIS-001 evidence item",
+        "HTTPS Redis telemetry artifact from the same run",
+        "Redis sequence ordering assertion output with no duplicate or skipped sequence proof"
       ]
     },
     {
@@ -229,8 +229,8 @@
       "description": "Staging WebSocket load test proves multi-instance fan-out and Redis sequencing with real API replicas.",
       "required_evidence": [
         "tools/loadtest -websocket JSON report with PERF-WS-001 and DATA-REDIS-001 evidence items",
-        "API replica distribution proof",
-        "Redis telemetry during the run"
+        "HTTPS API replica distribution artifact from the same run",
+        "HTTPS Redis telemetry artifact from the same run"
       ]
     },
     {

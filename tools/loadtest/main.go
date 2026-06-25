@@ -23,38 +23,42 @@ import (
 )
 
 type config struct {
-	Target            string
-	Method            string
-	Duration          time.Duration
-	Concurrency       int
-	Timeout           time.Duration
-	ExpectStatus      int
-	MinRPS            float64
-	MaxP99            time.Duration
-	SelfTest          bool
-	WebSocket         bool
-	WebSocketSelfTest bool
-	WSEventsPerClient int
-	WSRoomID          string
-	WSToken           string
-	WSOrigin          string
+	Target                    string
+	Method                    string
+	Duration                  time.Duration
+	Concurrency               int
+	Timeout                   time.Duration
+	ExpectStatus              int
+	MinRPS                    float64
+	MaxP99                    time.Duration
+	SelfTest                  bool
+	WebSocket                 bool
+	WebSocketSelfTest         bool
+	WSEventsPerClient         int
+	WSRoomID                  string
+	WSToken                   string
+	WSOrigin                  string
+	WSReplicaArtifactURL      string
+	RedisTelemetryArtifactURL string
 }
 
 type report struct {
-	Target        string   `json:"target"`
-	Method        string   `json:"method"`
-	DurationMS    int64    `json:"duration_ms"`
-	Concurrency   int      `json:"concurrency"`
-	Requests      int      `json:"requests"`
-	Failures      int      `json:"failures"`
-	RPS           float64  `json:"rps"`
-	P50MS         int64    `json:"p50_ms"`
-	P95MS         int64    `json:"p95_ms"`
-	P99MS         int64    `json:"p99_ms"`
-	MinRPS        float64  `json:"min_rps,omitempty"`
-	MaxP99MS      int64    `json:"max_p99_ms,omitempty"`
-	ThresholdPass bool     `json:"threshold_pass"`
-	EvidenceItems []string `json:"evidence_items,omitempty"`
+	Target                    string   `json:"target"`
+	Method                    string   `json:"method"`
+	DurationMS                int64    `json:"duration_ms"`
+	Concurrency               int      `json:"concurrency"`
+	Requests                  int      `json:"requests"`
+	Failures                  int      `json:"failures"`
+	RPS                       float64  `json:"rps"`
+	P50MS                     int64    `json:"p50_ms"`
+	P95MS                     int64    `json:"p95_ms"`
+	P99MS                     int64    `json:"p99_ms"`
+	MinRPS                    float64  `json:"min_rps,omitempty"`
+	MaxP99MS                  int64    `json:"max_p99_ms,omitempty"`
+	WSReplicaArtifactURL      string   `json:"ws_replica_artifact_url,omitempty"`
+	RedisTelemetryArtifactURL string   `json:"redis_telemetry_artifact_url,omitempty"`
+	ThresholdPass             bool     `json:"threshold_pass"`
+	EvidenceItems             []string `json:"evidence_items,omitempty"`
 }
 
 func main() {
@@ -82,6 +86,8 @@ func parseFlags() config {
 	flag.StringVar(&cfg.WSRoomID, "ws-room-id", "", "room id embedded in WebSocket room event envelopes; defaults to the final path segment of -target")
 	flag.StringVar(&cfg.WSToken, "ws-token", "", "optional bearer token for WebSocket Authorization header")
 	flag.StringVar(&cfg.WSOrigin, "ws-origin", "http://localhost", "Origin header for WebSocket upgrades")
+	flag.StringVar(&cfg.WSReplicaArtifactURL, "ws-replica-artifact-url", os.Getenv("STAGING_WS_REPLICA_ARTIFACT_URL"), "HTTPS artifact proving WebSocket load reached multiple API replicas")
+	flag.StringVar(&cfg.RedisTelemetryArtifactURL, "redis-telemetry-artifact-url", os.Getenv("STAGING_REDIS_TELEMETRY_ARTIFACT_URL"), "HTTPS artifact proving Redis telemetry during the WebSocket load run")
 	flag.Parse()
 	return cfg
 }
@@ -270,6 +276,16 @@ func runWebSocketLoad(cfg config, output io.Writer) error {
 	if cfg.WSRoomID == "" {
 		return errors.New("ws-room-id is required when it cannot be inferred from target")
 	}
+	replicaArtifact, err := normalizeHTTPSArtifactURL(cfg.WSReplicaArtifactURL, "ws-replica-artifact-url")
+	if err != nil {
+		return err
+	}
+	redisArtifact, err := normalizeHTTPSArtifactURL(cfg.RedisTelemetryArtifactURL, "redis-telemetry-artifact-url")
+	if err != nil {
+		return err
+	}
+	cfg.WSReplicaArtifactURL = replicaArtifact
+	cfg.RedisTelemetryArtifactURL = redisArtifact
 	cfg.Method = "WEBSOCKET"
 
 	start := time.Now()
@@ -402,20 +418,22 @@ func buildReport(cfg config, elapsed time.Duration, latencies []time.Duration, f
 		rps = float64(requests) / elapsed.Seconds()
 	}
 	result := report{
-		Target:        cfg.Target,
-		Method:        cfg.Method,
-		DurationMS:    elapsed.Milliseconds(),
-		Concurrency:   cfg.Concurrency,
-		Requests:      requests,
-		Failures:      failures,
-		RPS:           rps,
-		P50MS:         percentile(latencies, 0.50).Milliseconds(),
-		P95MS:         percentile(latencies, 0.95).Milliseconds(),
-		P99MS:         percentile(latencies, 0.99).Milliseconds(),
-		MinRPS:        cfg.MinRPS,
-		MaxP99MS:      cfg.MaxP99.Milliseconds(),
-		ThresholdPass: failures == 0 && requests > 0,
-		EvidenceItems: evidenceItemsFor(cfg),
+		Target:                    cfg.Target,
+		Method:                    cfg.Method,
+		DurationMS:                elapsed.Milliseconds(),
+		Concurrency:               cfg.Concurrency,
+		Requests:                  requests,
+		Failures:                  failures,
+		RPS:                       rps,
+		P50MS:                     percentile(latencies, 0.50).Milliseconds(),
+		P95MS:                     percentile(latencies, 0.95).Milliseconds(),
+		P99MS:                     percentile(latencies, 0.99).Milliseconds(),
+		MinRPS:                    cfg.MinRPS,
+		MaxP99MS:                  cfg.MaxP99.Milliseconds(),
+		WSReplicaArtifactURL:      cfg.WSReplicaArtifactURL,
+		RedisTelemetryArtifactURL: cfg.RedisTelemetryArtifactURL,
+		ThresholdPass:             failures == 0 && requests > 0,
+		EvidenceItems:             evidenceItemsFor(cfg),
 	}
 	if cfg.MinRPS > 0 && result.RPS < cfg.MinRPS {
 		result.ThresholdPass = false
@@ -448,4 +466,19 @@ func percentile(sorted []time.Duration, ratio float64) time.Duration {
 	}
 	index := int(float64(len(sorted)-1) * ratio)
 	return sorted[index]
+}
+
+func normalizeHTTPSArtifactURL(raw, flagName string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", err
+	}
+	if parsed.Scheme != "https" {
+		return "", fmt.Errorf("-%s or matching STAGING_* env var must use https", flagName)
+	}
+	if parsed.Host == "" {
+		return "", fmt.Errorf("-%s or matching STAGING_* env var must include a host", flagName)
+	}
+	parsed.Fragment = ""
+	return parsed.String(), nil
 }

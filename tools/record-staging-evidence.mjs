@@ -106,6 +106,16 @@ function validatePerformanceEvidence(report) {
   if (evidenceItems.includes('DATA-REDIS-001')) {
     assert.ok(evidenceItems.includes('PERF-WS-001'), 'DATA-REDIS-001 load evidence must be paired with PERF-WS-001');
   }
+  if (evidenceItems.includes('PERF-WS-001')) {
+    const replicaArtifactURL = String(report.ws_replica_artifact_url ?? '');
+    assert.match(replicaArtifactURL, /^https:\/\//, 'PERF-WS-001 report must include HTTPS ws_replica_artifact_url');
+    assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(replicaArtifactURL), `PERF-WS-001 ws_replica_artifact_url must not be local/self-test: ${replicaArtifactURL}`);
+  }
+  if (evidenceItems.includes('DATA-REDIS-001')) {
+    const redisTelemetryArtifactURL = String(report.redis_telemetry_artifact_url ?? '');
+    assert.match(redisTelemetryArtifactURL, /^https:\/\//, 'DATA-REDIS-001 report must include HTTPS redis_telemetry_artifact_url');
+    assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(redisTelemetryArtifactURL), `DATA-REDIS-001 redis_telemetry_artifact_url must not be local/self-test: ${redisTelemetryArtifactURL}`);
+  }
 }
 
 function validateAbuseEvidence(report) {
