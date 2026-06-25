@@ -145,6 +145,9 @@ jobs:
         npm run smoke
         npm run build:check
 
+    - name: Validate Rust Protobuf Tooling
+      run: node tools/verify-rust-protobuf.mjs
+
     - name: Test Rust Scripture Engine
       working-directory: services/scripture-engine
       run: cargo test

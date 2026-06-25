@@ -36,6 +36,7 @@ export const requiredMarkers = [
   { id: 'mobile-audit', text: 'npm audit --audit-level=high' },
   { id: 'mobile-smoke', text: 'npm run smoke' },
   { id: 'mobile-build-check', text: 'npm run build:check' },
+  { id: 'rust-protobuf-validation', text: 'node tools/verify-rust-protobuf.mjs' },
   { id: 'rust-cargo-test', text: 'cargo test' },
   { id: 'terraform-fmt', text: 'terraform fmt -check' },
   { id: 'terraform-validate', text: 'terraform validate' },

@@ -20,6 +20,7 @@ export const gateDefinitions = [
   { id: 'mobile-audit', command: [npmBin, 'audit', '--audit-level=high'], cwd: 'mobile' },
   { id: 'mobile-smoke', command: [npmBin, 'run', 'smoke'], cwd: 'mobile' },
   { id: 'mobile-build-check', command: [npmBin, 'run', 'build:check'], cwd: 'mobile' },
+  { id: 'rust-protobuf-validation', command: [nodeBin, 'tools/verify-rust-protobuf.mjs'] },
   { id: 'rust-cargo-test', command: [cargoBin, 'test', '--manifest-path', 'services/scripture-engine/Cargo.toml'], env: { CARGO_HOME: '.tools/cargo', RUSTUP_HOME: '.tools/rustup' } },
   { id: 'terraform-fmt', command: [terraformBin, '-chdir=build/terraform', 'fmt', '-check', '-recursive'] },
   { id: 'terraform-init-validate', command: [terraformBin, '-chdir=build/terraform', 'init', '-backend=false'] },
@@ -32,7 +33,7 @@ export const gateDefinitions = [
   { id: 'dependency-risk-validation', command: [nodeBin, 'tools/validate-dependency-risk.mjs'] },
   { id: 'secret-hygiene-validation', command: [nodeBin, 'tools/validate-secret-hygiene.mjs'] },
   { id: 'journal-crypto-validation', command: [nodeBin, 'tools/verify-journal-crypto.mjs'] },
-  { id: 'tooling-tests', command: [nodeBin, '--test', 'tools/run-local-gates.test.mjs', 'tools/validate-local-gate-report.test.mjs', 'tools/validate-ci-workflow.test.mjs', 'tools/validate-dependency-risk.test.mjs', 'tools/validate-staging-evidence.test.mjs', 'tools/verify-production-readiness.test.mjs', 'tools/record-staging-evidence.test.mjs', 'tools/bootstrap-staging-evidence.test.mjs', 'tools/report-staging-evidence-gaps.test.mjs', 'tools/write-ci-release-evidence.test.mjs'] },
+  { id: 'tooling-tests', command: [nodeBin, '--test', 'tools/run-local-gates.test.mjs', 'tools/validate-local-gate-report.test.mjs', 'tools/validate-ci-workflow.test.mjs', 'tools/validate-dependency-risk.test.mjs', 'tools/validate-staging-evidence.test.mjs', 'tools/verify-production-readiness.test.mjs', 'tools/record-staging-evidence.test.mjs', 'tools/bootstrap-staging-evidence.test.mjs', 'tools/report-staging-evidence-gaps.test.mjs', 'tools/write-ci-release-evidence.test.mjs', 'tools/verify-rust-protobuf.test.mjs'] },
 ];
 
 export function parseArgs(argv) {
