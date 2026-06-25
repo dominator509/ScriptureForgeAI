@@ -119,6 +119,54 @@ func TestLimiterScopesProtectedRequestsByTenantAndUser(t *testing.T) {
 	}
 }
 
+func TestLimiterIgnoresForwardedHeadersUnlessTrusted(t *testing.T) {
+	t.Setenv("TRUST_PROXY_HEADERS", "false")
+	limiter := testLimiter(ProfileAuth, 1, time.Minute)
+	handler := limiter.Middleware(ProfileAuth, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	first := authRequestFromProxy("198.51.100.10")
+	firstRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(firstRecorder, first)
+	if firstRecorder.Code != http.StatusNoContent {
+		t.Fatalf("first proxied request status = %d, want 204", firstRecorder.Code)
+	}
+
+	second := authRequestFromProxy("198.51.100.11")
+	secondRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(secondRecorder, second)
+	if secondRecorder.Code != http.StatusTooManyRequests {
+		t.Fatalf("second proxied request status = %d, want shared proxy 429", secondRecorder.Code)
+	}
+}
+
+func TestLimiterUsesForwardedClientIPWhenProxyHeadersAreTrusted(t *testing.T) {
+	t.Setenv("TRUST_PROXY_HEADERS", "true")
+	limiter := testLimiter(ProfileAuth, 1, time.Minute)
+	handler := limiter.Middleware(ProfileAuth, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	firstRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(firstRecorder, authRequestFromProxy("198.51.100.10"))
+	if firstRecorder.Code != http.StatusNoContent {
+		t.Fatalf("first forwarded client status = %d, want 204", firstRecorder.Code)
+	}
+
+	secondRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(secondRecorder, authRequestFromProxy("198.51.100.11"))
+	if secondRecorder.Code != http.StatusNoContent {
+		t.Fatalf("different forwarded client status = %d, want independent 204", secondRecorder.Code)
+	}
+
+	repeatRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(repeatRecorder, authRequestFromProxy("198.51.100.10"))
+	if repeatRecorder.Code != http.StatusTooManyRequests {
+		t.Fatalf("repeated forwarded client status = %d, want 429", repeatRecorder.Code)
+	}
+}
+
 func TestLimiterResetsAfterWindow(t *testing.T) {
 	limiter := NewLimiter(Policy{Profiles: map[string]Profile{
 		ProfileAI: {Name: ProfileAI, Limit: 1, Window: time.Minute},
@@ -147,6 +195,13 @@ func TestLimiterResetsAfterWindow(t *testing.T) {
 	if resetRecorder.Code != http.StatusNoContent {
 		t.Fatalf("post-window AI request status = %d, want 204", resetRecorder.Code)
 	}
+}
+
+func authRequestFromProxy(forwardedFor string) *http.Request {
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
+	request.RemoteAddr = "10.0.0.25:49152"
+	request.Header.Set("X-Forwarded-For", forwardedFor+", 10.0.0.25")
+	return request
 }
 
 func requestWithClaims(userID, orgID string) *http.Request {

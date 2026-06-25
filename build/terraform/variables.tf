@@ -277,6 +277,12 @@ variable "allowed_ws_origins" {
   type        = string
 }
 
+variable "trust_proxy_headers" {
+  description = "Whether the API should trust X-Forwarded-For/X-Real-IP from the managed ingress for abuse-rate-limit client identity."
+  type        = bool
+  default     = true
+}
+
 variable "service_version" {
   description = "Release or image version label attached to application telemetry."
   type        = string

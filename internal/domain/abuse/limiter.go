@@ -147,6 +147,12 @@ func identityForRequest(r *http.Request, profileName string) string {
 		return "tenant:" + claims.OrganizationID + ":user:" + claims.UserID + ":profile:" + profileName
 	}
 
+	if trustProxyHeaders() {
+		if clientIP := forwardedClientIP(r); clientIP != "" {
+			return "ip:" + clientIP + ":profile:" + profileName
+		}
+	}
+
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err == nil && host != "" {
 		return "ip:" + host + ":profile:" + profileName
@@ -155,6 +161,36 @@ func identityForRequest(r *http.Request, profileName string) string {
 		return "remote:" + r.RemoteAddr + ":profile:" + profileName
 	}
 	return "unknown:profile:" + profileName
+}
+
+func trustProxyHeaders() bool {
+	raw := strings.TrimSpace(strings.ToLower(os.Getenv("TRUST_PROXY_HEADERS")))
+	return raw == "true" || raw == "1" || raw == "yes"
+}
+
+func forwardedClientIP(r *http.Request) string {
+	forwardedFor := r.Header.Get("X-Forwarded-For")
+	for _, candidate := range strings.Split(forwardedFor, ",") {
+		if ip := normalizeClientIP(candidate); ip != "" {
+			return ip
+		}
+	}
+	return normalizeClientIP(r.Header.Get("X-Real-IP"))
+}
+
+func normalizeClientIP(raw string) string {
+	candidate := strings.TrimSpace(raw)
+	if candidate == "" {
+		return ""
+	}
+	if host, _, err := net.SplitHostPort(candidate); err == nil {
+		candidate = host
+	}
+	ip := net.ParseIP(candidate)
+	if ip == nil {
+		return ""
+	}
+	return ip.String()
 }
 
 func writeRateLimitHeaders(w http.ResponseWriter, profile Profile, remaining int, resetAt time.Time) {

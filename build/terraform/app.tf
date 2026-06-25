@@ -270,6 +270,11 @@ resource "kubernetes_deployment" "api" {
           }
 
           env {
+            name  = "TRUST_PROXY_HEADERS"
+            value = tostring(var.trust_proxy_headers)
+          }
+
+          env {
             name  = "OTEL_SERVICE_NAME"
             value = "scriptureforge-api"
           }

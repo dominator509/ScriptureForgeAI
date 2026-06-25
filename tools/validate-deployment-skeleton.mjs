@@ -49,6 +49,7 @@ requireIncludes(
     'variable "api_autoscaling"',
     'variable "rust_engine_autoscaling"',
     'variable "web_autoscaling"',
+    'variable "trust_proxy_headers"',
   ],
   'terraform variables',
 );
@@ -127,6 +128,8 @@ requireIncludes(
     'rediss://${aws_elasticache_replication_group.redis.primary_endpoint_address}:6379',
     'name  = "GRPC_ENGINE_ADDRESS"',
     'scriptureforge-rust-engine:50051',
+    'name  = "TRUST_PROXY_HEADERS"',
+    'value = tostring(var.trust_proxy_headers)',
     'name  = "OTEL_SERVICE_NAME"',
     'scriptureforge-rust-engine',
     'name  = "SERVICE_VERSION"',
