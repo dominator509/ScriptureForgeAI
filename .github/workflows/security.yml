@@ -1,7 +1,7 @@
 name: Security Pipeline Verification
 on:
   push:
-    branches: [ "main", "develop" ]
+    branches: [ "main", "develop", "codex/**" ]
   pull_request:
     branches: [ "main" ]
 

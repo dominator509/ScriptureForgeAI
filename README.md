@@ -111,6 +111,8 @@ Focused or dry-run reports can be checked during development with `--allow-subse
 
 For source-control and CI release evidence, publish the exact release branch/SHA, let GitHub Actions upload the `ci-release-evidence` artifact, then validate either the downloaded artifact file or a raw artifact URL:
 
+The security workflow runs on pushes to `main`, `develop`, and `codex/**`, plus pull requests into `main`, so remediation branches can produce CI evidence before a PR exists.
+
 ```powershell
 rtk go run ./tools/ciprobe `
   -run-artifact-file artifacts/ci-release-evidence.txt `

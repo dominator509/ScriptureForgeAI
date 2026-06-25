@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 
 export const requiredMarkers = [
   { id: 'go-setup', text: "go-version: '1.24.3'" },
+  { id: 'codex-branch-push', text: '"codex/**"' },
   { id: 'postgres-service', text: 'pgvector/pgvector:pg16' },
   { id: 'go-fuzz', text: 'go test -fuzz=FuzzSanitizeInput' },
   { id: 'go-test', text: 'go test ./...' },
