@@ -35,6 +35,8 @@ func TestRunEmitsAbuseEvidenceWhenAllProfilesRateLimit(t *testing.T) {
 		if count >= 2 {
 			w.Header().Set("Retry-After", "60")
 			w.Header().Set("X-RateLimit-Limit", "1")
+			w.Header().Set("X-RateLimit-Remaining", "0")
+			w.Header().Set("X-RateLimit-Reset", "1782403200")
 			w.WriteHeader(http.StatusTooManyRequests)
 			return
 		}
@@ -64,7 +66,7 @@ func TestRunEmitsAbuseEvidenceWhenAllProfilesRateLimit(t *testing.T) {
 		t.Fatalf("unexpected evidence items: %+v", result.EvidenceItems)
 	}
 	for _, probe := range result.Probes {
-		if probe.StatusCode != http.StatusTooManyRequests || probe.RetryAfter == "" || probe.RateLimit == "" {
+		if probe.StatusCode != http.StatusTooManyRequests || probe.RetryAfter == "" || probe.RateLimit == "" || probe.RateRemaining == "" || probe.RateReset == "" {
 			t.Fatalf("probe did not capture rate-limit headers: %+v", probe)
 		}
 	}

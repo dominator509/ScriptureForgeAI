@@ -43,6 +43,13 @@ type bucket struct {
 	windowEnd time.Time
 }
 
+type decision struct {
+	allowed    bool
+	retryAfter time.Duration
+	remaining  int
+	resetAt    time.Time
+}
+
 type rateLimitError struct {
 	Category string `json:"category"`
 	Message  string `json:"message"`
@@ -104,9 +111,10 @@ func (l *Limiter) Middleware(profileName string, next http.Handler) http.Handler
 			return
 		}
 
-		allowed, retryAfter := l.allow(profile, identityForRequest(r, profileName))
-		if !allowed {
-			writeRateLimitError(w, profile, retryAfter)
+		decision := l.allow(profile, identityForRequest(r, profileName))
+		writeRateLimitHeaders(w, profile, decision.remaining, decision.resetAt)
+		if !decision.allowed {
+			writeRateLimitError(w, profile, decision)
 			return
 		}
 
@@ -114,7 +122,7 @@ func (l *Limiter) Middleware(profileName string, next http.Handler) http.Handler
 	})
 }
 
-func (l *Limiter) allow(profile Profile, identity string) (bool, time.Duration) {
+func (l *Limiter) allow(profile Profile, identity string) decision {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -122,15 +130,16 @@ func (l *Limiter) allow(profile Profile, identity string) (bool, time.Duration) 
 	key := profile.Name + ":" + identity
 	current := l.buckets[key]
 	if current.windowEnd.IsZero() || !now.Before(current.windowEnd) {
-		l.buckets[key] = bucket{count: 1, windowEnd: now.Add(profile.Window)}
-		return true, 0
+		windowEnd := now.Add(profile.Window)
+		l.buckets[key] = bucket{count: 1, windowEnd: windowEnd}
+		return decision{allowed: true, remaining: profile.Limit - 1, resetAt: windowEnd}
 	}
 	if current.count >= profile.Limit {
-		return false, time.Until(current.windowEnd)
+		return decision{allowed: false, retryAfter: current.windowEnd.Sub(now), remaining: 0, resetAt: current.windowEnd}
 	}
 	current.count++
 	l.buckets[key] = current
-	return true, 0
+	return decision{allowed: true, remaining: profile.Limit - current.count, resetAt: current.windowEnd}
 }
 
 func identityForRequest(r *http.Request, profileName string) string {
@@ -148,13 +157,24 @@ func identityForRequest(r *http.Request, profileName string) string {
 	return "unknown:profile:" + profileName
 }
 
-func writeRateLimitError(w http.ResponseWriter, profile Profile, retryAfter time.Duration) {
-	if retryAfter < time.Second {
-		retryAfter = time.Second
+func writeRateLimitHeaders(w http.ResponseWriter, profile Profile, remaining int, resetAt time.Time) {
+	if remaining < 0 {
+		remaining = 0
+	}
+	w.Header().Set("X-RateLimit-Limit", strconv.Itoa(profile.Limit))
+	w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(remaining))
+	if !resetAt.IsZero() {
+		w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(resetAt.Unix(), 10))
+	}
+}
+
+func writeRateLimitError(w http.ResponseWriter, profile Profile, d decision) {
+	if d.retryAfter < time.Second {
+		d.retryAfter = time.Second
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Retry-After", strconv.Itoa(int(retryAfter.Round(time.Second).Seconds())))
-	w.Header().Set("X-RateLimit-Limit", strconv.Itoa(profile.Limit))
+	writeRateLimitHeaders(w, profile, 0, d.resetAt)
+	w.Header().Set("Retry-After", strconv.Itoa(int(d.retryAfter.Round(time.Second).Seconds())))
 	w.WriteHeader(http.StatusTooManyRequests)
 	_ = json.NewEncoder(w).Encode(rateLimitError{
 		Category: "ABUSE_RATE_LIMIT_FAULT",

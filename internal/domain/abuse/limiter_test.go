@@ -48,8 +48,42 @@ func TestLimiterRejectsExcessAuthRequestsByClientIP(t *testing.T) {
 	if recorder.Header().Get("Retry-After") == "" {
 		t.Fatal("rate-limited response did not include Retry-After")
 	}
+	if recorder.Header().Get("X-RateLimit-Limit") != "2" {
+		t.Fatalf("X-RateLimit-Limit = %q, want 2", recorder.Header().Get("X-RateLimit-Limit"))
+	}
+	if recorder.Header().Get("X-RateLimit-Remaining") != "0" {
+		t.Fatalf("X-RateLimit-Remaining = %q, want 0", recorder.Header().Get("X-RateLimit-Remaining"))
+	}
+	if recorder.Header().Get("X-RateLimit-Reset") == "" {
+		t.Fatal("rate-limited response did not include X-RateLimit-Reset")
+	}
 	if passed != 2 {
 		t.Fatalf("downstream handler ran %d times, want 2", passed)
+	}
+}
+
+func TestLimiterEmitsRateLimitHeadersForAllowedRequests(t *testing.T) {
+	limiter := testLimiter(ProfileRooms, 3, time.Minute)
+	handler := limiter.Middleware(ProfileRooms, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/rooms/active", nil)
+	request.RemoteAddr = "203.0.113.11:49152"
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("first room request status = %d, want 204", recorder.Code)
+	}
+	if recorder.Header().Get("X-RateLimit-Limit") != "3" {
+		t.Fatalf("X-RateLimit-Limit = %q, want 3", recorder.Header().Get("X-RateLimit-Limit"))
+	}
+	if recorder.Header().Get("X-RateLimit-Remaining") != "2" {
+		t.Fatalf("X-RateLimit-Remaining = %q, want 2", recorder.Header().Get("X-RateLimit-Remaining"))
+	}
+	if recorder.Header().Get("X-RateLimit-Reset") == "" {
+		t.Fatal("allowed response did not include X-RateLimit-Reset")
 	}
 }
 

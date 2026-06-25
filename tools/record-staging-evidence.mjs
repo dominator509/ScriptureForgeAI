@@ -108,6 +108,36 @@ function validatePerformanceEvidence(report) {
   }
 }
 
+function validateAbuseEvidence(report) {
+  const evidenceItems = report.evidence_items ?? [];
+  if (!evidenceItems.includes('ABUSE-LIMIT-001')) {
+    return;
+  }
+  const apiTarget = String(report.api_target ?? '');
+  assert.match(apiTarget, /^https:\/\//, 'ABUSE-LIMIT-001 report must use HTTPS api_target');
+  assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(apiTarget), `ABUSE-LIMIT-001 api_target must not be local/self-test: ${apiTarget}`);
+
+  const requiredProfiles = new Set([
+    'auth-rate-limit',
+    'ai-rate-limit',
+    'journal-rate-limit',
+    'rooms-rate-limit',
+    'websocket-rate-limit',
+  ]);
+  const probes = Array.isArray(report.probes) ? report.probes : [];
+  assert.equal(probes.length, requiredProfiles.size, 'ABUSE-LIMIT-001 report must include exactly the required abuse profiles');
+  for (const probe of probes) {
+    assert.ok(requiredProfiles.delete(probe.name), `ABUSE-LIMIT-001 report includes unexpected or duplicate probe ${probe.name}`);
+    assert.equal(probe.passed, true, `${probe.name} must pass`);
+    assert.equal(probe.status_code, 429, `${probe.name} must observe HTTP 429`);
+    assert.ok(String(probe.retry_after ?? '').trim(), `${probe.name} must include Retry-After`);
+    assert.ok(String(probe.rate_limit ?? '').trim(), `${probe.name} must include X-RateLimit-Limit`);
+    assert.ok(String(probe.rate_limit_remaining ?? '').trim(), `${probe.name} must include X-RateLimit-Remaining`);
+    assert.ok(String(probe.rate_limit_reset ?? '').trim(), `${probe.name} must include X-RateLimit-Reset`);
+  }
+  assert.equal(requiredProfiles.size, 0, `ABUSE-LIMIT-001 report missing profiles: ${[...requiredProfiles].join(', ')}`);
+}
+
 async function readJSON(path) {
   const content = await readFile(path, 'utf8');
   return JSON.parse(content.replace(/^\uFEFF/, ''));
@@ -119,6 +149,7 @@ function recordEvidence(manifest, report, artifact, command) {
   assert.ok(report.evidence_items.length > 0, 'probe report must include at least one evidence item');
   assert.match(report.observed_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, 'probe report observed_at must be ISO UTC without milliseconds');
   validatePerformanceEvidence(report);
+  validateAbuseEvidence(report);
 
   const itemsById = new Map(manifest.items.map((item) => [item.id, item]));
   for (const id of report.evidence_items) {

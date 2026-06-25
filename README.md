@@ -328,7 +328,7 @@ STAGING_DATABASE_URL="$DATABASE_URL" \
 
 Passing reports include `SEC-SECRETS-001`, `SEC-DBUSER-001`, or both in `evidence_items` so they can be attached with `tools/record-staging-evidence.mjs`. This proves the observed staging artifacts and database principal; it still needs clean CI secret scanning and owner review of cloud-side access roles.
 
-For deployed abuse/rate-limit evidence, run the abuse probe against staging with a valid bearer token. The probe repeats auth, AI, journal, rooms, and room-stream requests until each profile returns `429` with `Retry-After` and `X-RateLimit-Limit` headers:
+For deployed abuse/rate-limit evidence, run the abuse probe against staging with a valid bearer token. The probe repeats auth, AI, journal, rooms, and room-stream requests until each profile returns `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers:
 
 ```bash
 rtk go run ./tools/abuseprobe \
@@ -338,7 +338,7 @@ rtk go run ./tools/abuseprobe \
   -attempts=35
 ```
 
-Set staging `ABUSE_LIMIT_*_REQUESTS` values low enough for the run window, or raise `-attempts` above the deployed limits. A passing report includes `ABUSE-LIMIT-001` in `evidence_items`. The probe uses HTTPS only and does not weaken TLS validation for staging.
+Set staging `ABUSE_LIMIT_*_REQUESTS` values low enough for the run window, or raise `-attempts` above the deployed limits. A passing report includes `ABUSE-LIMIT-001` in `evidence_items`. The recorder rejects local, non-HTTPS, missing-profile, or missing-header abuse reports so weak artifacts cannot be recorded as production evidence. The probe uses HTTPS only and does not weaken TLS validation for staging.
 
 For deployed rollback and backup/restore evidence, run the resilience probe against captured staging artifacts and readiness/smoke endpoints. Rollback mode requires API readiness before rollback with `service_version` and `deployment_environment`, rollout undo/status output naming the reverted revision and `scriptureforge-api`, API readiness after rollback, and AI/Zoom degradation drill evidence showing `AI_ORCHESTRATION_ENGINE_FAULT` plus Zoom `offline://in-person` fallback:
 

@@ -39,6 +39,8 @@ type probeResult struct {
 	StatusCode    int    `json:"status_code,omitempty"`
 	RetryAfter    string `json:"retry_after,omitempty"`
 	RateLimit     string `json:"rate_limit,omitempty"`
+	RateRemaining string `json:"rate_limit_remaining,omitempty"`
+	RateReset     string `json:"rate_limit_reset,omitempty"`
 	ResultSummary string `json:"result_summary"`
 }
 
@@ -137,7 +139,7 @@ func runEndpointProbe(client *http.Client, apiBase string, cfg config, probe end
 	target := strings.TrimRight(apiBase, "/") + probe.Path
 	result := probeResult{Name: probe.Name, Target: target, Attempts: cfg.Attempts}
 	for attempt := 1; attempt <= cfg.Attempts; attempt++ {
-		status, retryAfter, rateLimit, err := sendProbeRequest(client, target, cfg, probe)
+		status, retryAfter, rateLimit, rateRemaining, rateReset, err := sendProbeRequest(client, target, cfg, probe)
 		if err != nil {
 			result.StatusCode = 0
 			result.ResultSummary = err.Error()
@@ -146,10 +148,12 @@ func runEndpointProbe(client *http.Client, apiBase string, cfg config, probe end
 		result.StatusCode = status
 		result.RetryAfter = retryAfter
 		result.RateLimit = rateLimit
+		result.RateRemaining = rateRemaining
+		result.RateReset = rateReset
 		if status == http.StatusTooManyRequests {
 			result.Attempts = attempt
-			result.Passed = retryAfter != "" && rateLimit != ""
-			result.ResultSummary = fmt.Sprintf("got 429 with Retry-After=%q X-RateLimit-Limit=%q after %d attempts", retryAfter, rateLimit, attempt)
+			result.Passed = retryAfter != "" && rateLimit != "" && rateRemaining != "" && rateReset != ""
+			result.ResultSummary = fmt.Sprintf("got 429 with Retry-After=%q X-RateLimit-Limit=%q X-RateLimit-Remaining=%q X-RateLimit-Reset=%q after %d attempts", retryAfter, rateLimit, rateRemaining, rateReset, attempt)
 			if !result.Passed {
 				result.ResultSummary = "got 429 without required rate-limit headers"
 			}
@@ -160,12 +164,12 @@ func runEndpointProbe(client *http.Client, apiBase string, cfg config, probe end
 	return result
 }
 
-func sendProbeRequest(client *http.Client, target string, cfg config, probe endpointProbe) (int, string, string, error) {
+func sendProbeRequest(client *http.Client, target string, cfg config, probe endpointProbe) (int, string, string, string, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, probe.Method, target, bytes.NewReader(probe.Body))
 	if err != nil {
-		return 0, "", "", err
+		return 0, "", "", "", "", err
 	}
 	req.Header.Set("User-Agent", "scriptureforge-abuseprobe/1.0")
 	if len(probe.Body) > 0 {
@@ -179,11 +183,16 @@ func sendProbeRequest(client *http.Client, target string, cfg config, probe endp
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return 0, "", "", err
+		return 0, "", "", "", "", err
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, resp.Body)
-	return resp.StatusCode, resp.Header.Get("Retry-After"), resp.Header.Get("X-RateLimit-Limit"), nil
+	return resp.StatusCode,
+		resp.Header.Get("Retry-After"),
+		resp.Header.Get("X-RateLimit-Limit"),
+		resp.Header.Get("X-RateLimit-Remaining"),
+		resp.Header.Get("X-RateLimit-Reset"),
+		nil
 }
 
 func normalizeBaseURL(raw string) (string, error) {
