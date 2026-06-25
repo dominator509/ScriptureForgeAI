@@ -40,6 +40,8 @@ type config struct {
 	WSOrigin                  string
 	WSReplicaArtifactURL      string
 	RedisTelemetryArtifactURL string
+	HTTPReplicaArtifactURL    string
+	DependencyTelemetryURL    string
 }
 
 type report struct {
@@ -57,6 +59,8 @@ type report struct {
 	MaxP99MS                  int64    `json:"max_p99_ms,omitempty"`
 	WSReplicaArtifactURL      string   `json:"ws_replica_artifact_url,omitempty"`
 	RedisTelemetryArtifactURL string   `json:"redis_telemetry_artifact_url,omitempty"`
+	HTTPReplicaArtifactURL    string   `json:"http_replica_artifact_url,omitempty"`
+	DependencyTelemetryURL    string   `json:"dependency_telemetry_artifact_url,omitempty"`
 	ThresholdPass             bool     `json:"threshold_pass"`
 	EvidenceItems             []string `json:"evidence_items,omitempty"`
 }
@@ -88,6 +92,8 @@ func parseFlags() config {
 	flag.StringVar(&cfg.WSOrigin, "ws-origin", "http://localhost", "Origin header for WebSocket upgrades")
 	flag.StringVar(&cfg.WSReplicaArtifactURL, "ws-replica-artifact-url", os.Getenv("STAGING_WS_REPLICA_ARTIFACT_URL"), "HTTPS artifact proving WebSocket load reached multiple API replicas")
 	flag.StringVar(&cfg.RedisTelemetryArtifactURL, "redis-telemetry-artifact-url", os.Getenv("STAGING_REDIS_TELEMETRY_ARTIFACT_URL"), "HTTPS artifact proving Redis telemetry during the WebSocket load run")
+	flag.StringVar(&cfg.HTTPReplicaArtifactURL, "http-replica-artifact-url", os.Getenv("STAGING_HTTP_REPLICA_ARTIFACT_URL"), "HTTPS artifact proving HTTP load reached expected ingress/API replicas")
+	flag.StringVar(&cfg.DependencyTelemetryURL, "dependency-telemetry-artifact-url", os.Getenv("STAGING_DEPENDENCY_TELEMETRY_ARTIFACT_URL"), "HTTPS artifact proving database and Redis telemetry during the HTTP load run")
 	flag.Parse()
 	return cfg
 }
@@ -124,6 +130,18 @@ func run(cfg config, output io.Writer) error {
 	}
 	if cfg.Target == "" {
 		return errors.New("target is required unless -self-test is set")
+	}
+	if !cfg.SelfTest {
+		replicaArtifact, err := normalizeHTTPSArtifactURL(cfg.HTTPReplicaArtifactURL, "http-replica-artifact-url")
+		if err != nil {
+			return err
+		}
+		dependencyTelemetryArtifact, err := normalizeHTTPSArtifactURL(cfg.DependencyTelemetryURL, "dependency-telemetry-artifact-url")
+		if err != nil {
+			return err
+		}
+		cfg.HTTPReplicaArtifactURL = replicaArtifact
+		cfg.DependencyTelemetryURL = dependencyTelemetryArtifact
 	}
 
 	start := time.Now()
@@ -432,6 +450,8 @@ func buildReport(cfg config, elapsed time.Duration, latencies []time.Duration, f
 		MaxP99MS:                  cfg.MaxP99.Milliseconds(),
 		WSReplicaArtifactURL:      cfg.WSReplicaArtifactURL,
 		RedisTelemetryArtifactURL: cfg.RedisTelemetryArtifactURL,
+		HTTPReplicaArtifactURL:    cfg.HTTPReplicaArtifactURL,
+		DependencyTelemetryURL:    cfg.DependencyTelemetryURL,
 		ThresholdPass:             failures == 0 && requests > 0,
 		EvidenceItems:             evidenceItemsFor(cfg),
 	}

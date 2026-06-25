@@ -401,10 +401,17 @@ rtk go run ./tools/loadtest -self-test -duration=2s -concurrency=8 -min-rps=100 
 For staging readiness, run the same harness against the deployed API health endpoint and raise thresholds to match the architecture target:
 
 ```bash
-rtk go run ./tools/loadtest -target=https://api.example.com/health -duration=5m -concurrency=512 -min-rps=5000 -max-p99=200ms
+rtk go run ./tools/loadtest \
+  -target=https://api.example.com/health \
+  -http-replica-artifact-url=https://artifacts.staging.example/load/http-replicas.txt \
+  -dependency-telemetry-artifact-url=https://artifacts.staging.example/load/dependency-telemetry.txt \
+  -duration=5m \
+  -concurrency=512 \
+  -min-rps=5000 \
+  -max-p99=200ms
 ```
 
-The command emits JSON with request count, failures, RPS, P50/P95/P99, and threshold status. A passing local self-test does not prove the production 5,000 req/s target; that requires a staging run against real ingress, API, network, and dependency infrastructure. The staging evidence recorder refuses `PERF-HTTP-001` unless the report targets HTTPS, is not local/self-test, sets `min_rps` to at least `5000`, sets `max_p99_ms` to at most `200`, and the observed `rps`/`p99_ms` meet those same thresholds.
+The command emits JSON with request count, failures, RPS, P50/P95/P99, threshold status, and same-run artifact URLs for ingress/API replica distribution plus database/Redis telemetry. A passing local self-test does not prove the production 5,000 req/s target; that requires a staging run against real ingress, API, network, and dependency infrastructure. The staging evidence recorder refuses `PERF-HTTP-001` unless the report targets HTTPS, is not local/self-test, sets `min_rps` to at least `5000`, sets `max_p99_ms` to at most `200`, the observed `rps`/`p99_ms` meet those same thresholds, and the report includes HTTPS non-local artifacts for replica distribution and dependency telemetry.
 
 External HTTP load reports include `PERF-HTTP-001` in `evidence_items`, so a passing staging report can be attached with `tools/record-staging-evidence.mjs`.
 

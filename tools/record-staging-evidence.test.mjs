@@ -158,12 +158,35 @@ test('recordEvidence records production-grade HTTP performance evidence', () => 
       max_p99_ms: 200,
       rps: 5200,
       p99_ms: 180,
+      http_replica_artifact_url: 'https://artifacts.staging.example/load/http-replicas.txt',
+      dependency_telemetry_artifact_url: 'https://artifacts.staging.example/load/dependency-telemetry.txt',
     },
     'artifacts/load-http.json',
     'go run ./tools/loadtest -target=https://api.staging.example/health -min-rps=5000 -max-p99=200ms',
   );
 
   assert.equal(updated.items[0].status, 'passed');
+});
+
+test('recordEvidence rejects HTTP performance evidence without staging telemetry artifacts', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'PERF-HTTP-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        evidence_items: ['PERF-HTTP-001'],
+        target: 'https://api.staging.example/health',
+        min_rps: 5000,
+        max_p99_ms: 200,
+        rps: 5200,
+        p99_ms: 180,
+      },
+      'artifacts/load-http.json',
+      'go run ./tools/loadtest',
+    ),
+    /must include HTTPS http_replica_artifact_url/,
+  );
 });
 
 test('recordEvidence records production-grade WebSocket performance and Redis evidence together', () => {

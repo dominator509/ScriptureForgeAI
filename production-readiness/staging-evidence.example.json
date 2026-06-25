@@ -218,8 +218,8 @@
       "description": "Staging HTTP load test proves or revises the architecture target of 5000 requests per second with P99 under 200ms.",
       "required_evidence": [
         "tools/loadtest JSON report with PERF-HTTP-001 evidence item",
-        "Ingress/API replica count",
-        "Database and Redis telemetry during the run"
+        "HTTPS ingress/API replica distribution artifact from the same run",
+        "HTTPS database and Redis telemetry artifact from the same run"
       ]
     },
     {

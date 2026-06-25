@@ -174,7 +174,32 @@ func TestExternalHTTPLoadReportIncludesPerformanceEvidenceID(t *testing.T) {
 
 	var output bytes.Buffer
 	err := run(config{
-		Target:       server.URL,
+		Target:                 server.URL,
+		Method:                 "GET",
+		Duration:               100 * time.Millisecond,
+		Concurrency:            2,
+		Timeout:                time.Second,
+		ExpectStatus:           200,
+		HTTPReplicaArtifactURL: "https://artifacts.staging.example/load/http-replicas.txt",
+		DependencyTelemetryURL: "https://artifacts.staging.example/load/dependency-telemetry.txt",
+		MinRPS:                 1,
+		MaxP99:                 time.Second,
+	}, &output)
+	if err != nil {
+		t.Fatalf("external HTTP run failed: %v\n%s", err, output.String())
+	}
+	if !strings.Contains(output.String(), `"PERF-HTTP-001"`) {
+		t.Fatalf("external HTTP report did not include performance evidence ID:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), `"http_replica_artifact_url"`) || !strings.Contains(output.String(), `"dependency_telemetry_artifact_url"`) {
+		t.Fatalf("external HTTP report did not include staging artifact URLs:\n%s", output.String())
+	}
+}
+
+func TestExternalHTTPLoadReportRequiresStagingArtifacts(t *testing.T) {
+	var output bytes.Buffer
+	err := run(config{
+		Target:       "https://api.staging.example/health",
 		Method:       "GET",
 		Duration:     100 * time.Millisecond,
 		Concurrency:  2,
@@ -183,11 +208,8 @@ func TestExternalHTTPLoadReportIncludesPerformanceEvidenceID(t *testing.T) {
 		MinRPS:       1,
 		MaxP99:       time.Second,
 	}, &output)
-	if err != nil {
-		t.Fatalf("external HTTP run failed: %v\n%s", err, output.String())
-	}
-	if !strings.Contains(output.String(), `"PERF-HTTP-001"`) {
-		t.Fatalf("external HTTP report did not include performance evidence ID:\n%s", output.String())
+	if err == nil || !strings.Contains(err.Error(), "http-replica-artifact-url") {
+		t.Fatalf("expected missing HTTP replica artifact URL error, got %v", err)
 	}
 }
 

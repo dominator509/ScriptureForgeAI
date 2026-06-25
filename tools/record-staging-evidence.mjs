@@ -106,6 +106,14 @@ function validatePerformanceEvidence(report) {
   if (evidenceItems.includes('DATA-REDIS-001')) {
     assert.ok(evidenceItems.includes('PERF-WS-001'), 'DATA-REDIS-001 load evidence must be paired with PERF-WS-001');
   }
+  if (evidenceItems.includes('PERF-HTTP-001')) {
+    const httpReplicaArtifactURL = String(report.http_replica_artifact_url ?? '');
+    assert.match(httpReplicaArtifactURL, /^https:\/\//, 'PERF-HTTP-001 report must include HTTPS http_replica_artifact_url');
+    assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(httpReplicaArtifactURL), `PERF-HTTP-001 http_replica_artifact_url must not be local/self-test: ${httpReplicaArtifactURL}`);
+    const dependencyTelemetryArtifactURL = String(report.dependency_telemetry_artifact_url ?? '');
+    assert.match(dependencyTelemetryArtifactURL, /^https:\/\//, 'PERF-HTTP-001 report must include HTTPS dependency_telemetry_artifact_url');
+    assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(dependencyTelemetryArtifactURL), `PERF-HTTP-001 dependency_telemetry_artifact_url must not be local/self-test: ${dependencyTelemetryArtifactURL}`);
+  }
   if (evidenceItems.includes('PERF-WS-001')) {
     const replicaArtifactURL = String(report.ws_replica_artifact_url ?? '');
     assert.match(replicaArtifactURL, /^https:\/\//, 'PERF-WS-001 report must include HTTPS ws_replica_artifact_url');
