@@ -467,6 +467,44 @@ function validateSecurityEvidence(report) {
   }
 }
 
+function validateResilienceEvidence(report) {
+  const evidenceItems = report.evidence_items ?? [];
+  const requiredProbes = new Set();
+  if (evidenceItems.includes('DR-ROLLBACK-001')) {
+    for (const name of [
+      'api-ready-before-rollback',
+      'rollback-rollout-artifact',
+      'api-ready-after-rollback',
+      'degradation-drill-artifact',
+    ]) {
+      requiredProbes.add(name);
+    }
+  }
+  if (evidenceItems.includes('DR-BACKUP-001')) {
+    for (const name of [
+      'backup-snapshot-artifact',
+      'restore-drill-artifact',
+      'restored-database-smoke',
+    ]) {
+      requiredProbes.add(name);
+    }
+  }
+  if (requiredProbes.size === 0) {
+    return;
+  }
+  const probes = Array.isArray(report.probes) ? report.probes : [];
+  assert.equal(probes.length, requiredProbes.size, 'resilience report must include exactly the required probes for requested evidence items');
+  for (const probe of probes) {
+    assert.ok(requiredProbes.delete(probe.name), `resilience report includes unexpected or duplicate probe ${probe.name}`);
+    assert.equal(probe.passed, true, `${probe.name} must pass`);
+    assert.equal(probe.status_code, 200, `${probe.name} must return HTTP 200`);
+    const target = String(probe.target ?? '');
+    assert.match(target, /^https:\/\//, `${probe.name} target must be an HTTPS staging URL or artifact URL`);
+    assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(target), `${probe.name} target must not be local/self-test: ${target}`);
+  }
+  assert.equal(requiredProbes.size, 0, `resilience report missing probes: ${[...requiredProbes].join(', ')}`);
+}
+
 function validateAbuseEvidence(report) {
   const evidenceItems = report.evidence_items ?? [];
   if (!evidenceItems.includes('ABUSE-LIMIT-001')) {
@@ -522,6 +560,7 @@ function recordEvidence(manifest, report, artifact, command) {
   validateAIEvidence(report);
   validateObservabilityEvidence(report);
   validateSecurityEvidence(report);
+  validateResilienceEvidence(report);
   validatePerformanceEvidence(report);
   validateAbuseEvidence(report);
 

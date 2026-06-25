@@ -728,6 +728,67 @@ test('recordEvidence rejects database user evidence without non-admin role proof
   );
 });
 
+test('recordEvidence records production-grade resilience evidence', () => {
+  const manifest = {
+    items: [
+      { id: 'DR-ROLLBACK-001', status: 'pending_external' },
+      { id: 'DR-BACKUP-001', status: 'pending_external' },
+    ],
+  };
+
+  const probeNames = [
+    'api-ready-before-rollback',
+    'rollback-rollout-artifact',
+    'api-ready-after-rollback',
+    'degradation-drill-artifact',
+    'backup-snapshot-artifact',
+    'restore-drill-artifact',
+    'restored-database-smoke',
+  ];
+
+  const updated = recordEvidence(
+    manifest,
+    {
+      observed_at: '2026-06-25T12:00:00Z',
+      threshold_pass: true,
+      evidence_items: ['DR-ROLLBACK-001', 'DR-BACKUP-001'],
+      probes: probeNames.map((name) => ({
+        name,
+        passed: true,
+        target: `https://artifacts.staging.example/resilience/${name}.txt`,
+        status_code: 200,
+      })),
+    },
+    'artifacts/resilienceprobe.json',
+    'go run ./tools/resilienceprobe -probe-rollback -probe-backup',
+  );
+
+  assert.equal(updated.items[0].status, 'passed');
+  assert.equal(updated.items[1].status, 'passed');
+});
+
+test('recordEvidence rejects resilience evidence from local readiness targets', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DR-ROLLBACK-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        evidence_items: ['DR-ROLLBACK-001'],
+        probes: [
+          { name: 'api-ready-before-rollback', passed: true, target: 'https://artifacts.staging.example/rollback/ready-before.json', status_code: 200 },
+          { name: 'rollback-rollout-artifact', passed: true, target: 'https://artifacts.staging.example/rollback/rollout.txt', status_code: 200 },
+          { name: 'api-ready-after-rollback', passed: true, target: 'http://127.0.0.1:8080/ready', status_code: 200 },
+          { name: 'degradation-drill-artifact', passed: true, target: 'https://artifacts.staging.example/rollback/degradation.txt', status_code: 200 },
+        ],
+      },
+      'artifacts/resilienceprobe.json',
+      'go run ./tools/resilienceprobe -probe-rollback',
+    ),
+    /api-ready-after-rollback target must be an HTTPS staging URL or artifact URL/,
+  );
+});
+
 test('recordEvidence rejects failed probe reports', () => {
   assert.throws(
     () => recordEvidence(

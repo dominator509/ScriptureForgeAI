@@ -375,6 +375,7 @@ rtk go run ./tools/resilienceprobe \
 ```
 
 Passing reports include `DR-ROLLBACK-001`, `DR-BACKUP-001`, or both in `evidence_items` so they can be attached with `tools/record-staging-evidence.mjs`. This validates captured drill evidence; it does not perform the destructive rollback or restore action by itself.
+The recorder rejects resilience reports unless the requested rollback and backup evidence items include exactly their required passing probes with HTTP 200 responses from HTTPS non-local staging endpoints or artifact URLs.
 
 For deployed observability evidence, run the observability probe against staging telemetry surfaces. The OTEL mode requires collector config proof with OTLP receiver/exporter/service pipelines, API and Rust metrics, a trace backend query showing the same trace across Go API and Rust engine services, and a log backend query preserving the same `trace_id`, `SERVICE_VERSION`, and `DEPLOYMENT_ENVIRONMENT`:
 
