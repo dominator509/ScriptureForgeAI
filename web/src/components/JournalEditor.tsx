@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { deriveIsolationKey, encryptJournalData, decryptJournalData, EncryptedPayload } from '../lib/crypto';
-import { apiRequest } from '../lib/api';
+import { EncryptedJournalEntry, listJournalEntries, saveJournalEntry } from '../lib/api';
 import { useAppStore } from '../lib/store';
 
 // A fully functional component demonstrating Zero-Knowledge containment integrations
@@ -9,7 +9,7 @@ export const JournalEditor: React.FC = () => {
   const [plaintext, setPlaintext] = useState<string>('');
   const [passphrase, setPassphrase] = useState<string>('');
   const [encryptedData, setEncryptedData] = useState<EncryptedPayload | null>(null);
-  const [entries, setEntries] = useState<Array<EncryptedPayload & { id: string; salt_id: string; salt_version: number }>>([]);
+  const [entries, setEntries] = useState<EncryptedJournalEntry[]>([]);
   const [cryptoKey, setCryptoKey] = useState<CryptoKey | null>(null);
   const [status, setStatus] = useState<string>('');
 
@@ -38,7 +38,7 @@ export const JournalEditor: React.FC = () => {
 
   useEffect(() => {
     if (!token) return;
-    apiRequest<Array<EncryptedPayload & { id: string; salt_id: string; salt_version: number }>>('/api/v1/journal_entries', token)
+    listJournalEntries(token)
       .then(setEntries)
       .catch(() => setEntries([]));
   }, [token]);
@@ -60,14 +60,7 @@ export const JournalEditor: React.FC = () => {
       setStatus("Successfully encrypted to opaque payload. Ready for network.");
 
       if (token) {
-        const saved = await apiRequest<EncryptedPayload & { id: string; salt_id: string; salt_version: number }>(
-          '/api/v1/journal_entries',
-          token,
-          {
-            method: 'POST',
-            body: JSON.stringify({ ...payload, salt_id: userSalt, salt_version: 1 }),
-          },
-        );
+        const saved = await saveJournalEntry(token, { ...payload, salt_id: userSalt, salt_version: 1 });
         setEntries((current) => [saved, ...current]);
       }
 

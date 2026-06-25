@@ -1,6 +1,7 @@
 package integration_zoom
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -12,7 +13,6 @@ import (
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"scriptureforge/internal/domain/room"
 )
 
 type WebhookPayload struct {
@@ -27,11 +27,16 @@ type WebhookPayload struct {
 }
 
 type WebhookHandler struct {
-	StateManager *room.RoomStateManager
-	DB           *pgxpool.Pool
+	StateManager  roomStateWriter
+	DB            *pgxpool.Pool
+	ResolveRoomID func(ctx context.Context, meetingID string) (string, error)
 }
 
-func NewWebhookHandler(sm *room.RoomStateManager, db ...*pgxpool.Pool) *WebhookHandler {
+type roomStateWriter interface {
+	SetRoomActiveState(ctx context.Context, roomID string, active bool) error
+}
+
+func NewWebhookHandler(sm roomStateWriter, db ...*pgxpool.Pool) *WebhookHandler {
 	handler := &WebhookHandler{StateManager: sm}
 	if len(db) > 0 {
 		handler.DB = db[0]
@@ -80,7 +85,11 @@ func (h *WebhookHandler) HandleZoomWebhook(w http.ResponseWriter, r *http.Reques
 
 	meetingID := payload.Payload.Object.Id
 	roomID := meetingID
-	if h.DB != nil {
+	if h.ResolveRoomID != nil {
+		if mappedRoomID, err := h.ResolveRoomID(r.Context(), meetingID); err == nil && mappedRoomID != "" {
+			roomID = mappedRoomID
+		}
+	} else if h.DB != nil {
 		_ = h.DB.QueryRow(r.Context(), `SELECT id FROM live_rooms WHERE meeting_external_id = $1`, meetingID).Scan(&roomID)
 	}
 
@@ -88,10 +97,14 @@ func (h *WebhookHandler) HandleZoomWebhook(w http.ResponseWriter, r *http.Reques
 	switch payload.Event {
 	case "meeting.started":
 		log.Printf("Webhook: Meeting %s started", meetingID)
-		h.StateManager.SetRoomActiveState(r.Context(), roomID, true)
+		if h.StateManager != nil {
+			_ = h.StateManager.SetRoomActiveState(r.Context(), roomID, true)
+		}
 	case "meeting.ended":
 		log.Printf("Webhook: Meeting %s ended", meetingID)
-		h.StateManager.SetRoomActiveState(r.Context(), roomID, false)
+		if h.StateManager != nil {
+			_ = h.StateManager.SetRoomActiveState(r.Context(), roomID, false)
+		}
 	default:
 		log.Printf("Webhook: Unhandled event %s for meeting %s", payload.Event, meetingID)
 	}

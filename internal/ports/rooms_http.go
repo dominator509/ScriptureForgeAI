@@ -1,18 +1,24 @@
 package ports
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"scriptureforge/internal/domain/auth"
-	"scriptureforge/internal/domain/room"
 )
 
 type RoomHandler struct {
-	DB           *pgxpool.Pool
-	StateManager *room.RoomStateManager
+	DB                  *pgxpool.Pool
+	StateManager        roomStateStore
+	MembershipValidator func(r *http.Request, claims *auth.TokenClaims, roomID string) bool
+}
+
+type roomStateStore interface {
+	SetRoomActiveState(ctx context.Context, roomID string, active bool) error
+	GetLatestRoomEvent(ctx context.Context, roomID string) (string, error)
 }
 
 type CreateRoomRequest struct {
@@ -27,6 +33,9 @@ type RoomResponse struct {
 }
 
 func (h *RoomHandler) validateRoomMembership(r *http.Request, claims *auth.TokenClaims, roomID string) bool {
+	if h.MembershipValidator != nil {
+		return h.MembershipValidator(r, claims, roomID)
+	}
 	if roomID == "" || strings.Contains(roomID, "/") {
 		return false
 	}

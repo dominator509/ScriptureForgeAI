@@ -1,7 +1,17 @@
-use tonic::{transport::Server, Request, Response, Status};
 use scriptureforge::engine::scripture_engine_server::{ScriptureEngine, ScriptureEngineServer};
-use scriptureforge::engine::{EmbedTextRequest, EmbedTextResponse, VectorSearchRequest, VectorSearchResponse, SearchResult};
+use scriptureforge::engine::{
+    EmbedTextRequest, EmbedTextResponse, SearchResult, VectorSearchRequest, VectorSearchResponse,
+};
 use sqlx::postgres::PgPoolOptions;
+use std::io::ErrorKind;
+use std::net::SocketAddr;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpListener;
+use tonic::server::NamedService;
+use tonic::{transport::Server, Request, Response, Status};
 
 pub mod scriptureforge {
     pub mod engine {
@@ -12,6 +22,15 @@ pub mod scriptureforge {
 #[derive(Debug)]
 pub struct MyScriptureEngine {
     db_pool: sqlx::PgPool,
+    metrics: Arc<RustEngineMetrics>,
+}
+
+#[derive(Debug, Default)]
+pub struct RustEngineMetrics {
+    embedding_requests_total: AtomicU64,
+    embedding_failures_total: AtomicU64,
+    vector_search_requests_total: AtomicU64,
+    vector_search_failures_total: AtomicU64,
 }
 
 #[tonic::async_trait]
@@ -20,8 +39,22 @@ impl ScriptureEngine for MyScriptureEngine {
         &self,
         request: Request<EmbedTextRequest>,
     ) -> Result<Response<EmbedTextResponse>, Status> {
+        self.metrics
+            .embedding_requests_total
+            .fetch_add(1, Ordering::Relaxed);
+        let trace_id = traceparent_from_request(&request);
         let req = request.into_inner();
-        println!("Processing embedding request for organization: {}", req.organization_id);
+        emit_log(
+            "info",
+            "process_text_embedding_requested",
+            &[
+                ("trace_id", trace_id),
+                ("organization_id", req.organization_id.clone()),
+                ("book", req.book.clone()),
+                ("chapter", req.chapter.to_string()),
+                ("verse", req.verse.to_string()),
+            ],
+        );
 
         // Functional implementation for processing text.
         // In a full implementation, this calls an LLM to get the embedding,
@@ -29,7 +62,18 @@ impl ScriptureEngine for MyScriptureEngine {
         // For phase 3 completion, we validate the DB pool is active.
         let pool = &self.db_pool;
         if pool.is_closed() {
-             return Err(Status::internal("Database pool is closed"));
+            self.metrics
+                .embedding_failures_total
+                .fetch_add(1, Ordering::Relaxed);
+            emit_log(
+                "error",
+                "process_text_embedding_failed",
+                &[
+                    ("organization_id", req.organization_id.clone()),
+                    ("error", "database_pool_closed".to_string()),
+                ],
+            );
+            return Err(Status::internal("Database pool is closed"));
         }
 
         let reply = EmbedTextResponse {
@@ -45,8 +89,24 @@ impl ScriptureEngine for MyScriptureEngine {
         &self,
         request: Request<VectorSearchRequest>,
     ) -> Result<Response<VectorSearchResponse>, Status> {
+        self.metrics
+            .vector_search_requests_total
+            .fetch_add(1, Ordering::Relaxed);
+        let trace_id = traceparent_from_request(&request);
         let req = request.into_inner();
-        println!("Performing vector search for org: {}", req.organization_id);
+        emit_log(
+            "info",
+            "search_by_vector_requested",
+            &[
+                ("trace_id", trace_id.clone()),
+                ("organization_id", req.organization_id.clone()),
+                ("top_k_results", req.top_k_results.to_string()),
+                (
+                    "minimum_similarity_threshold",
+                    req.minimum_similarity_threshold.to_string(),
+                ),
+            ],
+        );
 
         // Execute functional vector search via pgvector using the HNSW index.
         // We use string manipulation to build the array structure for pgvector.
@@ -62,15 +122,30 @@ impl ScriptureEngine for MyScriptureEngine {
         );
 
         let pool = &self.db_pool;
+        let organization_id = req.organization_id.clone();
 
         let rows = sqlx::query(&query)
             .bind(vector_string)
-            .bind(req.organization_id)
+            .bind(organization_id.clone())
             .bind(req.top_k_results)
             .bind(req.minimum_similarity_threshold)
             .fetch_all(pool)
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(|e| {
+                self.metrics
+                    .vector_search_failures_total
+                    .fetch_add(1, Ordering::Relaxed);
+                emit_log(
+                    "error",
+                    "search_by_vector_failed",
+                    &[
+                        ("trace_id", trace_id.clone()),
+                        ("organization_id", organization_id.clone()),
+                        ("error", e.to_string()),
+                    ],
+                );
+                Status::internal(format!("Database error: {}", e))
+            })?;
 
         let mut results = Vec::new();
 
@@ -92,25 +167,355 @@ impl ScriptureEngine for MyScriptureEngine {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let addr = "[::1]:50051".parse()?;
+    let addr = bind_address()?;
+    let metrics_addr = metrics_address()?;
+    let observability = observability_config();
 
-    let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_|
-        "postgres://${DB_USER}:${DB_PASS}@${DB_HOST}/${DB_NAME}".to_string()
-    );
+    let database_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://${DB_USER}:${DB_PASS}@${DB_HOST}/${DB_NAME}".to_string());
 
     let db_pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&database_url)
         .await?;
 
-    let engine = MyScriptureEngine { db_pool };
+    let metrics = Arc::new(RustEngineMetrics::default());
+    let metrics_task_metrics = Arc::clone(&metrics);
+    tokio::spawn(async move {
+        if let Err(error) = run_metrics_server(metrics_addr, metrics_task_metrics).await {
+            emit_log(
+                "error",
+                "rust_metrics_server_failed",
+                &[
+                    ("bind_address", metrics_addr.to_string()),
+                    ("error", error.to_string()),
+                ],
+            );
+        }
+    });
 
-    println!("Scripture Engine listening on {}", addr);
+    let engine = MyScriptureEngine { db_pool, metrics };
+    let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
+    health_reporter
+        .set_serving::<ScriptureEngineServer<MyScriptureEngine>>()
+        .await;
+
+    emit_log(
+        "info",
+        "scripture_engine_starting",
+        &[
+            ("bind_address", addr.to_string()),
+            ("metrics_address", metrics_addr.to_string()),
+            ("service_name", observability.service_name),
+            ("service_version", observability.service_version),
+            (
+                "deployment_environment",
+                observability.deployment_environment,
+            ),
+            (
+                "otel_exporter_otlp_endpoint",
+                observability.otel_exporter_otlp_endpoint,
+            ),
+        ],
+    );
 
     Server::builder()
+        .add_service(health_service)
         .add_service(ScriptureEngineServer::new(engine))
         .serve(addr)
         .await?;
 
     Ok(())
+}
+
+fn bind_address() -> Result<SocketAddr, std::net::AddrParseError> {
+    std::env::var("RUST_ENGINE_BIND_ADDRESS")
+        .unwrap_or_else(|_| "0.0.0.0:50051".to_string())
+        .parse()
+}
+
+fn metrics_address() -> Result<SocketAddr, std::net::AddrParseError> {
+    std::env::var("RUST_ENGINE_METRICS_ADDRESS")
+        .unwrap_or_else(|_| "0.0.0.0:9102".to_string())
+        .parse()
+}
+
+fn scripture_engine_service_name() -> &'static str {
+    <ScriptureEngineServer<MyScriptureEngine> as NamedService>::NAME
+}
+
+impl RustEngineMetrics {
+    fn render_prometheus(&self) -> String {
+        format!(
+            concat!(
+                "# HELP scriptureforge_rust_engine_embedding_requests_total Total embedding requests handled by the Rust scripture engine.\n",
+                "# TYPE scriptureforge_rust_engine_embedding_requests_total counter\n",
+                "scriptureforge_rust_engine_embedding_requests_total {}\n",
+                "# HELP scriptureforge_rust_engine_embedding_failures_total Total embedding request failures in the Rust scripture engine.\n",
+                "# TYPE scriptureforge_rust_engine_embedding_failures_total counter\n",
+                "scriptureforge_rust_engine_embedding_failures_total {}\n",
+                "# HELP scriptureforge_rust_engine_vector_search_requests_total Total vector search requests handled by the Rust scripture engine.\n",
+                "# TYPE scriptureforge_rust_engine_vector_search_requests_total counter\n",
+                "scriptureforge_rust_engine_vector_search_requests_total {}\n",
+                "# HELP scriptureforge_rust_engine_vector_search_failures_total Total vector search request failures in the Rust scripture engine.\n",
+                "# TYPE scriptureforge_rust_engine_vector_search_failures_total counter\n",
+                "scriptureforge_rust_engine_vector_search_failures_total {}\n"
+            ),
+            self.embedding_requests_total.load(Ordering::Relaxed),
+            self.embedding_failures_total.load(Ordering::Relaxed),
+            self.vector_search_requests_total.load(Ordering::Relaxed),
+            self.vector_search_failures_total.load(Ordering::Relaxed)
+        )
+    }
+}
+
+async fn run_metrics_server(
+    addr: SocketAddr,
+    metrics: Arc<RustEngineMetrics>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let listener = TcpListener::bind(addr).await?;
+    emit_log(
+        "info",
+        "rust_metrics_server_listening",
+        &[("bind_address", addr.to_string())],
+    );
+
+    loop {
+        let (mut stream, _) = listener.accept().await?;
+        let metrics = Arc::clone(&metrics);
+        tokio::spawn(async move {
+            let mut buffer = [0_u8; 1024];
+            let request = match stream.read(&mut buffer).await {
+                Ok(size) => String::from_utf8_lossy(&buffer[..size]).to_string(),
+                Err(error) if error.kind() == ErrorKind::UnexpectedEof => String::new(),
+                Err(_) => return,
+            };
+            let (status, body) = if request.starts_with("GET /metrics ") {
+                ("200 OK", metrics.render_prometheus())
+            } else {
+                ("404 Not Found", "not found\n".to_string())
+            };
+            let response = format!(
+                "HTTP/1.1 {}\r\nContent-Type: text/plain; version=0.0.4\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                status,
+                body.len(),
+                body
+            );
+            let _ = stream.write_all(response.as_bytes()).await;
+        });
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ObservabilityConfig {
+    service_name: String,
+    service_version: String,
+    deployment_environment: String,
+    otel_exporter_otlp_endpoint: String,
+}
+
+fn observability_config() -> ObservabilityConfig {
+    ObservabilityConfig {
+        service_name: std::env::var("OTEL_SERVICE_NAME")
+            .unwrap_or_else(|_| "scriptureforge-rust-engine".to_string()),
+        service_version: std::env::var("SERVICE_VERSION")
+            .unwrap_or_else(|_| "unversioned".to_string()),
+        deployment_environment: std::env::var("DEPLOYMENT_ENVIRONMENT")
+            .unwrap_or_else(|_| "local".to_string()),
+        otel_exporter_otlp_endpoint: std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
+            .unwrap_or_default(),
+    }
+}
+
+fn traceparent_from_request<T>(request: &Request<T>) -> String {
+    request
+        .metadata()
+        .get("traceparent")
+        .and_then(|value| value.to_str().ok())
+        .map(extract_trace_id)
+        .unwrap_or_default()
+}
+
+fn extract_trace_id(traceparent: &str) -> String {
+    traceparent
+        .split('-')
+        .nth(1)
+        .filter(|trace_id| trace_id.len() == 32)
+        .unwrap_or("")
+        .to_string()
+}
+
+fn emit_log(level: &str, event: &str, fields: &[(&str, String)]) {
+    let timestamp_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or_default();
+
+    let mut log = format!(
+        "{{\"timestamp_ms\":{},\"level\":\"{}\",\"event\":\"{}\"",
+        timestamp_ms,
+        json_escape(level),
+        json_escape(event)
+    );
+    for (key, value) in fields {
+        log.push_str(&format!(
+            ",\"{}\":\"{}\"",
+            json_escape(key),
+            json_escape(value)
+        ));
+    }
+    log.push('}');
+    println!("{}", log);
+}
+
+fn json_escape(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scriptureforge::engine::{
+        EmbedTextRequest, EmbedTextResponse, SearchResult, VectorSearchResponse,
+    };
+    use super::{
+        bind_address, extract_trace_id, json_escape, metrics_address, observability_config,
+        scripture_engine_service_name, traceparent_from_request, RustEngineMetrics,
+    };
+    use std::sync::atomic::Ordering;
+    use tonic::Request;
+
+    #[test]
+    fn generated_protobuf_types_compile_and_round_trip() {
+        let request = EmbedTextRequest {
+            organization_id: "00000000-0000-0000-0000-000000000001".into(),
+            book: "John".into(),
+            chapter: 1,
+            verse: 1,
+            text_content: "In the beginning was the Word".into(),
+        };
+
+        let response = EmbedTextResponse {
+            reference_id: format!("{}-{}-{}", request.book, request.chapter, request.verse),
+            success: true,
+            error_message: String::new(),
+        };
+
+        assert_eq!(response.reference_id, "John-1-1");
+        assert!(response.success);
+    }
+
+    #[test]
+    fn generated_vector_search_response_holds_results() {
+        let response = VectorSearchResponse {
+            results: vec![SearchResult {
+                book: "Romans".into(),
+                chapter: 8,
+                verse: 1,
+                text_content: "There is therefore now no condemnation".into(),
+                similarity_score: 0.97,
+            }],
+        };
+
+        assert_eq!(response.results.len(), 1);
+        assert_eq!(response.results[0].book, "Romans");
+    }
+
+    #[test]
+    fn default_bind_address_is_reachable_outside_localhost() {
+        std::env::remove_var("RUST_ENGINE_BIND_ADDRESS");
+        let addr = bind_address().expect("default bind address should parse");
+
+        assert_eq!(addr.to_string(), "0.0.0.0:50051");
+    }
+
+    #[test]
+    fn default_metrics_address_is_reachable_outside_localhost() {
+        std::env::remove_var("RUST_ENGINE_METRICS_ADDRESS");
+        let addr = metrics_address().expect("default metrics address should parse");
+
+        assert_eq!(addr.to_string(), "0.0.0.0:9102");
+    }
+
+    #[test]
+    fn scripture_engine_health_service_name_matches_grpc_service() {
+        assert_eq!(
+            scripture_engine_service_name(),
+            "scriptureforge.engine.ScriptureEngine"
+        );
+    }
+
+    #[test]
+    fn default_observability_config_is_staging_safe() {
+        std::env::remove_var("OTEL_SERVICE_NAME");
+        std::env::remove_var("SERVICE_VERSION");
+        std::env::remove_var("DEPLOYMENT_ENVIRONMENT");
+        std::env::remove_var("OTEL_EXPORTER_OTLP_ENDPOINT");
+
+        let config = observability_config();
+
+        assert_eq!(config.service_name, "scriptureforge-rust-engine");
+        assert_eq!(config.service_version, "unversioned");
+        assert_eq!(config.deployment_environment, "local");
+        assert_eq!(config.otel_exporter_otlp_endpoint, "");
+    }
+
+    #[test]
+    fn traceparent_metadata_extracts_trace_id() {
+        let mut request = Request::new(EmbedTextRequest {
+            organization_id: "00000000-0000-0000-0000-000000000001".into(),
+            book: "John".into(),
+            chapter: 1,
+            verse: 1,
+            text_content: "In the beginning was the Word".into(),
+        });
+        request.metadata_mut().insert(
+            "traceparent",
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+                .parse()
+                .expect("traceparent metadata should parse"),
+        );
+
+        assert_eq!(
+            traceparent_from_request(&request),
+            "4bf92f3577b34da6a3ce929d0e0e4736"
+        );
+    }
+
+    #[test]
+    fn malformed_traceparent_does_not_emit_trace_id() {
+        assert_eq!(extract_trace_id("not-a-traceparent"), "");
+    }
+
+    #[test]
+    fn json_escape_handles_control_characters() {
+        assert_eq!(
+            json_escape("quote\" slash\\ newline\n"),
+            "quote\\\" slash\\\\ newline\\n"
+        );
+    }
+
+    #[test]
+    fn rust_engine_metrics_render_prometheus_counters() {
+        let metrics = RustEngineMetrics::default();
+        metrics.embedding_requests_total.store(2, Ordering::Relaxed);
+        metrics.embedding_failures_total.store(1, Ordering::Relaxed);
+        metrics
+            .vector_search_requests_total
+            .store(3, Ordering::Relaxed);
+        metrics
+            .vector_search_failures_total
+            .store(1, Ordering::Relaxed);
+
+        let rendered = metrics.render_prometheus();
+
+        assert!(rendered.contains("scriptureforge_rust_engine_embedding_requests_total 2"));
+        assert!(rendered.contains("scriptureforge_rust_engine_embedding_failures_total 1"));
+        assert!(rendered.contains("scriptureforge_rust_engine_vector_search_requests_total 3"));
+        assert!(rendered.contains("scriptureforge_rust_engine_vector_search_failures_total 1"));
+    }
 }

@@ -1,0 +1,171 @@
+{
+  "title": "ScriptureForgeAI Production Overview",
+  "uid": "scriptureforge-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "tags": [
+    "scriptureforge",
+    "production-readiness"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "type": "constant",
+        "query": "scriptureforge-api",
+        "current": {
+          "text": "scriptureforge-api",
+          "value": "scriptureforge-api"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "HTTP Requests / sec",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${PROMETHEUS_DS_UID}"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(scriptureforge_http_requests_total[5m]))",
+          "legendFormat": "requests/sec",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "5xx Error Rate",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${PROMETHEUS_DS_UID}"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(scriptureforge_http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(scriptureforge_http_requests_total[5m])), 1)",
+          "legendFormat": "5xx ratio",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Route Request Rate",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${PROMETHEUS_DS_UID}"
+      },
+      "targets": [
+        {
+          "expr": "sum by (method, path, status) (rate(scriptureforge_http_requests_total[5m]))",
+          "legendFormat": "{{method}} {{path}} {{status}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Average Route Latency",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${PROMETHEUS_DS_UID}"
+      },
+      "targets": [
+        {
+          "expr": "sum by (method, path, status) (rate(scriptureforge_http_request_duration_seconds_sum[5m])) / clamp_min(sum by (method, path, status) (rate(scriptureforge_http_requests_total[5m])), 0.001)",
+          "legendFormat": "{{method}} {{path}} {{status}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      }
+    },
+    {
+      "id": 5,
+      "type": "logs",
+      "title": "Trace-Correlated Application Logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "${LOKI_DS_UID}"
+      },
+      "targets": [
+        {
+          "expr": "{app=\"scriptureforge-api\"} | json | line_format \"{{.at}} {{.level}} trace={{.trace_id}} {{.method}} {{.path}} status={{.status}} duration_ms={{.duration_ms}}\"",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Rust Engine gRPC Activity",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${PROMETHEUS_DS_UID}"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(scriptureforge_rust_engine_embedding_requests_total[5m]))",
+          "legendFormat": "embedding requests/sec",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(scriptureforge_rust_engine_vector_search_requests_total[5m]))",
+          "legendFormat": "vector searches/sec",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(scriptureforge_rust_engine_embedding_failures_total[5m])) + sum(rate(scriptureforge_rust_engine_vector_search_failures_total[5m]))",
+          "legendFormat": "failures/sec",
+          "refId": "C"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      }
+    }
+  ]
+}

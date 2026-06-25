@@ -1,12 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { apiRequest, WS_BASE_URL } from '../../lib/api';
+import { createRoom as createRoomRequest, listRooms, RoomSummary, roomStreamUrl } from '../../lib/api';
 import { useAppStore } from '../../lib/store';
-
-interface RoomSummary {
-  id: string;
-  title: string;
-  is_active: boolean;
-}
 
 export const RoomLayout: React.FC = () => {
   const { currentRole, activeRoomId, setActiveRoom, token } = useAppStore();
@@ -17,7 +11,7 @@ export const RoomLayout: React.FC = () => {
   const loadRooms = async () => {
     if (!token) return;
     try {
-      setRooms(await apiRequest<RoomSummary[]>('/api/v1/rooms/active', token));
+      setRooms(await listRooms(token));
     } catch (err) {
       setStatus(err instanceof Error ? err.message : 'Failed to load rooms');
     }
@@ -26,10 +20,7 @@ export const RoomLayout: React.FC = () => {
   const createRoom = async () => {
     if (!token) return;
     try {
-      const room = await apiRequest<RoomSummary>('/api/v1/rooms/create', token, {
-        method: 'POST',
-        body: JSON.stringify({ title }),
-      });
+      const room = await createRoomRequest(token, title);
       setRooms((current) => [room, ...current]);
       setActiveRoom(room.id);
       setStatus('Room created');
@@ -44,7 +35,7 @@ export const RoomLayout: React.FC = () => {
 
   useEffect(() => {
     if (activeRoomId && token) {
-      const ws = new WebSocket(`${WS_BASE_URL}/api/v1/rooms/stream/${activeRoomId}?ticket=${token}`);
+      const ws = new WebSocket(roomStreamUrl(activeRoomId, token));
 
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);

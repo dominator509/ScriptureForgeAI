@@ -1,45 +1,78 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
-import { deriveIsolationKey, encryptJournalData, EncryptedPayload } from '../lib/crypto';
-import { apiRequest } from '../lib/api';
+import {
+  createJournalCryptoKeyHandle,
+  deriveIsolationKey,
+  disposeJournalCryptoKey,
+  encryptJournalData,
+  EncryptedPayload,
+  getJournalCryptoKey,
+  JournalCryptoKeyHandle,
+} from '../lib/crypto';
+import { saveJournalEntry } from '../lib/api';
 import { useAppStore } from '../lib/store';
 
 export const SecureJournalContainer: React.FC = () => {
   const [plaintext, setPlaintext] = useState('');
   const [passphrase, setPassphrase] = useState('');
   const [status, setStatus] = useState('Awaiting passphrase');
-  const [keyMaterial, setKeyMaterial] = useState<string | null>(null);
+  const [keyHandle, setKeyHandle] = useState<JournalCryptoKeyHandle | null>(null);
   const session = useAppStore((state) => state.session);
 
   const userSalt = session?.user_id ? `journal:${session.user_id}:v1` : '';
 
   useEffect(() => {
     let isMounted = true;
+    let activeHandle: JournalCryptoKeyHandle | null = null;
     if (passphrase.length >= 8 && userSalt) {
-      deriveIsolationKey(passphrase, userSalt).then(k => {
-        if (isMounted) {
-          setKeyMaterial(k);
-          setStatus("Isolation Key Derived Successfully");
-        }
-      });
+      deriveIsolationKey(passphrase, userSalt)
+        .then(k => {
+          if (isMounted) {
+            activeHandle = createJournalCryptoKeyHandle(k);
+            setKeyHandle(previous => {
+              disposeJournalCryptoKey(previous);
+              return activeHandle;
+            });
+            setStatus("Isolation Key Derived Successfully");
+          }
+        })
+        .catch((error: Error) => {
+          if (isMounted) {
+            setKeyHandle(previous => {
+              disposeJournalCryptoKey(previous);
+              return null;
+            });
+            setStatus(error.message);
+          }
+        });
     } else {
       setStatus("Awaiting valid passphrase (min 8 chars)");
-      setKeyMaterial(null);
+      setKeyHandle(previous => {
+        disposeJournalCryptoKey(previous);
+        return null;
+      });
     }
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+      setKeyHandle(previous => {
+        if (previous === activeHandle) {
+          disposeJournalCryptoKey(previous);
+          return null;
+        }
+        disposeJournalCryptoKey(activeHandle);
+        return previous;
+      });
+    };
   }, [passphrase, userSalt]);
 
   const handleSave = async () => {
-    if (keyMaterial && plaintext) {
-      const encrypted: EncryptedPayload = await encryptJournalData(plaintext, keyMaterial);
+    if (keyHandle && plaintext) {
+      const encrypted: EncryptedPayload = await encryptJournalData(plaintext, getJournalCryptoKey(keyHandle));
       if (!session) {
         setStatus('Sign in before saving encrypted journal entries.');
         return;
       }
-      await apiRequest('/api/v1/journal_entries', session.token, {
-        method: 'POST',
-        body: JSON.stringify({ ...encrypted, salt_id: userSalt, salt_version: 1 }),
-      });
+      await saveJournalEntry(session.token, { ...encrypted, salt_id: userSalt, salt_version: 1 });
       setStatus(`Saved securely! IV: ${encrypted.iv.substring(0, 10)}...`);
     }
   };
@@ -70,9 +103,9 @@ export const SecureJournalContainer: React.FC = () => {
       />
 
       <TouchableOpacity
-        style={[styles.button, (!session || !keyMaterial || !plaintext) && styles.disabled]}
+        style={[styles.button, (!session || !keyHandle || !plaintext) && styles.disabled]}
         onPress={() => void handleSave()}
-        disabled={!session || !keyMaterial || !plaintext}
+        disabled={!session || !keyHandle || !plaintext}
       >
         <Text style={styles.buttonText}>Encrypt & Save</Text>
       </TouchableOpacity>

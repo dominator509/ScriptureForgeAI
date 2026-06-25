@@ -1,0 +1,91 @@
+environment = "staging"
+aws_region  = "us-east-1"
+
+vpc_id             = "vpc-0123456789abcdef0"
+private_subnet_ids = ["subnet-0123456789abcdef0", "subnet-0123456789abcdef1"]
+public_subnet_ids  = ["subnet-0123456789abcdef2", "subnet-0123456789abcdef3"]
+
+allowed_ingress_cidrs = ["0.0.0.0/0"]
+allowed_ws_origins    = "https://app.staging.scriptureforge.example"
+service_version       = "replace-with-release-version-or-image-digest"
+
+# Replace with the staging collector endpoint, or leave empty to disable OTLP trace export until a collector is ready.
+otel_exporter_otlp_endpoint = "http://otel-collector.observability:4318"
+otel_exporter_otlp_insecure = true
+
+api_hostname = "api.staging.scriptureforge.example"
+web_hostname = "app.staging.scriptureforge.example"
+
+ingress_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/00000000-0000-0000-0000-000000000000"
+ingress_ssl_policy      = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+
+api_image         = "123456789012.dkr.ecr.us-east-1.amazonaws.com/scriptureforge-staging/api:replace-with-digest"
+web_image         = "123456789012.dkr.ecr.us-east-1.amazonaws.com/scriptureforge-staging/web:replace-with-digest"
+rust_engine_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/scriptureforge-staging/rust-engine:replace-with-digest"
+
+# Optional resource overrides. Start with defaults, then tune from staging load and memory data.
+# api_resources = {
+#   requests = { cpu = "250m", memory = "256Mi" }
+#   limits   = { cpu = "1000m", memory = "768Mi" }
+# }
+#
+# rust_engine_resources = {
+#   requests = { cpu = "250m", memory = "256Mi" }
+#   limits   = { cpu = "1000m", memory = "768Mi" }
+# }
+#
+# web_resources = {
+#   requests = { cpu = "150m", memory = "192Mi" }
+#   limits   = { cpu = "500m", memory = "512Mi" }
+# }
+#
+# Optional HPA overrides. Tune these after staging load tests and metrics review.
+# api_autoscaling = {
+#   min_replicas                         = 2
+#   max_replicas                         = 10
+#   target_cpu_utilization_percentage    = 65
+#   target_memory_utilization_percentage = 75
+# }
+#
+# rust_engine_autoscaling = {
+#   min_replicas                         = 2
+#   max_replicas                         = 8
+#   target_cpu_utilization_percentage    = 65
+#   target_memory_utilization_percentage = 75
+# }
+#
+# web_autoscaling = {
+#   min_replicas                         = 2
+#   max_replicas                         = 6
+#   target_cpu_utilization_percentage    = 70
+#   target_memory_utilization_percentage = 80
+# }
+
+app_secret_arns = {
+  database_url     = "arn:aws:secretsmanager:us-east-1:123456789012:secret:scriptureforge/staging/database-url"
+  jwt_secret_key   = "arn:aws:secretsmanager:us-east-1:123456789012:secret:scriptureforge/staging/jwt-secret-key"
+  openai_api_key   = "arn:aws:secretsmanager:us-east-1:123456789012:secret:scriptureforge/staging/openai-api-key"
+  zoom_credentials = "arn:aws:secretsmanager:us-east-1:123456789012:secret:scriptureforge/staging/zoom-credentials"
+}
+
+# Confirm this against the EKS OIDC issuer root CA thumbprint before apply.
+eks_oidc_thumbprint_list = ["9e99a48a9960b14926bb7f3b02e22da0afd10efd"]
+
+# Expected zoom_credentials secret JSON:
+# {
+#   "account_id": "...",
+#   "client_id": "...",
+#   "client_secret": "...",
+#   "webhook_secret_token": "..."
+# }
+#
+# Expected database_url secret value:
+# postgres://scriptureforge_app:<password>@<rds-writer-endpoint>:5432/scriptureforge?sslmode=require
+
+# Provide through secure CI variables or an uncommitted tfvars file.
+database_root_security_passphrase = "replace-with-at-least-16-characters"
+
+# Backup and maintenance defaults are safe to keep, but pin them in staging evidence.
+database_backup_retention_days       = 14
+database_preferred_backup_window     = "07:00-09:00"
+database_preferred_maintenance_window = "sun:09:00-sun:10:00"

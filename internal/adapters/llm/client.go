@@ -93,10 +93,6 @@ func (c *LLMClient) BuildRigorousPrompt(safePrompt string, compiledContext strin
 // Execute triggers the network call, processes the boundaries, and runs verification.
 func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledContext string, verifier *ai.ResponseVerificationSubsystem) (string, error) {
 	if c.APIKey == "" {
-		if os.Getenv("GO_ENV") == "testing" {
-			// Fail-safe for test environments lacking network connectivity
-			return "As stated, [Genesis 1:1] In the beginning God created the heaven and the earth.", nil
-		}
 		return "", &ai.PlatformException{
 			Category: "AI_CONFIGURATION_FAULT",
 			Message:  "OPENAI_API_KEY is not configured",

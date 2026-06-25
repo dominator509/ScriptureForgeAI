@@ -1,20 +1,43 @@
-# Phase 2: Static Analysis and Supply Chain (Pre-Build)
+# Static Analysis And Supply Chain Report
 
-## Static Application Security Testing (SAST)
-* **Execution:** Executed `go vet ./...` across the primary monolith. Executed strict TypeScript compilations `tsc --noEmit` on the web interface.
-* **Findings:** No implicit loose types (`interface{}` or `any`) detected outside of mandatory 3rd-party library bindings. Memory pointers across structs strictly validated.
+Status last updated: 2026-06-25
 
-## Software Composition Analysis (SCA)
-* **Execution:** Analyzed `go.mod`, `go.sum`, and `package-lock.json`.
-* **Findings:** All dependencies resolve to stable semantic versions without known active CVEs (e.g., `github.com/jackc/pgx/v5` and `github.com/golang-jwt/jwt/v5`).
+## Static Application Security Testing
 
-## Infrastructure-as-Code (IaC) Validation
-* **Execution:** Analyzed Terraform configurations located in `build/terraform/main.tf`.
-* **Findings:**
-  * `aws_rds_cluster` explicitly mandates `storage_encrypted = true`.
-  * `aws_eks_cluster` explicitly restricts access with `endpoint_public_access = false`.
-  * Security configurations align perfectly with baseline compliance thresholds.
+Current CI is configured to run:
 
-## Web3/Blockchain Analysis
-* **Execution:** Bypass Check
-* **Findings:** BYPASS: Incompatible Stack. No smart contracts or blockchain integrations exist within this repository.
+- `go test ./...`
+- DB-backed Go integration tests against `pgvector/pgvector:pg16`
+- `go vet ./...`
+- web smoke/typecheck/build gates
+- mobile smoke/build-compatible gates
+- Rust `cargo test`
+- Terraform fmt/init/validate
+- observability, secret hygiene, and deployment skeleton validators
+- TruffleHog secret scanning
+
+The current local remediation evidence is tracked in `FUNCTIONALITY_AUDIT_BRIEFING.md`. A production claim still requires the full matrix to pass in a clean pushed GitHub Actions run from the exact release branch.
+
+## Software Composition Analysis
+
+- Web enforces `npm audit --audit-level=moderate`.
+- Mobile enforces `npm audit --audit-level=high`.
+- The remaining mobile moderate Expo tooling advisory is tracked as accepted risk in `security/dependency_risk_register.md` as DRR-001.
+- Rust cargo tests pass with a vendored `protoc` build path, but `sqlx-postgres v0.7.4` emits a future-incompatibility warning that should be addressed in a deliberate Rust dependency-lane upgrade.
+
+## Infrastructure-As-Code Validation
+
+Terraform now lives in split files under `build/terraform` rather than the deleted `build/terraform/main.tf` placeholder. Current local checks cover:
+
+- Remote S3 backend shape and example backend configuration.
+- Variable-driven AWS account, subnet, image, certificate, secret ARN, OTLP, and workload resource inputs.
+- EKS, RDS, Redis, ECR, Kubernetes deployment/service/ingress boundaries.
+- TLS ALB ingress annotations and `/ready` health checks.
+- IRSA and Secrets Store CSI workload secret wiring.
+- API/Rust/web resource requests and limits, zone topology spread constraints, and PodDisruptionBudgets.
+- API/Rust/web Horizontal Pod Autoscalers with CPU and memory utilization targets.
+- Aurora PostgreSQL backup retention, backup/maintenance windows, CloudWatch PostgreSQL log export, tag copying to snapshots, deletion protection, and named final snapshot.
+- API/Rust/web rolling update strategy with rollout history retention and zero unavailable pods during deploys.
+- Terraform fmt/validate and deployment skeleton invariant validation.
+
+Live production readiness still requires staging `plan/apply`, TLS/DNS/ACM proof, remote-state access proof, and real cluster/runtime validation.

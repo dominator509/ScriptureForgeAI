@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useState } from 'react';
-import { apiRequest, AuthSession } from '../lib/api';
+import { login, logout, register } from '../lib/api';
 import { useAppStore } from '../lib/store';
 
 export const AuthPanel: React.FC = () => {
-  const { token, userId, setSession, clearSession } = useAppStore();
+  const { token, refreshToken, userId, setSession, clearSession } = useAppStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [organizationId, setOrganizationId] = useState('');
@@ -15,10 +15,7 @@ export const AuthPanel: React.FC = () => {
     setStatus('');
     try {
       const body = { email, password, organization_id: organizationId };
-      const session = await apiRequest<AuthSession>(`/api/v1/auth/${mode}`, null, {
-        method: 'POST',
-        body: JSON.stringify(body),
-      });
+      const session = mode === 'login' ? await login(body) : await register(body);
       setSession(session.token, session.refresh_token, session.user_id, session.organization_id);
       setStatus('Signed in');
     } catch (err) {
@@ -26,11 +23,23 @@ export const AuthPanel: React.FC = () => {
     }
   };
 
+  const submitLogout = async () => {
+    const activeToken = token;
+    const activeRefreshToken = refreshToken;
+    clearSession();
+    if (!activeToken || !activeRefreshToken) return;
+    try {
+      await logout(activeToken, activeRefreshToken);
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : 'Logout failed');
+    }
+  };
+
   if (token) {
     return (
       <section className="bg-white border rounded p-4 space-y-3">
         <div className="text-sm text-gray-700">Signed in as {userId}</div>
-        <button className="px-3 py-2 bg-gray-900 text-white rounded" onClick={clearSession}>Logout</button>
+        <button className="px-3 py-2 bg-gray-900 text-white rounded" onClick={() => void submitLogout()}>Logout</button>
       </section>
     );
   }

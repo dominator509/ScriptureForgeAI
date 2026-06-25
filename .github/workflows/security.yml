@@ -9,6 +9,19 @@ jobs:
   security-audit:
     name: Continuous Security Execution
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: scriptureforge
+          POSTGRES_DB: scriptureforge
+        ports:
+          - 55433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d scriptureforge"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
     - uses: actions/checkout@v4
 
@@ -22,13 +35,12 @@ jobs:
       with:
         node-version: '20'
         cache: 'npm'
-        cache-dependency-path: web/package-lock.json
+        cache-dependency-path: |
+          web/package-lock.json
+          mobile/package-lock.json
 
     - name: Set up Rust
       uses: dtolnay/rust-toolchain@stable
-
-    - name: Set up protoc
-      uses: arduino/setup-protoc@v3
 
     - name: Set up Terraform
       uses: hashicorp/setup-terraform@v3
@@ -39,6 +51,77 @@ jobs:
     - name: Run Go Tests
       run: GO_ENV=testing CI=true go test ./...
 
+    - name: Apply Postgres Integration Schema
+      env:
+        PGPASSWORD: scriptureforge
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y postgresql-client
+        psql -h localhost -p 55433 -U postgres -d scriptureforge -v ON_ERROR_STOP=1 -f migrations/000001_init_extensions.up.sql
+        psql -h localhost -p 55433 -U postgres -d scriptureforge -v ON_ERROR_STOP=1 -f migrations/000002_core_schema.up.sql
+
+    - name: Run Postgres RLS Integration Tests
+      env:
+        CI: "false"
+        GO_ENV: testing
+        DATABASE_URL: postgres://postgres:scriptureforge@localhost:55433/scriptureforge?sslmode=disable
+        JWT_SECRET_KEY: ci-test-secret-for-scriptureforge-auth-and-rls
+      run: go test ./tests/integration ./internal/ports -count=1 -timeout=90s -v
+
+    - name: Run Local Performance Harness Smoke
+      run: go run ./tools/loadtest -self-test -duration=2s -concurrency=8 -min-rps=100 -max-p99=200ms
+
+    - name: Run Local WebSocket Performance Harness Smoke
+      run: go run ./tools/loadtest -websocket-self-test -concurrency=4 -ws-events-per-client=3 -min-rps=10 -max-p99=500ms
+
+    - name: Test Production Evidence Probes
+      run: go test ./tools/ciprobe ./tools/stagingprobe ./tools/tenantprobe ./tools/rustprobe ./tools/observabilityprobe ./tools/securityprobe ./tools/resilienceprobe ./tools/mobileprobe ./tools/deploymentprobe ./tools/abuseprobe ./tools/zoomprobe ./tools/aiprobe ./tools/loadtest -count=1
+
+    - name: Validate Observability Artifacts
+      run: node tools/validate-observability.mjs
+
+    - name: Validate Secret Hygiene
+      run: node tools/validate-secret-hygiene.mjs
+
+    - name: Validate Deployment Skeleton
+      run: node tools/validate-deployment-skeleton.mjs
+
+    - name: Validate Staging Evidence Manifest
+      run: node tools/validate-staging-evidence.mjs
+
+    - name: Validate CI Workflow Gate Coverage
+      run: node tools/validate-ci-workflow.mjs
+
+    - name: Test CI Workflow Gate Coverage
+      run: node --test tools/validate-ci-workflow.test.mjs
+
+    - name: Test Local Gate Runner
+      run: node --test tools/run-local-gates.test.mjs tools/validate-local-gate-report.test.mjs
+
+    - name: Test Staging Evidence Validator
+      run: node --test tools/validate-staging-evidence.test.mjs
+
+    - name: Test Production Readiness Claim Verifier
+      run: node --test tools/verify-production-readiness.test.mjs
+
+    - name: Test Staging Evidence Recorder
+      run: node --test tools/record-staging-evidence.test.mjs
+
+    - name: Test Staging Evidence Bootstrap
+      run: node --test tools/bootstrap-staging-evidence.test.mjs
+
+    - name: Test CI Release Evidence Writer
+      run: node --test tools/write-ci-release-evidence.test.mjs
+
+    - name: Validate Security Artifacts
+      run: node tools/validate-security-artifacts.mjs
+
+    - name: Validate Dependency Risk Register
+      run: node tools/validate-dependency-risk.mjs
+
+    - name: Test Dependency Risk Register Validator
+      run: node --test tools/validate-dependency-risk.test.mjs
+
     - name: Static Security Scan (SAST)
       run: go vet ./...
 
@@ -46,8 +129,18 @@ jobs:
       working-directory: web
       run: |
         npm ci
+        npm audit --audit-level=moderate
+        npm run smoke
         npm run typecheck
         npm run build
+
+    - name: Check Mobile
+      working-directory: mobile
+      run: |
+        npm ci
+        npm audit --audit-level=high
+        npm run smoke
+        npm run build:check
 
     - name: Test Rust Scripture Engine
       working-directory: services/scripture-engine
@@ -66,3 +159,16 @@ jobs:
         path: ./
         base: ${{ github.event.repository.default_branch }}
         head: HEAD
+
+    - name: Write CI Release Evidence
+      run: node tools/write-ci-release-evidence.mjs --output artifacts/ci-release-evidence.txt
+
+    - name: Validate CI Release Evidence
+      run: go run ./tools/ciprobe -run-artifact-file artifacts/ci-release-evidence.txt -commit-sha "$GITHUB_SHA"
+
+    - name: Upload CI Release Evidence
+      uses: actions/upload-artifact@v4
+      with:
+        name: ci-release-evidence
+        path: artifacts/ci-release-evidence.txt
+        if-no-files-found: error

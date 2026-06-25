@@ -8,6 +8,26 @@ export interface AuthSession {
   organization_id: string;
 }
 
+export interface AuthCredentials {
+  email: string;
+  password: string;
+  organization_id: string;
+}
+
+export interface EncryptedJournalEntry {
+  id: string;
+  ciphertext: string;
+  iv: string;
+  salt_id: string;
+  salt_version: number;
+}
+
+export interface RoomSummary {
+  id: string;
+  title: string;
+  is_active: boolean;
+}
+
 export async function apiRequest<T>(
   path: string,
   token: string | null,
@@ -24,4 +44,66 @@ export async function apiRequest<T>(
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
+}
+
+export function register(credentials: AuthCredentials): Promise<AuthSession> {
+  return apiRequest<AuthSession>('/api/v1/auth/register', null, {
+    method: 'POST',
+    body: JSON.stringify(credentials),
+  });
+}
+
+export function login(credentials: AuthCredentials): Promise<AuthSession> {
+  return apiRequest<AuthSession>('/api/v1/auth/login', null, {
+    method: 'POST',
+    body: JSON.stringify(credentials),
+  });
+}
+
+export function refreshSession(refreshToken: string): Promise<AuthSession> {
+  return apiRequest<AuthSession>('/api/v1/auth/refresh', null, {
+    method: 'POST',
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+}
+
+export function logout(token: string, refreshToken: string): Promise<void> {
+  return apiRequest<void>('/api/v1/auth/logout', token, {
+    method: 'POST',
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+}
+
+export function listJournalEntries(token: string): Promise<EncryptedJournalEntry[]> {
+  return apiRequest<EncryptedJournalEntry[]>('/api/v1/journal_entries', token);
+}
+
+export function saveJournalEntry(
+  token: string,
+  payload: Omit<EncryptedJournalEntry, 'id'>,
+): Promise<EncryptedJournalEntry> {
+  return apiRequest<EncryptedJournalEntry>('/api/v1/journal_entries', token, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getJournalEntry(token: string, entryID: string): Promise<EncryptedJournalEntry> {
+  return apiRequest<EncryptedJournalEntry>(`/api/v1/journal_entries/${encodeURIComponent(entryID)}`, token);
+}
+
+export function listRooms(token: string): Promise<RoomSummary[]> {
+  return apiRequest<RoomSummary[]>('/api/v1/rooms/active', token);
+}
+
+export function createRoom(token: string, title: string): Promise<RoomSummary> {
+  return apiRequest<RoomSummary>('/api/v1/rooms/create', token, {
+    method: 'POST',
+    body: JSON.stringify({ title }),
+  });
+}
+
+export function roomStreamUrl(roomID: string, token: string): string {
+  const params = new URLSearchParams({ ticket: token });
+  return `${WS_BASE_URL}/api/v1/rooms/stream/${encodeURIComponent(roomID)}?${params.toString()}`;
 }

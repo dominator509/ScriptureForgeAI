@@ -87,7 +87,9 @@ func (h *JournalHandler) createJournalEntry(w http.ResponseWriter, r *http.Reque
 	}
 
 	var req JournalPayload
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Ciphertext == "" || req.IV == "" || req.SaltID == "" {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil || req.Ciphertext == "" || req.IV == "" || req.SaltID == "" {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Invalid encrypted journal payload", Code: http.StatusBadRequest})
 		return
 	}

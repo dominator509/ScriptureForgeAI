@@ -1,0 +1,5 @@
+bucket         = "replace-with-scriptureforge-terraform-state-bucket"
+key            = "scriptureforge/staging/terraform.tfstate"
+region         = "us-east-1"
+dynamodb_table = "replace-with-terraform-lock-table"
+encrypt        = true

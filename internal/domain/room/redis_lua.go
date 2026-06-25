@@ -89,11 +89,14 @@ func (rsm *RoomStateManager) SetRoomActiveState(ctx context.Context, roomID stri
 	return nil
 }
 
-// AppendRoomEvent stores the latest room event atomically and returns the new sequence number.
+// AppendRoomEvent stores the latest sequenced room event atomically and returns the new sequence number.
 func (rsm *RoomStateManager) AppendRoomEvent(ctx context.Context, roomID, eventJSON string) (int64, error) {
 	script := redis.NewScript(`
 		local seq = redis.call("INCR", KEYS[1])
-		redis.call("SET", KEYS[2], ARGV[1])
+		local event = cjson.decode(ARGV[1])
+		event["sequence"] = seq
+		local encoded = cjson.encode(event)
+		redis.call("SET", KEYS[2], encoded)
 		redis.call("EXPIRE", KEYS[1], ARGV[2])
 		redis.call("EXPIRE", KEYS[2], ARGV[2])
 		return seq

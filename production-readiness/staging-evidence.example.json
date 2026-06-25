@@ -1,0 +1,269 @@
+{
+  "schema_version": 1,
+  "environment": "staging",
+  "release_candidate": "replace-with-git-sha-or-tag",
+  "generated_at": "2026-06-25T00:00:00Z",
+  "items": [
+    {
+      "id": "SRC-CI-001",
+      "category": "source-control-ci",
+      "status": "pending_external",
+      "description": "Clean pushed GitHub Actions run for the exact release branch.",
+      "required_evidence": [
+        "tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded artifact file or URL",
+        "Uploaded GitHub Actions ci-release-evidence artifact from the release SHA",
+        "GitHub Actions run URL",
+        "Commit SHA",
+        "All required workflow jobs passing"
+      ]
+    },
+    {
+      "id": "DEPLOY-TF-001",
+      "category": "deployment",
+      "status": "pending_external",
+      "description": "Terraform remote state is initialized and the staging plan/apply completes against real inputs.",
+      "required_evidence": [
+        "tools/deploymentprobe -probe-terraform JSON report with DEPLOY-TF-001 evidence item",
+        "terraform init output with remote backend",
+        "terraform plan artifact",
+        "terraform apply output or deployment approval record"
+      ]
+    },
+    {
+      "id": "DEPLOY-TLS-001",
+      "category": "deployment",
+      "status": "pending_external",
+      "description": "DNS, ACM, ALB ingress, HTTPS redirect, and TLS policy are proven against deployed API and web hostnames.",
+      "required_evidence": [
+        "tools/stagingprobe JSON report",
+        "DNS lookup output",
+        "ACM certificate status",
+        "HTTPS probe output",
+        "HTTP to HTTPS redirect probe output"
+      ]
+    },
+    {
+      "id": "DEPLOY-K8S-001",
+      "category": "deployment",
+      "status": "pending_external",
+      "description": "Kubernetes API, web, and Rust engine workloads are running with readiness/liveness probes, PDBs, HPAs, and rolling update settings.",
+      "required_evidence": [
+        "tools/deploymentprobe -probe-kubernetes JSON report with DEPLOY-K8S-001 evidence item",
+        "kubectl rollout status output",
+        "kubectl get deploy,svc,ingress,hpa,pdb output",
+        "tools/stagingprobe JSON report",
+        "API /live and /ready probe output",
+        "Rust gRPC health probe output"
+      ]
+    },
+    {
+      "id": "SEC-SECRETS-001",
+      "category": "security",
+      "status": "pending_external",
+      "description": "Secrets Store CSI and IRSA sync runtime secrets from the cloud secret manager without committed plaintext.",
+      "required_evidence": [
+        "tools/securityprobe -probe-secrets JSON report with SEC-SECRETS-001 evidence item",
+        "Secrets Store CSI driver status",
+        "IRSA role annotation and trust policy",
+        "SecretProviderClass sync output",
+        "Scoped Secrets Manager access test"
+      ]
+    },
+    {
+      "id": "SEC-DBUSER-001",
+      "category": "security",
+      "status": "pending_external",
+      "description": "DATABASE_URL uses a scoped application database user rather than the RDS root user.",
+      "required_evidence": [
+        "tools/securityprobe -probe-db-user JSON report with SEC-DBUSER-001 evidence item",
+        "Redacted DATABASE_URL principal proof",
+        "Database grants for app role",
+        "Denied privileged operation probe"
+      ]
+    },
+    {
+      "id": "ABUSE-LIMIT-001",
+      "category": "security",
+      "status": "pending_external",
+      "description": "Auth, AI, journal, room, and WebSocket abuse limits are observed through real staging ingress behavior.",
+      "required_evidence": [
+        "tools/abuseprobe JSON report with ABUSE-LIMIT-001 evidence item",
+        "429 responses for auth, AI, journal, rooms, and WebSocket profiles",
+        "Retry-After and X-RateLimit-Limit header proof",
+        "Staging ABUSE_LIMIT_* configuration used for the probe"
+      ]
+    },
+    {
+      "id": "DATA-RLS-001",
+      "category": "data-security",
+      "status": "pending_external",
+      "description": "Tenant RLS behavior is proven through the deployed API and staging database connection pool.",
+      "required_evidence": [
+        "tools/tenantprobe JSON report with DATA-RLS-001 evidence item",
+        "Same-tenant read/write probe output",
+        "Cross-tenant read/write denial output",
+        "Database role and app.current_org_id proof"
+      ]
+    },
+    {
+      "id": "DATA-REDIS-001",
+      "category": "realtime-data",
+      "status": "pending_external",
+      "description": "Redis-backed room sequencing is contiguous under deployed multi-client concurrency.",
+      "required_evidence": [
+        "External WebSocket load report",
+        "Redis sequence ordering assertion output",
+        "No duplicate or skipped sequence proof"
+      ]
+    },
+    {
+      "id": "RUST-GRPC-001",
+      "category": "rust-engine",
+      "status": "pending_external",
+      "description": "Deployed Rust gRPC service is reachable from the Go API and exposes health and metrics.",
+      "required_evidence": [
+        "tools/rustprobe JSON report with RUST-GRPC-001 evidence item",
+        "gRPC health probe output",
+        "API to Rust integration probe",
+        "Rust metrics scrape output"
+      ]
+    },
+    {
+      "id": "OBS-OTEL-001",
+      "category": "observability",
+      "status": "pending_external",
+      "description": "OpenTelemetry collector/backend receives traces and preserves trace IDs across API and Rust logs.",
+      "required_evidence": [
+        "tools/observabilityprobe -probe-otel JSON report with OBS-OTEL-001 evidence item",
+        "Collector endpoint configuration",
+        "API metrics scrape output",
+        "Rust metrics scrape output",
+        "Trace search output",
+        "Log query output with trace_id"
+      ]
+    },
+    {
+      "id": "OBS-ALERT-001",
+      "category": "observability",
+      "status": "pending_external",
+      "description": "Dashboard import, alert delivery, and telemetry retention are proven in staging.",
+      "required_evidence": [
+        "tools/observabilityprobe -probe-alerts JSON report with OBS-ALERT-001 evidence item",
+        "Grafana dashboard import screenshot or export",
+        "Alert delivery test output",
+        "Retention policy proof"
+      ]
+    },
+    {
+      "id": "CLIENT-WEB-001",
+      "category": "client",
+      "status": "pending_external",
+      "description": "Deployed web app completes browser smoke flows against staging API and WebSocket endpoints.",
+      "required_evidence": [
+        "tools/stagingprobe JSON report",
+        "Browser smoke run output",
+        "Login/register flow proof",
+        "Journal save/load proof",
+        "Room create/select/WebSocket proof"
+      ]
+    },
+    {
+      "id": "CLIENT-MOBILE-001",
+      "category": "client",
+      "status": "pending_external",
+      "description": "Mobile native-device or EAS validation proves the AES-GCM binding and staging endpoint config outside Node/WebCrypto shims.",
+      "required_evidence": [
+        "tools/mobileprobe JSON report with CLIENT-MOBILE-001 evidence item",
+        "EAS or native-device run output",
+        "Native crypto smoke output",
+        "Staging API/WS config proof"
+      ]
+    },
+    {
+      "id": "EXT-ZOOM-001",
+      "category": "external-service",
+      "status": "pending_external",
+      "description": "Zoom OAuth, meeting creation fallback, webhook signature validation, duplicate webhook idempotency, and room mapping are proven with staging credentials.",
+      "required_evidence": [
+        "tools/zoomprobe JSON report with EXT-ZOOM-001 evidence item",
+        "tools/stagingprobe -probe-zoom JSON report",
+        "Zoom OAuth probe output",
+        "Meeting create or fallback output",
+        "Webhook delivery/signature proof",
+        "Duplicate webhook idempotency proof",
+        "Meeting-to-room mapping proof"
+      ]
+    },
+    {
+      "id": "EXT-AI-001",
+      "category": "external-service",
+      "status": "pending_external",
+      "description": "AI provider configuration, timeout/degradation behavior, citation verification, and audit persistence are proven in staging.",
+      "required_evidence": [
+        "tools/aiprobe JSON report with EXT-AI-001 evidence item",
+        "tools/stagingprobe -probe-ai JSON report",
+        "Provider readiness probe",
+        "Timeout/degradation probe",
+        "Citation verification output",
+        "ai_request_logs and citation_trails query output"
+      ]
+    },
+    {
+      "id": "PERF-HTTP-001",
+      "category": "performance",
+      "status": "pending_external",
+      "description": "Staging HTTP load test proves or revises the architecture target of 5000 requests per second with P99 under 200ms.",
+      "required_evidence": [
+        "tools/loadtest JSON report with PERF-HTTP-001 evidence item",
+        "Ingress/API replica count",
+        "Database and Redis telemetry during the run"
+      ]
+    },
+    {
+      "id": "PERF-WS-001",
+      "category": "performance",
+      "status": "pending_external",
+      "description": "Staging WebSocket load test proves multi-instance fan-out and Redis sequencing with real API replicas.",
+      "required_evidence": [
+        "tools/loadtest -websocket JSON report with PERF-WS-001 and DATA-REDIS-001 evidence items",
+        "API replica distribution proof",
+        "Redis telemetry during the run"
+      ]
+    },
+    {
+      "id": "DR-ROLLBACK-001",
+      "category": "resilience",
+      "status": "pending_external",
+      "description": "Rollback and degradation paths are exercised in staging.",
+      "required_evidence": [
+        "tools/resilienceprobe -probe-rollback JSON report with DR-ROLLBACK-001 evidence item",
+        "kubectl rollout undo or equivalent rollback output",
+        "API readiness before and after rollback",
+        "AI/Zoom degradation drill output"
+      ]
+    },
+    {
+      "id": "DR-BACKUP-001",
+      "category": "resilience",
+      "status": "pending_external",
+      "description": "RDS backup creation and restore drill are proven in staging.",
+      "required_evidence": [
+        "tools/resilienceprobe -probe-backup JSON report with DR-BACKUP-001 evidence item",
+        "Backup/snapshot creation output",
+        "Restore drill output",
+        "Application smoke against restored database"
+      ]
+    },
+    {
+      "id": "SEC-SIGNOFF-001",
+      "category": "security",
+      "status": "pending_external",
+      "description": "Threat model, dependency risk register, and residual production risks receive owner/security signoff.",
+      "required_evidence": [
+        "Threat model review approval",
+        "DRR-001 accept-or-remediate decision",
+        "Release risk signoff record"
+      ]
+    }
+  ]
+}

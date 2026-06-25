@@ -15,8 +15,10 @@ import (
 
 	"scriptureforge/internal/adapters/integration_zoom"
 	"scriptureforge/internal/adapters/llm"
+	"scriptureforge/internal/domain/abuse"
 	"scriptureforge/internal/domain/ai"
 	"scriptureforge/internal/domain/auth"
+	"scriptureforge/internal/domain/observability"
 	"scriptureforge/internal/domain/room"
 	"scriptureforge/internal/ports"
 )
@@ -85,22 +87,27 @@ func loadConfig() (*Config, *PlatformException) {
 	}, nil
 }
 
-func setupRoutes(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisClient *redis.Client) *http.ServeMux {
+func setupRoutes(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisClient *redis.Client) http.Handler {
 	mux := http.ServeMux{}
+	abuseLimiter := abuse.NewDefaultLimiter()
+	observer := observability.NewDefaultObserver()
+	mux.HandleFunc("/live", liveHandler)
+	mux.HandleFunc("/ready", readyHandler(dbpool, redisClient))
+	mux.Handle("/metrics", observer.MetricsHandler())
 
 	// Auth Endpoints
 	authHandler := &ports.AuthHandler{DB: dbpool}
-	mux.HandleFunc("/api/v1/auth/register", authHandler.RegisterHandler)
-	mux.HandleFunc("/api/v1/auth/login", authHandler.LoginHandler)
-	mux.HandleFunc("/api/v1/auth/refresh", authHandler.RefreshHandler)
-	mux.HandleFunc("/api/v1/auth/logout", authHandler.LogoutHandler)
-	mux.Handle("/api/v1/auth/mfa/verify", auth.RBACMiddleware(http.HandlerFunc(authHandler.MFAEnrollHandler), ""))
-	mux.HandleFunc("/api/auth/register", authHandler.RegisterHandler)
-	mux.HandleFunc("/api/auth/login", authHandler.LoginHandler)
+	mux.Handle("/api/v1/auth/register", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.RegisterHandler)))
+	mux.Handle("/api/v1/auth/login", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.LoginHandler)))
+	mux.Handle("/api/v1/auth/refresh", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.RefreshHandler)))
+	mux.Handle("/api/v1/auth/logout", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.LogoutHandler)))
+	mux.Handle("/api/v1/auth/mfa/verify", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.MFAEnrollHandler)), ""))
+	mux.Handle("/api/auth/register", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.RegisterHandler)))
+	mux.Handle("/api/auth/login", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.LoginHandler)))
 
 	journalHandler := &ports.JournalHandler{DB: dbpool}
-	mux.Handle("/api/v1/journal_entries", auth.RBACMiddleware(http.HandlerFunc(journalHandler.ServeJournalEntries), ""))
-	mux.Handle("/api/v1/journal_entries/", auth.RBACMiddleware(http.HandlerFunc(journalHandler.ServeJournalEntry), ""))
+	mux.Handle("/api/v1/journal_entries", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileJournal, http.HandlerFunc(journalHandler.ServeJournalEntries)), ""))
+	mux.Handle("/api/v1/journal_entries/", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileJournal, http.HandlerFunc(journalHandler.ServeJournalEntry)), ""))
 
 	// AI Endpoints (Protected by RBAC)
 	ragEngine := ai.NewRAGEngine(vectorDB)
@@ -113,24 +120,56 @@ func setupRoutes(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisClient *redis.
 		LLMClient:       llm.NewLLMClient(),
 		MapReduceWorker: mapReduceWorker,
 	}
-	mux.Handle("/api/v1/ai/generate/study", auth.RBACMiddleware(http.HandlerFunc(aiHandler.GenerateCurriculumHandler), ""))
-	mux.Handle("/api/ai/curriculum", auth.RBACMiddleware(http.HandlerFunc(aiHandler.GenerateCurriculumHandler), ""))
+	mux.Handle("/api/v1/ai/generate/study", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileAI, http.HandlerFunc(aiHandler.GenerateCurriculumHandler)), ""))
+	mux.Handle("/api/ai/curriculum", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileAI, http.HandlerFunc(aiHandler.GenerateCurriculumHandler)), ""))
 
 	// Room & Zoom Webhook Initialization
 	roomStateManager := room.NewRoomStateManager(redisClient)
+	roomHub := ports.NewRoomHub()
 	roomHandler := &ports.RoomHandler{DB: dbpool, StateManager: roomStateManager}
-	mux.Handle("/api/v1/rooms/create", auth.RBACMiddleware(http.HandlerFunc(roomHandler.CreateRoomHandler), ""))
-	mux.Handle("/api/v1/rooms/active", auth.RBACMiddleware(http.HandlerFunc(roomHandler.ActiveRoomsHandler), ""))
-	mux.Handle("/api/v1/rooms/state/", auth.RBACMiddleware(http.HandlerFunc(roomHandler.RoomStateHandler), ""))
+	mux.Handle("/api/v1/rooms/create", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileRooms, http.HandlerFunc(roomHandler.CreateRoomHandler)), ""))
+	mux.Handle("/api/v1/rooms/active", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileRooms, http.HandlerFunc(roomHandler.ActiveRoomsHandler)), ""))
+	mux.Handle("/api/v1/rooms/state/", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileRooms, http.HandlerFunc(roomHandler.RoomStateHandler)), ""))
 
 	zoomWebhookHandler := integration_zoom.NewWebhookHandler(roomStateManager, dbpool)
 	mux.HandleFunc("/api/webhooks/zoom", zoomWebhookHandler.HandleZoomWebhook)
 
 	// Websockets (Protected)
-	socketConn := &ports.SocketConnection{DB: dbpool, StateManager: roomStateManager}
-	mux.Handle("/api/v1/rooms/stream/", auth.RBACMiddleware(http.HandlerFunc(socketConn.HandleLiveRoom), ""))
+	socketConn := &ports.SocketConnection{DB: dbpool, StateManager: roomStateManager, Hub: roomHub}
+	mux.Handle("/api/v1/rooms/stream/", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileWebSocket, http.HandlerFunc(socketConn.HandleLiveRoom)), ""))
 
-	return &mux
+	return observer.Middleware(&mux)
+}
+
+func liveHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"status":"ok"}`))
+}
+
+func readyHandler(dbpool *pgxpool.Pool, redisClient *redis.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if dbpool == nil || redisClient == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"status":"unready","reason":"dependencies_not_configured"}`))
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := dbpool.Ping(ctx); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"status":"unready","reason":"database_unavailable"}`))
+			return
+		}
+		if err := redisClient.Ping(ctx).Err(); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"status":"unready","reason":"redis_unavailable"}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ready"}`))
+	}
 }
 
 func main() {
@@ -141,6 +180,17 @@ func main() {
 	if errConfig != nil {
 		log.Fatalf("Initialization failed: %v", errConfig)
 	}
+	shutdownOTel, err := observability.InitOpenTelemetry(ctx, observability.OTelConfigFromEnv())
+	if err != nil {
+		log.Fatalf("OpenTelemetry initialization failed: %v", err)
+	}
+	defer func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		if err := shutdownOTel(shutdownCtx); err != nil {
+			log.Printf("OpenTelemetry shutdown failed: %v", err)
+		}
+	}()
 
 	dbpool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {

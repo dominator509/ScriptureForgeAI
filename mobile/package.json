@@ -4,17 +4,21 @@
   "private": true,
   "scripts": {
     "start": "expo start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "smoke": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test src/lib/api.smoke.mts",
+    "verify:crypto": "node ../tools/verify-journal-crypto.mjs",
+    "build:check": "npm run typecheck && npm run smoke && npm run verify:crypto"
   },
   "dependencies": {
     "buffer": "^6.0.3",
-    "expo": "~49.0.15",
-    "react": "18.2.0",
-    "react-native": "0.72.6",
-    "expo-crypto": "~12.4.1",
+    "expo": "^56.0.12",
+    "react": "19.2.7",
+    "react-native": "^0.86.0",
+    "react-native-quick-crypto": "^0.7.15",
     "zustand": "^4.4.0"
   },
   "devDependencies": {
+    "@types/react": "19.2.17",
     "typescript": "^5.0.0"
   }
 }

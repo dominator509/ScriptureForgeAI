@@ -1,17 +1,18 @@
 package ports
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"scriptureforge/internal/domain/auth"
-	"scriptureforge/internal/domain/room"
 )
 
 type RoomEvent struct {
@@ -22,9 +23,22 @@ type RoomEvent struct {
 	SentAt   time.Time       `json:"sent_at"`
 }
 
+const (
+	maxWSMessageBytes = 64 * 1024
+	wsPongWait        = 60 * time.Second
+	wsPingInterval    = 30 * time.Second
+	wsWriteWait       = 10 * time.Second
+)
+
 type SocketConnection struct {
-	DB           *pgxpool.Pool
-	StateManager *room.RoomStateManager
+	DB                  *pgxpool.Pool
+	StateManager        roomEventStore
+	Hub                 *RoomHub
+	MembershipValidator func(r *http.Request, claims *auth.TokenClaims, roomID string) bool
+}
+
+type roomEventStore interface {
+	AppendRoomEvent(ctx context.Context, roomID, eventJSON string) (int64, error)
 }
 
 func allowedWSOrigin(r *http.Request) bool {
@@ -46,6 +60,9 @@ func roomIDFromPath(path string) string {
 }
 
 func (s *SocketConnection) validateRoomMembership(r *http.Request, claims *auth.TokenClaims, roomID string) bool {
+	if s.MembershipValidator != nil {
+		return s.MembershipValidator(r, claims, roomID)
+	}
 	if roomID == "" || strings.Contains(roomID, "/") {
 		return false
 	}
@@ -81,6 +98,10 @@ func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Room membership required", Code: http.StatusForbidden})
 		return
 	}
+	hub := s.Hub
+	if hub == nil {
+		hub = NewRoomHub()
+	}
 
 	upgrader := websocket.Upgrader{CheckOrigin: allowedWSOrigin}
 	conn, err := upgrader.Upgrade(w, r, nil)
@@ -90,6 +111,57 @@ func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request
 	}
 	defer conn.Close()
 
+	events, unsubscribe := hub.Subscribe(roomID)
+	defer unsubscribe()
+	done := make(chan struct{})
+	var writeMu sync.Mutex
+	writeJSON := func(v any) error {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		_ = conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
+		return conn.WriteJSON(v)
+	}
+	writeControl := func(messageType int, data []byte) error {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		return conn.WriteControl(messageType, data, time.Now().Add(wsWriteWait))
+	}
+	defer close(done)
+	go func() {
+		for {
+			select {
+			case event, ok := <-events:
+				if !ok {
+					return
+				}
+				if err := writeJSON(event); err != nil {
+					return
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
+	pingTicker := time.NewTicker(wsPingInterval)
+	defer pingTicker.Stop()
+	go func() {
+		for {
+			select {
+			case <-pingTicker.C:
+				if err := writeControl(websocket.PingMessage, nil); err != nil {
+					return
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
+
+	conn.SetReadLimit(maxWSMessageBytes)
+	_ = conn.SetReadDeadline(time.Now().Add(wsPongWait))
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(wsPongWait))
+	})
 	for {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
@@ -98,21 +170,22 @@ func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request
 		}
 		var event RoomEvent
 		if err := json.Unmarshal(message, &event); err != nil || event.Type == "" || event.RoomID != roomID {
-			_ = conn.WriteJSON(map[string]string{"error": "invalid room event"})
+			_ = writeJSON(map[string]string{"error": "invalid room event"})
 			continue
 		}
 		event.SentAt = time.Now().UTC()
+		event.Sequence = 0
 		wire, err := json.Marshal(event)
 		if err != nil {
-			_ = conn.WriteJSON(map[string]string{"error": "invalid room event"})
+			_ = writeJSON(map[string]string{"error": "invalid room event"})
 			continue
 		}
 		seq, err := s.StateManager.AppendRoomEvent(r.Context(), roomID, string(wire))
 		if err != nil {
-			_ = conn.WriteJSON(map[string]string{"error": "failed to persist room event"})
+			_ = writeJSON(map[string]string{"error": "failed to persist room event"})
 			continue
 		}
 		event.Sequence = seq
-		_ = conn.WriteJSON(event)
+		hub.Broadcast(roomID, event)
 	}
 }
