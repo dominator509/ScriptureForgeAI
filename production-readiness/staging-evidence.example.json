@@ -25,8 +25,8 @@
       "required_evidence": [
         "tools/deploymentprobe -probe-terraform JSON report with DEPLOY-TF-001 evidence item",
         "terraform init output with remote backend",
-        "terraform plan artifact",
-        "terraform apply output or deployment approval record"
+        "terraform plan artifact proving EKS, node group, RDS, Redis, workload deployments, ingresses, SecretProviderClass, and IAM role resources",
+        "terraform apply output or DEPLOY-TF-001 deployment approval record"
       ]
     },
     {
@@ -49,8 +49,8 @@
       "description": "Kubernetes API, web, and Rust engine workloads are running with readiness/liveness probes, PDBs, HPAs, and rolling update settings.",
       "required_evidence": [
         "tools/deploymentprobe -probe-kubernetes JSON report with DEPLOY-K8S-001 evidence item",
-        "kubectl rollout status output",
-        "kubectl get deploy,svc,ingress,hpa,pdb output",
+        "kubectl rollout status output proving API, web, and Rust workloads are rolled out, ready, and available",
+        "kubectl get deploy,svc,ingress,hpa,pdb output proving services, ingresses, HPA targets, and PDB min availability",
         "tools/stagingprobe JSON report",
         "API /live and /ready probe output",
         "Rust gRPC health probe output"

@@ -238,7 +238,7 @@ rtk terraform init -backend-config=backend.hcl
 rtk terraform plan -var-file=terraform.tfvars
 ```
 
-After capturing staging Terraform and Kubernetes artifacts, run the deployment probe so the evidence can be recorded into the manifest. Terraform mode requires remote S3 backend init output, a staging plan containing EKS/RDS/Redis resources, and an apply or deployment approval artifact:
+After capturing staging Terraform and Kubernetes artifacts, run the deployment probe so the evidence can be recorded into the manifest. Terraform mode requires remote S3 backend init output, a staging plan containing EKS, node group, RDS, Redis, Kubernetes deployments, ingresses, SecretProviderClass manifest, and IAM role resources, plus either Terraform apply output or a deployment approval artifact:
 
 ```bash
 rtk go run ./tools/deploymentprobe \
@@ -248,7 +248,7 @@ rtk go run ./tools/deploymentprobe \
   -terraform-apply-url=https://artifacts.staging.example/deploy/terraform-apply-or-approval.txt
 ```
 
-Kubernetes mode requires rollout status and workload resource artifacts proving API, web, and Rust deployments plus service, ingress, HPA, and PDB resources:
+Kubernetes mode requires rollout status and workload resource artifacts proving API, web, and Rust deployments are rolled out, ready, and available, plus service, ingress, HPA target, and PDB min-availability resources:
 
 ```bash
 rtk go run ./tools/deploymentprobe \

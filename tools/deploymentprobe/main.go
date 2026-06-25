@@ -86,15 +86,18 @@ func run(cfg config, output io.Writer) error {
 	if cfg.ProbeTerraform {
 		probes = append(probes,
 			probeArtifact(client, "terraform-remote-backend-init", cfg.TerraformInitURL, []string{"terraform", "s3", "backend", "successfully initialized"}, []string{"-backend=false", "local backend"}),
-			probeArtifact(client, "terraform-staging-plan", cfg.TerraformPlanURL, []string{"Terraform", "Plan:", "aws_eks_cluster", "aws_rds_cluster", "aws_elasticache_replication_group"}, nil),
-			probeArtifact(client, "terraform-staging-apply-or-approval", cfg.TerraformApplyURL, []string{"Apply complete", "Resources:", "approval"}, []string{"Error:", "failed"}),
+			probeArtifact(client, "terraform-staging-plan", cfg.TerraformPlanURL, []string{"Terraform", "Plan:", "aws_eks_cluster", "aws_eks_node_group", "aws_rds_cluster", "aws_elasticache_replication_group", "kubernetes_deployment", "kubernetes_ingress_v1", "kubernetes_manifest", "aws_iam_role"}, nil),
+			probeArtifactAny(client, "terraform-staging-apply-or-approval", cfg.TerraformApplyURL, [][]string{
+				{"Apply complete", "Resources:"},
+				{"deployment approval", "approved", "DEPLOY-TF-001"},
+			}, []string{"Error:", "failed"}),
 		)
 		evidenceItems = append(evidenceItems, "DEPLOY-TF-001")
 	}
 	if cfg.ProbeKubernetes {
 		probes = append(probes,
-			probeArtifact(client, "kubernetes-rollout-status", cfg.K8SRolloutURL, []string{"deployment", "scriptureforge-api", "scriptureforge-web", "scriptureforge-rust-engine", "successfully rolled out"}, nil),
-			probeArtifact(client, "kubernetes-workload-resources", cfg.K8SResourcesURL, []string{"deployment", "service", "ingress", "hpa", "pdb", "scriptureforge-api", "scriptureforge-web", "scriptureforge-rust-engine"}, nil),
+			probeArtifact(client, "kubernetes-rollout-status", cfg.K8SRolloutURL, []string{"deployment", "scriptureforge-api", "scriptureforge-web", "scriptureforge-rust-engine", "successfully rolled out", "ready", "available"}, nil),
+			probeArtifact(client, "kubernetes-workload-resources", cfg.K8SResourcesURL, []string{"deployment", "service", "ingress", "hpa", "pdb", "ready", "available", "targets", "minavailable", "scriptureforge-api", "scriptureforge-web", "scriptureforge-rust-engine"}, nil),
 		)
 		evidenceItems = append(evidenceItems, "DEPLOY-K8S-001")
 	}
@@ -124,6 +127,10 @@ func run(cfg config, output io.Writer) error {
 }
 
 func probeArtifact(client *http.Client, name, target string, required []string, forbidden []string) probeResult {
+	return probeArtifactAny(client, name, target, [][]string{required}, forbidden)
+}
+
+func probeArtifactAny(client *http.Client, name, target string, acceptableRequiredSets [][]string, forbidden []string) probeResult {
 	start := time.Now()
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, target, nil)
 	if err != nil {
@@ -138,12 +145,21 @@ func probeArtifact(client *http.Client, name, target string, required []string, 
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512*1024))
 	text := string(body)
-	passed := resp.StatusCode >= 200 && resp.StatusCode < 300 && containsAllFold(text, required) && containsNoneFold(text, forbidden)
+	passed := resp.StatusCode >= 200 && resp.StatusCode < 300 && containsAnyRequiredSet(text, acceptableRequiredSets) && containsNoneFold(text, forbidden)
 	summary := fmt.Sprintf("got HTTP %d in %dms", resp.StatusCode, latency)
 	if !passed {
 		summary += "; artifact missing required markers or contains forbidden local/failure markers"
 	}
 	return probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, ResultSummary: summary}
+}
+
+func containsAnyRequiredSet(text string, sets [][]string) bool {
+	for _, set := range sets {
+		if containsAllFold(text, set) {
+			return true
+		}
+	}
+	return false
 }
 
 func containsAllFold(text string, needles []string) bool {
