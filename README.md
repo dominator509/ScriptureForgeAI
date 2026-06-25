@@ -137,10 +137,13 @@ rtk go run ./tools/stagingprobe \
   -web-base=https://app.staging.example \
   -dns-artifact-url=https://artifacts.staging.example/tls/dns.txt \
   -acm-artifact-url=https://artifacts.staging.example/tls/acm-certificate.txt \
+  -web-auth-smoke-url=https://artifacts.staging.example/web/auth-smoke.txt \
+  -web-journal-smoke-url=https://artifacts.staging.example/web/journal-smoke.txt \
+  -web-room-smoke-url=https://artifacts.staging.example/web/room-smoke.txt \
   -timeout=5s
 ```
 
-The probe requires HTTPS targets, checks API `/live` and `/ready`, checks the web root, records TLS version/certificate expiry, verifies HTTP-to-HTTPS redirects, and carries same-run HTTPS artifacts proving DNS records plus ACM certificate status/TLS policy. It is an evidence collector for deployed service reachability, not a substitute for Terraform apply, Kubernetes rollout/resource artifacts, load, observability, or external-service proof. `DEPLOY-K8S-001` must come from `tools/deploymentprobe -probe-kubernetes`, which proves rollout status plus deploy/service/ingress/HPA/PDB resources.
+The probe requires HTTPS targets, checks API `/live` and `/ready`, checks the web root, records TLS version/certificate expiry, verifies HTTP-to-HTTPS redirects, and carries same-run HTTPS artifacts proving DNS records plus ACM certificate status/TLS policy. When `-web-base` is supplied, it also requires browser-smoke artifacts for login/register, journal save/load, and room create/select/WebSocket flows before emitting `CLIENT-WEB-001`. It is an evidence collector for deployed service reachability, not a substitute for Terraform apply, Kubernetes rollout/resource artifacts, load, observability, or external-service proof. `DEPLOY-K8S-001` must come from `tools/deploymentprobe -probe-kubernetes`, which proves rollout status plus deploy/service/ingress/HPA/PDB resources.
 
 Optional external-service probes can attach evidence for `EXT-ZOOM-001` and `EXT-AI-001`:
 

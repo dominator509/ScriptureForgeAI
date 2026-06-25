@@ -158,11 +158,10 @@
       "status": "pending_external",
       "description": "Deployed web app completes browser smoke flows against staging API and WebSocket endpoints.",
       "required_evidence": [
-        "tools/stagingprobe JSON report",
-        "Browser smoke run output",
-        "Login/register flow proof",
-        "Journal save/load proof",
-        "Room create/select/WebSocket proof"
+        "tools/stagingprobe JSON report with CLIENT-WEB-001 evidence item",
+        "HTTPS browser smoke artifact for login/register flow",
+        "HTTPS browser smoke artifact for journal save/load flow",
+        "HTTPS browser smoke artifact for room create/select/WebSocket flow"
       ]
     },
     {

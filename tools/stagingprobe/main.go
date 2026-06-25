@@ -20,27 +20,33 @@ import (
 )
 
 type config struct {
-	APIBase           string
-	WebBase           string
-	DNSArtifactURL    string
-	ACMArtifactURL    string
-	Timeout           time.Duration
-	ProbeZoom         bool
-	ZoomWebhookSecret string
-	ProbeAI           bool
-	AIBearerToken     string
-	AITopic           string
+	APIBase            string
+	WebBase            string
+	DNSArtifactURL     string
+	ACMArtifactURL     string
+	WebAuthSmokeURL    string
+	WebJournalSmokeURL string
+	WebRoomSmokeURL    string
+	Timeout            time.Duration
+	ProbeZoom          bool
+	ZoomWebhookSecret  string
+	ProbeAI            bool
+	AIBearerToken      string
+	AITopic            string
 }
 
 type report struct {
-	ObservedAt    string        `json:"observed_at"`
-	APITarget     string        `json:"api_target,omitempty"`
-	WebTarget     string        `json:"web_target,omitempty"`
-	DNSArtifact   string        `json:"dns_artifact_url"`
-	ACMArtifact   string        `json:"acm_artifact_url"`
-	ThresholdPass bool          `json:"threshold_pass"`
-	Probes        []probeResult `json:"probes"`
-	EvidenceItems []string      `json:"evidence_items"`
+	ObservedAt      string        `json:"observed_at"`
+	APITarget       string        `json:"api_target,omitempty"`
+	WebTarget       string        `json:"web_target,omitempty"`
+	DNSArtifact     string        `json:"dns_artifact_url"`
+	ACMArtifact     string        `json:"acm_artifact_url"`
+	WebAuthSmoke    string        `json:"web_auth_smoke_url,omitempty"`
+	WebJournalSmoke string        `json:"web_journal_smoke_url,omitempty"`
+	WebRoomSmoke    string        `json:"web_room_smoke_url,omitempty"`
+	ThresholdPass   bool          `json:"threshold_pass"`
+	Probes          []probeResult `json:"probes"`
+	EvidenceItems   []string      `json:"evidence_items"`
 }
 
 type probeResult struct {
@@ -69,6 +75,9 @@ func parseFlags() config {
 	flag.StringVar(&cfg.WebBase, "web-base", "", "deployed web base URL, for example https://app.staging.example")
 	flag.StringVar(&cfg.DNSArtifactURL, "dns-artifact-url", os.Getenv("STAGING_DNS_ARTIFACT_URL"), "HTTPS artifact proving deployed DNS records for API/web hostnames")
 	flag.StringVar(&cfg.ACMArtifactURL, "acm-artifact-url", os.Getenv("STAGING_ACM_ARTIFACT_URL"), "HTTPS artifact proving ACM certificate status and TLS policy")
+	flag.StringVar(&cfg.WebAuthSmokeURL, "web-auth-smoke-url", os.Getenv("STAGING_WEB_AUTH_SMOKE_URL"), "HTTPS browser smoke artifact proving web login/register against staging")
+	flag.StringVar(&cfg.WebJournalSmokeURL, "web-journal-smoke-url", os.Getenv("STAGING_WEB_JOURNAL_SMOKE_URL"), "HTTPS browser smoke artifact proving web journal save/load against staging")
+	flag.StringVar(&cfg.WebRoomSmokeURL, "web-room-smoke-url", os.Getenv("STAGING_WEB_ROOM_SMOKE_URL"), "HTTPS browser smoke artifact proving web room create/select/WebSocket against staging")
 	flag.DurationVar(&cfg.Timeout, "timeout", 5*time.Second, "per-probe timeout")
 	flag.BoolVar(&cfg.ProbeZoom, "probe-zoom", false, "probe Zoom webhook invalid-signature denial; add -zoom-webhook-secret to also send a signed no-op webhook")
 	flag.StringVar(&cfg.ZoomWebhookSecret, "zoom-webhook-secret", os.Getenv("ZOOM_WEBHOOK_SECRET_TOKEN"), "Zoom webhook secret token for optional signed no-op webhook probe")
@@ -94,6 +103,23 @@ func run(cfg config, output io.Writer) error {
 	if err != nil {
 		return err
 	}
+	webAuthSmoke := ""
+	webJournalSmoke := ""
+	webRoomSmoke := ""
+	if cfg.WebBase != "" {
+		webAuthSmoke, err = normalizeArtifactURL(cfg.WebAuthSmokeURL, "web-auth-smoke-url")
+		if err != nil {
+			return err
+		}
+		webJournalSmoke, err = normalizeArtifactURL(cfg.WebJournalSmokeURL, "web-journal-smoke-url")
+		if err != nil {
+			return err
+		}
+		webRoomSmoke, err = normalizeArtifactURL(cfg.WebRoomSmokeURL, "web-room-smoke-url")
+		if err != nil {
+			return err
+		}
+	}
 	if (cfg.ProbeZoom || cfg.ProbeAI) && cfg.APIBase == "" {
 		return errors.New("-api-base is required for -probe-zoom or -probe-ai")
 	}
@@ -103,7 +129,7 @@ func run(cfg config, output io.Writer) error {
 
 	client := &http.Client{Timeout: cfg.Timeout}
 	results := make([]probeResult, 0, 6)
-	evidenceItems := []string{"DEPLOY-TLS-001", "CLIENT-WEB-001"}
+	evidenceItems := []string{"DEPLOY-TLS-001"}
 	if cfg.APIBase != "" {
 		apiBase, err := normalizeBaseURL(cfg.APIBase)
 		if err != nil {
@@ -134,18 +160,22 @@ func run(cfg config, output io.Writer) error {
 		results = append(results, probeHTTP(client, "web-root", webBase, http.StatusOK))
 		results = append(results, probeTLS("web-tls", webBase, cfg.Timeout))
 		results = append(results, probeHTTPSRedirect(client, "web-http-redirect", webBase))
+		evidenceItems = appendEvidenceItem(evidenceItems, "CLIENT-WEB-001")
 		cfg.WebBase = webBase
 	}
 
 	result := report{
-		ObservedAt:    time.Now().UTC().Format("2006-01-02T15:04:05Z"),
-		APITarget:     cfg.APIBase,
-		WebTarget:     cfg.WebBase,
-		DNSArtifact:   dnsArtifact,
-		ACMArtifact:   acmArtifact,
-		ThresholdPass: true,
-		Probes:        results,
-		EvidenceItems: evidenceItems,
+		ObservedAt:      time.Now().UTC().Format("2006-01-02T15:04:05Z"),
+		APITarget:       cfg.APIBase,
+		WebTarget:       cfg.WebBase,
+		DNSArtifact:     dnsArtifact,
+		ACMArtifact:     acmArtifact,
+		WebAuthSmoke:    webAuthSmoke,
+		WebJournalSmoke: webJournalSmoke,
+		WebRoomSmoke:    webRoomSmoke,
+		ThresholdPass:   true,
+		Probes:          results,
+		EvidenceItems:   evidenceItems,
 	}
 	for _, probe := range results {
 		if !probe.Passed {

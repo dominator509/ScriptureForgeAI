@@ -158,6 +158,29 @@ function validateKubernetesEvidence(report) {
   }
 }
 
+function validateWebClientEvidence(report) {
+  const evidenceItems = report.evidence_items ?? [];
+  if (!evidenceItems.includes('CLIENT-WEB-001')) {
+    return;
+  }
+  const probes = Array.isArray(report.probes) ? report.probes : [];
+  const webRoot = probes.find((probe) => probe.name === 'web-root');
+  assert.ok(webRoot, 'CLIENT-WEB-001 report must include web-root probe');
+  assert.equal(webRoot.passed, true, 'web-root must pass');
+  const webTarget = String(report.web_target ?? '');
+  assert.match(webTarget, /^https:\/\//, 'CLIENT-WEB-001 report must include HTTPS web_target');
+  assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(webTarget), `CLIENT-WEB-001 web_target must not be local/self-test: ${webTarget}`);
+  for (const [field, label] of [
+    ['web_auth_smoke_url', 'auth browser smoke'],
+    ['web_journal_smoke_url', 'journal browser smoke'],
+    ['web_room_smoke_url', 'room browser smoke'],
+  ]) {
+    const artifactURL = String(report[field] ?? '');
+    assert.match(artifactURL, /^https:\/\//, `CLIENT-WEB-001 report must include HTTPS ${field}`);
+    assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(artifactURL), `CLIENT-WEB-001 ${label} artifact must not be local/self-test: ${artifactURL}`);
+  }
+}
+
 function validateAbuseEvidence(report) {
   const evidenceItems = report.evidence_items ?? [];
   if (!evidenceItems.includes('ABUSE-LIMIT-001')) {
@@ -203,6 +226,7 @@ function recordEvidence(manifest, report, artifact, command) {
   assert.match(report.observed_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, 'probe report observed_at must be ISO UTC without milliseconds');
   validateTLSEvidence(report);
   validateKubernetesEvidence(report);
+  validateWebClientEvidence(report);
   validatePerformanceEvidence(report);
   validateAbuseEvidence(report);
 

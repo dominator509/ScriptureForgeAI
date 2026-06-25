@@ -69,6 +69,10 @@ test('recordEvidence marks referenced manifest items as passed with artifact det
     evidence_items: ['DEPLOY-TLS-001', 'CLIENT-WEB-001'],
     dns_artifact_url: 'https://artifacts.staging.example/tls/dns.txt',
     acm_artifact_url: 'https://artifacts.staging.example/tls/acm.txt',
+    web_target: 'https://app.staging.example',
+    web_auth_smoke_url: 'https://artifacts.staging.example/web/auth-smoke.txt',
+    web_journal_smoke_url: 'https://artifacts.staging.example/web/journal-smoke.txt',
+    web_room_smoke_url: 'https://artifacts.staging.example/web/room-smoke.txt',
     probes: [
       { name: 'api-tls', passed: true },
       { name: 'web-root', passed: true },
@@ -84,6 +88,24 @@ test('recordEvidence marks referenced manifest items as passed with artifact det
     assert.equal(item.evidence[0].command_or_probe, 'go run ./tools/stagingprobe');
     assert.match(item.evidence[0].result_summary, /2 probes passed/);
   }
+});
+
+test('recordEvidence rejects web client evidence without browser smoke artifacts', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'CLIENT-WEB-001' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        evidence_items: ['CLIENT-WEB-001'],
+        web_target: 'https://app.staging.example',
+        probes: [{ name: 'web-root', passed: true }],
+      },
+      'artifacts/stagingprobe.json',
+      'go run ./tools/stagingprobe',
+    ),
+    /must include HTTPS web_auth_smoke_url/,
+  );
 });
 
 test('recordEvidence rejects TLS evidence without DNS and ACM artifacts', () => {

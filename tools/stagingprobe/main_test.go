@@ -102,6 +102,49 @@ func TestStagingProbeDoesNotEmitKubernetesEvidenceItem(t *testing.T) {
 	if containsItem(result.EvidenceItems, "DEPLOY-K8S-001") {
 		t.Fatalf("staging probe must not emit DEPLOY-K8S-001 without rollout/resource artifacts: %+v", result.EvidenceItems)
 	}
+	if containsItem(result.EvidenceItems, "CLIENT-WEB-001") {
+		t.Fatalf("API-only staging probe must not emit CLIENT-WEB-001 without web/browser artifacts: %+v", result.EvidenceItems)
+	}
+}
+
+func TestRunRequiresWebSmokeArtifactsForWebEvidence(t *testing.T) {
+	var output bytes.Buffer
+	err := run(config{
+		APIBase:        "https://api.example.test",
+		WebBase:        "https://app.example.test",
+		DNSArtifactURL: "https://artifacts.staging.example/tls/dns.txt",
+		ACMArtifactURL: "https://artifacts.staging.example/tls/acm.txt",
+		Timeout:        time.Second,
+	}, &output)
+	if err == nil || !strings.Contains(err.Error(), "web-auth-smoke-url") {
+		t.Fatalf("expected web auth smoke artifact URL error, got %v", err)
+	}
+}
+
+func TestRunIncludesWebSmokeArtifactsInReport(t *testing.T) {
+	var output bytes.Buffer
+	err := run(config{
+		WebBase:            "https://127.0.0.1:1",
+		DNSArtifactURL:     "https://artifacts.staging.example/tls/dns.txt",
+		ACMArtifactURL:     "https://artifacts.staging.example/tls/acm.txt",
+		WebAuthSmokeURL:    "https://artifacts.staging.example/web/auth-smoke.txt",
+		WebJournalSmokeURL: "https://artifacts.staging.example/web/journal-smoke.txt",
+		WebRoomSmokeURL:    "https://artifacts.staging.example/web/room-smoke.txt",
+		Timeout:            50 * time.Millisecond,
+	}, &output)
+	if err == nil {
+		t.Fatal("expected failed network probe to fail run")
+	}
+	var result report
+	if decodeErr := json.Unmarshal(output.Bytes(), &result); decodeErr != nil {
+		t.Fatalf("report was not JSON: %v\n%s", decodeErr, output.String())
+	}
+	if !containsItem(result.EvidenceItems, "CLIENT-WEB-001") {
+		t.Fatalf("web staging probe omitted CLIENT-WEB-001: %+v", result.EvidenceItems)
+	}
+	if result.WebAuthSmoke == "" || result.WebJournalSmoke == "" || result.WebRoomSmoke == "" {
+		t.Fatalf("web staging probe omitted browser smoke artifacts: %+v", result)
+	}
 }
 
 func TestProbeZoomInvalidSignatureDenial(t *testing.T) {
