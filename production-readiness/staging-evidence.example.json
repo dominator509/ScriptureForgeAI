@@ -135,11 +135,11 @@
       "description": "OpenTelemetry collector/backend receives traces and preserves trace IDs across API and Rust logs.",
       "required_evidence": [
         "tools/observabilityprobe -probe-otel JSON report with OBS-OTEL-001 evidence item",
-        "Collector endpoint configuration",
-        "API metrics scrape output",
-        "Rust metrics scrape output",
-        "Trace search output",
-        "Log query output with trace_id"
+        "Collector endpoint configuration with OTLP receivers/exporters/service pipeline",
+        "API metrics scrape output with request count, status labels, and duration sum",
+        "Rust metrics scrape output with request and failure counters",
+        "Trace search output proving the same trace crosses scriptureforge-api and scriptureforge-rust-engine",
+        "Log query output with trace_id, scriptureforge-api, scriptureforge-rust-engine, SERVICE_VERSION, and DEPLOYMENT_ENVIRONMENT"
       ]
     },
     {
@@ -149,9 +149,10 @@
       "description": "Dashboard import, alert delivery, and telemetry retention are proven in staging.",
       "required_evidence": [
         "tools/observabilityprobe -probe-alerts JSON report with OBS-ALERT-001 evidence item",
-        "Grafana dashboard import screenshot or export",
-        "Alert delivery test output",
-        "Retention policy proof"
+        "Grafana dashboard import screenshot or export with API, latency, Rust, and trace_id panels",
+        "Alert rules loaded for high error rate, route latency, and Rust engine failures",
+        "Delivered Alertmanager test alert output",
+        "30-day trace/log/metric retention policy proof"
       ]
     },
     {

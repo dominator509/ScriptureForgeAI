@@ -22,15 +22,16 @@ func TestRunEmitsOTELEvidenceWhenAllObservabilityProofsPass(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/collector":
-			_, _ = w.Write([]byte("receivers: otlp protocols: http endpoint: 0.0.0.0:4318"))
+			_, _ = w.Write([]byte("receivers: otlp protocols: grpc endpoint 0.0.0.0:4317 http endpoint 0.0.0.0:4318 exporters: otlp service pipelines traces"))
 		case "/api-metrics":
-			_, _ = w.Write([]byte("scriptureforge_http_requests_total 1\nscriptureforge_http_request_duration_seconds_sum 0.01"))
+			_, _ = w.Write([]byte(`scriptureforge_http_requests_total{method="GET",path="/ready",status="200"} 1
+scriptureforge_http_request_duration_seconds_sum 0.01`))
 		case "/rust-metrics":
-			_, _ = w.Write([]byte("scriptureforge_rust_engine_embedding_requests_total 1"))
+			_, _ = w.Write([]byte("scriptureforge_rust_engine_requests_total 1\nscriptureforge_rust_engine_request_failures_total 0\nscriptureforge_rust_engine_embedding_requests_total 1"))
 		case "/traces":
-			_, _ = w.Write([]byte("trace 11112222333344445555666677778888 found"))
+			_, _ = w.Write([]byte("trace 11112222333344445555666677778888 found service scriptureforge-api downstream scriptureforge-rust-engine"))
 		case "/logs":
-			_, _ = w.Write([]byte(`{"trace_id":"11112222333344445555666677778888","message":"http_request"}`))
+			_, _ = w.Write([]byte(`{"trace_id":"11112222333344445555666677778888","service":"scriptureforge-api","downstream":"scriptureforge-rust-engine","SERVICE_VERSION":"staging-1","DEPLOYMENT_ENVIRONMENT":"staging","message":"http_request"}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -67,13 +68,13 @@ func TestRunEmitsAlertEvidenceWhenAlertProofsPass(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/dashboard":
-			_, _ = w.Write([]byte("ScriptureForge production overview dashboard"))
+			_, _ = w.Write([]byte("ScriptureForge production overview dashboard scriptureforge_http_requests_total scriptureforge_http_request_duration_seconds_sum scriptureforge_rust_engine_ trace_id"))
 		case "/rules":
-			_, _ = w.Write([]byte("alert: ScriptureForgeHighErrorRate"))
+			_, _ = w.Write([]byte("alert: ScriptureForgeHighErrorRate alert: ScriptureForgeRouteLatencyElevated alert: ScriptureForgeRustEngineFailures expr scriptureforge_http_requests_total"))
 		case "/alertmanager":
-			_, _ = w.Write([]byte(`{"status":"success","receiver":"staging-release"}`))
+			_, _ = w.Write([]byte(`{"status":"success","receiver":"staging-release","delivered":true,"message":"test alert delivered by alertmanager"}`))
 		case "/retention":
-			_, _ = w.Write([]byte("retention: traces logs metrics 30 days"))
+			_, _ = w.Write([]byte("retention: trace logs metrics 30 days"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -105,13 +106,14 @@ func TestRunFailsWhenTraceIDIsNotFoundInLogs(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/collector":
-			_, _ = w.Write([]byte("otlp"))
+			_, _ = w.Write([]byte("receivers otlp 4317 4318 exporters service"))
 		case "/api-metrics":
-			_, _ = w.Write([]byte("scriptureforge_http_requests_total 1"))
+			_, _ = w.Write([]byte(`scriptureforge_http_requests_total{status="200"} 1
+scriptureforge_http_request_duration_seconds_sum 0.01`))
 		case "/rust-metrics":
-			_, _ = w.Write([]byte("scriptureforge_rust_engine_embedding_requests_total 1"))
+			_, _ = w.Write([]byte("scriptureforge_rust_engine_requests_total 1\nscriptureforge_rust_engine_request_failures_total 0"))
 		case "/traces":
-			_, _ = w.Write([]byte("trace abcdefabcdefabcdefabcdefabcdefab found"))
+			_, _ = w.Write([]byte("trace abcdefabcdefabcdefabcdefabcdefab scriptureforge-api scriptureforge-rust-engine found"))
 		case "/logs":
 			_, _ = w.Write([]byte(`{"trace_id":"different"}`))
 		default:
@@ -136,6 +138,70 @@ func TestRunFailsWhenTraceIDIsNotFoundInLogs(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), `"threshold_pass": false`) {
 		t.Fatalf("failing report did not mark threshold false:\n%s", output.String())
+	}
+}
+
+func TestRunFailsWhenDashboardMissingTraceCorrelationPanel(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/dashboard":
+			_, _ = w.Write([]byte("ScriptureForge dashboard scriptureforge_http_requests_total scriptureforge_http_request_duration_seconds_sum scriptureforge_rust_engine_"))
+		case "/rules":
+			_, _ = w.Write([]byte("alert: ScriptureForgeHighErrorRate alert: ScriptureForgeRouteLatencyElevated alert: ScriptureForgeRustEngineFailures scriptureforge_http_requests_total"))
+		case "/alertmanager":
+			_, _ = w.Write([]byte("success receiver delivered test alert alertmanager"))
+		case "/retention":
+			_, _ = w.Write([]byte("retention trace logs metrics 30 days"))
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := run(config{
+		ProbeAlerts:     true,
+		DashboardURL:    server.URL + "/dashboard",
+		AlertRulesURL:   server.URL + "/rules",
+		AlertmanagerURL: server.URL + "/alertmanager",
+		RetentionURL:    server.URL + "/retention",
+		Timeout:         time.Second,
+	}, &output)
+	if err == nil {
+		t.Fatalf("expected dashboard without trace_id panel to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "dashboard-import") {
+		t.Fatalf("report missing dashboard probe:\n%s", output.String())
+	}
+}
+
+func TestRunFailsWhenAlertDeliveryOnlyReportsReady(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/dashboard":
+			_, _ = w.Write([]byte("ScriptureForge dashboard scriptureforge_http_requests_total scriptureforge_http_request_duration_seconds_sum scriptureforge_rust_engine_ trace_id"))
+		case "/rules":
+			_, _ = w.Write([]byte("alert: ScriptureForgeHighErrorRate alert: ScriptureForgeRouteLatencyElevated alert: ScriptureForgeRustEngineFailures scriptureforge_http_requests_total"))
+		case "/alertmanager":
+			_, _ = w.Write([]byte("ready receiver alertmanager"))
+		case "/retention":
+			_, _ = w.Write([]byte("retention trace logs metrics 30 days"))
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := run(config{
+		ProbeAlerts:     true,
+		DashboardURL:    server.URL + "/dashboard",
+		AlertRulesURL:   server.URL + "/rules",
+		AlertmanagerURL: server.URL + "/alertmanager",
+		RetentionURL:    server.URL + "/retention",
+		Timeout:         time.Second,
+	}, &output)
+	if err == nil {
+		t.Fatalf("expected alertmanager readiness-only artifact to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "alert-delivery-status") {
+		t.Fatalf("report missing alert delivery probe:\n%s", output.String())
 	}
 }
 

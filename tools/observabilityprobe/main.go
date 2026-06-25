@@ -95,20 +95,20 @@ func run(cfg config, output io.Writer) error {
 	evidenceItems := []string{}
 	if cfg.ProbeOTEL {
 		probes = append(probes,
-			probeContainsAny(client, "collector-otlp-config", cfg.CollectorConfigURL, []string{"OTEL", "otlp", "4317", "4318"}),
-			probeContainsAll(client, "api-prometheus-metrics", cfg.APIMetricsURL, []string{"scriptureforge_http_requests_total", "scriptureforge_http_request_duration_seconds_sum"}),
-			probeContainsAny(client, "rust-prometheus-metrics", cfg.RustMetricsURL, []string{"scriptureforge_rust_engine_"}),
-			probeContainsAll(client, "trace-backend-search", cfg.TraceQueryURL, []string{cfg.TraceID}),
-			probeContainsAll(client, "log-backend-trace-correlation", cfg.LogQueryURL, []string{cfg.TraceID, "trace_id"}),
+			probeContainsAll(client, "collector-otlp-config", cfg.CollectorConfigURL, []string{"receivers", "otlp", "4317", "4318", "exporters", "service"}),
+			probeContainsAll(client, "api-prometheus-metrics", cfg.APIMetricsURL, []string{"scriptureforge_http_requests_total", "scriptureforge_http_request_duration_seconds_sum", "scriptureforge_http_requests_total{", "status="}),
+			probeContainsAll(client, "rust-prometheus-metrics", cfg.RustMetricsURL, []string{"scriptureforge_rust_engine_", "scriptureforge_rust_engine_requests_total", "scriptureforge_rust_engine_request_failures_total"}),
+			probeContainsAll(client, "trace-backend-search", cfg.TraceQueryURL, []string{cfg.TraceID, "scriptureforge-api", "scriptureforge-rust-engine"}),
+			probeContainsAll(client, "log-backend-trace-correlation", cfg.LogQueryURL, []string{cfg.TraceID, "trace_id", "scriptureforge-api", "scriptureforge-rust-engine", "SERVICE_VERSION", "DEPLOYMENT_ENVIRONMENT"}),
 		)
 		evidenceItems = append(evidenceItems, "OBS-OTEL-001")
 	}
 	if cfg.ProbeAlerts {
 		probes = append(probes,
-			probeContainsAny(client, "dashboard-import", cfg.DashboardURL, []string{"ScriptureForge", "scriptureforge"}),
-			probeContainsAny(client, "alert-rules-loaded", cfg.AlertRulesURL, []string{"ScriptureForgeHighErrorRate", "ScriptureForgeRustEngineFailures", "scriptureforge_http_requests_total"}),
-			probeContainsAny(client, "alert-delivery-status", cfg.AlertmanagerURL, []string{"success", "ready", "receiver", "alertmanager"}),
-			probeContainsAll(client, "telemetry-retention-policy", cfg.RetentionURL, []string{"retention", "days", "trace", "logs", "metrics"}),
+			probeContainsAll(client, "dashboard-import", cfg.DashboardURL, []string{"ScriptureForge", "scriptureforge_http_requests_total", "scriptureforge_http_request_duration_seconds_sum", "scriptureforge_rust_engine_", "trace_id"}),
+			probeContainsAll(client, "alert-rules-loaded", cfg.AlertRulesURL, []string{"ScriptureForgeHighErrorRate", "ScriptureForgeRouteLatencyElevated", "ScriptureForgeRustEngineFailures", "scriptureforge_http_requests_total"}),
+			probeContainsAll(client, "alert-delivery-status", cfg.AlertmanagerURL, []string{"success", "receiver", "delivered", "test alert", "alertmanager"}),
+			probeContainsAll(client, "telemetry-retention-policy", cfg.RetentionURL, []string{"retention", "30 days", "trace", "logs", "metrics"}),
 		)
 		evidenceItems = append(evidenceItems, "OBS-ALERT-001")
 	}

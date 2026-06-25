@@ -362,7 +362,7 @@ rtk go run ./tools/resilienceprobe \
 
 Passing reports include `DR-ROLLBACK-001`, `DR-BACKUP-001`, or both in `evidence_items` so they can be attached with `tools/record-staging-evidence.mjs`. This validates captured drill evidence; it does not perform the destructive rollback or restore action by itself.
 
-For deployed observability evidence, run the observability probe against staging telemetry surfaces. The OTEL mode requires collector config proof, API and Rust metrics, a trace backend query, a log backend query, and the same trace ID in both backend query results:
+For deployed observability evidence, run the observability probe against staging telemetry surfaces. The OTEL mode requires collector config proof with OTLP receiver/exporter/service pipelines, API and Rust metrics, a trace backend query showing the same trace across Go API and Rust engine services, and a log backend query preserving the same `trace_id`, `SERVICE_VERSION`, and `DEPLOYMENT_ENVIRONMENT`:
 
 ```bash
 rtk go run ./tools/observabilityprobe \
@@ -375,7 +375,7 @@ rtk go run ./tools/observabilityprobe \
   -trace-id="$STAGING_TRACE_ID"
 ```
 
-Alert/dashboard mode requires deployed dashboard, alert rule, alert delivery/status, and retention proof endpoints or exported artifacts served through URLs:
+Alert/dashboard mode requires deployed dashboard panels for API request rate, duration, Rust engine metrics, and trace-correlated logs, loaded alert rules for high error rate, route latency, and Rust engine failures, a delivered test alert through Alertmanager, and 30-day trace/log/metric retention proof endpoints or exported artifacts served through URLs:
 
 ```bash
 rtk go run ./tools/observabilityprobe \
@@ -386,7 +386,7 @@ rtk go run ./tools/observabilityprobe \
   -retention-url=https://observability.staging.example/retention-proof
 ```
 
-The report includes `OBS-OTEL-001`, `OBS-ALERT-001`, or both in `evidence_items` only for the requested passing modes. This is still proof collection, not a substitute for importing dashboards, firing a test alert, and confirming the staging telemetry backend retains traces, logs, and metrics.
+The report includes `OBS-OTEL-001`, `OBS-ALERT-001`, or both in `evidence_items` only for the requested passing modes. This is still proof collection, not a substitute for importing dashboards, firing a test alert, and confirming the staging telemetry backend retains traces, logs, and metrics for at least 30 days.
 
 ## Performance Harness
 
