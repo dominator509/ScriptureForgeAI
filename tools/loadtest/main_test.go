@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,22 +16,26 @@ import (
 
 func TestBuildReportAppliesThresholds(t *testing.T) {
 	cfg := config{Target: "http://example.test/health", Method: "GET", Concurrency: 2, MinRPS: 100, MaxP99: 20 * time.Millisecond}
-	result := buildReport(cfg, time.Second, []time.Duration{
-		5 * time.Millisecond,
-		10 * time.Millisecond,
-		15 * time.Millisecond,
-	}, 0)
+	result := buildReport(cfg, time.Second, loadResult{
+		latencies: []time.Duration{
+			5 * time.Millisecond,
+			10 * time.Millisecond,
+			15 * time.Millisecond,
+		},
+	})
 
 	if result.ThresholdPass {
 		t.Fatal("thresholds passed despite RPS below configured minimum")
 	}
 
 	cfg.MinRPS = 1
-	result = buildReport(cfg, time.Second, []time.Duration{
-		5 * time.Millisecond,
-		10 * time.Millisecond,
-		15 * time.Millisecond,
-	}, 0)
+	result = buildReport(cfg, time.Second, loadResult{
+		latencies: []time.Duration{
+			5 * time.Millisecond,
+			10 * time.Millisecond,
+			15 * time.Millisecond,
+		},
+	})
 	if !result.ThresholdPass {
 		t.Fatalf("thresholds failed unexpectedly: %+v", result)
 	}
@@ -79,12 +84,16 @@ func TestWebSocketSelfTestRunProducesJSONReport(t *testing.T) {
 	if !strings.Contains(output.String(), `"threshold_pass": true`) {
 		t.Fatalf("report did not include passing threshold:\n%s", output.String())
 	}
+	if !strings.Contains(output.String(), `"ws_sequence_contiguous": true`) || !strings.Contains(output.String(), `"ws_unique_sequences": 4`) {
+		t.Fatalf("websocket report did not include contiguous sequence proof:\n%s", output.String())
+	}
 	if strings.Contains(output.String(), `"evidence_items"`) {
 		t.Fatalf("websocket self-test report must not emit staging evidence items:\n%s", output.String())
 	}
 }
 
 func TestWebSocketExternalRunUsesBearerAndOrigin(t *testing.T) {
+	var sequence int64
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
 			return r.Header.Get("Origin") == "https://app.staging.example"
@@ -105,7 +114,7 @@ func TestWebSocketExternalRunUsesBearerAndOrigin(t *testing.T) {
 			if err := conn.ReadJSON(&event); err != nil {
 				return
 			}
-			event.Sequence++
+			event.Sequence = atomic.AddInt64(&sequence, 1)
 			encoded, _ := json.Marshal(event)
 			if err := conn.WriteMessage(websocket.TextMessage, encoded); err != nil {
 				return
@@ -139,6 +148,9 @@ func TestWebSocketExternalRunUsesBearerAndOrigin(t *testing.T) {
 	if !strings.Contains(output.String(), `"threshold_pass": true`) {
 		t.Fatalf("report did not include passing threshold:\n%s", output.String())
 	}
+	if !strings.Contains(output.String(), `"ws_sequence_contiguous": true`) || !strings.Contains(output.String(), `"ws_expected_events": 4`) {
+		t.Fatalf("external websocket report did not include Redis sequence proof:\n%s", output.String())
+	}
 	if !strings.Contains(output.String(), `"PERF-WS-001"`) || !strings.Contains(output.String(), `"DATA-REDIS-001"`) {
 		t.Fatalf("external websocket report did not include staging evidence IDs:\n%s", output.String())
 	}
@@ -163,6 +175,25 @@ func TestWebSocketExternalRunRequiresStagingArtifacts(t *testing.T) {
 	}, &output)
 	if err == nil || !strings.Contains(err.Error(), "ws-replica-artifact-url") {
 		t.Fatalf("expected missing replica artifact URL error, got %v", err)
+	}
+}
+
+func TestBuildReportFailsWebSocketWhenSequencesAreDuplicatedOrSkipped(t *testing.T) {
+	cfg := config{WebSocket: true, Method: "WEBSOCKET", Concurrency: 2, WSEventsPerClient: 2}
+	result := buildReport(cfg, time.Second, loadResult{
+		latencies: []time.Duration{time.Millisecond, time.Millisecond, time.Millisecond, time.Millisecond},
+		sequences: []int64{1, 1, 3, 4},
+	})
+	if result.ThresholdPass || result.WSSequenceContiguous {
+		t.Fatalf("duplicated sequence report passed unexpectedly: %+v", result)
+	}
+
+	result = buildReport(cfg, time.Second, loadResult{
+		latencies: []time.Duration{time.Millisecond, time.Millisecond, time.Millisecond, time.Millisecond},
+		sequences: []int64{1, 2, 4, 5},
+	})
+	if result.ThresholdPass || result.WSSequenceContiguous {
+		t.Fatalf("skipped sequence report passed unexpectedly: %+v", result)
 	}
 }
 

@@ -128,6 +128,15 @@ function validatePerformanceEvidence(report) {
   }
   if (evidenceItems.includes('DATA-REDIS-001')) {
     assert.ok(evidenceItems.includes('PERF-WS-001'), 'DATA-REDIS-001 load evidence must be paired with PERF-WS-001');
+    assert.equal(report.ws_sequence_contiguous, true, 'DATA-REDIS-001 report must prove ws_sequence_contiguous=true');
+    assert.equal(typeof report.ws_expected_events, 'number', 'DATA-REDIS-001 report must include ws_expected_events');
+    assert.equal(typeof report.ws_unique_sequences, 'number', 'DATA-REDIS-001 report must include ws_unique_sequences');
+    assert.equal(typeof report.ws_min_sequence, 'number', 'DATA-REDIS-001 report must include ws_min_sequence');
+    assert.equal(typeof report.ws_max_sequence, 'number', 'DATA-REDIS-001 report must include ws_max_sequence');
+    assert.ok(report.ws_expected_events > 0, 'DATA-REDIS-001 ws_expected_events must be positive');
+    assert.equal(report.ws_unique_sequences, report.ws_expected_events, 'DATA-REDIS-001 unique sequences must equal expected events');
+    assert.equal(report.ws_min_sequence, 1, 'DATA-REDIS-001 minimum sequence must be 1');
+    assert.equal(report.ws_max_sequence, report.ws_expected_events, 'DATA-REDIS-001 maximum sequence must equal expected events');
   }
   if (evidenceItems.includes('PERF-HTTP-001')) {
     const httpReplicaArtifactURL = String(report.http_replica_artifact_url ?? '');

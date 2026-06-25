@@ -61,8 +61,19 @@ type report struct {
 	RedisTelemetryArtifactURL string   `json:"redis_telemetry_artifact_url,omitempty"`
 	HTTPReplicaArtifactURL    string   `json:"http_replica_artifact_url,omitempty"`
 	DependencyTelemetryURL    string   `json:"dependency_telemetry_artifact_url,omitempty"`
+	WSExpectedEvents          int      `json:"ws_expected_events,omitempty"`
+	WSUniqueSequences         int      `json:"ws_unique_sequences,omitempty"`
+	WSMinSequence             int64    `json:"ws_min_sequence,omitempty"`
+	WSMaxSequence             int64    `json:"ws_max_sequence,omitempty"`
+	WSSequenceContiguous      bool     `json:"ws_sequence_contiguous,omitempty"`
 	ThresholdPass             bool     `json:"threshold_pass"`
 	EvidenceItems             []string `json:"evidence_items,omitempty"`
+}
+
+type loadResult struct {
+	latencies []time.Duration
+	failures  int
+	sequences []int64
 }
 
 func main() {
@@ -145,9 +156,9 @@ func run(cfg config, output io.Writer) error {
 	}
 
 	start := time.Now()
-	latencies, failures := execute(cfg)
+	load := execute(cfg)
 	elapsed := time.Since(start)
-	result := buildReport(cfg, elapsed, latencies, failures)
+	result := buildReport(cfg, elapsed, load)
 
 	encoder := json.NewEncoder(output)
 	encoder.SetIndent("", "  ")
@@ -160,7 +171,7 @@ func run(cfg config, output io.Writer) error {
 	return nil
 }
 
-func execute(cfg config) ([]time.Duration, int) {
+func execute(cfg config) loadResult {
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Duration)
 	defer cancel()
 
@@ -210,7 +221,7 @@ func execute(cfg config) ([]time.Duration, int) {
 	}
 
 	wg.Wait()
-	return latencies, totalFailures
+	return loadResult{latencies: latencies, failures: totalFailures}
 }
 
 type wsSelfTestStore struct {
@@ -263,9 +274,9 @@ func runWebSocketSelfTest(cfg config, output io.Writer) error {
 	cfg.WSOrigin = "http://localhost"
 
 	start := time.Now()
-	latencies, failures := executeWebSocketLoad(cfg)
+	load := executeWebSocketLoad(cfg)
 	elapsed := time.Since(start)
-	result := buildReport(cfg, elapsed, latencies, failures)
+	result := buildReport(cfg, elapsed, load)
 
 	encoder := json.NewEncoder(output)
 	encoder.SetIndent("", "  ")
@@ -307,9 +318,9 @@ func runWebSocketLoad(cfg config, output io.Writer) error {
 	cfg.Method = "WEBSOCKET"
 
 	start := time.Now()
-	latencies, failures := executeWebSocketLoad(cfg)
+	load := executeWebSocketLoad(cfg)
 	elapsed := time.Since(start)
-	result := buildReport(cfg, elapsed, latencies, failures)
+	result := buildReport(cfg, elapsed, load)
 
 	encoder := json.NewEncoder(output)
 	encoder.SetIndent("", "  ")
@@ -322,9 +333,10 @@ func runWebSocketLoad(cfg config, output io.Writer) error {
 	return nil
 }
 
-func executeWebSocketLoad(cfg config) ([]time.Duration, int) {
+func executeWebSocketLoad(cfg config) loadResult {
 	var mu sync.Mutex
 	latencies := make([]time.Duration, 0, cfg.Concurrency*cfg.WSEventsPerClient)
+	sequences := make([]int64, 0, cfg.Concurrency*cfg.WSEventsPerClient)
 	totalFailures := 0
 	var wg sync.WaitGroup
 	dialer := websocket.Dialer{HandshakeTimeout: cfg.Timeout}
@@ -373,9 +385,11 @@ func executeWebSocketLoad(cfg config) ([]time.Duration, int) {
 					localFailures++
 					continue
 				}
-				if waitForOwnBroadcast(conn, cfg.Timeout, marker) {
+				sequence, ok := waitForOwnBroadcast(conn, cfg.Timeout, marker)
+				if ok {
 					mu.Lock()
 					latencies = append(latencies, time.Since(before))
+					sequences = append(sequences, sequence)
 					mu.Unlock()
 				} else {
 					localFailures++
@@ -390,7 +404,7 @@ func executeWebSocketLoad(cfg config) ([]time.Duration, int) {
 	}
 
 	wg.Wait()
-	return latencies, totalFailures
+	return loadResult{latencies: latencies, failures: totalFailures, sequences: sequences}
 }
 
 func addClientQuery(target string, client int) (string, error) {
@@ -413,22 +427,23 @@ func roomIDFromTarget(target string) string {
 	return beforeQuery[index+1:]
 }
 
-func waitForOwnBroadcast(conn *websocket.Conn, timeout time.Duration, marker string) bool {
+func waitForOwnBroadcast(conn *websocket.Conn, timeout time.Duration, marker string) (int64, bool) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		_ = conn.SetReadDeadline(deadline)
 		var event ports.RoomEvent
 		if err := conn.ReadJSON(&event); err != nil {
-			return false
+			return 0, false
 		}
 		if strings.Contains(string(event.Payload), marker) && event.Sequence > 0 {
-			return true
+			return event.Sequence, true
 		}
 	}
-	return false
+	return 0, false
 }
 
-func buildReport(cfg config, elapsed time.Duration, latencies []time.Duration, failures int) report {
+func buildReport(cfg config, elapsed time.Duration, load loadResult) report {
+	latencies := load.latencies
 	sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
 	requests := len(latencies)
 	rps := 0.0
@@ -441,7 +456,7 @@ func buildReport(cfg config, elapsed time.Duration, latencies []time.Duration, f
 		DurationMS:                elapsed.Milliseconds(),
 		Concurrency:               cfg.Concurrency,
 		Requests:                  requests,
-		Failures:                  failures,
+		Failures:                  load.failures,
 		RPS:                       rps,
 		P50MS:                     percentile(latencies, 0.50).Milliseconds(),
 		P95MS:                     percentile(latencies, 0.95).Milliseconds(),
@@ -452,8 +467,15 @@ func buildReport(cfg config, elapsed time.Duration, latencies []time.Duration, f
 		RedisTelemetryArtifactURL: cfg.RedisTelemetryArtifactURL,
 		HTTPReplicaArtifactURL:    cfg.HTTPReplicaArtifactURL,
 		DependencyTelemetryURL:    cfg.DependencyTelemetryURL,
-		ThresholdPass:             failures == 0 && requests > 0,
+		ThresholdPass:             load.failures == 0 && requests > 0,
 		EvidenceItems:             evidenceItemsFor(cfg),
+	}
+	if cfg.WebSocket || cfg.WebSocketSelfTest {
+		result.WSExpectedEvents = cfg.Concurrency * cfg.WSEventsPerClient
+		result.WSUniqueSequences, result.WSMinSequence, result.WSMaxSequence, result.WSSequenceContiguous = sequenceStats(load.sequences, result.WSExpectedEvents)
+		if !result.WSSequenceContiguous {
+			result.ThresholdPass = false
+		}
 	}
 	if cfg.MinRPS > 0 && result.RPS < cfg.MinRPS {
 		result.ThresholdPass = false
@@ -462,6 +484,30 @@ func buildReport(cfg config, elapsed time.Duration, latencies []time.Duration, f
 		result.ThresholdPass = false
 	}
 	return result
+}
+
+func sequenceStats(sequences []int64, expected int) (int, int64, int64, bool) {
+	seen := make(map[int64]struct{}, len(sequences))
+	minSequence := int64(0)
+	maxSequence := int64(0)
+	for _, sequence := range sequences {
+		seen[sequence] = struct{}{}
+		if minSequence == 0 || sequence < minSequence {
+			minSequence = sequence
+		}
+		if sequence > maxSequence {
+			maxSequence = sequence
+		}
+	}
+	if expected <= 0 || len(sequences) != expected || len(seen) != expected || minSequence != 1 || maxSequence != int64(expected) {
+		return len(seen), minSequence, maxSequence, false
+	}
+	for sequence := int64(1); sequence <= int64(expected); sequence++ {
+		if _, ok := seen[sequence]; !ok {
+			return len(seen), minSequence, maxSequence, false
+		}
+	}
+	return len(seen), minSequence, maxSequence, true
 }
 
 func evidenceItemsFor(cfg config) []string {
