@@ -333,6 +333,64 @@ test('recordEvidence rejects Rust gRPC evidence without metrics proof', () => {
   );
 });
 
+test('recordEvidence records production-grade Zoom evidence', () => {
+  const manifest = {
+    items: [{ id: 'EXT-ZOOM-001', status: 'pending_external' }],
+  };
+
+  const probeNames = [
+    'zoom-oauth-readiness',
+    'zoom-meeting-create-or-fallback',
+    'zoom-timeout-circuit-fallback',
+    'zoom-webhook-signature-delivery',
+    'zoom-duplicate-webhook-idempotency',
+    'zoom-meeting-room-mapping',
+  ];
+
+  const updated = recordEvidence(
+    manifest,
+    {
+      observed_at: '2026-06-25T12:00:00Z',
+      threshold_pass: true,
+      evidence_items: ['EXT-ZOOM-001'],
+      probes: probeNames.map((name) => ({
+        name,
+        passed: true,
+        target: `https://artifacts.staging.example/zoom/${name}.txt`,
+        status_code: 200,
+      })),
+    },
+    'artifacts/zoomprobe.json',
+    'go run ./tools/zoomprobe',
+  );
+
+  assert.equal(updated.items[0].status, 'passed');
+});
+
+test('recordEvidence rejects Zoom evidence without HTTPS artifact proof', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'EXT-ZOOM-001' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        evidence_items: ['EXT-ZOOM-001'],
+        probes: [
+          { name: 'zoom-oauth-readiness', passed: true, target: 'https://artifacts.staging.example/zoom/oauth.txt', status_code: 200 },
+          { name: 'zoom-meeting-create-or-fallback', passed: true, target: 'https://artifacts.staging.example/zoom/meeting.txt', status_code: 200 },
+          { name: 'zoom-timeout-circuit-fallback', passed: true, target: 'http://localhost/zoom/resilience.txt', status_code: 200 },
+          { name: 'zoom-webhook-signature-delivery', passed: true, target: 'https://artifacts.staging.example/zoom/webhook.txt', status_code: 200 },
+          { name: 'zoom-duplicate-webhook-idempotency', passed: true, target: 'https://artifacts.staging.example/zoom/duplicate.txt', status_code: 200 },
+          { name: 'zoom-meeting-room-mapping', passed: true, target: 'https://artifacts.staging.example/zoom/mapping.txt', status_code: 200 },
+        ],
+      },
+      'artifacts/zoomprobe.json',
+      'go run ./tools/zoomprobe',
+    ),
+    /zoom-timeout-circuit-fallback target must be an HTTPS artifact URL/,
+  );
+});
+
 test('recordEvidence rejects TLS evidence without DNS and ACM artifacts', () => {
   assert.throws(
     () => recordEvidence(

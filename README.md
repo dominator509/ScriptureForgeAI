@@ -175,6 +175,7 @@ rtk go run ./tools/zoomprobe \
 ```
 
 The resilience artifact must include timeout, circuit-open, fallback, and `offline://in-person` markers so staging evidence proves the failure path, not only successful meeting creation. The probe rejects artifacts that expose obvious Zoom secret values such as `client_secret` or `ZOOM_WEBHOOK_SECRET_TOKEN`. A passing report includes `EXT-ZOOM-001` in `evidence_items`.
+The recorder rejects `EXT-ZOOM-001` reports unless all six Zoom probes pass and point at HTTPS non-local artifacts covering OAuth, meeting/fallback, timeout/circuit fallback, webhook signature delivery, duplicate idempotency, and meeting-to-room mapping.
 
 For full AI staging evidence, pair `tools/stagingprobe -probe-ai` with `tools/aiprobe`. The dedicated AI probe validates captured artifacts for provider/model configuration, authenticated generation, timeout/degradation behavior, citation verification, and persisted `ai_request_logs`/`citation_trails`:
 

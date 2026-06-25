@@ -297,6 +297,32 @@ function validateRustEvidence(report) {
   assert.equal(String(metrics.target ?? ''), metricsTarget, 'rust-metrics target must match metrics_target');
 }
 
+function validateZoomEvidence(report) {
+  const evidenceItems = report.evidence_items ?? [];
+  if (!evidenceItems.includes('EXT-ZOOM-001')) {
+    return;
+  }
+  const requiredProbes = new Set([
+    'zoom-oauth-readiness',
+    'zoom-meeting-create-or-fallback',
+    'zoom-timeout-circuit-fallback',
+    'zoom-webhook-signature-delivery',
+    'zoom-duplicate-webhook-idempotency',
+    'zoom-meeting-room-mapping',
+  ]);
+  const probes = Array.isArray(report.probes) ? report.probes : [];
+  assert.equal(probes.length, requiredProbes.size, 'EXT-ZOOM-001 report must include exactly the required Zoom probes');
+  for (const probe of probes) {
+    assert.ok(requiredProbes.delete(probe.name), `EXT-ZOOM-001 report includes unexpected or duplicate probe ${probe.name}`);
+    assert.equal(probe.passed, true, `${probe.name} must pass`);
+    assert.equal(probe.status_code, 200, `${probe.name} must return HTTP 200`);
+    const target = String(probe.target ?? '');
+    assert.match(target, /^https:\/\//, `${probe.name} target must be an HTTPS artifact URL`);
+    assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(target), `${probe.name} target must not be local/self-test: ${target}`);
+  }
+  assert.equal(requiredProbes.size, 0, `EXT-ZOOM-001 report missing probes: ${[...requiredProbes].join(', ')}`);
+}
+
 function validateAbuseEvidence(report) {
   const evidenceItems = report.evidence_items ?? [];
   if (!evidenceItems.includes('ABUSE-LIMIT-001')) {
@@ -347,6 +373,7 @@ function recordEvidence(manifest, report, artifact, command) {
   validateTenantRLSEvidence(report);
   validateMobileEvidence(report);
   validateRustEvidence(report);
+  validateZoomEvidence(report);
   validatePerformanceEvidence(report);
   validateAbuseEvidence(report);
 
