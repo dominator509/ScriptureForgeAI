@@ -240,9 +240,9 @@
       "description": "Rollback and degradation paths are exercised in staging.",
       "required_evidence": [
         "tools/resilienceprobe -probe-rollback JSON report with DR-ROLLBACK-001 evidence item",
-        "kubectl rollout undo or equivalent rollback output",
-        "API readiness before and after rollback",
-        "AI/Zoom degradation drill output"
+        "kubectl rollout undo or equivalent rollback output naming reverted revision and scriptureforge-api",
+        "API readiness before and after rollback with service_version and deployment_environment",
+        "AI/Zoom degradation drill output proving AI_ORCHESTRATION_ENGINE_FAULT and Zoom offline://in-person fallback"
       ]
     },
     {
@@ -252,9 +252,9 @@
       "description": "RDS backup creation and restore drill are proven in staging.",
       "required_evidence": [
         "tools/resilienceprobe -probe-backup JSON report with DR-BACKUP-001 evidence item",
-        "Backup/snapshot creation output",
-        "Restore drill output",
-        "Application smoke against restored database"
+        "Backup/snapshot creation output proving available encrypted KMS snapshot and retention",
+        "Restore drill output proving restored endpoint and checksum",
+        "Application smoke against restored database covering tenant and journal behavior"
       ]
     },
     {

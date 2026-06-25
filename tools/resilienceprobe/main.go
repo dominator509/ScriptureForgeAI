@@ -89,18 +89,18 @@ func run(cfg config, output io.Writer) error {
 	evidenceItems := []string{}
 	if cfg.ProbeRollback {
 		probes = append(probes,
-			probeReadyOrArtifact(client, "api-ready-before-rollback", cfg.APIReadyBeforeURL),
-			probeArtifact(client, "rollback-rollout-artifact", cfg.RolloutArtifactURL, []string{"rollout", "undo", "successfully rolled out"}),
-			probeReadyOrArtifact(client, "api-ready-after-rollback", cfg.APIReadyAfterURL),
-			probeArtifact(client, "degradation-drill-artifact", cfg.DegradationDrillURL, []string{"AI", "Zoom", "degradation", "fallback"}),
+			probeReadyOrArtifact(client, "api-ready-before-rollback", cfg.APIReadyBeforeURL, []string{"ready", "service_version", "deployment_environment"}),
+			probeArtifact(client, "rollback-rollout-artifact", cfg.RolloutArtifactURL, []string{"rollout", "undo", "revision", "scriptureforge-api", "successfully rolled out"}),
+			probeReadyOrArtifact(client, "api-ready-after-rollback", cfg.APIReadyAfterURL, []string{"ready", "service_version", "deployment_environment"}),
+			probeArtifact(client, "degradation-drill-artifact", cfg.DegradationDrillURL, []string{"AI", "Zoom", "degradation", "fallback", "AI_ORCHESTRATION_ENGINE_FAULT", "offline://in-person"}),
 		)
 		evidenceItems = append(evidenceItems, "DR-ROLLBACK-001")
 	}
 	if cfg.ProbeBackup {
 		probes = append(probes,
-			probeArtifact(client, "backup-snapshot-artifact", cfg.BackupArtifactURL, []string{"snapshot", "available", "encrypted"}),
-			probeArtifact(client, "restore-drill-artifact", cfg.RestoreArtifactURL, []string{"restore", "available", "staging"}),
-			probeReadyOrArtifact(client, "restored-database-smoke", cfg.RestoredSmokeURL),
+			probeArtifact(client, "backup-snapshot-artifact", cfg.BackupArtifactURL, []string{"snapshot", "available", "encrypted", "kms", "retention"}),
+			probeArtifact(client, "restore-drill-artifact", cfg.RestoreArtifactURL, []string{"restore", "available", "staging", "restored endpoint", "checksum"}),
+			probeReadyOrArtifact(client, "restored-database-smoke", cfg.RestoredSmokeURL, []string{"smoke passed", "restored database", "tenant", "journal"}),
 		)
 		evidenceItems = append(evidenceItems, "DR-BACKUP-001")
 	}
@@ -129,8 +129,8 @@ func run(cfg config, output io.Writer) error {
 	return nil
 }
 
-func probeReadyOrArtifact(client *http.Client, name, target string) probeResult {
-	return probeHTTPBody(client, name, target)
+func probeReadyOrArtifact(client *http.Client, name, target string, required []string) probeResult {
+	return probeHTTPBody(client, name, target, required)
 }
 
 func probeArtifact(client *http.Client, name, target string, required []string) probeResult {
@@ -145,14 +145,14 @@ func probeArtifact(client *http.Client, name, target string, required []string) 
 	return result
 }
 
-func probeHTTPBody(client *http.Client, name, target string) probeResult {
+func probeHTTPBody(client *http.Client, name, target string, required []string) probeResult {
 	result, body := fetch(client, name, target)
 	if !result.Passed {
 		return result
 	}
-	if !isReadyBody(body) {
+	if !containsAllFold(body, required) {
 		result.Passed = false
-		result.ResultSummary += "; readiness/smoke marker missing"
+		result.ResultSummary += "; readiness/smoke markers missing"
 	}
 	return result
 }
@@ -176,10 +176,6 @@ func fetch(client *http.Client, name, target string) (probeResult, string) {
 	return probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, ResultSummary: summary}, string(bodyBytes)
 }
 
-func isReadyBody(body string) bool {
-	return containsAnyFold(body, []string{"ready", "ok", "healthy", "smoke passed", "status\":\"ok", "status\":\"ready"})
-}
-
 func containsAllFold(text string, needles []string) bool {
 	lowerText := strings.ToLower(text)
 	for _, needle := range needles {
@@ -188,16 +184,6 @@ func containsAllFold(text string, needles []string) bool {
 		}
 	}
 	return true
-}
-
-func containsAnyFold(text string, needles []string) bool {
-	lowerText := strings.ToLower(text)
-	for _, needle := range needles {
-		if strings.Contains(lowerText, strings.ToLower(needle)) {
-			return true
-		}
-	}
-	return false
 }
 
 func failedProbe(name, target, summary string) probeResult {

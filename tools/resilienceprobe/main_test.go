@@ -22,19 +22,19 @@ func TestRunEmitsRollbackAndBackupEvidenceWhenDrillsPass(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/ready-before":
-			_, _ = w.Write([]byte(`{"status":"ready"}`))
+			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-1","deployment_environment":"staging"}`))
 		case "/rollout":
-			_, _ = w.Write([]byte("kubectl rollout undo deployment/scriptureforge-api; deployment successfully rolled out"))
+			_, _ = w.Write([]byte("kubectl rollout undo deployment/scriptureforge-api to revision 41; scriptureforge-api deployment successfully rolled out"))
 		case "/ready-after":
-			_, _ = w.Write([]byte("ok ready"))
+			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-0","deployment_environment":"staging"}`))
 		case "/degradation":
-			_, _ = w.Write([]byte("AI degradation fallback exercised; Zoom degradation fallback exercised"))
+			_, _ = w.Write([]byte("AI degradation fallback exercised with AI_ORCHESTRATION_ENGINE_FAULT; Zoom degradation fallback exercised with offline://in-person"))
 		case "/backup":
-			_, _ = w.Write([]byte("snapshot scriptureforge-staging-backup available encrypted"))
+			_, _ = w.Write([]byte("snapshot scriptureforge-staging-backup available encrypted kms retention 7 days"))
 		case "/restore":
-			_, _ = w.Write([]byte("restore cluster scriptureforge-restore staging available"))
+			_, _ = w.Write([]byte("restore cluster scriptureforge-restore staging available restored endpoint scriptureforge-restore.cluster checksum verified"))
 		case "/restored-smoke":
-			_, _ = w.Write([]byte("smoke passed against restored database"))
+			_, _ = w.Write([]byte("smoke passed against restored database tenant isolation and journal read/write verified"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -73,14 +73,14 @@ func TestRunFailsWhenRollbackReadinessDoesNotRecover(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/ready-before":
-			_, _ = w.Write([]byte(`{"status":"ready"}`))
+			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-1","deployment_environment":"staging"}`))
 		case "/rollout":
-			_, _ = w.Write([]byte("kubectl rollout undo deployment/scriptureforge-api; deployment successfully rolled out"))
+			_, _ = w.Write([]byte("kubectl rollout undo deployment/scriptureforge-api to revision 41; scriptureforge-api deployment successfully rolled out"))
 		case "/ready-after":
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte("not ready"))
 		case "/degradation":
-			_, _ = w.Write([]byte("AI degradation fallback exercised; Zoom degradation fallback exercised"))
+			_, _ = w.Write([]byte("AI degradation fallback exercised with AI_ORCHESTRATION_ENGINE_FAULT; Zoom degradation fallback exercised with offline://in-person"))
 		}
 	}))
 	defer server.Close()
@@ -106,11 +106,11 @@ func TestRunFailsWhenRestoreArtifactIsIncomplete(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/backup":
-			_, _ = w.Write([]byte("snapshot scriptureforge-staging-backup available encrypted"))
+			_, _ = w.Write([]byte("snapshot scriptureforge-staging-backup available encrypted kms retention 7 days"))
 		case "/restore":
 			_, _ = w.Write([]byte("restore started but not complete"))
 		case "/restored-smoke":
-			_, _ = w.Write([]byte("smoke passed against restored database"))
+			_, _ = w.Write([]byte("smoke passed against restored database tenant journal"))
 		}
 	}))
 	defer server.Close()
@@ -128,6 +128,67 @@ func TestRunFailsWhenRestoreArtifactIsIncomplete(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), `"restore-drill-artifact"`) {
 		t.Fatalf("report missing restore probe:\n%s", output.String())
+	}
+}
+
+func TestRunFailsWhenDegradationDrillMissingTypedFallbacks(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/ready-before":
+			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-1","deployment_environment":"staging"}`))
+		case "/rollout":
+			_, _ = w.Write([]byte("kubectl rollout undo deployment/scriptureforge-api to revision 41; scriptureforge-api deployment successfully rolled out"))
+		case "/ready-after":
+			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-0","deployment_environment":"staging"}`))
+		case "/degradation":
+			_, _ = w.Write([]byte("AI degradation fallback exercised; Zoom degradation fallback exercised"))
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := run(config{
+		ProbeRollback:       true,
+		APIReadyBeforeURL:   server.URL + "/ready-before",
+		APIReadyAfterURL:    server.URL + "/ready-after",
+		RolloutArtifactURL:  server.URL + "/rollout",
+		DegradationDrillURL: server.URL + "/degradation",
+		Timeout:             time.Second,
+	}, &output)
+	if err == nil {
+		t.Fatalf("expected weak degradation proof to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "degradation-drill-artifact") {
+		t.Fatalf("report missing degradation probe:\n%s", output.String())
+	}
+}
+
+func TestRunFailsWhenRestoredSmokeOmitsTenantJournalChecks(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/backup":
+			_, _ = w.Write([]byte("snapshot scriptureforge-staging-backup available encrypted kms retention 7 days"))
+		case "/restore":
+			_, _ = w.Write([]byte("restore cluster scriptureforge-restore staging available restored endpoint scriptureforge-restore.cluster checksum verified"))
+		case "/restored-smoke":
+			_, _ = w.Write([]byte("smoke passed against restored database"))
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := run(config{
+		ProbeBackup:        true,
+		BackupArtifactURL:  server.URL + "/backup",
+		RestoreArtifactURL: server.URL + "/restore",
+		RestoredSmokeURL:   server.URL + "/restored-smoke",
+		Timeout:            time.Second,
+	}, &output)
+	if err == nil {
+		t.Fatalf("expected weak restored smoke proof to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "restored-database-smoke") {
+		t.Fatalf("report missing restored smoke probe:\n%s", output.String())
 	}
 }
 

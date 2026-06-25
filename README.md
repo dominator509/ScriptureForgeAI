@@ -339,7 +339,7 @@ rtk go run ./tools/abuseprobe \
 
 Set staging `ABUSE_LIMIT_*_REQUESTS` values low enough for the run window, or raise `-attempts` above the deployed limits. A passing report includes `ABUSE-LIMIT-001` in `evidence_items`. The probe uses HTTPS only and does not weaken TLS validation for staging.
 
-For deployed rollback and backup/restore evidence, run the resilience probe against captured staging artifacts and readiness/smoke endpoints. Rollback mode requires API readiness before rollback, rollout undo/status output, API readiness after rollback, and AI/Zoom degradation drill evidence:
+For deployed rollback and backup/restore evidence, run the resilience probe against captured staging artifacts and readiness/smoke endpoints. Rollback mode requires API readiness before rollback with `service_version` and `deployment_environment`, rollout undo/status output naming the reverted revision and `scriptureforge-api`, API readiness after rollback, and AI/Zoom degradation drill evidence showing `AI_ORCHESTRATION_ENGINE_FAULT` plus Zoom `offline://in-person` fallback:
 
 ```bash
 rtk go run ./tools/resilienceprobe \
@@ -350,7 +350,7 @@ rtk go run ./tools/resilienceprobe \
   -degradation-drill-url=https://artifacts.staging.example/rollback/degradation-drill.txt
 ```
 
-Backup mode requires backup/snapshot creation evidence, restore drill evidence, and an application smoke or readiness proof against the restored database:
+Backup mode requires encrypted KMS snapshot creation with retention evidence, restore drill evidence with restored endpoint and checksum proof, and an application smoke proof against the restored database that covers tenant and journal behavior:
 
 ```bash
 rtk go run ./tools/resilienceprobe \
