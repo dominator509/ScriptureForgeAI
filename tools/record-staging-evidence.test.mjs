@@ -218,6 +218,35 @@ test('recordEvidence rejects tenant RLS evidence without deployed API and DB pro
   );
 });
 
+test('recordEvidence rejects tenant RLS evidence without cross-tenant denial status', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DATA-RLS-001' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        api_target: 'https://api.staging.example',
+        evidence_items: ['DATA-RLS-001'],
+        probes: [
+          { name: 'owner-create-encrypted-journal', passed: true, target: 'https://api.staging.example/api/v1/journal_entries', status_code: 201 },
+          { name: 'owner-read-created-journal', passed: true, target: 'https://api.staging.example/api/v1/journal_entries/entry-1', status_code: 200 },
+          { name: 'blocked-read-created-journal', passed: true, target: 'https://api.staging.example/api/v1/journal_entries/entry-1', status_code: 200 },
+          { name: 'blocked-list-excludes-created-journal', passed: true, target: 'https://api.staging.example/api/v1/journal_entries', status_code: 200 },
+          {
+            name: 'database-rls-context-proof',
+            passed: true,
+            target: 'https://artifacts.staging.example/data/rls-db-proof.txt',
+            status_code: 200,
+          },
+        ],
+      },
+      'artifacts/tenantprobe.json',
+      'go run ./tools/tenantprobe',
+    ),
+    /blocked-read-created-journal must return HTTP 404/,
+  );
+});
+
 test('recordEvidence records production-grade mobile evidence', () => {
   const manifest = {
     items: [{ id: 'CLIENT-MOBILE-001', status: 'pending_external' }],

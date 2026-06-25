@@ -312,14 +312,25 @@ function validateTenantRLSEvidence(report) {
   ]);
   const probes = Array.isArray(report.probes) ? report.probes : [];
   assert.equal(probes.length, requiredProbes.size, 'DATA-RLS-001 report must include exactly the required tenant isolation probes');
+  const expectedStatuses = new Map([
+    ['owner-create-encrypted-journal', 201],
+    ['owner-read-created-journal', 200],
+    ['blocked-read-created-journal', 404],
+    ['blocked-list-excludes-created-journal', 200],
+    ['database-rls-context-proof', 200],
+  ]);
   for (const probe of probes) {
     assert.ok(requiredProbes.delete(probe.name), `DATA-RLS-001 report includes unexpected or duplicate probe ${probe.name}`);
     assert.equal(probe.passed, true, `${probe.name} must pass`);
+    assert.equal(probe.status_code, expectedStatuses.get(probe.name), `${probe.name} must return HTTP ${expectedStatuses.get(probe.name)}`);
+    const target = String(probe.target ?? '');
     if (probe.name === 'database-rls-context-proof') {
-      const target = String(probe.target ?? '');
       assert.match(target, /^https:\/\//, 'DATA-RLS-001 database-rls-context-proof target must be an HTTPS artifact URL');
       assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(target), `DATA-RLS-001 database RLS artifact must not be local/self-test: ${target}`);
-      assert.equal(probe.status_code, 200, 'database-rls-context-proof must return HTTP 200');
+    } else {
+      assert.match(target, /^https:\/\//, `${probe.name} target must be an HTTPS deployed API URL`);
+      assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(target), `${probe.name} target must not be local/self-test: ${target}`);
+      assert.ok(target.startsWith(`${apiTarget}/api/v1/journal_entries`), `${probe.name} target must use the canonical journal endpoint`);
     }
   }
   assert.equal(requiredProbes.size, 0, `DATA-RLS-001 report missing probes: ${[...requiredProbes].join(', ')}`);
