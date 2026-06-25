@@ -288,10 +288,11 @@ rtk go run ./tools/tenantprobe \
   -api-base=https://api.staging.example \
   -owner-token="$TENANT_PROBE_OWNER_TOKEN" \
   -blocked-token="$TENANT_PROBE_BLOCKED_TOKEN" \
+  -db-rls-artifact-url=https://artifacts.staging.example/data/rls-db-proof.txt \
   -timeout=5s
 ```
 
-The probe creates an encrypted journal payload, proves the owner token can read it, proves the blocked token receives `404` for the direct read, and proves the blocked token's journal list does not include the created ID. The report includes `DATA-RLS-001` in `evidence_items` so it can be attached with `tools/record-staging-evidence.mjs`.
+The probe creates an encrypted journal payload, proves the owner token can read it, proves the blocked token receives `404` for the direct read, and proves the blocked token's journal list does not include the created ID. The DB/RLS artifact must be redacted and prove the app database principal is non-superuser, `app.current_org_id` is set, row security is active and forced on tenant tables, and cross-tenant writes are denied. The report includes `DATA-RLS-001` in `evidence_items` so it can be attached with `tools/record-staging-evidence.mjs`.
 
 For deployed mobile readiness evidence, run the mobile probe against captured EAS/native-device artifacts. This is separate from `tools/verify-journal-crypto.mjs`: the local verifier proves the implementation shape under Node/WebCrypto, while `tools/mobileprobe` requires native/EAS proof that the `react-native-quick-crypto` AES-GCM path works outside test shims and that mobile API/WS config points at staging:
 

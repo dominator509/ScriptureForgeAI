@@ -23,6 +23,10 @@ func TestRunProvesOwnerReadAndBlockedDenial(t *testing.T) {
 	var mu sync.Mutex
 	entries := map[string]journalPayload{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/db-rls-proof" {
+			_, _ = w.Write([]byte(`current_user=scriptureforge_app non-superuser app.current_org_id set row_security on FORCE ROW LEVEL SECURITY journal_entries live_rooms ai_request_logs citation_trails cross-tenant write denied`))
+			return
+		}
 		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if token != "owner-token" && token != "blocked-token" {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -65,10 +69,11 @@ func TestRunProvesOwnerReadAndBlockedDenial(t *testing.T) {
 
 	var output bytes.Buffer
 	err := run(config{
-		APIBase:      server.URL,
-		OwnerToken:   "owner-token",
-		BlockedToken: "blocked-token",
-		Timeout:      time.Second,
+		APIBase:          server.URL,
+		OwnerToken:       "owner-token",
+		BlockedToken:     "blocked-token",
+		DBRLSArtifactURL: server.URL + "/db-rls-proof",
+		Timeout:          time.Second,
 	}, &output)
 	if err != nil {
 		t.Fatalf("tenant probe failed: %v\n%s", err, output.String())
@@ -97,7 +102,7 @@ func TestRunFailsWhenBlockedTokenCanReadEntry(t *testing.T) {
 	defer server.Close()
 
 	var output bytes.Buffer
-	err := run(config{APIBase: server.URL, OwnerToken: "owner", BlockedToken: "blocked", Timeout: time.Second}, &output)
+	err := run(config{APIBase: server.URL, OwnerToken: "owner", BlockedToken: "blocked", DBRLSArtifactURL: server.URL + "/db-rls-proof", Timeout: time.Second}, &output)
 	if err == nil {
 		t.Fatalf("expected cross-token read to fail threshold:\n%s", output.String())
 	}
@@ -116,5 +121,53 @@ func TestCreateJournalEntryRejectsPlaintextLeakInResponse(t *testing.T) {
 	_, result := createJournalEntry(server.Client(), server.URL, "owner", journalPayload{Ciphertext: "cipher", IV: "iv", SaltID: "salt", SaltVersion: 1})
 	if result.Passed {
 		t.Fatalf("create probe passed despite plaintext marker: %+v", result)
+	}
+}
+
+func TestRunFailsWhenDBRLSArtifactMissingContextProof(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/journal_entries":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":"entry-1","ciphertext":"cipher","iv":"iv","salt_id":"salt","salt_version":1}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/journal_entries/entry-1":
+			if strings.Contains(r.Header.Get("Authorization"), "blocked") {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			_, _ = w.Write([]byte(`{"id":"entry-1"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/journal_entries":
+			_, _ = w.Write([]byte(`[]`))
+		case r.Method == http.MethodGet && r.URL.Path == "/db-rls-proof":
+			_, _ = w.Write([]byte(`current_user=scriptureforge_app row_security on journal_entries`))
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := run(config{
+		APIBase:          server.URL,
+		OwnerToken:       "owner-token",
+		BlockedToken:     "blocked-token",
+		DBRLSArtifactURL: server.URL + "/db-rls-proof",
+		Timeout:          time.Second,
+	}, &output)
+	if err == nil {
+		t.Fatalf("expected weak DB RLS artifact to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "database-rls-context-proof") {
+		t.Fatalf("report missing DB RLS proof probe:\n%s", output.String())
+	}
+}
+
+func TestDBRLSArtifactRejectsLeakedDatabaseURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`current_user=scriptureforge_app non-superuser app.current_org_id set row_security on FORCE ROW LEVEL SECURITY journal_entries live_rooms ai_request_logs citation_trails cross-tenant write denied postgres://scriptureforge_app:secret@example/db`))
+	}))
+	defer server.Close()
+
+	result := probeDBRLSArtifact(server.Client(), server.URL)
+	if result.Passed {
+		t.Fatalf("DB RLS proof passed despite leaked database URL: %+v", result)
 	}
 }

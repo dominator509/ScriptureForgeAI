@@ -102,7 +102,7 @@
         "tools/tenantprobe JSON report with DATA-RLS-001 evidence item",
         "Same-tenant read/write probe output",
         "Cross-tenant read/write denial output",
-        "Database role and app.current_org_id proof"
+        "Redacted database role, app.current_org_id, forced row_security, tenant table, and cross-tenant write-denial proof"
       ]
     },
     {

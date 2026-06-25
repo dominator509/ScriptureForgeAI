@@ -15,10 +15,11 @@ import (
 )
 
 type config struct {
-	APIBase      string
-	OwnerToken   string
-	BlockedToken string
-	Timeout      time.Duration
+	APIBase          string
+	OwnerToken       string
+	BlockedToken     string
+	DBRLSArtifactURL string
+	Timeout          time.Duration
 }
 
 type report struct {
@@ -59,6 +60,7 @@ func parseFlags() config {
 	flag.StringVar(&cfg.APIBase, "api-base", "", "deployed API base URL, for example https://api.staging.example")
 	flag.StringVar(&cfg.OwnerToken, "owner-token", os.Getenv("TENANT_PROBE_OWNER_TOKEN"), "bearer token for the tenant/user that creates the journal entry")
 	flag.StringVar(&cfg.BlockedToken, "blocked-token", os.Getenv("TENANT_PROBE_BLOCKED_TOKEN"), "bearer token for a different user or tenant that must not read the created entry")
+	flag.StringVar(&cfg.DBRLSArtifactURL, "db-rls-artifact-url", os.Getenv("STAGING_RLS_DB_PROOF_URL"), "redacted database/RLS proof artifact URL for current_user, app.current_org_id, and tenant table policies")
 	flag.DurationVar(&cfg.Timeout, "timeout", 5*time.Second, "per-probe timeout")
 	flag.Parse()
 	return cfg
@@ -74,12 +76,15 @@ func run(cfg config, output io.Writer) error {
 	if cfg.BlockedToken == "" {
 		return errors.New("-blocked-token or TENANT_PROBE_BLOCKED_TOKEN is required")
 	}
+	if cfg.DBRLSArtifactURL == "" {
+		return errors.New("-db-rls-artifact-url or STAGING_RLS_DB_PROOF_URL is required")
+	}
 	if cfg.Timeout <= 0 {
 		return errors.New("timeout must be positive")
 	}
 	cfg.APIBase = strings.TrimRight(cfg.APIBase, "/")
 	client := &http.Client{Timeout: cfg.Timeout}
-	probes := make([]probeResult, 0, 4)
+	probes := make([]probeResult, 0, 5)
 
 	marker := fmt.Sprintf("tenant-probe-%d", time.Now().UTC().UnixNano())
 	createPayload := journalPayload{
@@ -95,6 +100,7 @@ func run(cfg config, output io.Writer) error {
 		probes = append(probes, getJournalEntry(client, cfg.APIBase, cfg.BlockedToken, created.ID, http.StatusNotFound, "blocked-read-created-journal"))
 		probes = append(probes, listDoesNotContainEntry(client, cfg.APIBase, cfg.BlockedToken, created.ID))
 	}
+	probes = append(probes, probeDBRLSArtifact(client, cfg.DBRLSArtifactURL))
 
 	result := report{
 		ObservedAt:    time.Now().UTC().Format("2006-01-02T15:04:05Z"),
@@ -118,6 +124,44 @@ func run(cfg config, output io.Writer) error {
 		return errors.New("one or more tenant isolation probes failed")
 	}
 	return nil
+}
+
+func probeDBRLSArtifact(client *http.Client, target string) probeResult {
+	start := time.Now()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, target, nil)
+	if err != nil {
+		return failedProbe("database-rls-context-proof", target, err.Error())
+	}
+	req.Header.Set("User-Agent", "scriptureforge-tenantprobe/1.0")
+	resp, err := client.Do(req)
+	latency := time.Since(start).Milliseconds()
+	if err != nil {
+		return failedProbe("database-rls-context-proof", target, err.Error())
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 256*1024))
+	text := string(body)
+	required := []string{
+		"current_user",
+		"non-superuser",
+		"app.current_org_id",
+		"row_security",
+		"FORCE ROW LEVEL SECURITY",
+		"journal_entries",
+		"live_rooms",
+		"ai_request_logs",
+		"citation_trails",
+		"cross-tenant write denied",
+	}
+	passed := resp.StatusCode >= 200 && resp.StatusCode < 300 && containsAllFold(text, required) && containsNoneFold(text, forbiddenSecretMarkers())
+	return probeResult{
+		Name:          "database-rls-context-proof",
+		Target:        target,
+		Passed:        passed,
+		StatusCode:    resp.StatusCode,
+		LatencyMS:     latency,
+		ResultSummary: fmt.Sprintf("database RLS proof returned HTTP %d in %dms", resp.StatusCode, latency),
+	}
 }
 
 func createJournalEntry(client *http.Client, apiBase, token string, payload journalPayload) (journalPayload, probeResult) {
@@ -215,6 +259,36 @@ func authorizedRequest(method, target, token string, body []byte) (*http.Request
 		req.Header.Set("Content-Type", "application/json")
 	}
 	return req, nil
+}
+
+func containsAllFold(text string, needles []string) bool {
+	lowerText := strings.ToLower(text)
+	for _, needle := range needles {
+		if !strings.Contains(lowerText, strings.ToLower(needle)) {
+			return false
+		}
+	}
+	return true
+}
+
+func containsNoneFold(text string, needles []string) bool {
+	lowerText := strings.ToLower(text)
+	for _, needle := range needles {
+		if strings.Contains(lowerText, strings.ToLower(needle)) {
+			return false
+		}
+	}
+	return true
+}
+
+func forbiddenSecretMarkers() []string {
+	return []string{
+		"postgres://",
+		"postgresql://",
+		"password=",
+		"password:",
+		"-----BEGIN",
+	}
 }
 
 func failedProbe(name, target, summary string) probeResult {
