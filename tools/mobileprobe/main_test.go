@@ -24,7 +24,7 @@ func TestRunEmitsMobileEvidenceWhenArtifactsPass(t *testing.T) {
 		case "/eas":
 			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation"))
 		case "/crypto":
-			_, _ = w.Write([]byte("react-native-quick-crypto AES-GCM native smoke round-trip passed; tamper rejected"))
+			_, _ = w.Write([]byte("react-native-quick-crypto AES-GCM native smoke round-trip passed; tamper rejected; non-extractable key verified; key disposed; disposed handle rejected"))
 		case "/config":
 			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example"))
 		default:
@@ -61,7 +61,7 @@ func TestRunFailsWhenNativeCryptoUsesNodeShim(t *testing.T) {
 		case "/eas":
 			_, _ = w.Write([]byte("EAS build finished successfully for android and ios"))
 		case "/crypto":
-			_, _ = w.Write([]byte("react-native-quick-crypto AES-GCM round-trip passed; tamper rejected using node:webcrypto"))
+			_, _ = w.Write([]byte("react-native-quick-crypto AES-GCM round-trip passed; tamper rejected; non-extractable key verified; key disposed; disposed handle rejected using node:webcrypto"))
 		case "/config":
 			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example"))
 		}
@@ -89,7 +89,7 @@ func TestRunFailsWhenConfigUsesHardcodedProductionSocket(t *testing.T) {
 		case "/eas":
 			_, _ = w.Write([]byte("EAS build finished successfully for android and ios"))
 		case "/crypto":
-			_, _ = w.Write([]byte("react-native-quick-crypto AES-GCM round-trip passed; tamper rejected"))
+			_, _ = w.Write([]byte("react-native-quick-crypto AES-GCM round-trip passed; tamper rejected; non-extractable key verified; key disposed; disposed handle rejected"))
 		case "/config":
 			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.scriptureforge.com"))
 		}
@@ -108,5 +108,33 @@ func TestRunFailsWhenConfigUsesHardcodedProductionSocket(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "mobile-staging-config") {
 		t.Fatalf("report missing config probe:\n%s", output.String())
+	}
+}
+
+func TestRunFailsWhenNativeCryptoLacksKeyLifecycleProof(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/eas":
+			_, _ = w.Write([]byte("EAS build finished successfully for android and ios"))
+		case "/crypto":
+			_, _ = w.Write([]byte("react-native-quick-crypto AES-GCM round-trip passed; tamper rejected"))
+		case "/config":
+			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example"))
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := run(config{
+		EASArtifactURL:        server.URL + "/eas",
+		NativeCryptoSmokeURL:  server.URL + "/crypto",
+		StagingConfigProofURL: server.URL + "/config",
+		Timeout:               time.Second,
+	}, &output)
+	if err == nil {
+		t.Fatalf("expected missing key lifecycle proof to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "mobile-native-crypto-smoke") {
+		t.Fatalf("report missing crypto probe:\n%s", output.String())
 	}
 }

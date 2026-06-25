@@ -301,7 +301,7 @@ rtk go run ./tools/mobileprobe \
   -staging-config-proof-url=https://artifacts.staging.example/mobile/staging-config.txt
 ```
 
-The native crypto artifact must include `react-native-quick-crypto`, `AES-GCM`, round-trip success, and tamper rejection markers. The config proof must include HTTPS and WSS staging endpoints and must not use localhost or the old hardcoded `wss://api.scriptureforge.com` value. Passing reports include `CLIENT-MOBILE-001` in `evidence_items` so they can be attached with `tools/record-staging-evidence.mjs`.
+The native crypto artifact must include `react-native-quick-crypto`, `AES-GCM`, round-trip success, tamper rejection, non-extractable key proof, key disposal proof, and disposed-handle rejection markers. It must not be produced by Node/WebCrypto shims, Expo Crypto placeholders, mocks, or placeholder crypto. The config proof must include HTTPS and WSS staging endpoints and must not use localhost or the old hardcoded `wss://api.scriptureforge.com` value. Passing reports include `CLIENT-MOBILE-001` in `evidence_items` so they can be attached with `tools/record-staging-evidence.mjs`.
 
 For deployed secret and database principal evidence, run the security probe with redacted staging artifacts and the staged app `DATABASE_URL`. The secret-sync mode expects artifacts for the IRSA service account, `SecretProviderClass`, synced secret metadata, and workload IAM policy. It rejects obvious plaintext DSNs, API keys, private keys, and secret values in metadata artifacts:
 

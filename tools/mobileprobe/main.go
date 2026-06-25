@@ -65,7 +65,7 @@ func run(cfg config, output io.Writer) error {
 	client := &http.Client{Timeout: cfg.Timeout}
 	probes := []probeResult{
 		probeArtifact(client, "mobile-eas-or-device-run", cfg.EASArtifactURL, []string{"eas", "build", "finished", "android", "ios"}, nil),
-		probeArtifact(client, "mobile-native-crypto-smoke", cfg.NativeCryptoSmokeURL, []string{"react-native-quick-crypto", "AES-GCM", "round-trip", "tamper rejected"}, []string{"node:webcrypto", "node crypto shim"}),
+		probeArtifact(client, "mobile-native-crypto-smoke", cfg.NativeCryptoSmokeURL, []string{"react-native-quick-crypto", "AES-GCM", "round-trip", "tamper rejected", "non-extractable", "key disposed", "disposed handle rejected"}, []string{"node:webcrypto", "node crypto shim", "expo-crypto", "placeholder", "mock"}),
 		probeArtifact(client, "mobile-staging-config", cfg.StagingConfigProofURL, []string{"EXPO_PUBLIC_API_BASE_URL", "EXPO_PUBLIC_WS_BASE_URL", "https://", "wss://", "staging"}, []string{"localhost", "127.0.0.1", "wss://api.scriptureforge.com"}),
 	}
 
