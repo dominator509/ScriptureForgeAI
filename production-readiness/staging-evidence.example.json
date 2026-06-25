@@ -90,7 +90,7 @@
         "tools/abuseprobe JSON report with ABUSE-LIMIT-001 evidence item",
         "429 responses for auth, AI, journal, rooms, and WebSocket profiles",
         "Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, and X-RateLimit-Reset header proof",
-        "Staging ABUSE_LIMIT_* configuration used for the probe"
+        "HTTPS redacted artifact proving staging ABUSE_LIMIT_* configuration used for the probe"
       ]
     },
     {

@@ -335,10 +335,11 @@ rtk go run ./tools/abuseprobe \
   -api-base=https://api.staging.example \
   -bearer-token="$STAGING_ABUSE_BEARER_TOKEN" \
   -origin=https://app.staging.example \
+  -config-artifact-url=https://artifacts.staging.example/abuse/abuse-limit-config.txt \
   -attempts=35
 ```
 
-Set staging `ABUSE_LIMIT_*_REQUESTS` values low enough for the run window, or raise `-attempts` above the deployed limits. A passing report includes `ABUSE-LIMIT-001` in `evidence_items`. The recorder rejects local, non-HTTPS, missing-profile, or missing-header abuse reports so weak artifacts cannot be recorded as production evidence. The probe uses HTTPS only and does not weaken TLS validation for staging.
+Set staging `ABUSE_LIMIT_*_REQUESTS` values low enough for the run window, or raise `-attempts` above the deployed limits. The config artifact should be a redacted deployment/config snapshot showing the active `ABUSE_LIMIT_AUTH_*`, `ABUSE_LIMIT_AI_*`, `ABUSE_LIMIT_JOURNAL_*`, `ABUSE_LIMIT_ROOMS_*`, and `ABUSE_LIMIT_WEBSOCKET_*` settings for the probed release. A passing report includes `ABUSE-LIMIT-001` in `evidence_items`. The recorder rejects local, non-HTTPS, missing-profile, missing-config-artifact, or missing-header abuse reports so weak artifacts cannot be recorded as production evidence. The probe uses HTTPS only and does not weaken TLS validation for staging.
 
 For deployed rollback and backup/restore evidence, run the resilience probe against captured staging artifacts and readiness/smoke endpoints. Rollback mode requires API readiness before rollback with `service_version` and `deployment_environment`, rollout undo/status output naming the reverted revision and `scriptureforge-api`, API readiness after rollback, and AI/Zoom degradation drill evidence showing `AI_ORCHESTRATION_ENGINE_FAULT` plus Zoom `offline://in-person` fallback:
 

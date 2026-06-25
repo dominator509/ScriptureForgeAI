@@ -215,6 +215,7 @@ test('recordEvidence records production-grade abuse evidence', () => {
     {
       observed_at: '2026-06-25T12:00:00Z',
       api_target: 'https://api.staging.example',
+      config_artifact_url: 'https://artifacts.staging.example/abuse/config.txt',
       threshold_pass: true,
       evidence_items: ['ABUSE-LIMIT-001'],
       probes,
@@ -233,6 +234,7 @@ test('recordEvidence rejects weak abuse evidence', () => {
       {
         observed_at: '2026-06-25T12:00:00Z',
         api_target: 'http://127.0.0.1:8080',
+        config_artifact_url: 'https://artifacts.staging.example/abuse/config.txt',
         threshold_pass: true,
         evidence_items: ['ABUSE-LIMIT-001'],
         probes: [
@@ -249,6 +251,33 @@ test('recordEvidence rejects weak abuse evidence', () => {
       'go run ./tools/abuseprobe',
     ),
     /must use HTTPS api_target/,
+  );
+});
+
+test('recordEvidence rejects abuse evidence without staging config artifact', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'ABUSE-LIMIT-001' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        api_target: 'https://api.staging.example',
+        threshold_pass: true,
+        evidence_items: ['ABUSE-LIMIT-001'],
+        probes: ['auth-rate-limit', 'ai-rate-limit', 'journal-rate-limit', 'rooms-rate-limit', 'websocket-rate-limit']
+          .map((name) => ({
+            name,
+            passed: true,
+            status_code: 429,
+            retry_after: '60',
+            rate_limit: '1',
+            rate_limit_remaining: '0',
+            rate_limit_reset: '1782403200',
+          })),
+      },
+      'artifacts/abuseprobe.json',
+      'go run ./tools/abuseprobe',
+    ),
+    /must include HTTPS config_artifact_url/,
   );
 });
 

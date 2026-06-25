@@ -116,6 +116,9 @@ function validateAbuseEvidence(report) {
   const apiTarget = String(report.api_target ?? '');
   assert.match(apiTarget, /^https:\/\//, 'ABUSE-LIMIT-001 report must use HTTPS api_target');
   assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(apiTarget), `ABUSE-LIMIT-001 api_target must not be local/self-test: ${apiTarget}`);
+  const configArtifactURL = String(report.config_artifact_url ?? '');
+  assert.match(configArtifactURL, /^https:\/\//, 'ABUSE-LIMIT-001 report must include HTTPS config_artifact_url');
+  assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(configArtifactURL), `ABUSE-LIMIT-001 config_artifact_url must not be local/self-test: ${configArtifactURL}`);
 
   const requiredProfiles = new Set([
     'auth-rate-limit',

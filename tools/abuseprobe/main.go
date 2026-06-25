@@ -16,19 +16,21 @@ import (
 )
 
 type config struct {
-	APIBase     string
-	BearerToken string
-	Origin      string
-	Attempts    int
-	Timeout     time.Duration
+	APIBase           string
+	BearerToken       string
+	Origin            string
+	ConfigArtifactURL string
+	Attempts          int
+	Timeout           time.Duration
 }
 
 type report struct {
-	ObservedAt    string        `json:"observed_at"`
-	APITarget     string        `json:"api_target"`
-	ThresholdPass bool          `json:"threshold_pass"`
-	Probes        []probeResult `json:"probes"`
-	EvidenceItems []string      `json:"evidence_items"`
+	ObservedAt     string        `json:"observed_at"`
+	APITarget      string        `json:"api_target"`
+	ConfigArtifact string        `json:"config_artifact_url"`
+	ThresholdPass  bool          `json:"threshold_pass"`
+	Probes         []probeResult `json:"probes"`
+	EvidenceItems  []string      `json:"evidence_items"`
 }
 
 type probeResult struct {
@@ -66,6 +68,7 @@ func parseFlags() config {
 	flag.StringVar(&cfg.APIBase, "api-base", "", "deployed API base URL, for example https://api.staging.example")
 	flag.StringVar(&cfg.BearerToken, "bearer-token", os.Getenv("STAGING_ABUSE_BEARER_TOKEN"), "staging bearer token for protected abuse probes")
 	flag.StringVar(&cfg.Origin, "origin", os.Getenv("STAGING_ABUSE_ORIGIN"), "allowed staging web origin for room stream probe")
+	flag.StringVar(&cfg.ConfigArtifactURL, "config-artifact-url", os.Getenv("STAGING_ABUSE_CONFIG_ARTIFACT_URL"), "redacted staging ABUSE_LIMIT_* configuration artifact URL")
 	flag.IntVar(&cfg.Attempts, "attempts", 35, "maximum attempts per profile; set above deployed ABUSE_LIMIT_* values")
 	flag.DurationVar(&cfg.Timeout, "timeout", 5*time.Second, "per-request timeout")
 	flag.Parse()
@@ -82,6 +85,10 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 	}
 	if cfg.BearerToken == "" {
 		return errors.New("-bearer-token or STAGING_ABUSE_BEARER_TOKEN is required")
+	}
+	configArtifact, err := normalizeArtifactURL(cfg.ConfigArtifactURL)
+	if err != nil {
+		return err
 	}
 	if cfg.Attempts < 2 {
 		return errors.New("-attempts must be at least 2")
@@ -111,11 +118,12 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 	}
 
 	result := report{
-		ObservedAt:    time.Now().UTC().Format("2006-01-02T15:04:05Z"),
-		APITarget:     apiBase,
-		ThresholdPass: true,
-		Probes:        results,
-		EvidenceItems: []string{"ABUSE-LIMIT-001"},
+		ObservedAt:     time.Now().UTC().Format("2006-01-02T15:04:05Z"),
+		APITarget:      apiBase,
+		ConfigArtifact: configArtifact,
+		ThresholdPass:  true,
+		Probes:         results,
+		EvidenceItems:  []string{"ABUSE-LIMIT-001"},
 	}
 	for _, probe := range results {
 		if !probe.Passed {
@@ -207,6 +215,21 @@ func normalizeBaseURL(raw string) (string, error) {
 		return "", errors.New("api-base must include a host")
 	}
 	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String(), nil
+}
+
+func normalizeArtifactURL(raw string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", err
+	}
+	if parsed.Scheme != "https" {
+		return "", errors.New("-config-artifact-url or STAGING_ABUSE_CONFIG_ARTIFACT_URL must use https")
+	}
+	if parsed.Host == "" {
+		return "", errors.New("-config-artifact-url or STAGING_ABUSE_CONFIG_ARTIFACT_URL must include a host")
+	}
 	parsed.Fragment = ""
 	return parsed.String(), nil
 }

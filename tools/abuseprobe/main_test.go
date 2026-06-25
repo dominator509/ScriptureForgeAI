@@ -46,11 +46,12 @@ func TestRunEmitsAbuseEvidenceWhenAllProfilesRateLimit(t *testing.T) {
 
 	var output bytes.Buffer
 	err := runWithClient(config{
-		APIBase:     server.URL,
-		BearerToken: "token",
-		Origin:      "https://app.staging.example",
-		Attempts:    3,
-		Timeout:     time.Second,
+		APIBase:           server.URL,
+		BearerToken:       "token",
+		Origin:            "https://app.staging.example",
+		ConfigArtifactURL: "https://artifacts.staging.example/abuse/config.txt",
+		Attempts:          3,
+		Timeout:           time.Second,
 	}, &output, server.Client())
 	if err != nil {
 		t.Fatalf("abuse probe failed: %v\n%s", err, output.String())
@@ -64,6 +65,9 @@ func TestRunEmitsAbuseEvidenceWhenAllProfilesRateLimit(t *testing.T) {
 	}
 	if len(result.EvidenceItems) != 1 || result.EvidenceItems[0] != "ABUSE-LIMIT-001" {
 		t.Fatalf("unexpected evidence items: %+v", result.EvidenceItems)
+	}
+	if result.ConfigArtifact != "https://artifacts.staging.example/abuse/config.txt" {
+		t.Fatalf("unexpected config artifact: %q", result.ConfigArtifact)
 	}
 	for _, probe := range result.Probes {
 		if probe.StatusCode != http.StatusTooManyRequests || probe.RetryAfter == "" || probe.RateLimit == "" || probe.RateRemaining == "" || probe.RateReset == "" {
@@ -80,10 +84,11 @@ func TestRunFailsWhenRateLimitHeadersAreMissing(t *testing.T) {
 
 	var output bytes.Buffer
 	err := runWithClient(config{
-		APIBase:     server.URL,
-		BearerToken: "token",
-		Attempts:    2,
-		Timeout:     time.Second,
+		APIBase:           server.URL,
+		BearerToken:       "token",
+		ConfigArtifactURL: "https://artifacts.staging.example/abuse/config.txt",
+		Attempts:          2,
+		Timeout:           time.Second,
 	}, &output, server.Client())
 	if err == nil {
 		t.Fatalf("expected missing headers to fail:\n%s", output.String())
@@ -102,15 +107,34 @@ func TestRunFailsWhenNoRateLimitObserved(t *testing.T) {
 
 	var output bytes.Buffer
 	err := runWithClient(config{
-		APIBase:     server.URL,
-		BearerToken: "token",
-		Attempts:    2,
-		Timeout:     time.Second,
+		APIBase:           server.URL,
+		BearerToken:       "token",
+		ConfigArtifactURL: "https://artifacts.staging.example/abuse/config.txt",
+		Attempts:          2,
+		Timeout:           time.Second,
 	}, &output, server.Client())
 	if err == nil {
 		t.Fatalf("expected no-rate-limit run to fail:\n%s", output.String())
 	}
 	if !strings.Contains(output.String(), "no 429 observed") {
 		t.Fatalf("report missing no-429 summary:\n%s", output.String())
+	}
+}
+
+func TestRunRequiresConfigArtifactURL(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := runWithClient(config{
+		APIBase:     server.URL,
+		BearerToken: "token",
+		Attempts:    2,
+		Timeout:     time.Second,
+	}, &output, server.Client())
+	if err == nil || !strings.Contains(err.Error(), "config-artifact-url") {
+		t.Fatalf("expected config artifact URL error, got %v", err)
 	}
 }
