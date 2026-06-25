@@ -126,6 +126,21 @@ function validatePerformanceEvidence(report) {
   }
 }
 
+function validateTLSEvidence(report) {
+  const evidenceItems = report.evidence_items ?? [];
+  if (!evidenceItems.includes('DEPLOY-TLS-001')) {
+    return;
+  }
+  for (const [field, label] of [
+    ['dns_artifact_url', 'DNS'],
+    ['acm_artifact_url', 'ACM'],
+  ]) {
+    const artifactURL = String(report[field] ?? '');
+    assert.match(artifactURL, /^https:\/\//, `DEPLOY-TLS-001 report must include HTTPS ${field}`);
+    assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(artifactURL), `DEPLOY-TLS-001 ${label} artifact must not be local/self-test: ${artifactURL}`);
+  }
+}
+
 function validateAbuseEvidence(report) {
   const evidenceItems = report.evidence_items ?? [];
   if (!evidenceItems.includes('ABUSE-LIMIT-001')) {
@@ -169,6 +184,7 @@ function recordEvidence(manifest, report, artifact, command) {
   assert.ok(Array.isArray(report.evidence_items), 'probe report must include evidence_items');
   assert.ok(report.evidence_items.length > 0, 'probe report must include at least one evidence item');
   assert.match(report.observed_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, 'probe report observed_at must be ISO UTC without milliseconds');
+  validateTLSEvidence(report);
   validatePerformanceEvidence(report);
   validateAbuseEvidence(report);
 

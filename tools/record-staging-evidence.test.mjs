@@ -67,6 +67,8 @@ test('recordEvidence marks referenced manifest items as passed with artifact det
     observed_at: '2026-06-25T12:00:00Z',
     threshold_pass: true,
     evidence_items: ['DEPLOY-TLS-001', 'CLIENT-WEB-001'],
+    dns_artifact_url: 'https://artifacts.staging.example/tls/dns.txt',
+    acm_artifact_url: 'https://artifacts.staging.example/tls/acm.txt',
     probes: [
       { name: 'api-tls', passed: true },
       { name: 'web-root', passed: true },
@@ -82,6 +84,23 @@ test('recordEvidence marks referenced manifest items as passed with artifact det
     assert.equal(item.evidence[0].command_or_probe, 'go run ./tools/stagingprobe');
     assert.match(item.evidence[0].result_summary, /2 probes passed/);
   }
+});
+
+test('recordEvidence rejects TLS evidence without DNS and ACM artifacts', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DEPLOY-TLS-001' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        evidence_items: ['DEPLOY-TLS-001'],
+        probes: [{ name: 'api-tls', passed: true }],
+      },
+      'artifacts/stagingprobe.json',
+      'go run ./tools/stagingprobe',
+    ),
+    /must include HTTPS dns_artifact_url/,
+  );
 });
 
 test('recordEvidence rejects failed probe reports', () => {

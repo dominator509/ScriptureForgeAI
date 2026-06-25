@@ -135,10 +135,12 @@ The workflow writes this artifact with `tools/write-ci-release-evidence.mjs` aft
 rtk go run ./tools/stagingprobe \
   -api-base=https://api.staging.example \
   -web-base=https://app.staging.example \
+  -dns-artifact-url=https://artifacts.staging.example/tls/dns.txt \
+  -acm-artifact-url=https://artifacts.staging.example/tls/acm-certificate.txt \
   -timeout=5s
 ```
 
-The probe requires HTTPS targets, checks API `/live` and `/ready`, checks the web root, records TLS version/certificate expiry, and verifies HTTP-to-HTTPS redirects. It is an evidence collector for deployed services, not a substitute for Terraform apply, Kubernetes rollout, load, observability, or external-service proof.
+The probe requires HTTPS targets, checks API `/live` and `/ready`, checks the web root, records TLS version/certificate expiry, verifies HTTP-to-HTTPS redirects, and carries same-run HTTPS artifacts proving DNS records plus ACM certificate status/TLS policy. It is an evidence collector for deployed services, not a substitute for Terraform apply, Kubernetes rollout, load, observability, or external-service proof.
 
 Optional external-service probes can attach evidence for `EXT-ZOOM-001` and `EXT-AI-001`:
 

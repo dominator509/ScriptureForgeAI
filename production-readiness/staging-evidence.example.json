@@ -36,8 +36,8 @@
       "description": "DNS, ACM, ALB ingress, HTTPS redirect, and TLS policy are proven against deployed API and web hostnames.",
       "required_evidence": [
         "tools/stagingprobe JSON report",
-        "DNS lookup output",
-        "ACM certificate status",
+        "HTTPS DNS lookup artifact for deployed API and web hostnames",
+        "HTTPS ACM certificate status and TLS policy artifact",
         "HTTPS probe output",
         "HTTP to HTTPS redirect probe output"
       ]

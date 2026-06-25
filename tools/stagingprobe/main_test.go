@@ -55,7 +55,12 @@ func TestProbeHTTPSRedirectRequiresHTTPSLocation(t *testing.T) {
 
 func TestRunProducesFailingReportWhenProbeFails(t *testing.T) {
 	var output bytes.Buffer
-	err := run(config{APIBase: "https://127.0.0.1:1", Timeout: 50 * time.Millisecond}, &output)
+	err := run(config{
+		APIBase:        "https://127.0.0.1:1",
+		DNSArtifactURL: "https://artifacts.staging.example/tls/dns.txt",
+		ACMArtifactURL: "https://artifacts.staging.example/tls/acm.txt",
+		Timeout:        50 * time.Millisecond,
+	}, &output)
 	if err == nil {
 		t.Fatal("expected failed probe to fail run")
 	}
@@ -65,6 +70,17 @@ func TestRunProducesFailingReportWhenProbeFails(t *testing.T) {
 	}
 	if result.ThresholdPass {
 		t.Fatalf("failing probe reported pass: %+v", result)
+	}
+	if result.DNSArtifact == "" || result.ACMArtifact == "" {
+		t.Fatalf("failing report omitted TLS artifacts: %+v", result)
+	}
+}
+
+func TestRunRequiresTLSArtifactURLs(t *testing.T) {
+	var output bytes.Buffer
+	err := run(config{APIBase: "https://api.example.test", Timeout: time.Second}, &output)
+	if err == nil || !strings.Contains(err.Error(), "dns-artifact-url") {
+		t.Fatalf("expected DNS artifact URL error, got %v", err)
 	}
 }
 
@@ -126,7 +142,13 @@ func TestProbeAIStudyGenerationUsesBearerToken(t *testing.T) {
 
 func TestRunRequiresBearerForAIProbe(t *testing.T) {
 	var output bytes.Buffer
-	err := run(config{APIBase: "https://api.example.test", ProbeAI: true, Timeout: time.Second}, &output)
+	err := run(config{
+		APIBase:        "https://api.example.test",
+		DNSArtifactURL: "https://artifacts.staging.example/tls/dns.txt",
+		ACMArtifactURL: "https://artifacts.staging.example/tls/acm.txt",
+		ProbeAI:        true,
+		Timeout:        time.Second,
+	}, &output)
 	if err == nil || !strings.Contains(err.Error(), "ai-bearer-token") {
 		t.Fatalf("expected missing bearer error, got %v", err)
 	}

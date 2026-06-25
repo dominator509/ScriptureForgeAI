@@ -22,6 +22,8 @@ import (
 type config struct {
 	APIBase           string
 	WebBase           string
+	DNSArtifactURL    string
+	ACMArtifactURL    string
 	Timeout           time.Duration
 	ProbeZoom         bool
 	ZoomWebhookSecret string
@@ -34,6 +36,8 @@ type report struct {
 	ObservedAt    string        `json:"observed_at"`
 	APITarget     string        `json:"api_target,omitempty"`
 	WebTarget     string        `json:"web_target,omitempty"`
+	DNSArtifact   string        `json:"dns_artifact_url"`
+	ACMArtifact   string        `json:"acm_artifact_url"`
 	ThresholdPass bool          `json:"threshold_pass"`
 	Probes        []probeResult `json:"probes"`
 	EvidenceItems []string      `json:"evidence_items"`
@@ -63,6 +67,8 @@ func parseFlags() config {
 	cfg := config{}
 	flag.StringVar(&cfg.APIBase, "api-base", "", "deployed API base URL, for example https://api.staging.example")
 	flag.StringVar(&cfg.WebBase, "web-base", "", "deployed web base URL, for example https://app.staging.example")
+	flag.StringVar(&cfg.DNSArtifactURL, "dns-artifact-url", os.Getenv("STAGING_DNS_ARTIFACT_URL"), "HTTPS artifact proving deployed DNS records for API/web hostnames")
+	flag.StringVar(&cfg.ACMArtifactURL, "acm-artifact-url", os.Getenv("STAGING_ACM_ARTIFACT_URL"), "HTTPS artifact proving ACM certificate status and TLS policy")
 	flag.DurationVar(&cfg.Timeout, "timeout", 5*time.Second, "per-probe timeout")
 	flag.BoolVar(&cfg.ProbeZoom, "probe-zoom", false, "probe Zoom webhook invalid-signature denial; add -zoom-webhook-secret to also send a signed no-op webhook")
 	flag.StringVar(&cfg.ZoomWebhookSecret, "zoom-webhook-secret", os.Getenv("ZOOM_WEBHOOK_SECRET_TOKEN"), "Zoom webhook secret token for optional signed no-op webhook probe")
@@ -79,6 +85,14 @@ func run(cfg config, output io.Writer) error {
 	}
 	if cfg.Timeout <= 0 {
 		return errors.New("timeout must be positive")
+	}
+	dnsArtifact, err := normalizeArtifactURL(cfg.DNSArtifactURL, "dns-artifact-url")
+	if err != nil {
+		return err
+	}
+	acmArtifact, err := normalizeArtifactURL(cfg.ACMArtifactURL, "acm-artifact-url")
+	if err != nil {
+		return err
 	}
 	if (cfg.ProbeZoom || cfg.ProbeAI) && cfg.APIBase == "" {
 		return errors.New("-api-base is required for -probe-zoom or -probe-ai")
@@ -127,6 +141,8 @@ func run(cfg config, output io.Writer) error {
 		ObservedAt:    time.Now().UTC().Format("2006-01-02T15:04:05Z"),
 		APITarget:     cfg.APIBase,
 		WebTarget:     cfg.WebBase,
+		DNSArtifact:   dnsArtifact,
+		ACMArtifact:   acmArtifact,
 		ThresholdPass: true,
 		Probes:        results,
 		EvidenceItems: evidenceItems,
@@ -162,6 +178,21 @@ func normalizeBaseURL(raw string) (string, error) {
 	}
 	parsed.Path = strings.TrimRight(parsed.Path, "/")
 	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String(), nil
+}
+
+func normalizeArtifactURL(raw, flagName string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", err
+	}
+	if parsed.Scheme != "https" {
+		return "", fmt.Errorf("-%s or matching STAGING_* env var must use https", flagName)
+	}
+	if parsed.Host == "" {
+		return "", fmt.Errorf("-%s or matching STAGING_* env var must include a host", flagName)
+	}
 	parsed.Fragment = ""
 	return parsed.String(), nil
 }
