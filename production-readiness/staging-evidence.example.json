@@ -50,10 +50,7 @@
       "required_evidence": [
         "tools/deploymentprobe -probe-kubernetes JSON report with DEPLOY-K8S-001 evidence item",
         "kubectl rollout status output proving API, web, and Rust workloads are rolled out, ready, and available",
-        "kubectl get deploy,svc,ingress,hpa,pdb output proving services, ingresses, HPA targets, and PDB min availability",
-        "tools/stagingprobe JSON report",
-        "API /live and /ready probe output",
-        "Rust gRPC health probe output"
+        "kubectl get deploy,svc,ingress,hpa,pdb output proving services, ingresses, HPA targets, and PDB min availability"
       ]
     },
     {

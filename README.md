@@ -129,7 +129,7 @@ The report emits `SRC-CI-001` in `evidence_items` only when the artifact proves 
 
 The workflow writes this artifact with `tools/write-ci-release-evidence.mjs` after the required local gates and TruffleHog step complete, immediately validates the local file with `tools/ciprobe`, and then uploads it as the `ci-release-evidence` artifact. The artifact names the full commit SHA, workflow, job, run URL, successful conclusion, and required gate markers so it can be recorded into the staging evidence manifest with `tools/record-staging-evidence.mjs`.
 
-`tools/stagingprobe` emits a JSON probe report for deployed HTTPS readiness checks that can be attached to the staging evidence manifest for `DEPLOY-TLS-001`, `DEPLOY-K8S-001`, and `CLIENT-WEB-001`:
+`tools/stagingprobe` emits a JSON probe report for deployed HTTPS readiness checks that can be attached to the staging evidence manifest for `DEPLOY-TLS-001` and `CLIENT-WEB-001`:
 
 ```bash
 rtk go run ./tools/stagingprobe \
@@ -140,7 +140,7 @@ rtk go run ./tools/stagingprobe \
   -timeout=5s
 ```
 
-The probe requires HTTPS targets, checks API `/live` and `/ready`, checks the web root, records TLS version/certificate expiry, verifies HTTP-to-HTTPS redirects, and carries same-run HTTPS artifacts proving DNS records plus ACM certificate status/TLS policy. It is an evidence collector for deployed services, not a substitute for Terraform apply, Kubernetes rollout, load, observability, or external-service proof.
+The probe requires HTTPS targets, checks API `/live` and `/ready`, checks the web root, records TLS version/certificate expiry, verifies HTTP-to-HTTPS redirects, and carries same-run HTTPS artifacts proving DNS records plus ACM certificate status/TLS policy. It is an evidence collector for deployed service reachability, not a substitute for Terraform apply, Kubernetes rollout/resource artifacts, load, observability, or external-service proof. `DEPLOY-K8S-001` must come from `tools/deploymentprobe -probe-kubernetes`, which proves rollout status plus deploy/service/ingress/HPA/PDB resources.
 
 Optional external-service probes can attach evidence for `EXT-ZOOM-001` and `EXT-AI-001`:
 

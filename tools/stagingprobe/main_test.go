@@ -84,6 +84,26 @@ func TestRunRequiresTLSArtifactURLs(t *testing.T) {
 	}
 }
 
+func TestStagingProbeDoesNotEmitKubernetesEvidenceItem(t *testing.T) {
+	var output bytes.Buffer
+	err := run(config{
+		APIBase:        "https://127.0.0.1:1",
+		DNSArtifactURL: "https://artifacts.staging.example/tls/dns.txt",
+		ACMArtifactURL: "https://artifacts.staging.example/tls/acm.txt",
+		Timeout:        50 * time.Millisecond,
+	}, &output)
+	if err == nil {
+		t.Fatal("expected failed network probe to fail run")
+	}
+	var result report
+	if decodeErr := json.Unmarshal(output.Bytes(), &result); decodeErr != nil {
+		t.Fatalf("report was not JSON: %v\n%s", decodeErr, output.String())
+	}
+	if containsItem(result.EvidenceItems, "DEPLOY-K8S-001") {
+		t.Fatalf("staging probe must not emit DEPLOY-K8S-001 without rollout/resource artifacts: %+v", result.EvidenceItems)
+	}
+}
+
 func TestProbeZoomInvalidSignatureDenial(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("x-zm-signature") == "v0=invalid" {
@@ -171,4 +191,13 @@ func TestProbeTLSCapturesVersionAndCertificate(t *testing.T) {
 	if tlsVersionName(state.Version) == "" || len(state.PeerCertificates) == 0 {
 		t.Fatalf("unexpected TLS state: %+v", state)
 	}
+}
+
+func containsItem(items []string, expected string) bool {
+	for _, item := range items {
+		if item == expected {
+			return true
+		}
+	}
+	return false
 }

@@ -103,7 +103,7 @@ func run(cfg config, output io.Writer) error {
 
 	client := &http.Client{Timeout: cfg.Timeout}
 	results := make([]probeResult, 0, 6)
-	evidenceItems := []string{"DEPLOY-TLS-001", "DEPLOY-K8S-001", "CLIENT-WEB-001"}
+	evidenceItems := []string{"DEPLOY-TLS-001", "CLIENT-WEB-001"}
 	if cfg.APIBase != "" {
 		apiBase, err := normalizeBaseURL(cfg.APIBase)
 		if err != nil {

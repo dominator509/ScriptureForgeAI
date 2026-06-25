@@ -141,6 +141,23 @@ function validateTLSEvidence(report) {
   }
 }
 
+function validateKubernetesEvidence(report) {
+  const evidenceItems = report.evidence_items ?? [];
+  if (!evidenceItems.includes('DEPLOY-K8S-001')) {
+    return;
+  }
+  const probes = Array.isArray(report.probes) ? report.probes : [];
+  const probesByName = new Map(probes.map((probe) => [probe.name, probe]));
+  for (const name of ['kubernetes-rollout-status', 'kubernetes-workload-resources']) {
+    const probe = probesByName.get(name);
+    assert.ok(probe, `DEPLOY-K8S-001 report must include ${name} probe`);
+    assert.equal(probe.passed, true, `${name} must pass`);
+    const target = String(probe.target ?? '');
+    assert.match(target, /^https:\/\//, `${name} target must be an HTTPS artifact URL`);
+    assert.ok(!/localhost|127\.0\.0\.1|\[?::1\]?/i.test(target), `${name} target must not be local/self-test: ${target}`);
+  }
+}
+
 function validateAbuseEvidence(report) {
   const evidenceItems = report.evidence_items ?? [];
   if (!evidenceItems.includes('ABUSE-LIMIT-001')) {
@@ -185,6 +202,7 @@ function recordEvidence(manifest, report, artifact, command) {
   assert.ok(report.evidence_items.length > 0, 'probe report must include at least one evidence item');
   assert.match(report.observed_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, 'probe report observed_at must be ISO UTC without milliseconds');
   validateTLSEvidence(report);
+  validateKubernetesEvidence(report);
   validatePerformanceEvidence(report);
   validateAbuseEvidence(report);
 

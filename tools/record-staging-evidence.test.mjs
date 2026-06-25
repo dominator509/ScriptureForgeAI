@@ -103,6 +103,54 @@ test('recordEvidence rejects TLS evidence without DNS and ACM artifacts', () => 
   );
 });
 
+test('recordEvidence records production-grade Kubernetes deployment evidence', () => {
+  const manifest = {
+    items: [{ id: 'DEPLOY-K8S-001', status: 'pending_external' }],
+  };
+
+  const updated = recordEvidence(
+    manifest,
+    {
+      observed_at: '2026-06-25T12:00:00Z',
+      threshold_pass: true,
+      evidence_items: ['DEPLOY-K8S-001'],
+      probes: [
+        {
+          name: 'kubernetes-rollout-status',
+          passed: true,
+          target: 'https://artifacts.staging.example/deploy/kubectl-rollout-status.txt',
+        },
+        {
+          name: 'kubernetes-workload-resources',
+          passed: true,
+          target: 'https://artifacts.staging.example/deploy/kubectl-resources.txt',
+        },
+      ],
+    },
+    'artifacts/deploymentprobe-k8s.json',
+    'go run ./tools/deploymentprobe -probe-kubernetes',
+  );
+
+  assert.equal(updated.items[0].status, 'passed');
+});
+
+test('recordEvidence rejects Kubernetes evidence without rollout and resource artifact probes', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DEPLOY-K8S-001' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        evidence_items: ['DEPLOY-K8S-001'],
+        probes: [{ name: 'api-ready', passed: true, target: 'https://api.staging.example/ready' }],
+      },
+      'artifacts/stagingprobe.json',
+      'go run ./tools/stagingprobe',
+    ),
+    /must include kubernetes-rollout-status probe/,
+  );
+});
+
 test('recordEvidence rejects failed probe reports', () => {
   assert.throws(
     () => recordEvidence(
