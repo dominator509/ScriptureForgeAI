@@ -110,6 +110,9 @@ jobs:
     - name: Test Staging Evidence Bootstrap
       run: node --test tools/bootstrap-staging-evidence.test.mjs
 
+    - name: Test Staging Evidence Gap Reporter
+      run: node --test tools/report-staging-evidence-gaps.test.mjs
+
     - name: Test CI Release Evidence Writer
       run: node --test tools/write-ci-release-evidence.test.mjs
 

@@ -57,6 +57,15 @@ rtk node tools/bootstrap-staging-evidence.mjs \
 
 Environment-specific evidence manifests are git-ignored because they may contain staging artifact URLs and operational notes. The bootstrap command uses the current `git rev-parse HEAD` as `release_candidate` unless `--release-candidate` is supplied.
 
+To print the exact remaining strict-release blockers from an environment manifest:
+
+```bash
+rtk node tools/report-staging-evidence-gaps.mjs \
+  --manifest production-readiness/staging-evidence.staging.json
+```
+
+Use `--format json` when a release handoff needs machine-readable counts and evidence requirements. The command exits non-zero until every strict-release item is passed, except `SEC-SIGNOFF-001` may be recorded as `accepted_risk`.
+
 Before claiming production readiness, run the same validator in strict release mode:
 
 ```bash

@@ -19,6 +19,7 @@ export const requiredMarkers = [
   { id: 'readiness-claim-tests', text: 'node --test tools/verify-production-readiness.test.mjs' },
   { id: 'evidence-recorder-tests', text: 'node --test tools/record-staging-evidence.test.mjs' },
   { id: 'evidence-bootstrap-tests', text: 'node --test tools/bootstrap-staging-evidence.test.mjs' },
+  { id: 'evidence-gap-report-tests', text: 'node --test tools/report-staging-evidence-gaps.test.mjs' },
   { id: 'ci-release-evidence-tests', text: 'node --test tools/write-ci-release-evidence.test.mjs' },
   { id: 'local-gate-runner-tests', text: 'node --test tools/run-local-gates.test.mjs tools/validate-local-gate-report.test.mjs' },
   { id: 'security-artifacts', text: 'node tools/validate-security-artifacts.mjs' },

@@ -32,7 +32,7 @@ export const gateDefinitions = [
   { id: 'dependency-risk-validation', command: [nodeBin, 'tools/validate-dependency-risk.mjs'] },
   { id: 'secret-hygiene-validation', command: [nodeBin, 'tools/validate-secret-hygiene.mjs'] },
   { id: 'journal-crypto-validation', command: [nodeBin, 'tools/verify-journal-crypto.mjs'] },
-  { id: 'tooling-tests', command: [nodeBin, '--test', 'tools/run-local-gates.test.mjs', 'tools/validate-local-gate-report.test.mjs', 'tools/validate-ci-workflow.test.mjs', 'tools/validate-dependency-risk.test.mjs', 'tools/validate-staging-evidence.test.mjs', 'tools/verify-production-readiness.test.mjs', 'tools/record-staging-evidence.test.mjs', 'tools/bootstrap-staging-evidence.test.mjs', 'tools/write-ci-release-evidence.test.mjs'] },
+  { id: 'tooling-tests', command: [nodeBin, '--test', 'tools/run-local-gates.test.mjs', 'tools/validate-local-gate-report.test.mjs', 'tools/validate-ci-workflow.test.mjs', 'tools/validate-dependency-risk.test.mjs', 'tools/validate-staging-evidence.test.mjs', 'tools/verify-production-readiness.test.mjs', 'tools/record-staging-evidence.test.mjs', 'tools/bootstrap-staging-evidence.test.mjs', 'tools/report-staging-evidence-gaps.test.mjs', 'tools/write-ci-release-evidence.test.mjs'] },
 ];
 
 export function parseArgs(argv) {
