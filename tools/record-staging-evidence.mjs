@@ -159,6 +159,22 @@ function validateTLSEvidence(report) {
   }
 }
 
+function validateCIEvidence(report) {
+  const evidenceItems = report.evidence_items ?? [];
+  if (!evidenceItems.includes('SRC-CI-001')) {
+    return;
+  }
+  assert.match(String(report.commit_sha ?? ''), /^[a-fA-F0-9]{40}$/, 'SRC-CI-001 report must include full commit_sha');
+  assert.ok(String(report.workflow_name ?? '').trim(), 'SRC-CI-001 report must include workflow_name');
+  const runURL = String(report.ci_run_url ?? '');
+  assert.match(runURL, /^https:\/\/github\.com\/[^/]+\/[^/]+\/actions\/runs\/\d+/, 'SRC-CI-001 report must include GitHub Actions ci_run_url');
+  const probes = Array.isArray(report.probes) ? report.probes : [];
+  const releaseRun = probes.find((probe) => probe.name === 'github-actions-release-run');
+  assert.ok(releaseRun, 'SRC-CI-001 report must include github-actions-release-run probe');
+  assert.equal(releaseRun.passed, true, 'github-actions-release-run must pass');
+  assert.equal(String(releaseRun.run_url ?? ''), runURL, 'github-actions-release-run probe run_url must match ci_run_url');
+}
+
 function validateKubernetesEvidence(report) {
   const evidenceItems = report.evidence_items ?? [];
   if (!evidenceItems.includes('DEPLOY-K8S-001')) {
@@ -242,6 +258,7 @@ function recordEvidence(manifest, report, artifact, command) {
   assert.ok(Array.isArray(report.evidence_items), 'probe report must include evidence_items');
   assert.ok(report.evidence_items.length > 0, 'probe report must include at least one evidence item');
   assert.match(report.observed_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, 'probe report observed_at must be ISO UTC without milliseconds');
+  validateCIEvidence(report);
   validateTLSEvidence(report);
   validateKubernetesEvidence(report);
   validateWebClientEvidence(report);

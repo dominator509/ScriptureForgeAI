@@ -42,6 +42,12 @@ func TestCIProbeEmitsSourceControlEvidence(t *testing.T) {
 	if len(result.EvidenceItems) != 1 || result.EvidenceItems[0] != "SRC-CI-001" {
 		t.Fatalf("unexpected evidence items: %+v", result.EvidenceItems)
 	}
+	if result.CommitSHA != testCommitSHA || result.WorkflowName != "Security Pipeline Verification" {
+		t.Fatalf("release identity was not propagated: %+v", result)
+	}
+	if result.CIRunURL != "https://github.com/example/scriptureforgeai/actions/runs/1234567890" {
+		t.Fatalf("CI run URL was not propagated: %+v", result)
+	}
 }
 
 func TestCIProbeAcceptsLocalArtifactFile(t *testing.T) {
@@ -67,6 +73,9 @@ func TestCIProbeAcceptsLocalArtifactFile(t *testing.T) {
 	}
 	if !result.ThresholdPass {
 		t.Fatalf("threshold should pass: %+v", result)
+	}
+	if result.CIRunURL == "" || result.Probes[0].RunURL == "" {
+		t.Fatalf("local artifact probe should propagate run URL: %+v", result)
 	}
 }
 

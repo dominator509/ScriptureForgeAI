@@ -25,6 +25,9 @@ type config struct {
 type report struct {
 	ObservedAt    string        `json:"observed_at"`
 	ThresholdPass bool          `json:"threshold_pass"`
+	CommitSHA     string        `json:"commit_sha"`
+	WorkflowName  string        `json:"workflow_name"`
+	CIRunURL      string        `json:"ci_run_url,omitempty"`
 	Probes        []probeResult `json:"probes"`
 	EvidenceItems []string      `json:"evidence_items"`
 }
@@ -35,6 +38,7 @@ type probeResult struct {
 	Passed        bool   `json:"passed"`
 	StatusCode    int    `json:"status_code,omitempty"`
 	LatencyMS     int64  `json:"latency_ms,omitempty"`
+	RunURL        string `json:"run_url,omitempty"`
 	ResultSummary string `json:"result_summary"`
 }
 
@@ -82,6 +86,9 @@ func run(cfg config, output io.Writer) error {
 	result := report{
 		ObservedAt:    time.Now().UTC().Format("2006-01-02T15:04:05Z"),
 		ThresholdPass: true,
+		CommitSHA:     cfg.CommitSHA,
+		WorkflowName:  cfg.WorkflowName,
+		CIRunURL:      probes[0].RunURL,
 		Probes:        probes,
 		EvidenceItems: []string{"SRC-CI-001"},
 	}
@@ -121,12 +128,14 @@ func probeCIArtifact(client *http.Client, cfg config) probeResult {
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512*1024))
-	passed := resp.StatusCode >= 200 && resp.StatusCode < 300 && ciArtifactTextPasses(string(body), cfg)
+	bodyText := string(body)
+	runURL := extractLineValue(bodyText, "run_url:")
+	passed := resp.StatusCode >= 200 && resp.StatusCode < 300 && ciArtifactTextPasses(bodyText, cfg)
 	summary := fmt.Sprintf("got HTTP %d in %dms", resp.StatusCode, latency)
 	if !passed {
 		summary += "; artifact must prove the exact release SHA completed all required CI gates successfully"
 	}
-	return probeResult{Name: "github-actions-release-run", Target: cfg.RunArtifactURL, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, ResultSummary: summary}
+	return probeResult{Name: "github-actions-release-run", Target: cfg.RunArtifactURL, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, RunURL: runURL, ResultSummary: summary}
 }
 
 func probeCIArtifactFile(cfg config) probeResult {
@@ -136,12 +145,14 @@ func probeCIArtifactFile(cfg config) probeResult {
 	if err != nil {
 		return failedProbe("github-actions-release-run", cfg.RunArtifactFile, err.Error())
 	}
-	passed := ciArtifactTextPasses(string(body), cfg)
+	bodyText := string(body)
+	runURL := extractLineValue(bodyText, "run_url:")
+	passed := ciArtifactTextPasses(bodyText, cfg)
 	summary := fmt.Sprintf("read local artifact in %dms", latency)
 	if !passed {
 		summary += "; artifact must prove the exact release SHA completed all required CI gates successfully"
 	}
-	return probeResult{Name: "github-actions-release-run", Target: cfg.RunArtifactFile, Passed: passed, LatencyMS: latency, ResultSummary: summary}
+	return probeResult{Name: "github-actions-release-run", Target: cfg.RunArtifactFile, Passed: passed, LatencyMS: latency, RunURL: runURL, ResultSummary: summary}
 }
 
 func ciArtifactTextPasses(text string, cfg config) bool {
@@ -217,6 +228,16 @@ func containsNoneFold(text string, needles []string) bool {
 		}
 	}
 	return true
+}
+
+func extractLineValue(text, prefix string) string {
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(strings.ToLower(trimmed), strings.ToLower(prefix)) {
+			return strings.TrimSpace(trimmed[len(prefix):])
+		}
+	}
+	return ""
 }
 
 func isFullCommitSHA(value string) bool {

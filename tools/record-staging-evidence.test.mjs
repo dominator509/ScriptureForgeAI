@@ -90,6 +90,55 @@ test('recordEvidence marks referenced manifest items as passed with artifact det
   }
 });
 
+test('recordEvidence records production-grade CI release evidence', () => {
+  const manifest = {
+    items: [{ id: 'SRC-CI-001', status: 'pending_external' }],
+  };
+
+  const updated = recordEvidence(
+    manifest,
+    {
+      observed_at: '2026-06-25T12:00:00Z',
+      threshold_pass: true,
+      commit_sha: '0123456789abcdef0123456789abcdef01234567',
+      workflow_name: 'Security Pipeline Verification',
+      ci_run_url: 'https://github.com/example/scriptureforgeai/actions/runs/1234567890',
+      evidence_items: ['SRC-CI-001'],
+      probes: [
+        {
+          name: 'github-actions-release-run',
+          passed: true,
+          target: 'artifacts/ci-release-evidence.txt',
+          run_url: 'https://github.com/example/scriptureforgeai/actions/runs/1234567890',
+        },
+      ],
+    },
+    'artifacts/ciprobe.json',
+    'go run ./tools/ciprobe -run-artifact-file artifacts/ci-release-evidence.txt',
+  );
+
+  assert.equal(updated.items[0].status, 'passed');
+});
+
+test('recordEvidence rejects CI evidence without GitHub run identity', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'SRC-CI-001' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        commit_sha: '0123456789abcdef0123456789abcdef01234567',
+        workflow_name: 'Security Pipeline Verification',
+        evidence_items: ['SRC-CI-001'],
+        probes: [{ name: 'github-actions-release-run', passed: true }],
+      },
+      'artifacts/ciprobe.json',
+      'go run ./tools/ciprobe',
+    ),
+    /must include GitHub Actions ci_run_url/,
+  );
+});
+
 test('recordEvidence rejects web client evidence without browser smoke artifacts', () => {
   assert.throws(
     () => recordEvidence(
