@@ -8,10 +8,16 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const mobileRoot = path.join(repoRoot, 'mobile');
 const cryptoSourcePath = path.join(mobileRoot, 'src', 'lib', 'crypto.ts');
+const webJournalEditorPath = path.join(repoRoot, 'web', 'src', 'components', 'JournalEditor.tsx');
+const mobileJournalContainerPath = path.join(mobileRoot, 'src', 'components', 'SecureJournalContainer.tsx');
 const mobileRequire = createRequire(path.join(mobileRoot, 'package.json'));
 const ts = mobileRequire('typescript');
 
 const source = fs.readFileSync(cryptoSourcePath, 'utf8');
+const clientJournalSources = [
+  [webJournalEditorPath, fs.readFileSync(webJournalEditorPath, 'utf8')],
+  [mobileJournalContainerPath, fs.readFileSync(mobileJournalContainerPath, 'utf8')],
+];
 const forbiddenPatterns = [
   /Buffer\.from\(plaintext\)\.toString\(['"]base64['"]\)/,
   /pseudoCipher/,
@@ -22,6 +28,15 @@ const forbiddenPatterns = [
 for (const pattern of forbiddenPatterns) {
   if (pattern.test(source)) {
     throw new Error(`mobile journal crypto still contains forbidden placeholder pattern: ${pattern}`);
+  }
+}
+
+for (const [clientPath, clientSource] of clientJournalSources) {
+  if (/journal:\$\{[^}]+}:v1/.test(clientSource) || /journal:[^'"]+:v1/.test(clientSource)) {
+    throw new Error(`${path.relative(repoRoot, clientPath)} must use authenticated backend journal bootstrap salt material`);
+  }
+  if (!clientSource.includes('getJournalBootstrap')) {
+    throw new Error(`${path.relative(repoRoot, clientPath)} must fetch journal bootstrap salt material from the backend`);
   }
 }
 
@@ -74,7 +89,7 @@ const {
   getJournalCryptoKey,
 } = loadedModule.exports;
 const plaintext = 'Private journal note: John 1 reflection, pastoral context, and prayer details.';
-const key = await deriveIsolationKey('correct horse battery staple', 'journal:user-123:v1');
+const key = await deriveIsolationKey('correct horse battery staple', 'journal:v1:server-derived-salt');
 
 if (typeof key === 'string') {
   throw new Error('derived journal key must be a non-extractable key handle, not string key material');

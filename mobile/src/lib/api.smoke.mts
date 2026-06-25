@@ -4,6 +4,7 @@ import {
   API_BASE_URL,
   createRoom,
   getJournalEntry,
+  getJournalBootstrap,
   listActiveRooms,
   listJournalEntries,
   loginAccount,
@@ -43,14 +44,17 @@ beforeEach(() => {
       });
     }
     if (url.endsWith('/api/v1/auth/logout')) return new Response(null, { status: 204 });
+    if (url.endsWith('/api/v1/journal/bootstrap')) {
+      return jsonResponse({ salt_id: 'journal:v1:server-derived-salt', salt_version: 1 });
+    }
     if (url.endsWith('/api/v1/journal_entries') && init?.method === 'POST') {
-      return jsonResponse({ id: 'entry-1', ciphertext: 'ciphertext', iv: 'iv', salt_id: 'journal:user-1:v1', salt_version: 1 });
+      return jsonResponse({ id: 'entry-1', ciphertext: 'ciphertext', iv: 'iv', salt_id: 'journal:v1:server-derived-salt', salt_version: 1 });
     }
     if (url.endsWith('/api/v1/journal_entries')) {
-      return jsonResponse([{ id: 'entry-1', ciphertext: 'ciphertext', iv: 'iv', salt_id: 'journal:user-1:v1', salt_version: 1 }]);
+      return jsonResponse([{ id: 'entry-1', ciphertext: 'ciphertext', iv: 'iv', salt_id: 'journal:v1:server-derived-salt', salt_version: 1 }]);
     }
     if (url.endsWith('/api/v1/journal_entries/entry-1')) {
-      return jsonResponse({ id: 'entry-1', ciphertext: 'ciphertext', iv: 'iv', salt_id: 'journal:user-1:v1', salt_version: 1 });
+      return jsonResponse({ id: 'entry-1', ciphertext: 'ciphertext', iv: 'iv', salt_id: 'journal:v1:server-derived-salt', salt_version: 1 });
     }
     if (url.endsWith('/api/v1/rooms/active')) return jsonResponse([{ id: 'room-1', title: 'Study', is_active: true }]);
     if (url.endsWith('/api/v1/rooms/create')) return jsonResponse({ id: 'room-1', title: 'Study', is_active: true });
@@ -82,15 +86,17 @@ test('auth helpers use canonical routes, organization scoping, MFA, and bearer l
 });
 
 test('journal helpers send only encrypted fields and use bearer auth', async () => {
-  const payload = { ciphertext: 'ciphertext', iv: 'iv', salt_id: 'journal:user-1:v1', salt_version: 1 };
+  const bootstrap = await getJournalBootstrap('access-token');
+  const payload = { ciphertext: 'ciphertext', iv: 'iv', salt_id: bootstrap.salt_id, salt_version: bootstrap.salt_version };
 
   assert.equal((await listJournalEntries('access-token'))[0]?.id, 'entry-1');
-  assert.equal((await saveJournalEntry('access-token', payload)).salt_id, 'journal:user-1:v1');
+  assert.equal((await saveJournalEntry('access-token', payload)).salt_id, 'journal:v1:server-derived-salt');
   assert.equal((await getJournalEntry('access-token', 'entry-1')).ciphertext, 'ciphertext');
 
-  const saveBody = JSON.parse(String(calls[1]?.init.body));
+  const saveBody = JSON.parse(String(calls[2]?.init.body));
   assert.deepEqual(Object.keys(saveBody).sort(), ['ciphertext', 'iv', 'salt_id', 'salt_version']);
-  assert.equal(new Headers(calls[1]?.init.headers).get('Authorization'), 'Bearer access-token');
+  assert.equal(saveBody.salt_id, 'journal:v1:server-derived-salt');
+  assert.equal(new Headers(calls[2]?.init.headers).get('Authorization'), 'Bearer access-token');
 });
 
 test('room helpers create, list, and build encoded websocket stream URLs', async () => {

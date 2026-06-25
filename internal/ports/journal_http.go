@@ -1,8 +1,12 @@
 package ports
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -20,6 +24,46 @@ type JournalPayload struct {
 	SaltID      string `json:"salt_id"`
 	SaltVersion int    `json:"salt_version"`
 	CreatedAt   string `json:"created_at,omitempty"`
+}
+
+type JournalBootstrapResponse struct {
+	SaltID      string `json:"salt_id"`
+	SaltVersion int    `json:"salt_version"`
+}
+
+func (h *JournalHandler) ServeJournalBootstrap(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Method not allowed", Code: http.StatusMethodNotAllowed})
+		return
+	}
+	claims, ok := r.Context().Value(auth.ContextKeyUser).(*auth.TokenClaims)
+	if !ok || claims == nil {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Unauthorized access", Code: http.StatusUnauthorized})
+		return
+	}
+	saltID, err := journalSaltID(claims.OrganizationID, claims.UserID)
+	if err != nil {
+		sendAuthError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(JournalBootstrapResponse{SaltID: saltID, SaltVersion: 1})
+}
+
+func journalSaltID(organizationID, userID string) (string, *auth.PlatformException) {
+	secret := os.Getenv("JOURNAL_SALT_SECRET")
+	if secret == "" {
+		secret = os.Getenv("JWT_SECRET_KEY")
+	}
+	if secret == "" {
+		return "", &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Journal salt secret is not configured", Code: http.StatusInternalServerError}
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(organizationID))
+	_, _ = mac.Write([]byte{0})
+	_, _ = mac.Write([]byte(userID))
+	digest := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return "journal:v1:" + digest, nil
 }
 
 func (h *JournalHandler) ServeJournalEntries(w http.ResponseWriter, r *http.Request) {

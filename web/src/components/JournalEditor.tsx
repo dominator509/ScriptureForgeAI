@@ -1,25 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { deriveIsolationKey, encryptJournalData, decryptJournalData, EncryptedPayload } from '../lib/crypto';
-import { EncryptedJournalEntry, listJournalEntries, saveJournalEntry } from '../lib/api';
+import { EncryptedJournalEntry, getJournalBootstrap, JournalBootstrap, listJournalEntries, saveJournalEntry } from '../lib/api';
 import { useAppStore } from '../lib/store';
 
 // A fully functional component demonstrating Zero-Knowledge containment integrations
 export const JournalEditor: React.FC = () => {
-  const { currentRole, token, userId } = useAppStore();
+  const { currentRole, token } = useAppStore();
   const [plaintext, setPlaintext] = useState<string>('');
   const [passphrase, setPassphrase] = useState<string>('');
   const [encryptedData, setEncryptedData] = useState<EncryptedPayload | null>(null);
   const [entries, setEntries] = useState<EncryptedJournalEntry[]>([]);
   const [cryptoKey, setCryptoKey] = useState<CryptoKey | null>(null);
+  const [journalBootstrap, setJournalBootstrap] = useState<JournalBootstrap | null>(null);
   const [status, setStatus] = useState<string>('');
-
-  const userSalt = userId ? `journal:${userId}:v1` : '';
 
   // Derive the key automatically when passphrase is provided
   useEffect(() => {
     let isMounted = true;
-    if (passphrase.length >= 8 && userSalt) {
-      deriveIsolationKey(passphrase, userSalt)
+    if (passphrase.length >= 8 && journalBootstrap?.salt_id) {
+      deriveIsolationKey(passphrase, journalBootstrap.salt_id)
         .then((key) => {
           if (isMounted) {
             setCryptoKey(key);
@@ -34,10 +33,16 @@ export const JournalEditor: React.FC = () => {
       setStatus("Awaiting valid passphrase (min 8 chars)");
     }
     return () => { isMounted = false; };
-  }, [passphrase, userSalt]);
+  }, [passphrase, journalBootstrap?.salt_id]);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      setJournalBootstrap(null);
+      return;
+    }
+    getJournalBootstrap(token)
+      .then(setJournalBootstrap)
+      .catch(() => setJournalBootstrap(null));
     listJournalEntries(token)
       .then(setEntries)
       .catch(() => setEntries([]));
@@ -59,8 +64,8 @@ export const JournalEditor: React.FC = () => {
       setEncryptedData(payload);
       setStatus("Successfully encrypted to opaque payload. Ready for network.");
 
-      if (token) {
-        const saved = await saveJournalEntry(token, { ...payload, salt_id: userSalt, salt_version: 1 });
+      if (token && journalBootstrap) {
+        const saved = await saveJournalEntry(token, { ...payload, salt_id: journalBootstrap.salt_id, salt_version: journalBootstrap.salt_version });
         setEntries((current) => [saved, ...current]);
       }
 

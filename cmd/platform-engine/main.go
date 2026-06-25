@@ -106,6 +106,7 @@ func setupRoutes(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisClient *redis.
 	mux.Handle("/api/auth/login", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.LoginHandler)))
 
 	journalHandler := &ports.JournalHandler{DB: dbpool}
+	mux.Handle("/api/v1/journal/bootstrap", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileJournal, http.HandlerFunc(journalHandler.ServeJournalBootstrap)), ""))
 	mux.Handle("/api/v1/journal_entries", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileJournal, http.HandlerFunc(journalHandler.ServeJournalEntries)), ""))
 	mux.Handle("/api/v1/journal_entries/", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileJournal, http.HandlerFunc(journalHandler.ServeJournalEntry)), ""))
 

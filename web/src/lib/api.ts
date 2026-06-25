@@ -22,6 +22,11 @@ export interface EncryptedJournalEntry {
   salt_version: number;
 }
 
+export interface JournalBootstrap {
+  salt_id: string;
+  salt_version: number;
+}
+
 export interface RoomSummary {
   id: string;
   title: string;
@@ -76,6 +81,10 @@ export function logout(token: string, refreshToken: string): Promise<void> {
 
 export function listJournalEntries(token: string): Promise<EncryptedJournalEntry[]> {
   return apiRequest<EncryptedJournalEntry[]>('/api/v1/journal_entries', token);
+}
+
+export function getJournalBootstrap(token: string): Promise<JournalBootstrap> {
+  return apiRequest<JournalBootstrap>('/api/v1/journal/bootstrap', token);
 }
 
 export function saveJournalEntry(

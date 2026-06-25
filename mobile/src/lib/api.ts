@@ -24,6 +24,11 @@ export interface EncryptedJournalEntry {
   salt_version: number;
 }
 
+export interface JournalBootstrap {
+  salt_id: string;
+  salt_version: number;
+}
+
 export async function apiRequest<T>(path: string, token: string | null, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('Content-Type', 'application/json');
@@ -72,6 +77,10 @@ export async function logoutSession(token: string, refreshToken: string, organiz
 
 export async function listJournalEntries(token: string): Promise<EncryptedJournalEntry[]> {
   return apiRequest<EncryptedJournalEntry[]>('/api/v1/journal_entries', token);
+}
+
+export async function getJournalBootstrap(token: string): Promise<JournalBootstrap> {
+  return apiRequest<JournalBootstrap>('/api/v1/journal/bootstrap', token);
 }
 
 export async function saveJournalEntry(
