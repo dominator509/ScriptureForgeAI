@@ -478,6 +478,31 @@ test('recordManualEvidence marks one explicit manifest item as passed', () => {
   assert.equal(backup.status, 'pending_external');
 });
 
+test('recordManualEvidence rejects probe-backed production evidence items', () => {
+  assert.throws(
+    () => recordManualEvidence(
+      { items: [{ id: 'CLIENT-WEB-001', status: 'pending_external' }] },
+      'CLIENT-WEB-001',
+      'artifacts/web-smoke.txt',
+      'browser smoke',
+      'manual web smoke summary',
+      '2026-06-25T13:00:00Z',
+    ),
+    /CLIENT-WEB-001 must be recorded from its dedicated probe report/,
+  );
+  assert.throws(
+    () => recordManualEvidence(
+      { items: [{ id: 'PERF-HTTP-001', status: 'pending_external' }] },
+      'PERF-HTTP-001',
+      'artifacts/load-http.json',
+      'go run ./tools/loadtest',
+      'manual load summary',
+      '2026-06-25T13:00:00Z',
+    ),
+    /PERF-HTTP-001 must be recorded from its dedicated probe report/,
+  );
+});
+
 test('recordManualEvidence rejects invalid timestamps and unknown items', () => {
   assert.throws(
     () => recordManualEvidence({ items: [] }, 'DEPLOY-TF-001', 'artifact', 'command', 'summary', 'today'),

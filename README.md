@@ -215,7 +215,7 @@ rtk node tools/record-staging-evidence.mjs \
   --summary "remote backend initialized and staging plan artifact captured"
 ```
 
-Use this mode for human-reviewed release artifacts such as Terraform plan/apply logs (`DEPLOY-TF-001`), Kubernetes rollout output (`DEPLOY-K8S-001`), Secrets Store CSI/IRSA proof (`SEC-SECRETS-001`), scoped database user proof (`SEC-DBUSER-001`), observability dashboard/alert/retention proof (`OBS-OTEL-001`, `OBS-ALERT-001`), native mobile proof (`CLIENT-MOBILE-001`), rollback drills (`DR-ROLLBACK-001`), backup/restore drills (`DR-BACKUP-001`), and owner/security signoff (`SEC-SIGNOFF-001`). The command marks only the named item as `passed`; blocked, failed, and accepted-risk decisions must still be written with owner/blocker or decision references so the validator can enforce them.
+Use this mode for human-reviewed release artifacts that do not have a dedicated JSON probe, such as Terraform plan/apply logs (`DEPLOY-TF-001`), Secrets Store CSI/IRSA proof (`SEC-SECRETS-001`), scoped database user proof (`SEC-DBUSER-001`), observability dashboard/alert/retention proof (`OBS-OTEL-001`, `OBS-ALERT-001`), and owner/security signoff (`SEC-SIGNOFF-001`). Probe-backed items, including CI, TLS, Kubernetes rollout, tenant RLS, web/mobile client smokes, Zoom, AI, load, rollback, and backup/restore evidence, must be recorded from their dedicated JSON probe reports so their strict artifact checks cannot be bypassed. The command marks only the named item as `passed`; blocked, failed, and accepted-risk decisions must still be written with owner/blocker or decision references so the validator can enforce them.
 
 To record a real blocker or accepted residual risk without weakening the readiness claim:
 

@@ -80,6 +80,24 @@ const productionPerformanceTargets = {
   },
 };
 
+const probeBackedEvidenceItems = new Set([
+  'SRC-CI-001',
+  'DEPLOY-TLS-001',
+  'DEPLOY-K8S-001',
+  'ABUSE-LIMIT-001',
+  'DATA-RLS-001',
+  'DATA-REDIS-001',
+  'RUST-GRPC-001',
+  'CLIENT-WEB-001',
+  'CLIENT-MOBILE-001',
+  'EXT-ZOOM-001',
+  'EXT-AI-001',
+  'PERF-HTTP-001',
+  'PERF-WS-001',
+  'DR-ROLLBACK-001',
+  'DR-BACKUP-001',
+]);
+
 function assertNoLocalTarget(report, id) {
   const target = String(report.target ?? '');
   assert.ok(target.length > 0, `${id} load report must include target`);
@@ -251,6 +269,7 @@ function recordEvidence(manifest, report, artifact, command) {
 }
 
 function recordManualEvidence(manifest, itemID, artifact, command, summary, observedAt) {
+  assert.ok(!probeBackedEvidenceItems.has(itemID), `${itemID} must be recorded from its dedicated probe report, not manual --item-id mode`);
   assert.match(observedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, 'observedAt must be ISO UTC without milliseconds');
   assert.ok(summary.trim().length > 0, 'summary must not be empty');
   const item = manifest.items.find((candidate) => candidate.id === itemID);
