@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -53,6 +54,15 @@ func decodeAuthResponse(t *testing.T, recorder *httptest.ResponseRecorder) ports
 	var response ports.AuthResponse
 	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
 		t.Fatalf("decode auth response %d %q: %v", recorder.Code, recorder.Body.String(), err)
+	}
+	return response
+}
+
+func decodeWorkspaceSwitchResponse(t *testing.T, recorder *httptest.ResponseRecorder) ports.WorkspaceSwitchResponse {
+	t.Helper()
+	var response ports.WorkspaceSwitchResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatalf("decode workspace switch response %d %q: %v", recorder.Code, recorder.Body.String(), err)
 	}
 	return response
 }
@@ -279,5 +289,136 @@ func TestPrivilegedLoginRequiresAndVerifiesMFA(t *testing.T) {
 	}
 	if claims.Role != "admin" || claims.OrganizationID != authOrgID || claims.UserID != authAdminID {
 		t.Fatalf("verified MFA claims = %#v", claims)
+	}
+}
+
+func TestWorkspaceSwitchRequiresAuthenticatedOrgMatch(t *testing.T) {
+	t.Setenv("JWT_SECRET_KEY", "test-secret-long-enough-for-workspace-switch")
+	token, err := auth.GenerateToken("member-user-id", authOrgID, "member", time.Hour)
+	if err != nil {
+		t.Fatalf("generate token: %v", err)
+	}
+
+	handler := &ports.AuthHandler{}
+	workspaceClaims := &auth.TokenClaims{
+		UserID:         "member-user-id",
+		OrganizationID: authOrgID,
+		Role:           "member",
+	}
+	claimsRequest := httptest.NewRequest(http.MethodPost, "/api/v1/workspaces/switch", strings.NewReader(`{"organization_id":"`+authOrgID+`"}`))
+	claimsRequest.Header.Set("Authorization", "Bearer "+token)
+	claimsRequest = claimsRequest.WithContext(context.WithValue(claimsRequest.Context(), auth.ContextKeyUser, workspaceClaims))
+	allowed := httptest.NewRecorder()
+	handler.WorkspaceSwitchHandler(allowed, claimsRequest)
+	if allowed.Code != http.StatusOK {
+		t.Fatalf("workspace switch status = %d body = %s", allowed.Code, allowed.Body.String())
+	}
+	result := decodeWorkspaceSwitchResponse(t, allowed)
+	if result.OrganizationID != authOrgID {
+		t.Fatalf("workspace switch org = %q, want %q", result.OrganizationID, authOrgID)
+	}
+
+	crossTenantReq := httptest.NewRequest(http.MethodPost, "/api/v1/workspaces/switch", strings.NewReader(`{"organization_id":"55555555-0000-4555-8555-555555555555"}`))
+	crossTenantReq.Header.Set("Authorization", "Bearer "+token)
+	crossTenantReq = crossTenantReq.WithContext(context.WithValue(crossTenantReq.Context(), auth.ContextKeyUser, workspaceClaims))
+	forbidden := httptest.NewRecorder()
+	handler.WorkspaceSwitchHandler(forbidden, crossTenantReq)
+	if forbidden.Code != http.StatusForbidden {
+		t.Fatalf("workspace switch cross-tenant status = %d body = %s", forbidden.Code, forbidden.Body.String())
+	}
+}
+
+func TestMFAEnrollAndVerifyFlowForPrivilegedUsers(t *testing.T) {
+	t.Setenv("JWT_SECRET_KEY", "test-secret-long-enough-for-mfa-flow")
+	db := openTenantIsolationDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	setTenantForTest(ctx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
+		seedAuthOrganization(ctx, t, tx)
+		_, _ = tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, authAdminID)
+		passwordHash, err := auth.HashPassword(authPassword, auth.DefaultHashConfig)
+		if err != nil {
+			t.Fatalf("hash admin password: %v", err)
+		}
+		if _, err := tx.Exec(
+			ctx,
+			`INSERT INTO users (id, organization_id, email, password_hash, role)
+			 VALUES ($1, $2, $3, $4, 'admin')`,
+			authAdminID,
+			authOrgID,
+			authAdminEmail,
+			passwordHash,
+		); err != nil {
+			t.Fatalf("seed admin without mfa: %v", err)
+		}
+	})
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		setTenantForTest(cleanupCtx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
+			cleanupAuthFixtures(ctx, t, tx)
+			_, _ = tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, authAdminID)
+		})
+	})
+
+	handler := &ports.AuthHandler{DB: db}
+	adminClaims := &auth.TokenClaims{
+		UserID:         authAdminID,
+		OrganizationID: authOrgID,
+		Role:           "admin",
+	}
+
+	enrollReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/mfa/enroll", strings.NewReader(`{}`))
+	enrollReq = enrollReq.WithContext(context.WithValue(enrollReq.Context(), auth.ContextKeyUser, adminClaims))
+	enrollRec := httptest.NewRecorder()
+	handler.MFAEnrollHandler(enrollRec, enrollReq)
+	if enrollRec.Code != http.StatusOK {
+		t.Fatalf("mfa enroll status = %d body = %s", enrollRec.Code, enrollRec.Body.String())
+	}
+	var enrollResp map[string]any
+	if err := json.NewDecoder(enrollRec.Body).Decode(&enrollResp); err != nil {
+		t.Fatalf("decode enroll response: %v", err)
+	}
+	rawSecret := fmt.Sprintf("%v", enrollResp["secret"])
+	if rawSecret == "" || rawSecret == "<nil>" {
+		t.Fatalf("enroll response missing secret: %#v", enrollResp)
+	}
+
+	verifyWrongReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/mfa/verify", strings.NewReader(`{"mfa_code":"000000"}`))
+	verifyWrongReq = verifyWrongReq.WithContext(context.WithValue(verifyWrongReq.Context(), auth.ContextKeyUser, adminClaims))
+	verifyWrongRec := httptest.NewRecorder()
+	handler.MFAVerifyHandler(verifyWrongRec, verifyWrongReq)
+	if verifyWrongRec.Code != http.StatusUnauthorized {
+		t.Fatalf("mfa verify wrong-code status = %d body = %s", verifyWrongRec.Code, verifyWrongRec.Body.String())
+	}
+
+	currentCode := totpCode(t, rawSecret, time.Now())
+	verifyReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/mfa/verify", strings.NewReader(`{"mfa_code":"`+currentCode+`"}`))
+	verifyReq = verifyReq.WithContext(context.WithValue(verifyReq.Context(), auth.ContextKeyUser, adminClaims))
+	verifyRec := httptest.NewRecorder()
+	handler.MFAVerifyHandler(verifyRec, verifyReq)
+	if verifyRec.Code != http.StatusOK {
+		t.Fatalf("mfa verify status = %d body = %s", verifyRec.Code, verifyRec.Body.String())
+	}
+	var verifyResp map[string]any
+	if err := json.NewDecoder(verifyRec.Body).Decode(&verifyResp); err != nil {
+		t.Fatalf("decode verify response: %v", err)
+	}
+	if verified, ok := verifyResp["verified"].(bool); !ok || !verified {
+		t.Fatalf("expected verified=true, got %#v", verifyResp["verified"])
+	}
+
+	memberClaims := &auth.TokenClaims{
+		UserID:         "33333333-3333-4333-8333-333333333333",
+		OrganizationID: authOrgID,
+		Role:           "member",
+	}
+	memberVerifyReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/mfa/verify", strings.NewReader(`{"mfa_code":"`+currentCode+`"}`))
+	memberVerifyReq = memberVerifyReq.WithContext(context.WithValue(memberVerifyReq.Context(), auth.ContextKeyUser, memberClaims))
+	memberVerifyRec := httptest.NewRecorder()
+	handler.MFAVerifyHandler(memberVerifyRec, memberVerifyReq)
+	if memberVerifyRec.Code != http.StatusForbidden {
+		t.Fatalf("member mfa verify status = %d body = %s, want 403", memberVerifyRec.Code, memberVerifyRec.Body.String())
 	}
 }

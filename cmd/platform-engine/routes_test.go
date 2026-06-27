@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
+	"scriptureforge/internal/domain/abuse"
 	"scriptureforge/internal/domain/auth"
 )
 
@@ -146,4 +149,147 @@ func TestLegacyAuthAliasSharesCanonicalAbuseBucket(t *testing.T) {
 	if legacyError.Category != "ABUSE_RATE_LIMIT_FAULT" {
 		t.Fatalf("legacy auth alias error = %#v, want abuse rate-limit fault", legacyError)
 	}
+}
+
+func TestRouteProfilesEnforceRateLimitsForAIJournalRoomsAndWebSocket(t *testing.T) {
+	tests := []struct {
+		name           string
+		profileEnvName string
+		profileEnvKey  string
+		path           string
+		method         string
+		requiresDB     bool
+	}{
+		{
+			name:           "ai",
+			profileEnvName: abuse.ProfileAI,
+			profileEnvKey:  "ABUSE_LIMIT_AI_REQUESTS",
+			path:           "/api/v1/ai/generate/study",
+			method:         http.MethodPost,
+			requiresDB:     false,
+		},
+		{
+			name:           "journal",
+			profileEnvName: abuse.ProfileJournal,
+			profileEnvKey:  "ABUSE_LIMIT_JOURNAL_REQUESTS",
+			path:           "/api/v1/journal_entries",
+			method:         http.MethodGet,
+			requiresDB:     true,
+		},
+		{
+			name:           "rooms",
+			profileEnvName: abuse.ProfileRooms,
+			profileEnvKey:  "ABUSE_LIMIT_ROOMS_REQUESTS",
+			path:           "/api/v1/rooms/active",
+			method:         http.MethodGet,
+			requiresDB:     true,
+		},
+		{
+			name:           "websocket",
+			profileEnvName: abuse.ProfileWebSocket,
+			profileEnvKey:  "ABUSE_LIMIT_WEBSOCKET_REQUESTS",
+			path:           "/api/v1/rooms/stream/room-1",
+			method:         http.MethodGet,
+			requiresDB:     true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if test.requiresDB && os.Getenv("DATABASE_URL") == "" {
+				t.Skip("DATABASE_URL required for DB-backed route profile assertion")
+			}
+			t.Setenv(test.profileEnvKey, "1")
+			t.Setenv(test.profileEnvName+"_WINDOW_SECONDS", "60")
+			t.Setenv("JWT_SECRET_KEY", "route-profile-test-secret")
+			router := setupRoutes(nil, nil, nil)
+			token, err := auth.GenerateToken("test-user-id", "test-org-id", "admin", time.Minute)
+			if err != nil {
+				t.Fatalf("generate token: %v", err)
+			}
+			remoteAddr := "192.0.2.10:49152"
+
+			firstStatus, _, firstError := exerciseRouteRawWithMethodAndAuth(t, router, test.path, "", remoteAddr, test.method, token)
+			if firstStatus == http.StatusTooManyRequests {
+				t.Fatalf("%s first status = %d error = %#v, should be below limit", test.name, firstStatus, firstError)
+			}
+
+			secondStatus, secondHeaders, secondError := exerciseRouteRawWithMethodAndAuth(t, router, test.path, "", remoteAddr, test.method, token)
+			if secondStatus != http.StatusTooManyRequests {
+				t.Fatalf("%s second status = %d error = %#v, want 429", test.name, secondStatus, secondError)
+			}
+			if secondError.Category != "ABUSE_RATE_LIMIT_FAULT" || secondError.Code != http.StatusTooManyRequests {
+				t.Fatalf("%s second error = %#v, want abuse rate-limit fault", test.name, secondError)
+			}
+			if got := secondHeaders.Get("Retry-After"); got == "" {
+				t.Fatalf("%s missing Retry-After header", test.name)
+			}
+			if limit := secondHeaders.Get("X-RateLimit-Limit"); limit != "1" {
+				t.Fatalf("%s X-RateLimit-Limit=%q, want 1", test.name, limit)
+			}
+			if remaining := secondHeaders.Get("X-RateLimit-Remaining"); remaining != "0" {
+				t.Fatalf("%s X-RateLimit-Remaining=%q, want 0", test.name, remaining)
+			}
+			if reset := secondHeaders.Get("X-RateLimit-Reset"); reset == "" {
+				t.Fatalf("%s missing X-RateLimit-Reset header", test.name)
+			}
+		})
+	}
+}
+
+func TestWorkspaceSwitchRouteEnforcesOrgMatch(t *testing.T) {
+	t.Setenv("JWT_SECRET_KEY", "route-workspace-switch-secret")
+	orgID := "55555555-5555-4555-8555-555555555555"
+	router := setupRoutes(nil, nil, nil)
+	token, err := auth.GenerateToken("member-user-id", orgID, "member", time.Minute)
+	if err != nil {
+		t.Fatalf("generate token: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/workspaces/switch", strings.NewReader(`{"organization_id":"`+orgID+`"}`))
+	request.Header.Set("Authorization", "Bearer "+token)
+	allowed := httptest.NewRecorder()
+	router.ServeHTTP(allowed, request)
+	if allowed.Code != http.StatusOK {
+		t.Fatalf("/api/v1/workspaces/switch status = %d body = %q", allowed.Code, allowed.Body.String())
+	}
+
+	requestMismatch := httptest.NewRequest(http.MethodPost, "/api/v1/workspaces/switch", strings.NewReader(`{"organization_id":"55555555-0000-4555-8555-555555555555"}`))
+	requestMismatch.Header.Set("Authorization", "Bearer "+token)
+	forbidden := httptest.NewRecorder()
+	router.ServeHTTP(forbidden, requestMismatch)
+	if forbidden.Code != http.StatusForbidden {
+		t.Fatalf("workspace switch mismatch status = %d body = %q", forbidden.Code, forbidden.Body.String())
+	}
+}
+
+func exerciseRouteRawWithMethodAndAuth(t *testing.T, handler http.Handler, path string, body string, remoteAddr string, method string, token string) (int, http.Header, auth.PlatformException) {
+	t.Helper()
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(method, path, strings.NewReader(body))
+	request.RemoteAddr = remoteAddr
+	if token != "" {
+		request.Header.Set("Authorization", "Bearer "+token)
+	}
+	handler.ServeHTTP(recorder, request)
+
+	var response auth.PlatformException
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatalf("decode %s response %d %q: %v", path, recorder.Code, recorder.Body.String(), err)
+	}
+	return recorder.Code, recorder.Header(), response
+}
+
+func exerciseRouteRawWithMethod(t *testing.T, handler http.Handler, path string, body string, remoteAddr string, method string) (int, http.Header, auth.PlatformException) {
+	t.Helper()
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(method, path, strings.NewReader(body))
+	request.RemoteAddr = remoteAddr
+	handler.ServeHTTP(recorder, request)
+
+	var response auth.PlatformException
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatalf("decode %s response %d %q: %v", path, recorder.Code, recorder.Body.String(), err)
+	}
+	return recorder.Code, recorder.Header(), response
 }

@@ -73,6 +73,18 @@ func TestRunEmitsAbuseEvidenceWhenAllProfilesRateLimit(t *testing.T) {
 		if probe.StatusCode != http.StatusTooManyRequests || probe.RetryAfter == "" || probe.RateLimit == "" || probe.RateRemaining == "" || probe.RateReset == "" {
 			t.Fatalf("probe did not capture rate-limit headers: %+v", probe)
 		}
+		if _, err := strconv.Atoi(probe.RetryAfter); err != nil {
+			t.Fatalf("probe %s Retry-After is not an integer: %q", probe.Name, probe.RetryAfter)
+		}
+		if _, err := strconv.Atoi(probe.RateLimit); err != nil {
+			t.Fatalf("probe %s X-RateLimit-Limit is not an integer: %q", probe.Name, probe.RateLimit)
+		}
+		if _, err := strconv.Atoi(probe.RateRemaining); err != nil {
+			t.Fatalf("probe %s X-RateLimit-Remaining is not an integer: %q", probe.Name, probe.RateRemaining)
+		}
+		if _, err := strconv.Atoi(probe.RateReset); err != nil {
+			t.Fatalf("probe %s X-RateLimit-Reset is not an integer: %q", probe.Name, probe.RateReset)
+		}
 	}
 }
 

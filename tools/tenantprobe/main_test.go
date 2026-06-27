@@ -61,6 +61,33 @@ func TestRunProvesOwnerReadAndBlockedDenial(t *testing.T) {
 				return
 			}
 			_, _ = w.Write([]byte(`[{"id":"entry-1"}]`))
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/rooms/create":
+			if token != "owner-token" {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			var payload struct {
+				Title string `json:"title"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&payload)
+			if strings.TrimSpace(payload.Title) == "" {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":"room-1","title":"` + payload.Title + `"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/rooms/active":
+			if token == "blocked-token" {
+				_, _ = w.Write([]byte(`[]`))
+				return
+			}
+			_, _ = w.Write([]byte(`[{"id":"room-1","title":"Tenant Isolation Room"}]`))
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v1/rooms/state/"):
+			if token == "blocked-token" {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			_, _ = w.Write([]byte(`{"type":"state_sync","room_id":"room-1"}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -84,19 +111,34 @@ func TestRunProvesOwnerReadAndBlockedDenial(t *testing.T) {
 	if !strings.Contains(output.String(), `"blocked-read-created-journal"`) {
 		t.Fatalf("report missing blocked read probe:\n%s", output.String())
 	}
+	if !strings.Contains(output.String(), `"owner-create-room"`) {
+		t.Fatalf("report missing room create probe:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), `"blocked-room-state-denied"`) {
+		t.Fatalf("report missing blocked room state probe:\n%s", output.String())
+	}
 }
 
 func TestRunFailsWhenBlockedTokenCanReadEntry(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/rooms/create":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":"room-1","title":"Test Room"}`))
 		case r.Method == http.MethodPost:
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"id":"entry-1","ciphertext":"cipher","iv":"iv","salt_id":"salt","salt_version":1}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/journal_entries/entry-1":
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"id":"entry-1"}`))
-		case r.Method == http.MethodGet:
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/journal_entries":
 			_, _ = w.Write([]byte(`[]`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/rooms/active":
+			_, _ = w.Write([]byte(`[]`))
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v1/rooms/state/"):
+			w.WriteHeader(http.StatusForbidden)
+		default:
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer server.Close()
@@ -138,6 +180,13 @@ func TestRunFailsWhenDBRLSArtifactMissingContextProof(t *testing.T) {
 			_, _ = w.Write([]byte(`{"id":"entry-1"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/journal_entries":
 			_, _ = w.Write([]byte(`[]`))
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/rooms/create":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":"room-1","title":"Test Room"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/rooms/active":
+			_, _ = w.Write([]byte(`[]`))
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v1/rooms/state/"):
+			w.WriteHeader(http.StatusForbidden)
 		case r.Method == http.MethodGet && r.URL.Path == "/db-rls-proof":
 			_, _ = w.Write([]byte(`current_user=scriptureforge_app row_security on journal_entries`))
 		}

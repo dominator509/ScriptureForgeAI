@@ -14,6 +14,14 @@ export interface AuthCredentials {
   organization_id: string;
 }
 
+export interface WorkspaceSwitchPayload {
+  organization_id: string;
+}
+
+export interface WorkspaceSwitchResponse {
+  organization_id: string;
+}
+
 export interface EncryptedJournalEntry {
   id: string;
   ciphertext: string;
@@ -65,17 +73,31 @@ export function login(credentials: AuthCredentials): Promise<AuthSession> {
   });
 }
 
-export function refreshSession(refreshToken: string): Promise<AuthSession> {
+export function refreshSession(
+  refreshToken: string,
+  organizationId: string,
+): Promise<AuthSession> {
   return apiRequest<AuthSession>('/api/v1/auth/refresh', null, {
     method: 'POST',
-    body: JSON.stringify({ refresh_token: refreshToken }),
+    body: JSON.stringify({ refresh_token: refreshToken, organization_id: organizationId }),
   });
 }
 
-export function logout(token: string, refreshToken: string): Promise<void> {
+export function logout(
+  token: string,
+  refreshToken: string,
+  organizationId: string,
+): Promise<void> {
   return apiRequest<void>('/api/v1/auth/logout', token, {
     method: 'POST',
-    body: JSON.stringify({ refresh_token: refreshToken }),
+    body: JSON.stringify({ refresh_token: refreshToken, organization_id: organizationId }),
+  });
+}
+
+export function switchWorkspace(token: string, organizationID: string): Promise<WorkspaceSwitchResponse> {
+  return apiRequest<WorkspaceSwitchResponse>('/api/v1/workspaces/switch', token, {
+    method: 'POST',
+    body: JSON.stringify({ organization_id: organizationID } as WorkspaceSwitchPayload),
   });
 }
 

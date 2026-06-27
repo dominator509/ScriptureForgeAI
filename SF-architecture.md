@@ -1,6 +1,6 @@
 # ARCHITECTURE.md
 
-> Implementation note, 2026-06-23: remediation is targeting the repo-current stack (`go.mod` toolchain Go 1.24.3 and `web/package.json` Next 14) while preserving the architecture's `/api/v1/*` public route direction. Older version targets in this document remain aspirational until a dedicated upgrade PR changes the manifests.
+> Implementation note, 2026-06-26: remediation is targeting the repo-current stack (`go.mod` toolchain Go 1.24.3, `web/package.json` Next.js 16.2.9, React 19.2.3) while preserving the architecture's `/api/v1/*` public route direction. Older version targets in this document remain aspirational until a dedicated upgrade PR changes the manifests.
 
 ## 1. Product Summary
 ScriptureForge AI (alternatively known as BibleStudyOS or ScriptureFlow) is a production-grade, multi-tenant, cloud-native Bible Study Operating System and Mobile Ecosystem. It resolves the core market gap between complex, academic desktop applications (e.g., Logos, Accordance) and overly simplistic consumer reading apps (e.g., YouVersion). 
@@ -83,8 +83,13 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
     *   `POST /api/v1/auth/register`
     *   `POST /api/v1/auth/login`
     *   `POST /api/v1/auth/refresh`
+    *   `POST /api/v1/auth/logout`
+    *   `POST /api/v1/auth/mfa/verify`
+    *   `POST /api/v1/auth/mfa/enroll`
     *   `POST /api/v1/workspaces/switch`
-*   **Data Entities:** `User`, `Organization`, `Workspace`, `Session`.
+    *   `POST /api/auth/register` (compatibility alias)
+    *   `POST /api/auth/login` (compatibility alias)
+*   **Data Entities:** `User`, `Organization`, `Workspace`, `Session`, `RefreshToken`.
 *   **Security Considerations:** Cryptographic salt hashing via Argon2id. Multi-factor authentication (MFA) via TOTP protocols is structurally mandatory for `Tenant_Admin` and `Super_Admin` actors.
 *   **Failure Modes & Logic Risks:** Tenant bleeding (cross-tenant visibility via corrupted workspace session swapping). Mitigation involves appending `organization_id` implicitly to all database queries via an authenticated context wrapper, completely isolating it from direct client parameters.
 
@@ -101,8 +106,8 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
 *   **Core Responsibilities:** Pre-processing user prompts, building structural vector index vectors via embedding pipelines, compiling source citation pathways, and verifying downstream data profiles before execution.
 *   **Main API Routes:**
     *   `POST /api/v1/ai/generate/study`
-    *   `POST /api/v1/ai/generate/devotional`
-    *   `POST /api/v1/ai/ask`
+    *   (Planned) `POST /api/v1/ai/generate/devotional`
+    *   (Planned) `POST /api/v1/ai/ask`
 *   **Data Entities:** `AIRequestLog`, `TheologicalProfile`, `CitationTrail`, `GeneratedAsset`.
 *   **Security Considerations:** Malicious prompt injection filtering, strict egress scanning to prevent generation of unauthorized content profiles, and semantic tracing vectors.
 *   **Failure Modes & Logic Risks:** Hallucinated data parameters masking as factual biblical source references. Countermeasures involve enforcing an isolated matching system that maps LLM outputs against a fixed SQL database index of standard biblical metadata (lexicons, verses) via standard regex/deterministic matches. Any citation failing the verification step drops the output confidence level instantly to zero and triggers a system fault block.
@@ -114,6 +119,8 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
     *   `GET /api/v1/rooms/active`
     *   `POST /api/v1/rooms/create`
     *   `WSS /api/v1/rooms/stream/{room_id}`
+    *   `GET /api/v1/rooms/state/{room_id}`
+    *   `POST /api/webhooks/zoom`
 *   **Data Entities:** `LiveRoom`, `RoomParticipant`, `RealtimeStateEvent`, `AttendanceLog`.
 *   **Security Considerations:** Token authorization inside the initial WebSocket upgrade handshake. Socket identifiers must match active database user accounts.
 *   **Failure Modes & Logic Risks:** State race conditions (multiple users updating fields or chat states concurrently). Mitigation relies on processing mutations through single-threaded Redis Lua scripts, achieving lockstep linear event tracking.
@@ -123,7 +130,7 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
 ## 6. Recommended Tech Stack
 
 ### 6.1 Backend API Layer & Core Business Services
-*   **Technology:** **Go (Golang 1.26+)**
+*   **Technology:** **Go (Golang 1.24.3 target)**
 *   **Justification:** Go establishes memory-safe data allocation models, guarantees stellar multi-threaded concurrent performance through native lightweight green threads (goroutines), and provides low baseline latency numbers without complex runtime overhead. It ensures predictable performance profile under heavy WebSocket communication flows.
 
 ### 6.2 Scripture Engine & Morphological Processor
@@ -131,7 +138,7 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
 *   **Justification:** Complex lexical calculations, original language morphology mapping, lemma tracking, and text parsing require direct CPU micro-optimization and compile-time memory safety bounds. Rust modules communicate natively with Go business layers over highly optimized gRPC channels using Protocol Buffers.
 
 ### 6.3 Front-End Web Application (Workspace Center)
-*   **Technology:** **Next.js 15+ (App Router Architecture) with TypeScript (Strict Mode)**
+*   **Technology:** **Next.js 16 (App Router with TypeScript)**
 *   **Justification:** Next.js establishes flawless Server-Side Rendering (SSR) engines optimizing initial load pipelines for complex biblical textual frameworks. TypeScript prevents typing corruption within large application state boundaries.
 
 ### 6.4 Mobile Client Companion
@@ -150,7 +157,7 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
 ```mermaid
 graph TD
     %% Client Tier
-    WebClient[Next.js 15 Web Workspace Client] -->|HTTPS / WSS| Gateway[Envoy API Gateway / Proxy Layer]
+    WebClient[Next.js 16 Web Workspace Client] -->|HTTPS / WSS| Gateway[Envoy API Gateway / Proxy Layer]
     MobileClient[React Native Companion App] -->|HTTPS / WSS| Gateway
 
     %% Gateway Layer
@@ -367,10 +374,17 @@ CREATE INDEX idx_participants_lookup ON room_participants(room_id, user_id);
 
 #### Group A: Authentication & Provisioning (`/api/v1/auth`)
 *   `POST /api/v1/auth/login`: Issue verification challenges. Returns short-lived JWT and stores HttpOnly fingerprint validation cookies.
+*   `POST /api/v1/auth/register`: Provision member accounts with tenant-bound role defaults.
+*   `POST /api/v1/auth/refresh`: Exchange an active refresh token for a rotated access/refresh pair.
+*   `POST /api/v1/auth/logout`: Revoke an issued refresh token.
 *   `POST /api/v1/auth/mfa/verify`: Process real-time dynamic authentication codes.
+*   `POST /api/v1/auth/mfa/enroll`: Provision a TOTP seed for privileged roles.
+*   `POST /api/v1/workspaces/switch`: Switch organization context on signed-in sessions.
+*   Compatibility aliases: `POST /api/auth/register`, `POST /api/auth/login` (same handler/validation behavior as canonical routes).
 
 #### Group B: AI Generation Engine Pipeline (`/api/v1/ai`)
 *   `POST /api/v1/ai/generate/study`: Generate curriculum tracks.
+*   Compatibility alias: `POST /api/ai/curriculum` (delegates to the same generation handler).
     *   *Payload Structure:*
         ```json
         {
@@ -391,6 +405,17 @@ CREATE INDEX idx_participants_lookup ON room_participants(room_id, user_id);
 #### Group C: Real-Time Synchronization Socket Endpoints (`/api/v1/rooms`)
 *   `POST /api/v1/rooms/create`: Initialize dynamic tracking matrices.
 *   `GET /api/v1/rooms/active`: Query structural context instances running under the client tenant signature.
+*   `GET /api/v1/rooms/state/{room_id}`: Poll latest room event payload for reconnect/fallback clients.
+*   `WSS /api/v1/rooms/stream/{room_id}`: Broadcast real-time room events after membership and tenant validation.
+
+#### Group D: System Webhooks (`/api/webhooks`)
+*   `POST /api/webhooks/zoom`: Validate signed Zoom webhook callbacks and map meeting lifecycle events to internal room state transitions.
+
+#### Group E: Journal Endpoints (`/api/v1/journal`)
+*   `GET /api/v1/journal/bootstrap`: Resolve tenant/user scoped journal salt material for client-side encryption keys.
+*   `POST /api/v1/journal_entries`: Persist encrypted journal payload fragments.
+*   `GET /api/v1/journal_entries`: List encrypted journal entries for authenticated user.
+*   `GET /api/v1/journal_entries/{id}`: Fetch a single encrypted journal entry.
 
 ---
 
@@ -454,7 +479,7 @@ func (e *PlatformException) Error() string {
 
 ## 14. Testing Architecture
 
-Google Jules must construct and evaluate code changes against a four-tier automated testing strategy. Every code commit requires testing to ensure functionality before code submission.
+Implementations must construct and evaluate code changes against a four-tier automated testing strategy. Every code commit requires testing to ensure functionality before code submission.
 
 ### 14.1 Test Profile Framework Configurations
 
@@ -601,7 +626,7 @@ resource "aws_rds_cluster" "storage_backend_postgres" {
 
 ---
 
-## 20. Google Jules Guardrails
+## 20. Implementation Guardrails
 
 *   **RULE 1:** Execute comprehensive security, concurrency, and boundary tests before finalizing any architectural or codebase modules.
 *   **RULE 2:** Maintain strict type safety and memory safety across all domains. The use of unsafe code pointer arrays or implicit empty target definitions (`interface{}` in Go, `any` in TypeScript) is strictly blocked unless explicitly documented.

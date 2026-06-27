@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -160,7 +161,7 @@ func runEndpointProbe(client *http.Client, apiBase string, cfg config, probe end
 		result.RateReset = rateReset
 		if status == http.StatusTooManyRequests {
 			result.Attempts = attempt
-			result.Passed = retryAfter != "" && rateLimit != "" && rateRemaining != "" && rateReset != ""
+			result.Passed = hasRequiredHeadersAndValues(retryAfter, rateLimit, rateRemaining, rateReset)
 			result.ResultSummary = fmt.Sprintf("got 429 with Retry-After=%q X-RateLimit-Limit=%q X-RateLimit-Remaining=%q X-RateLimit-Reset=%q after %d attempts", retryAfter, rateLimit, rateRemaining, rateReset, attempt)
 			if !result.Passed {
 				result.ResultSummary = "got 429 without required rate-limit headers"
@@ -170,6 +171,25 @@ func runEndpointProbe(client *http.Client, apiBase string, cfg config, probe end
 	}
 	result.ResultSummary = fmt.Sprintf("no 429 observed after %d attempts; lower staging ABUSE_LIMIT_* values or raise -attempts", cfg.Attempts)
 	return result
+}
+
+func hasRequiredHeadersAndValues(retryAfter, limit, remaining, reset string) bool {
+	if retryAfter == "" || limit == "" || remaining == "" || reset == "" {
+		return false
+	}
+	if _, err := strconv.Atoi(retryAfter); err != nil {
+		return false
+	}
+	if _, err := strconv.Atoi(limit); err != nil {
+		return false
+	}
+	if _, err := strconv.Atoi(remaining); err != nil {
+		return false
+	}
+	if _, err := strconv.Atoi(reset); err != nil {
+		return false
+	}
+	return true
 }
 
 func sendProbeRequest(client *http.Client, target string, cfg config, probe endpointProbe) (int, string, string, string, string, error) {

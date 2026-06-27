@@ -204,6 +204,36 @@ func TestLiveRoomReconnectReceivesFutureEventsAndPollingState(t *testing.T) {
 	}
 }
 
+func TestLiveRoomRejectsDisallowedOrigin(t *testing.T) {
+	t.Setenv("ALLOWED_WS_ORIGINS", "https://allowed.example.com")
+
+	store := &fakeRoomEventStore{}
+	socket := &SocketConnection{
+		StateManager: store,
+		Hub:          NewRoomHub(),
+		MembershipValidator: func(r *http.Request, claims *auth.TokenClaims, roomID string) bool {
+			return roomID == "room-1" && claims.UserID != ""
+		},
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims := &auth.TokenClaims{UserID: "user-disallowed", OrganizationID: "org-1", Role: "member"}
+		socket.HandleLiveRoom(w, r.WithContext(context.WithValue(r.Context(), auth.ContextKeyUser, claims)))
+	}))
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/v1/rooms/stream/room-1"
+	wsHeader := http.Header{}
+	wsHeader.Add("Origin", "https://bad.example.com")
+	conn, resp, err := websocket.DefaultDialer.Dial(wsURL, wsHeader)
+	if err == nil {
+		_ = conn.Close()
+		t.Fatal("expected disallowed origin handshake failure")
+	}
+	if resp != nil && resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("origin-reject status = %d", resp.StatusCode)
+	}
+}
+
 func TestRoomStateHandlerReturnsLatestEventForPollingFallback(t *testing.T) {
 	store := &fakeRoomEventStore{}
 	_, err := store.AppendRoomEvent(context.Background(), "room-1", `{"type":"cursor","room_id":"room-1","sequence":0,"payload":{"verse":"Romans 8:1"},"sent_at":"2026-06-25T00:00:00Z"}`)

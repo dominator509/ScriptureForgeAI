@@ -47,6 +47,11 @@ type journalPayload struct {
 	SaltVersion int    `json:"salt_version"`
 }
 
+type roomPayload struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+
 func main() {
 	cfg := parseFlags()
 	if err := run(cfg, os.Stdout); err != nil {
@@ -99,6 +104,14 @@ func run(cfg config, output io.Writer) error {
 		probes = append(probes, getJournalEntry(client, cfg.APIBase, cfg.OwnerToken, created.ID, http.StatusOK, "owner-read-created-journal"))
 		probes = append(probes, getJournalEntry(client, cfg.APIBase, cfg.BlockedToken, created.ID, http.StatusNotFound, "blocked-read-created-journal"))
 		probes = append(probes, listDoesNotContainEntry(client, cfg.APIBase, cfg.BlockedToken, created.ID))
+	}
+	room, createRoomProbe := createRoom(client, cfg.APIBase, cfg.OwnerToken, "Tenant Isolation Room")
+	probes = append(probes, createRoomProbe)
+	if createRoomProbe.Passed {
+		probes = append(probes, listRoomStateForTenant(client, cfg.APIBase, cfg.OwnerToken, room.ID, http.StatusOK, true, "owner-active-rooms-contains-created-room"))
+		probes = append(probes, listRoomStateForTenant(client, cfg.APIBase, cfg.BlockedToken, room.ID, http.StatusOK, false, "blocked-active-rooms-excludes-created-room"))
+		probes = append(probes, getRoomState(client, cfg.APIBase, cfg.OwnerToken, room.ID, "owner-room-state", http.StatusOK))
+		probes = append(probes, getRoomState(client, cfg.APIBase, cfg.BlockedToken, room.ID, "blocked-room-state-denied", http.StatusForbidden))
 	}
 	probes = append(probes, probeDBRLSArtifact(client, cfg.DBRLSArtifactURL))
 
@@ -207,7 +220,7 @@ func getJournalEntry(client *http.Client, apiBase, token, id string, expectedSta
 		return failedProbe(name, target, err.Error())
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
+	_, err = io.Copy(io.Discard, resp.Body)
 	passed := resp.StatusCode == expectedStatus
 	return probeResult{
 		Name:          name,
@@ -241,6 +254,91 @@ func listDoesNotContainEntry(client *http.Client, apiBase, token, id string) pro
 		StatusCode:    resp.StatusCode,
 		LatencyMS:     latency,
 		ResultSummary: fmt.Sprintf("blocked list returned HTTP %d in %dms", resp.StatusCode, latency),
+	}
+}
+
+func createRoom(client *http.Client, apiBase, token, title string) (roomPayload, probeResult) {
+	var created roomPayload
+	body, _ := json.Marshal(map[string]string{"title": title})
+	target := apiBase + "/api/v1/rooms/create"
+	start := time.Now()
+	req, err := authorizedRequest(http.MethodPost, target, token, body)
+	if err != nil {
+		return created, failedProbe("owner-create-room", target, err.Error())
+	}
+	resp, err := client.Do(req)
+	latency := time.Since(start).Milliseconds()
+	if err != nil {
+		return created, failedProbe("owner-create-room", target, err.Error())
+	}
+	defer resp.Body.Close()
+	responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if resp.StatusCode == http.StatusCreated {
+		_ = json.Unmarshal(responseBody, &created)
+	}
+	passed := resp.StatusCode == http.StatusCreated && created.ID != ""
+	return created, probeResult{
+		Name:          "owner-create-room",
+		Target:        target,
+		Passed:        passed,
+		StatusCode:    resp.StatusCode,
+		LatencyMS:     latency,
+		ResultSummary: fmt.Sprintf("room create returned HTTP %d in %dms", resp.StatusCode, latency),
+	}
+}
+
+func listRoomStateForTenant(client *http.Client, apiBase, token, roomID string, expectedStatus int, mustContainRoomID bool, name string) probeResult {
+	target := apiBase + "/api/v1/rooms/active"
+	start := time.Now()
+	req, err := authorizedRequest(http.MethodGet, target, token, nil)
+	if err != nil {
+		return failedProbe(name, target, err.Error())
+	}
+	resp, err := client.Do(req)
+	latency := time.Since(start).Milliseconds()
+	if err != nil {
+		return failedProbe(name, target, err.Error())
+	}
+	defer resp.Body.Close()
+	responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 256*1024))
+	bodyText := string(responseBody)
+	passed := resp.StatusCode == expectedStatus
+	if resp.StatusCode == http.StatusOK {
+		contains := strings.Contains(bodyText, roomID)
+		passed = passed && (mustContainRoomID == contains)
+	}
+	return probeResult{
+		Name:          name,
+		Target:        target,
+		Passed:        passed,
+		StatusCode:    resp.StatusCode,
+		LatencyMS:     latency,
+		ResultSummary: fmt.Sprintf("active rooms returned HTTP %d in %dms", resp.StatusCode, latency),
+	}
+}
+
+func getRoomState(client *http.Client, apiBase, token, roomID, name string, expectedStatus int) probeResult {
+	target := apiBase + "/api/v1/rooms/state/" + roomID
+	start := time.Now()
+	req, err := authorizedRequest(http.MethodGet, target, token, nil)
+	if err != nil {
+		return failedProbe(name, target, err.Error())
+	}
+	resp, err := client.Do(req)
+	latency := time.Since(start).Milliseconds()
+	if err != nil {
+		return failedProbe(name, target, err.Error())
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	passed := resp.StatusCode == expectedStatus
+	return probeResult{
+		Name:          name,
+		Target:        target,
+		Passed:        passed,
+		StatusCode:    resp.StatusCode,
+		LatencyMS:     latency,
+		ResultSummary: fmt.Sprintf("room state probe returned HTTP %d in %dms", resp.StatusCode, latency),
 	}
 }
 

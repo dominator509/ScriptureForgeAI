@@ -6,7 +6,7 @@ import { validateManifest } from './validate-staging-evidence.mjs';
 function usage() {
   return [
     'Usage:',
-    '  node tools/report-staging-evidence-gaps.mjs [--manifest <path>] [--format text|json] [--expected-release-candidate <sha>]',
+    '  node tools/report-staging-evidence-gaps.mjs [--manifest <path>] [--format text|json|obsidian] [--expected-release-candidate <sha>]',
     '',
     'Validates a staging evidence manifest and reports the items that still block strict release readiness.',
   ].join('\n');
@@ -33,7 +33,10 @@ export function parseArgs(argv) {
     }
   }
   assert.ok(args.manifest, '--manifest must not be empty');
-  assert.ok(['text', 'json'].includes(args.format), '--format must be text or json');
+  assert.ok(
+    ['text', 'json', 'obsidian'].includes(args.format),
+    '--format must be text, json, or obsidian',
+  );
   return args;
 }
 
@@ -134,6 +137,46 @@ export function formatText(summary) {
   return `${lines.join('\n')}\n`;
 }
 
+export function formatObsidian(summary) {
+  const lines = [
+    `## Staging Evidence Snapshot (${summary.environment})`,
+    `- release_candidate: ${summary.release_candidate}`,
+    `- strict_release_ready: ${summary.strict_release_ready ? 'yes' : 'no'}`,
+    `- counts: passed=${summary.passed}, pending_external=${summary.pending_external}, blocked=${summary.blocked}, failed=${summary.failed}, accepted_risk=${summary.accepted_risk}`,
+  ];
+  if (summary.expected_release_candidate) {
+    lines.push(`- expected_release_candidate: ${summary.expected_release_candidate}`);
+    lines.push(`- release_candidate_matches_expected: ${summary.release_candidate_matches_expected ? 'yes' : 'no'}`);
+  } else {
+    lines.push('- expected_release_candidate: not checked');
+  }
+  if (summary.blocking_items.length === 0) {
+    lines.push('- no blocking items');
+    return `${lines.join('\n')}\n`;
+  }
+  lines.push('- blocking items:');
+  for (const item of summary.blocking_items) {
+    lines.push(`  - ${item.id} [${item.status}]: ${item.description}`);
+    if (item.required_evidence?.length > 0) {
+      for (const evidence of item.required_evidence) {
+        lines.push(`    - required: ${evidence}`);
+      }
+    }
+    if (item.blocker) {
+      lines.push(`    - owner: ${item.owner}`);
+      lines.push(`    - blocker: ${item.blocker}`);
+    }
+    if (item.decision_ref) {
+      lines.push(`    - decision_ref: ${item.decision_ref}`);
+    }
+    if (item.expected_release_candidate) {
+      lines.push(`    - expected_release_candidate: ${item.expected_release_candidate}`);
+      lines.push(`    - actual_release_candidate: ${item.actual_release_candidate}`);
+    }
+  }
+  return `${lines.join('\n')}\n`;
+}
+
 async function readJSON(path) {
   const content = await readFile(path, 'utf8');
   return JSON.parse(content.replace(/^\uFEFF/, ''));
@@ -146,6 +189,8 @@ async function main() {
   const summary = summarizeGaps(manifest, { expectedReleaseCandidate });
   if (args.format === 'json') {
     console.log(JSON.stringify(summary, null, 2));
+  } else if (args.format === 'obsidian') {
+    process.stdout.write(formatObsidian(summary));
   } else {
     process.stdout.write(formatText(summary));
   }

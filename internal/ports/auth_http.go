@@ -43,12 +43,28 @@ type RefreshRequest struct {
 	OrganizationID string `json:"organization_id"`
 }
 
+type MFAVerifyRequest struct {
+	MFACode string `json:"mfa_code"`
+}
+
+type WorkspaceSwitchRequest struct {
+	OrganizationID string `json:"organization_id"`
+}
+
+type WorkspaceSwitchResponse struct {
+	OrganizationID string `json:"organization_id"`
+}
+
 type AuthResponse struct {
 	Token          string `json:"token,omitempty"`
 	RefreshToken   string `json:"refresh_token,omitempty"`
 	UserID         string `json:"user_id,omitempty"`
 	OrganizationID string `json:"organization_id,omitempty"`
 	RequiresMFA    bool   `json:"requires_mfa,omitempty"`
+}
+
+type MFAVerifyResponse struct {
+	Verified bool `json:"verified"`
 }
 
 const (
@@ -393,6 +409,34 @@ func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *AuthHandler) WorkspaceSwitchHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Method not allowed", Code: http.StatusMethodNotAllowed})
+		return
+	}
+
+	var req WorkspaceSwitchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.OrganizationID) == "" {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid workspace switch payload", Code: http.StatusBadRequest})
+		return
+	}
+
+	claims, ok := r.Context().Value(auth.ContextKeyUser).(*auth.TokenClaims)
+	if !ok || claims == nil {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Missing authenticated user context", Code: http.StatusUnauthorized})
+		return
+	}
+
+	requestedOrgID := strings.TrimSpace(req.OrganizationID)
+	if requestedOrgID != claims.OrganizationID {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Workspace switch denied", Code: http.StatusForbidden})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(WorkspaceSwitchResponse{OrganizationID: claims.OrganizationID})
+}
+
 func (h *AuthHandler) MFAEnrollHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Method not allowed", Code: http.StatusMethodNotAllowed})
@@ -431,4 +475,65 @@ func (h *AuthHandler) MFAEnrollHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"secret": secret})
+}
+
+func (h *AuthHandler) MFAVerifyHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Method not allowed", Code: http.StatusMethodNotAllowed})
+		return
+	}
+
+	claims, ok := r.Context().Value(auth.ContextKeyUser).(*auth.TokenClaims)
+	if !ok || claims == nil {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Unauthorized access", Code: http.StatusUnauthorized})
+		return
+	}
+	if !privilegedRole(claims.Role) {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "MFA verification is available only for privileged users", Code: http.StatusForbidden})
+		return
+	}
+
+	var req MFAVerifyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.MFACode) == "" {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid MFA verification payload", Code: http.StatusBadRequest})
+		return
+	}
+
+	tx, err := h.DB.Begin(r.Context())
+	if err != nil {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to open MFA verification transaction", Code: http.StatusInternalServerError})
+		return
+	}
+	defer tx.Rollback(r.Context())
+	if err := auth.SetTenantContext(r.Context(), tx, claims.OrganizationID); err != nil {
+		sendAuthError(w, err.(*auth.PlatformException))
+		return
+	}
+
+	var mfaSecret string
+	var mfaEnabled bool
+	err = tx.QueryRow(
+		r.Context(),
+		`SELECT COALESCE(mfa_secret, ''), COALESCE(mfa_enabled, false)
+		 FROM users
+		 WHERE id = $1 AND organization_id = $2`,
+		claims.UserID,
+		claims.OrganizationID,
+	).Scan(&mfaSecret, &mfaEnabled)
+	if err != nil {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "MFA not configured", Code: http.StatusNotFound})
+		return
+	}
+	if !mfaEnabled || mfaSecret == "" {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "MFA is not enabled", Code: http.StatusBadRequest})
+		return
+	}
+
+	if !verifyTOTP(mfaSecret, req.MFACode, time.Now()) {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "MFA code verification failed", Code: http.StatusUnauthorized})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(MFAVerifyResponse{Verified: true})
 }

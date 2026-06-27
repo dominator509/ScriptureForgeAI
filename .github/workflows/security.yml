@@ -98,6 +98,12 @@ jobs:
     - name: Test Local Gate Runner
       run: node --test tools/run-local-gates.test.mjs tools/validate-local-gate-report.test.mjs
 
+    - name: Validate Serena/Obsidian Sync Drift
+      run: node tools/validate-serena-obsidian.mjs
+
+    - name: Validate Obsidian Production Readiness Snapshot
+      run: node tools/sync-obsidian-readiness.mjs --check
+
     - name: Test Staging Evidence Validator
       run: node --test tools/validate-staging-evidence.test.mjs
 
@@ -132,7 +138,7 @@ jobs:
       working-directory: web
       run: |
         npm ci
-        npm audit --audit-level=moderate
+        node ../tools/run-npm-audit.mjs --cwd . --level moderate --bin npm
         npm run smoke
         npm run typecheck
         npm run build
@@ -141,7 +147,7 @@ jobs:
       working-directory: mobile
       run: |
         npm ci
-        npm audit --audit-level=high
+        node ../tools/run-npm-audit.mjs --cwd . --level high --bin npm
         npm run smoke
         npm run build:check
 

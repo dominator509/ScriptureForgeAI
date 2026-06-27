@@ -26,10 +26,11 @@ export const AuthPanel: React.FC = () => {
   const submitLogout = async () => {
     const activeToken = token;
     const activeRefreshToken = refreshToken;
+    const activeOrganizationId = useAppStore.getState().organizationId;
     clearSession();
-    if (!activeToken || !activeRefreshToken) return;
+    if (!activeToken || !activeRefreshToken || !activeOrganizationId) return;
     try {
-      await logout(activeToken, activeRefreshToken);
+      await logout(activeToken, activeRefreshToken, activeOrganizationId);
     } catch (err) {
       setStatus(err instanceof Error ? err.message : 'Logout failed');
     }

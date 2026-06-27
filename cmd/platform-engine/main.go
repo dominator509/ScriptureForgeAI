@@ -101,7 +101,9 @@ func setupRoutes(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisClient *redis.
 	mux.Handle("/api/v1/auth/login", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.LoginHandler)))
 	mux.Handle("/api/v1/auth/refresh", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.RefreshHandler)))
 	mux.Handle("/api/v1/auth/logout", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.LogoutHandler)))
-	mux.Handle("/api/v1/auth/mfa/verify", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.MFAEnrollHandler)), ""))
+	mux.Handle("/api/v1/auth/mfa/verify", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.MFAVerifyHandler)), ""))
+	mux.Handle("/api/v1/auth/mfa/enroll", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.MFAEnrollHandler)), ""))
+	mux.Handle("/api/v1/workspaces/switch", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.WorkspaceSwitchHandler)), ""))
 	mux.Handle("/api/auth/register", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.RegisterHandler)))
 	mux.Handle("/api/auth/login", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.LoginHandler)))
 

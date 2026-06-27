@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { formatText, parseArgs, summarizeGaps } from './report-staging-evidence-gaps.mjs';
+import {
+  formatObsidian,
+  formatText,
+  parseArgs,
+  summarizeGaps,
+} from './report-staging-evidence-gaps.mjs';
 import { requiredIds } from './validate-staging-evidence.mjs';
 
 test('parseArgs supports manifest and output format', () => {
@@ -68,6 +73,21 @@ test('formatText prints counts and evidence checklist', () => {
   assert.match(text, /required: artifact for CLIENT-MOBILE-001/);
 });
 
+test('formatObsidian prints blocking-item evidence for Obsidian', () => {
+  const summary = summarizeGaps(baseManifest({
+    statusFor: (id) => id === 'ABUSE-LIMIT-001' ? 'blocked' : 'passed',
+  }));
+  summary.blocking_items[0].owner = 'security-team';
+  summary.blocking_items[0].blocker = 'load test credentials missing';
+
+  const text = formatObsidian(summary);
+
+  assert.match(text, /## Staging Evidence Snapshot/);
+  assert.match(text, /ABUSE-LIMIT-001/);
+  assert.match(text, /owner: security-team/);
+  assert.match(text, /blocker: load test credentials missing/);
+});
+
 test('summarizeGaps treats stale release candidate as release blocker', () => {
   const manifest = baseManifest({
     statusFor: () => 'passed',
@@ -105,6 +125,9 @@ function buildItem(id, status) {
 
   if (status === 'pending_external') {
     item.required_evidence = [`artifact for ${id}`];
+  } else if (status === 'blocked') {
+    item.owner = 'security-team';
+    item.blocker = `blocker for ${id}`;
   } else if (status === 'passed') {
     item.evidence = [
       {

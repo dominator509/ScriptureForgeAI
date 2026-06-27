@@ -24,6 +24,14 @@ export interface EncryptedJournalEntry {
   salt_version: number;
 }
 
+export interface WorkspaceSwitchPayload {
+  organization_id: string;
+}
+
+export interface WorkspaceSwitchResponse {
+  organization_id: string;
+}
+
 export interface JournalBootstrap {
   salt_id: string;
   salt_version: number;
@@ -72,6 +80,13 @@ export async function logoutSession(token: string, refreshToken: string, organiz
   await apiRequest<void>('/api/v1/auth/logout', token, {
     method: 'POST',
     body: JSON.stringify({ refresh_token: refreshToken, organization_id: organizationId }),
+  });
+}
+
+export async function switchWorkspace(token: string, organizationId: string): Promise<WorkspaceSwitchResponse> {
+  return apiRequest<WorkspaceSwitchResponse>('/api/v1/workspaces/switch', token, {
+    method: 'POST',
+    body: JSON.stringify({ organization_id: organizationId } as WorkspaceSwitchPayload),
   });
 }
 

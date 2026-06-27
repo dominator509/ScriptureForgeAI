@@ -2,16 +2,50 @@
 
 ## 1. ROADMAP SUMMARY
 - This roadmap defines the comprehensive execution strategy for constructing ScriptureForge AI (BibleStudyOS), a multi-tenant, cloud-native collaborative Bible study environment.
-- The platform uses a polyglot architectural design consisting of Go (Golang 1.26+) for concurrent business services and real-time state synchronization, paired with a high-performance Rust service for complex original language morphological processing and lexical vector operations.
-- The user-facing ecosystem delivers unified multi-device access using a Next.js 15+ web core and a cross-platform React Native companion app built over Expo.
-- To strictly eliminate agentic drift, logic regression, and context hallucination during autonomous code generation loops, this architecture enforces a mandatory dual-layer orchestration workflow. Google Jules is restricted from introducing application layer mutations or database schema additions until a phase-specific sub-roadmap has been compiled and committed to the workspace file structure.
+- The platform uses a polyglot architectural design consisting of Go (Golang 1.24.3 target) for concurrent business services and real-time state synchronization, paired with a high-performance Rust service for complex original language morphological processing and lexical vector operations.
+- The user-facing ecosystem delivers unified multi-device access using a Next.js 16 web core and a cross-platform React Native companion app built over Expo.
+- To strictly eliminate agentic drift, logic regression, and context hallucination during autonomous code generation loops, this architecture enforces a mandatory dual-layer orchestration workflow. This roadmap requires a phase-specific sub-roadmap and synchronized Serena/Obsidian tracking before starting each phase.
 
-## 2. JULES DEVELOPMENT PRINCIPLES
-- **Mandatory Sub-Roadmap Generation:** Prior to executing code mutations or provisioning infrastructural files for any phase, Jules must analyze the phase parameters, construct a highly localized task listing (e.g., `PHASE_01_SUB_ROADMAP.md`), and write it directly to the designated repository folder.
+## 2. EXECUTION PRINCIPLES
+- **Mandatory Sub-Roadmap Generation:** Prior to executing code mutations or provisioning infrastructural files for any phase, the implementation lead must analyze the phase parameters, construct a highly localized task listing (e.g., `PHASE_01_SUB_ROADMAP.md`), and write it directly to the designated repository folder.
 - **Small, Verified Patches:** Code adjustments must occur in atomic increments accompanied by localized test assets. Compilation steps and test execution blocks must pass cleanly on each incremental commit before moving to sibling tasks.
 - **Strict Type Boundaries:** The use of implicit loosely typed interfaces such as `interface{}` in Go or dynamic escape types like `any` in TypeScript is strictly prohibited. Explicit data contracts, strongly typed structs, and compilation-enforced validation schemas must govern all internal network and service boundaries.
 - **Fail-Safe Ingestion:** All application ingress vectors must utilize decoupled validation validation handlers (e.g., Zod schemas or strong backend validation tags) to assert parameters prior to passing structures into business modules.
 - **Secret Hygiene:** Hardcoding environment details, cryptographic parameters, mock signing keys, or development credentials into the codebase is completely prohibited. All configuration values must resolve dynamically through secure ambient configuration maps or runtime injection paths.
+
+### 2.1 Tracking Gate
+- Every phase and any route/schema change must be reflected in `SF-roadmap.md`, `SF-architecture.md`, and `production-readiness/obsidian-production-readiness.md` before merge.
+- `production-readiness/serena-setup.md` remains the canonical Serena bootstrap reference for cross-language indexing.
+- Route additions/changes require a matching entry in `SF-architecture.md` under **11. API Architecture** before merge.
+
+### 2.2 Serena/Obsidian API Drift Gate
+- Route/schema changes cannot merge unless they pass `node tools/validate-serena-obsidian.mjs` in local gate and CI.
+- The tool verifies canonical route coverage across runtime registration and the Obsidian/architecture tracking surfaces.
+- Current canonical API surface should remain mirrored in:
+  - `SF-architecture.md`
+  - `production-readiness/obsidian-production-readiness.md`
+  - `SF-roadmap.md`
+- Canonical routes:
+  - `POST /api/v1/auth/register`
+  - `POST /api/v1/auth/login`
+  - `POST /api/auth/register` (compatibility alias)
+  - `POST /api/auth/login` (compatibility alias)
+  - `POST /api/v1/auth/refresh`
+  - `POST /api/v1/auth/logout`
+  - `POST /api/v1/auth/mfa/verify`
+  - `POST /api/v1/auth/mfa/enroll`
+  - `GET /api/v1/journal/bootstrap`
+  - `POST /api/v1/journal_entries`
+  - `GET /api/v1/journal_entries`
+  - `GET /api/v1/journal_entries/{id}`
+  - `POST /api/v1/ai/generate/study`
+  - `POST /api/webhooks/zoom`
+  - `POST /api/ai/curriculum`
+  - `POST /api/v1/rooms/create`
+  - `GET /api/v1/rooms/active`
+  - `GET /api/v1/rooms/state/{room_id}`
+  - `WSS /api/v1/rooms/stream/{room_id}`
+  - `POST /api/v1/workspaces/switch`
 
 ## 3. RECOMMENDED REPOSITORY STRUCTURE
 ```text
@@ -44,7 +78,7 @@
 │   └── scripture-engine/       # Isolated Rust Lexical and Morphological Processor Workspace
 │       ├── src/                # High-Performance Text Ingestion Core Files
 │       └── Cargo.toml          # Rust System Dependency Specification File
-├── web/                        # Production Next.js 15 App Router Web Project Core
+├── web/                        # Production Next.js 16 App Router Web Project Core
 ├── mobile/                     # React Native Mobile Companion App Expo Core Workspace
 └── tests/                      # Dedicated Decoupled Universal Automated Verification Suites
     ├── unit/                   # Zero-Dependency In-Memory Business Logic Assertions
@@ -170,12 +204,12 @@ Phase 06: Web & Mobile UX Assembly
 • Security & Isolation Checks: Run automated memory profile scans proving that user encryption passphrases and plain-text decryption credentials vanish from client runtime scopes upon session teardown events.
 • Common Failure Modes: Allowing critical workspace permission verification tasks to execute solely within client-side browser logic loops, exposing endpoint pathways to unauthorized manipulation.
 • Anti-Drift Notes: Frontend modules must operate purely as reactive presentation surfaces reflecting trusted backend states. Do not implement authorization evaluation logic inside application view blocks.
-6. CODING AGENT OPERATING RULES (FOR JULES)
+6. CODING AGENT OPERATING RULES (FOR IMPLEMENTATION LEAD)
 •
-• Look Before You Leap: Before executing textual changes, partial file rewrites, or code injection steps, Jules must parse the target code asset and all corresponding sibling interface declarations fully to maintain consistent architectural design boundaries.
-• Preserve Testing Footprints: Jules must never truncate, comment out, or disable previously passing test suites or type definitions to mask compilation errors or resolve configuration mismatches.
+• Look Before You Leap: Before executing textual changes, partial file rewrites, or code injection steps, the implementation lead must parse the target code asset and all corresponding sibling interface declarations fully to maintain consistent architectural design boundaries.
+• Preserve Testing Footprints: The implementation lead must never truncate, comment out, or disable previously passing test suites or type definitions to mask compilation errors or resolve configuration mismatches.
 • No Invisible Failures: Avoid catching errors using silent or unlogged catch blocks. Every logical exception must map directly to the standardized, strongly typed platform exception architecture, ensuring complete log tracing viability across systems.
-• Deterministic Mocks: When building logic paths that interact with external third-party infrastructure layouts or cloud system APIs, Jules must first construct a robust localized mock asset prior to building live network connectivity drivers.
+• Deterministic Mocks: When building logic paths that interact with external third-party infrastructure layouts or cloud system APIs, the implementation lead must first construct a robust localized mock asset prior to building live network connectivity drivers.
 7. DEFINITION OF DONE (DoD)
 • Roadmap Verification: All tasks mapped within the generated Phase Sub-Roadmap must be marked complete and pass independent logic verification steps.
 • Compilation Metrics: System code must compile with zero errors, static analysis linting checks must pass cleanly, and strict typing structures must be preserved across languages.
