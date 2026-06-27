@@ -6,6 +6,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -80,13 +81,62 @@ func TestZoomWebhookMapsMeetingToRoomAndIsDuplicateSafe(t *testing.T) {
 	}
 
 	changes := stateManager.snapshot()
-	if len(changes) != 2 {
-		t.Fatalf("state changes = %#v, want two idempotent updates", changes)
+	if len(changes) != 1 {
+		t.Fatalf("state changes = %#v, want one idempotent update", changes)
 	}
 	for _, change := range changes {
 		if change.roomID != "room-abc" || !change.active {
 			t.Fatalf("unexpected mapped state change: %#v", change)
 		}
+	}
+}
+
+func TestZoomWebhookProcessesDistinctTrackedDeliveries(t *testing.T) {
+	t.Setenv("ZOOM_WEBHOOK_SECRET_TOKEN", "secret")
+	stateManager := &fakeRoomStateManager{}
+	handler := NewWebhookHandler(stateManager)
+	handler.ResolveRoomID = func(ctx context.Context, meetingID string) (string, error) {
+		return "room-abc", nil
+	}
+
+	body := `{"event":"meeting.started","payload":{"object":{"id":"zoom-meeting-123","topic":"Study"}}}`
+	for _, trackingID := range []string{"delivery-1", "delivery-2"} {
+		request := signedZoomRequest(t, body, "secret")
+		request.Header.Set("x-zm-trackingid", trackingID)
+		recorder := httptest.NewRecorder()
+		handler.HandleZoomWebhook(recorder, request)
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("tracked delivery %s status = %d, want 200", trackingID, recorder.Code)
+		}
+	}
+
+	if changes := stateManager.snapshot(); len(changes) != 2 {
+		t.Fatalf("state changes = %#v, want distinct tracked deliveries processed", changes)
+	}
+}
+
+func TestZoomWebhookDeliveryCacheIsBounded(t *testing.T) {
+	t.Setenv("ZOOM_WEBHOOK_SECRET_TOKEN", "secret")
+	handler := NewWebhookHandler(&fakeRoomStateManager{})
+	body := []byte(`{"event":"staging.probe","payload":{"object":{"id":"zoom-meeting-123"}}}`)
+	var payload WebhookPayload
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < maxProcessedZoomDeliveries+10; i++ {
+		request := signedZoomRequest(t, string(body), "secret")
+		request.Header.Set("x-zm-trackingid", fmt.Sprintf("delivery-%d", i))
+		if !handler.markDeliveryProcessed(request, payload, body) {
+			t.Fatalf("delivery %d unexpectedly treated as duplicate", i)
+		}
+	}
+
+	if len(handler.processed) != maxProcessedZoomDeliveries || len(handler.processedFIFO) != maxProcessedZoomDeliveries {
+		t.Fatalf("processed cache sizes map=%d fifo=%d, want %d", len(handler.processed), len(handler.processedFIFO), maxProcessedZoomDeliveries)
+	}
+	if _, exists := handler.processed["x-zm-trackingid:delivery-0"]; exists {
+		t.Fatal("oldest processed delivery was not evicted")
 	}
 }
 

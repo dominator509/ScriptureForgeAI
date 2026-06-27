@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -30,18 +31,56 @@ type WebhookHandler struct {
 	StateManager  roomStateWriter
 	DB            *pgxpool.Pool
 	ResolveRoomID func(ctx context.Context, meetingID string) (string, error)
+	mu            sync.Mutex
+	processed     map[string]struct{}
+	processedFIFO []string
 }
+
+const maxProcessedZoomDeliveries = 4096
 
 type roomStateWriter interface {
 	SetRoomActiveState(ctx context.Context, roomID string, active bool) error
 }
 
 func NewWebhookHandler(sm roomStateWriter, db ...*pgxpool.Pool) *WebhookHandler {
-	handler := &WebhookHandler{StateManager: sm}
+	handler := &WebhookHandler{
+		StateManager: sm,
+		processed:    map[string]struct{}{},
+	}
 	if len(db) > 0 {
 		handler.DB = db[0]
 	}
 	return handler
+}
+
+func (h *WebhookHandler) markDeliveryProcessed(r *http.Request, payload WebhookPayload, body []byte) bool {
+	deliveryID := zoomDeliveryID(r, payload, body)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.processed == nil {
+		h.processed = map[string]struct{}{}
+	}
+	if _, exists := h.processed[deliveryID]; exists {
+		return false
+	}
+	h.processed[deliveryID] = struct{}{}
+	h.processedFIFO = append(h.processedFIFO, deliveryID)
+	if len(h.processedFIFO) > maxProcessedZoomDeliveries {
+		oldest := h.processedFIFO[0]
+		h.processedFIFO = h.processedFIFO[1:]
+		delete(h.processed, oldest)
+	}
+	return true
+}
+
+func zoomDeliveryID(r *http.Request, payload WebhookPayload, body []byte) string {
+	for _, header := range []string{"x-zm-trackingid", "x-zm-request-id"} {
+		if value := r.Header.Get(header); value != "" {
+			return header + ":" + value
+		}
+	}
+	sum := sha256.Sum256([]byte(payload.Event + "\x00" + r.Header.Get("x-zm-request-timestamp") + "\x00" + string(body)))
+	return "body:" + hex.EncodeToString(sum[:])
 }
 
 // verifyZoomSignature validates the Zoom webhook signature to ensure authenticity
@@ -80,6 +119,10 @@ func (h *WebhookHandler) HandleZoomWebhook(w http.ResponseWriter, r *http.Reques
 	var payload WebhookPayload
 	if err := json.Unmarshal(bodyBytes, &payload); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if !h.markDeliveryProcessed(r, payload, bodyBytes) {
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 
