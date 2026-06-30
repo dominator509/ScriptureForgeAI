@@ -12,9 +12,9 @@ import (
 )
 
 var requiredAIProbeSummaryMarkers = map[string][]string{
-	"ai-provider-config":       {"staging artifact", "AI_PROVIDER", "AI_CHAT_MODEL", "AI_CHAT_ENDPOINT", "AI_HTTP_TIMEOUT_MS", "AI_MAX_RETRIES", "OPENAI_API_KEY redacted", "configured", "release_candidate=sha-ai", "service_version=scriptureforge-api:sha-ai"},
+	"ai-provider-config":       {"staging artifact", "AI_PROVIDER", "AI_CHAT_MODEL", "AI_CHAT_ENDPOINT", "AI_HTTP_TIMEOUT_MS", "AI_MAX_RETRIES", "OPENAI_API_KEY redacted", "configured", "AI_PROVIDER=openai", "AI_CHAT_MODEL=gpt-staging", "AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions", "AI_HTTP_TIMEOUT_MS=3500", "AI_MAX_RETRIES=1", "release_candidate=sha-ai", "service_version=scriptureforge-api:sha-ai"},
 	"ai-generation-route":      {"staging artifact", "/api/v1/ai/generate/study", "authenticated", "JWT claims", "organization_id=", "user_id=", "request_id=", "200", "generated_curriculum", "[Genesis 1:1]", "release_candidate=sha-ai", "service_version=scriptureforge-api:sha-ai"},
-	"ai-timeout-degradation":   {"staging artifact", "provider timeout", "degradation", "retry exhausted", "503", "fail closed", "AI_ORCHESTRATION_ENGINE_FAULT", "release_candidate=sha-ai", "service_version=scriptureforge-api:sha-ai"},
+	"ai-timeout-degradation":   {"staging artifact", "provider timeout", "degradation", "retry exhausted", "503", "fail closed", "AI_ORCHESTRATION_ENGINE_FAULT", "provider_timeout=true", "retry_exhausted=true", "fail_closed=true", "release_candidate=sha-ai", "service_version=scriptureforge-api:sha-ai"},
 	"ai-citation-verification": {"staging artifact", "no-citation rejected", "hallucinated citation rejected", "verified citation accepted", "citation_trails", "citation_id=", "release_candidate=sha-ai", "service_version=scriptureforge-api:sha-ai"},
 	"ai-audit-persistence":     {"staging artifact", "ai_request_logs", "citation_trails", "organization_id=", "user_id=", "request_id=", "citation_id=", "succeeded", "failed", "verified", "tenant rls", "cross-tenant hidden", "distinct_ai_artifacts=true", "release_candidate=sha-ai", "service_version=scriptureforge-api:sha-ai"},
 }
@@ -77,7 +77,7 @@ func TestRunEmitsAIEvidenceWhenArtifactsPass(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/provider":
-			_, _ = w.Write([]byte("configured AI_PROVIDER=openai AI_CHAT_MODEL=gpt-staging AI_CHAT_ENDPOINT=https://provider.example AI_HTTP_TIMEOUT_MS=3500 AI_MAX_RETRIES=1 OPENAI_API_KEY redacted" + aiReleaseMarkers))
+			_, _ = w.Write([]byte("configured AI_PROVIDER=openai AI_CHAT_MODEL=gpt-staging AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions AI_HTTP_TIMEOUT_MS=3500 AI_MAX_RETRIES=1 OPENAI_API_KEY redacted" + aiReleaseMarkers))
 		case "/generation":
 			_, _ = w.Write([]byte(`/api/v1/ai/generate/study authenticated JWT claims organization_id=org-123 user_id=user-123 request_id=req-123 returned 200 generated_curriculum with [Genesis 1:1]` + aiReleaseMarkers))
 		case "/degradation":
@@ -111,6 +111,8 @@ func TestRunEmitsAIEvidenceWhenArtifactsPass(t *testing.T) {
 		t.Fatalf("unexpected evidence items: %+v", result.EvidenceItems)
 	}
 	assertProbeSummariesIncludeMarkers(t, result.Probes, requiredAIProbeSummaryMarkers)
+	assertAIProviderConfig(t, result.Probes)
+	assertAITimeoutDegradation(t, result.Probes)
 	assertAIGenerationRequestID(t, result.Probes, "req-123")
 	assertAIAuditRequestID(t, result.Probes, "req-123")
 	assertAICitationID(t, result.Probes, "cite-123")
@@ -128,6 +130,50 @@ func assertAIGenerationRequestID(t *testing.T, probes []probeResult, want string
 		}
 	}
 	t.Fatal("missing ai-generation-route probe")
+}
+
+func assertAIProviderConfig(t *testing.T, probes []probeResult) {
+	t.Helper()
+	for _, probe := range probes {
+		if probe.Name == "ai-provider-config" {
+			if probe.AIProvider != "openai" {
+				t.Fatalf("ai-provider-config ai_provider = %q, want openai", probe.AIProvider)
+			}
+			if probe.AIChatModel != "gpt-staging" {
+				t.Fatalf("ai-provider-config ai_chat_model = %q, want gpt-staging", probe.AIChatModel)
+			}
+			if probe.AIChatEndpoint != "https://api.openai.com/v1/chat/completions" {
+				t.Fatalf("ai-provider-config ai_chat_endpoint = %q, want https://api.openai.com/v1/chat/completions", probe.AIChatEndpoint)
+			}
+			if probe.AIHTTPTimeout != "3500" {
+				t.Fatalf("ai-provider-config ai_http_timeout_ms = %q, want 3500", probe.AIHTTPTimeout)
+			}
+			if probe.AIMaxRetries != "1" {
+				t.Fatalf("ai-provider-config ai_max_retries = %q, want 1", probe.AIMaxRetries)
+			}
+			return
+		}
+	}
+	t.Fatal("missing ai-provider-config probe")
+}
+
+func assertAITimeoutDegradation(t *testing.T, probes []probeResult) {
+	t.Helper()
+	for _, probe := range probes {
+		if probe.Name == "ai-timeout-degradation" {
+			if !probe.ProviderTimeout {
+				t.Fatal("ai-timeout-degradation missing provider_timeout=true")
+			}
+			if !probe.RetryExhausted {
+				t.Fatal("ai-timeout-degradation missing retry_exhausted=true")
+			}
+			if !probe.FailClosed {
+				t.Fatal("ai-timeout-degradation missing fail_closed=true")
+			}
+			return
+		}
+	}
+	t.Fatal("missing ai-timeout-degradation probe")
 }
 
 func assertAIAuditRequestID(t *testing.T, probes []probeResult, want string) {
@@ -216,7 +262,7 @@ func TestRunFailsWhenProviderArtifactLeaksAPIKey(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/provider":
-			_, _ = w.Write([]byte("configured AI_PROVIDER AI_CHAT_MODEL AI_CHAT_ENDPOINT AI_HTTP_TIMEOUT_MS AI_MAX_RETRIES OPENAI_API_KEY=sk-testsecret" + aiReleaseMarkers))
+			_, _ = w.Write([]byte("configured AI_PROVIDER=openai AI_CHAT_MODEL=gpt-staging AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions AI_HTTP_TIMEOUT_MS=3500 AI_MAX_RETRIES=1 OPENAI_API_KEY=sk-testsecret" + aiReleaseMarkers))
 		case "/generation":
 			_, _ = w.Write([]byte(`/api/v1/ai/generate/study authenticated JWT claims organization_id=org-123 user_id=user-123 request_id=req-123 200 generated_curriculum [Genesis 1:1]` + aiReleaseMarkers))
 		case "/degradation":
@@ -243,7 +289,7 @@ func TestRunFailsWhenAuditArtifactMissingCitationTrails(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/provider":
-			_, _ = w.Write([]byte("configured AI_PROVIDER AI_CHAT_MODEL AI_CHAT_ENDPOINT AI_HTTP_TIMEOUT_MS AI_MAX_RETRIES OPENAI_API_KEY redacted" + aiReleaseMarkers))
+			_, _ = w.Write([]byte("configured AI_PROVIDER=openai AI_CHAT_MODEL=gpt-staging AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions AI_HTTP_TIMEOUT_MS=3500 AI_MAX_RETRIES=1 OPENAI_API_KEY redacted" + aiReleaseMarkers))
 		case "/generation":
 			_, _ = w.Write([]byte(`/api/v1/ai/generate/study authenticated JWT claims organization_id=org-123 user_id=user-123 request_id=req-123 200 generated_curriculum [Genesis 1:1]` + aiReleaseMarkers))
 		case "/degradation":
@@ -270,7 +316,7 @@ func TestRunFailsWhenGenerationArtifactMissingTenantAuthProof(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/provider":
-			_, _ = w.Write([]byte("configured AI_PROVIDER AI_CHAT_MODEL AI_CHAT_ENDPOINT AI_HTTP_TIMEOUT_MS AI_MAX_RETRIES OPENAI_API_KEY redacted" + aiReleaseMarkers))
+			_, _ = w.Write([]byte("configured AI_PROVIDER=openai AI_CHAT_MODEL=gpt-staging AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions AI_HTTP_TIMEOUT_MS=3500 AI_MAX_RETRIES=1 OPENAI_API_KEY redacted" + aiReleaseMarkers))
 		case "/generation":
 			_, _ = w.Write([]byte(`/api/v1/ai/generate/study 200 generated_curriculum [Genesis 1:1]` + aiReleaseMarkers))
 		case "/degradation":
@@ -297,7 +343,7 @@ func TestRunFailsWhenProviderArtifactLacksRedactionProof(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/provider":
-			_, _ = w.Write([]byte("configured AI_PROVIDER AI_CHAT_MODEL AI_CHAT_ENDPOINT AI_HTTP_TIMEOUT_MS AI_MAX_RETRIES" + aiReleaseMarkers))
+			_, _ = w.Write([]byte("configured AI_PROVIDER=openai AI_CHAT_MODEL=gpt-staging AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions AI_HTTP_TIMEOUT_MS=3500 AI_MAX_RETRIES=1" + aiReleaseMarkers))
 		case "/generation":
 			_, _ = w.Write([]byte(`/api/v1/ai/generate/study authenticated JWT claims organization_id=org-123 user_id=user-123 request_id=req-123 200 generated_curriculum [Genesis 1:1]` + aiReleaseMarkers))
 		case "/degradation":
@@ -324,7 +370,7 @@ func TestRunFailsWhenAuditArtifactLacksTenantRLSProof(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/provider":
-			_, _ = w.Write([]byte("configured AI_PROVIDER AI_CHAT_MODEL AI_CHAT_ENDPOINT AI_HTTP_TIMEOUT_MS AI_MAX_RETRIES OPENAI_API_KEY redacted" + aiReleaseMarkers))
+			_, _ = w.Write([]byte("configured AI_PROVIDER=openai AI_CHAT_MODEL=gpt-staging AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions AI_HTTP_TIMEOUT_MS=3500 AI_MAX_RETRIES=1 OPENAI_API_KEY redacted" + aiReleaseMarkers))
 		case "/generation":
 			_, _ = w.Write([]byte(`/api/v1/ai/generate/study authenticated JWT claims organization_id=org-123 user_id=user-123 request_id=req-123 200 generated_curriculum [Genesis 1:1]` + aiReleaseMarkers))
 		case "/degradation":
@@ -351,7 +397,7 @@ func TestRunFailsWhenCitationVerificationArtifactDisablesCitations(t *testing.T)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/provider":
-			_, _ = w.Write([]byte("configured AI_PROVIDER AI_CHAT_MODEL AI_CHAT_ENDPOINT AI_HTTP_TIMEOUT_MS AI_MAX_RETRIES OPENAI_API_KEY redacted" + aiReleaseMarkers))
+			_, _ = w.Write([]byte("configured AI_PROVIDER=openai AI_CHAT_MODEL=gpt-staging AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions AI_HTTP_TIMEOUT_MS=3500 AI_MAX_RETRIES=1 OPENAI_API_KEY redacted" + aiReleaseMarkers))
 		case "/generation":
 			_, _ = w.Write([]byte(`/api/v1/ai/generate/study authenticated JWT claims organization_id=org-123 user_id=user-123 request_id=req-123 200 generated_curriculum [Genesis 1:1]` + aiReleaseMarkers))
 		case "/degradation":
@@ -378,7 +424,7 @@ func TestRunFailsWhenCitationVerificationArtifactMissingCitationID(t *testing.T)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/provider":
-			_, _ = w.Write([]byte("configured AI_PROVIDER AI_CHAT_MODEL AI_CHAT_ENDPOINT AI_HTTP_TIMEOUT_MS AI_MAX_RETRIES OPENAI_API_KEY redacted" + aiReleaseMarkers))
+			_, _ = w.Write([]byte("configured AI_PROVIDER=openai AI_CHAT_MODEL=gpt-staging AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions AI_HTTP_TIMEOUT_MS=3500 AI_MAX_RETRIES=1 OPENAI_API_KEY redacted" + aiReleaseMarkers))
 		case "/generation":
 			_, _ = w.Write([]byte(`/api/v1/ai/generate/study authenticated JWT claims organization_id=org-123 user_id=user-123 request_id=req-123 200 generated_curriculum [Genesis 1:1]` + aiReleaseMarkers))
 		case "/degradation":
@@ -405,7 +451,7 @@ func TestRunFailsWhenAuditCitationIDDoesNotMatchCitationVerification(t *testing.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/provider":
-			_, _ = w.Write([]byte("configured AI_PROVIDER AI_CHAT_MODEL AI_CHAT_ENDPOINT AI_HTTP_TIMEOUT_MS AI_MAX_RETRIES OPENAI_API_KEY redacted" + aiReleaseMarkers))
+			_, _ = w.Write([]byte("configured AI_PROVIDER=openai AI_CHAT_MODEL=gpt-staging AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions AI_HTTP_TIMEOUT_MS=3500 AI_MAX_RETRIES=1 OPENAI_API_KEY redacted" + aiReleaseMarkers))
 		case "/generation":
 			_, _ = w.Write([]byte(`/api/v1/ai/generate/study authenticated JWT claims organization_id=org-123 user_id=user-123 request_id=req-123 200 generated_curriculum [Genesis 1:1]` + aiReleaseMarkers))
 		case "/degradation":
@@ -432,7 +478,7 @@ func TestRunFailsWhenAuditRequestIDDoesNotMatchGeneration(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/provider":
-			_, _ = w.Write([]byte("configured AI_PROVIDER AI_CHAT_MODEL AI_CHAT_ENDPOINT AI_HTTP_TIMEOUT_MS AI_MAX_RETRIES OPENAI_API_KEY redacted" + aiReleaseMarkers))
+			_, _ = w.Write([]byte("configured AI_PROVIDER=openai AI_CHAT_MODEL=gpt-staging AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions AI_HTTP_TIMEOUT_MS=3500 AI_MAX_RETRIES=1 OPENAI_API_KEY redacted" + aiReleaseMarkers))
 		case "/generation":
 			_, _ = w.Write([]byte(`/api/v1/ai/generate/study authenticated JWT claims organization_id=org-123 user_id=user-123 request_id=req-generation 200 generated_curriculum [Genesis 1:1]` + aiReleaseMarkers))
 		case "/degradation":
@@ -459,7 +505,7 @@ func TestRunFailsWhenAuditOrganizationIDDoesNotMatchGeneration(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/provider":
-			_, _ = w.Write([]byte("configured AI_PROVIDER AI_CHAT_MODEL AI_CHAT_ENDPOINT AI_HTTP_TIMEOUT_MS AI_MAX_RETRIES OPENAI_API_KEY redacted" + aiReleaseMarkers))
+			_, _ = w.Write([]byte("configured AI_PROVIDER=openai AI_CHAT_MODEL=gpt-staging AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions AI_HTTP_TIMEOUT_MS=3500 AI_MAX_RETRIES=1 OPENAI_API_KEY redacted" + aiReleaseMarkers))
 		case "/generation":
 			_, _ = w.Write([]byte(`/api/v1/ai/generate/study authenticated JWT claims organization_id=org-generation user_id=user-123 request_id=req-123 200 generated_curriculum [Genesis 1:1]` + aiReleaseMarkers))
 		case "/degradation":
@@ -486,7 +532,7 @@ func TestRunFailsWhenAuditUserIDDoesNotMatchGeneration(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/provider":
-			_, _ = w.Write([]byte("configured AI_PROVIDER AI_CHAT_MODEL AI_CHAT_ENDPOINT AI_HTTP_TIMEOUT_MS AI_MAX_RETRIES OPENAI_API_KEY redacted" + aiReleaseMarkers))
+			_, _ = w.Write([]byte("configured AI_PROVIDER=openai AI_CHAT_MODEL=gpt-staging AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions AI_HTTP_TIMEOUT_MS=3500 AI_MAX_RETRIES=1 OPENAI_API_KEY redacted" + aiReleaseMarkers))
 		case "/generation":
 			_, _ = w.Write([]byte(`/api/v1/ai/generate/study authenticated JWT claims organization_id=org-123 user_id=user-generation request_id=req-123 200 generated_curriculum [Genesis 1:1]` + aiReleaseMarkers))
 		case "/degradation":
@@ -513,7 +559,7 @@ func TestRunFailsWhenAuditArtifactDisablesAuditLogging(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/provider":
-			_, _ = w.Write([]byte("configured AI_PROVIDER AI_CHAT_MODEL AI_CHAT_ENDPOINT AI_HTTP_TIMEOUT_MS AI_MAX_RETRIES OPENAI_API_KEY redacted" + aiReleaseMarkers))
+			_, _ = w.Write([]byte("configured AI_PROVIDER=openai AI_CHAT_MODEL=gpt-staging AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions AI_HTTP_TIMEOUT_MS=3500 AI_MAX_RETRIES=1 OPENAI_API_KEY redacted" + aiReleaseMarkers))
 		case "/generation":
 			_, _ = w.Write([]byte(`/api/v1/ai/generate/study authenticated JWT claims organization_id=org-123 user_id=user-123 request_id=req-123 200 generated_curriculum [Genesis 1:1]` + aiReleaseMarkers))
 		case "/degradation":
@@ -540,7 +586,7 @@ func TestRunFailsWhenArtifactsAreMarkedMockOnly(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/provider":
-			_, _ = w.Write([]byte("configured AI_PROVIDER AI_CHAT_MODEL AI_CHAT_ENDPOINT AI_HTTP_TIMEOUT_MS AI_MAX_RETRIES OPENAI_API_KEY redacted" + aiReleaseMarkers))
+			_, _ = w.Write([]byte("configured AI_PROVIDER=openai AI_CHAT_MODEL=gpt-staging AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions AI_HTTP_TIMEOUT_MS=3500 AI_MAX_RETRIES=1 OPENAI_API_KEY redacted" + aiReleaseMarkers))
 		case "/generation":
 			_, _ = w.Write([]byte(`/api/v1/ai/generate/study authenticated JWT claims organization_id=org-123 user_id=user-123 request_id=req-123 200 generated_curriculum [Genesis 1:1]` + aiReleaseMarkers))
 		case "/degradation":

@@ -319,9 +319,9 @@ function zoomProbeReportProbes(names = Object.keys(zoomProbeMarkerSummaries), ov
 }
 
 const aiProbeMarkerSummaries = {
-  'ai-provider-config': 'got HTTP 200; staging artifact; verified markers: AI_PROVIDER, AI_CHAT_MODEL, AI_CHAT_ENDPOINT, AI_HTTP_TIMEOUT_MS, AI_MAX_RETRIES, OPENAI_API_KEY redacted, configured, release_candidate=abc123, service_version=scriptureforge-api:abc123',
+  'ai-provider-config': 'got HTTP 200; staging artifact; verified markers: AI_PROVIDER, AI_CHAT_MODEL, AI_CHAT_ENDPOINT, AI_HTTP_TIMEOUT_MS, AI_MAX_RETRIES, OPENAI_API_KEY redacted, configured, release_candidate=abc123, service_version=scriptureforge-api:abc123; AI_PROVIDER=openai; AI_CHAT_MODEL=gpt-staging; AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions; AI_HTTP_TIMEOUT_MS=3500; AI_MAX_RETRIES=1',
   'ai-generation-route': 'got HTTP 200; staging artifact; verified markers: /api/v1/ai/generate/study, authenticated, JWT claims, organization_id=org-123, user_id=user-123, request_id=req-123, 200, generated_curriculum, [Genesis 1:1], release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'ai-timeout-degradation': 'got HTTP 200; staging artifact; verified markers: provider timeout, degradation, retry exhausted, 503, fail closed, AI_ORCHESTRATION_ENGINE_FAULT, release_candidate=abc123, service_version=scriptureforge-api:abc123',
+  'ai-timeout-degradation': 'got HTTP 200; staging artifact; verified markers: provider timeout, degradation, retry exhausted, 503, fail closed, AI_ORCHESTRATION_ENGINE_FAULT, release_candidate=abc123, service_version=scriptureforge-api:abc123; provider_timeout=true; retry_exhausted=true; fail_closed=true',
   'ai-citation-verification': 'got HTTP 200; staging artifact; verified markers: no-citation rejected, hallucinated citation rejected, verified citation accepted, citation_trails, citation_id=cite-123, release_candidate=abc123, service_version=scriptureforge-api:abc123',
   'ai-audit-persistence': 'got HTTP 200; staging artifact; verified markers: ai_request_logs, citation_trails, organization_id=org-123, user_id=user-123, request_id=req-123, citation_id=cite-123, succeeded, failed, verified, tenant rls, cross-tenant hidden, distinct_ai_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123',
 };
@@ -335,6 +335,30 @@ function aiProbeReportProbe(name, overrides = {}) {
     result_summary: aiProbeMarkerSummaries[name],
     ...overrides,
   };
+  if (name === 'ai-provider-config' && !Object.hasOwn(overrides, 'ai_provider')) {
+    probe.ai_provider = 'openai';
+  }
+  if (name === 'ai-provider-config' && !Object.hasOwn(overrides, 'ai_chat_model')) {
+    probe.ai_chat_model = 'gpt-staging';
+  }
+  if (name === 'ai-provider-config' && !Object.hasOwn(overrides, 'ai_chat_endpoint')) {
+    probe.ai_chat_endpoint = 'https://api.openai.com/v1/chat/completions';
+  }
+  if (name === 'ai-provider-config' && !Object.hasOwn(overrides, 'ai_http_timeout_ms')) {
+    probe.ai_http_timeout_ms = '3500';
+  }
+  if (name === 'ai-provider-config' && !Object.hasOwn(overrides, 'ai_max_retries')) {
+    probe.ai_max_retries = '1';
+  }
+  if (name === 'ai-timeout-degradation' && !Object.hasOwn(overrides, 'provider_timeout')) {
+    probe.provider_timeout = true;
+  }
+  if (name === 'ai-timeout-degradation' && !Object.hasOwn(overrides, 'retry_exhausted')) {
+    probe.retry_exhausted = true;
+  }
+  if (name === 'ai-timeout-degradation' && !Object.hasOwn(overrides, 'fail_closed')) {
+    probe.fail_closed = true;
+  }
   if ((name === 'ai-generation-route' || name === 'ai-audit-persistence') && !Object.hasOwn(overrides, 'request_id')) {
     probe.request_id = 'req-123';
   }
@@ -3288,6 +3312,33 @@ test('recordEvidence records production-grade AI evidence', () => {
   assert.equal(updated.items[0].status, 'passed');
 });
 
+test('recordEvidence rejects AI provider evidence without structured config values', () => {
+  const probeNames = Object.keys(aiProbeMarkerSummaries);
+  assert.throws(
+    () => recordEvidence(
+      {
+        release_candidate: 'abc123',
+        items: [{ id: 'EXT-AI-001', status: 'pending_external' }],
+      },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['EXT-AI-001'],
+        probes: aiProbeReportProbes(probeNames, (name) => (
+          name === 'ai-provider-config'
+            ? { ai_provider: undefined }
+            : {}
+        )),
+      },
+      'artifacts/aiprobe.json',
+      'go run ./tools/aiprobe',
+    ),
+    /ai-provider-config probe must include structured ai_provider/,
+  );
+});
+
 test('recordEvidence rejects AI evidence for a different release candidate', () => {
   const probeNames = Object.keys(aiProbeMarkerSummaries);
   assert.throws(
@@ -3324,9 +3375,9 @@ test('recordEvidence rejects AI evidence without HTTPS artifact proof', () => {
         threshold_pass: true,
         evidence_items: ['EXT-AI-001'],
         probes: [
-          { name: 'ai-provider-config', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/ai/provider.txt', status_code: 200, result_summary: aiProbeMarkerSummaries['ai-provider-config'] },
+          { name: 'ai-provider-config', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/ai/provider.txt', status_code: 200, ai_provider: 'openai', ai_chat_model: 'gpt-staging', ai_chat_endpoint: 'https://api.openai.com/v1/chat/completions', ai_http_timeout_ms: '3500', ai_max_retries: '1', result_summary: aiProbeMarkerSummaries['ai-provider-config'] },
           { name: 'ai-generation-route', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/ai/generation.txt', status_code: 200, request_id: 'req-123', organization_id: 'org-123', user_id: 'user-123', result_summary: aiProbeMarkerSummaries['ai-generation-route'] },
-          { name: 'ai-timeout-degradation', passed: true, target: 'http://localhost/ai/degradation.txt', status_code: 200, result_summary: aiProbeMarkerSummaries['ai-timeout-degradation'] },
+          { name: 'ai-timeout-degradation', passed: true, target: 'http://localhost/ai/degradation.txt', status_code: 200, provider_timeout: true, retry_exhausted: true, fail_closed: true, result_summary: aiProbeMarkerSummaries['ai-timeout-degradation'] },
           { name: 'ai-citation-verification', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/ai/citation.txt', status_code: 200, citation_id: 'cite-123', result_summary: aiProbeMarkerSummaries['ai-citation-verification'] },
           aiProbeReportProbe('ai-audit-persistence', { target: 'https://artifacts.staging.scriptureforge.ai/ai/audit.txt' }),
         ],

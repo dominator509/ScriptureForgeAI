@@ -212,6 +212,11 @@ const resilienceIdentifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const aiRequestIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const aiCitationIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const aiPrincipalIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
+const aiProviderPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
+const aiModelPattern = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
+const aiEndpointPattern = /^https:\/\/\S+$/;
+const aiPositiveIntegerPattern = /^[1-9][0-9]*$/;
+const aiNonNegativeIntegerPattern = /^[0-9]+$/;
 const tenantResourceIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const tenantOrgIDPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -1497,6 +1502,35 @@ function validateAIEvidence(report, manifest) {
       ...reportReleaseMarkers,
     ]);
     assertSummaryExcludesMarkers(probe.name, String(probe.result_summary ?? ''), forbiddenAIProbeSummaryMarkers);
+    if (probe.name === 'ai-provider-config') {
+      const provider = String(probe.ai_provider ?? '').trim();
+      const model = String(probe.ai_chat_model ?? '').trim();
+      const endpoint = String(probe.ai_chat_endpoint ?? '').trim();
+      const timeoutMS = String(probe.ai_http_timeout_ms ?? '').trim();
+      const maxRetries = String(probe.ai_max_retries ?? '').trim();
+      assert.match(provider, aiProviderPattern, 'ai-provider-config probe must include structured ai_provider');
+      assert.match(model, aiModelPattern, 'ai-provider-config probe must include structured ai_chat_model');
+      assert.match(endpoint, aiEndpointPattern, 'ai-provider-config probe must include structured https ai_chat_endpoint');
+      assert.match(timeoutMS, aiPositiveIntegerPattern, 'ai-provider-config probe must include structured positive ai_http_timeout_ms');
+      assert.match(maxRetries, aiNonNegativeIntegerPattern, 'ai-provider-config probe must include structured ai_max_retries');
+      assertSummaryIncludesMarkers(probe.name, String(probe.result_summary ?? ''), [
+        `AI_PROVIDER=${provider}`,
+        `AI_CHAT_MODEL=${model}`,
+        `AI_CHAT_ENDPOINT=${endpoint}`,
+        `AI_HTTP_TIMEOUT_MS=${timeoutMS}`,
+        `AI_MAX_RETRIES=${maxRetries}`,
+      ]);
+    }
+    if (probe.name === 'ai-timeout-degradation') {
+      assert.equal(probe.provider_timeout, true, 'ai-timeout-degradation probe must include structured provider_timeout=true');
+      assert.equal(probe.retry_exhausted, true, 'ai-timeout-degradation probe must include structured retry_exhausted=true');
+      assert.equal(probe.fail_closed, true, 'ai-timeout-degradation probe must include structured fail_closed=true');
+      assertSummaryIncludesMarkers(probe.name, String(probe.result_summary ?? ''), [
+        'provider_timeout=true',
+        'retry_exhausted=true',
+        'fail_closed=true',
+      ]);
+    }
     if (probe.name === 'ai-generation-route') {
       generationRequestID = String(probe.request_id ?? '').trim();
       generationOrganizationID = String(probe.organization_id ?? '').trim();

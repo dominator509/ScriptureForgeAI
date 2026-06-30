@@ -21,6 +21,11 @@ var (
 	aiCitationIDPattern     = regexp.MustCompile(`(?i)\bcitation_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
 	aiOrganizationIDPattern = regexp.MustCompile(`(?i)\borganization_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
 	aiUserIDPattern         = regexp.MustCompile(`(?i)\buser_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
+	aiProviderPattern       = regexp.MustCompile(`(?i)\bAI_PROVIDER=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
+	aiChatModelPattern      = regexp.MustCompile(`(?i)\bAI_CHAT_MODEL=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b`)
+	aiHTTPEndpointPattern   = regexp.MustCompile(`(?i)\bAI_CHAT_ENDPOINT=(https://[^\s;,]+)\b`)
+	aiHTTPTimeoutMSPattern  = regexp.MustCompile(`(?i)\bAI_HTTP_TIMEOUT_MS=([1-9][0-9]*)\b`)
+	aiMaxRetriesPattern     = regexp.MustCompile(`(?i)\bAI_MAX_RETRIES=([0-9]+)\b`)
 )
 
 type config struct {
@@ -49,16 +54,24 @@ type report struct {
 }
 
 type probeResult struct {
-	Name           string `json:"name"`
-	Target         string `json:"target"`
-	Passed         bool   `json:"passed"`
-	StatusCode     int    `json:"status_code,omitempty"`
-	LatencyMS      int64  `json:"latency_ms,omitempty"`
-	RequestID      string `json:"request_id,omitempty"`
-	CitationID     string `json:"citation_id,omitempty"`
-	OrganizationID string `json:"organization_id,omitempty"`
-	UserID         string `json:"user_id,omitempty"`
-	ResultSummary  string `json:"result_summary"`
+	Name            string `json:"name"`
+	Target          string `json:"target"`
+	Passed          bool   `json:"passed"`
+	StatusCode      int    `json:"status_code,omitempty"`
+	LatencyMS       int64  `json:"latency_ms,omitempty"`
+	RequestID       string `json:"request_id,omitempty"`
+	CitationID      string `json:"citation_id,omitempty"`
+	OrganizationID  string `json:"organization_id,omitempty"`
+	UserID          string `json:"user_id,omitempty"`
+	AIProvider      string `json:"ai_provider,omitempty"`
+	AIChatModel     string `json:"ai_chat_model,omitempty"`
+	AIChatEndpoint  string `json:"ai_chat_endpoint,omitempty"`
+	AIHTTPTimeout   string `json:"ai_http_timeout_ms,omitempty"`
+	AIMaxRetries    string `json:"ai_max_retries,omitempty"`
+	ProviderTimeout bool   `json:"provider_timeout,omitempty"`
+	RetryExhausted  bool   `json:"retry_exhausted,omitempty"`
+	FailClosed      bool   `json:"fail_closed,omitempty"`
+	ResultSummary   string `json:"result_summary"`
 }
 
 func main() {
@@ -316,7 +329,33 @@ func probeArtifact(client *http.Client, name, target string, required []string, 
 	if name == "ai-citation-verification" || name == "ai-audit-persistence" {
 		citationID = extractAICitationID(text)
 	}
+	aiProvider := ""
+	aiChatModel := ""
+	aiChatEndpoint := ""
+	aiHTTPTimeout := ""
+	aiMaxRetries := ""
+	if name == "ai-provider-config" {
+		aiProvider = extractAIProvider(text)
+		aiChatModel = extractAIChatModel(text)
+		aiChatEndpoint = extractAIChatEndpoint(text)
+		aiHTTPTimeout = extractAIHTTPTimeoutMS(text)
+		aiMaxRetries = extractAIMaxRetries(text)
+	}
+	providerTimeout := false
+	retryExhausted := false
+	failClosed := false
+	if name == "ai-timeout-degradation" {
+		providerTimeout = containsAllFold(text, []string{"provider timeout"})
+		retryExhausted = containsAllFold(text, []string{"retry exhausted"})
+		failClosed = containsAllFold(text, []string{"fail closed", "AI_ORCHESTRATION_ENGINE_FAULT"})
+	}
 	passed := resp.StatusCode >= 200 && resp.StatusCode < 300 && containsAllFold(text, required) && containsNoneFold(text, forbidden)
+	if name == "ai-provider-config" && (aiProvider == "" || aiChatModel == "" || aiChatEndpoint == "" || aiHTTPTimeout == "" || aiMaxRetries == "") {
+		passed = false
+	}
+	if name == "ai-timeout-degradation" && (!providerTimeout || !retryExhausted || !failClosed) {
+		passed = false
+	}
 	if (name == "ai-generation-route" || name == "ai-audit-persistence") && requestID == "" {
 		passed = false
 	}
@@ -331,16 +370,22 @@ func probeArtifact(client *http.Client, name, target string, required []string, 
 		summary += "; artifact missing required AI markers, leaks forbidden provider secret material, or is marked mock/placeholder"
 	} else {
 		summary += "; staging artifact; verified markers: " + strings.Join(required, ", ")
-		exactMarkers := exactAIMarkers(name, requestID, citationID, organizationID, userID)
+		exactMarkers := exactAIMarkers(name, requestID, citationID, organizationID, userID, aiProvider, aiChatModel, aiChatEndpoint, aiHTTPTimeout, aiMaxRetries, providerTimeout, retryExhausted, failClosed)
 		if len(exactMarkers) > 0 {
 			summary += "; " + strings.Join(exactMarkers, "; ")
 		}
 	}
-	return probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, RequestID: requestID, CitationID: citationID, OrganizationID: organizationID, UserID: userID, ResultSummary: summary}
+	return probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, RequestID: requestID, CitationID: citationID, OrganizationID: organizationID, UserID: userID, AIProvider: aiProvider, AIChatModel: aiChatModel, AIChatEndpoint: aiChatEndpoint, AIHTTPTimeout: aiHTTPTimeout, AIMaxRetries: aiMaxRetries, ProviderTimeout: providerTimeout, RetryExhausted: retryExhausted, FailClosed: failClosed, ResultSummary: summary}
 }
 
-func exactAIMarkers(name, requestID, citationID, organizationID, userID string) []string {
+func exactAIMarkers(name, requestID, citationID, organizationID, userID, aiProvider, aiChatModel, aiChatEndpoint, aiHTTPTimeout, aiMaxRetries string, providerTimeout, retryExhausted, failClosed bool) []string {
 	markers := []string{}
+	if name == "ai-provider-config" {
+		markers = append(markers, fmt.Sprintf("AI_PROVIDER=%s", aiProvider), fmt.Sprintf("AI_CHAT_MODEL=%s", aiChatModel), fmt.Sprintf("AI_CHAT_ENDPOINT=%s", aiChatEndpoint), fmt.Sprintf("AI_HTTP_TIMEOUT_MS=%s", aiHTTPTimeout), fmt.Sprintf("AI_MAX_RETRIES=%s", aiMaxRetries))
+	}
+	if name == "ai-timeout-degradation" {
+		markers = append(markers, fmt.Sprintf("provider_timeout=%t", providerTimeout), fmt.Sprintf("retry_exhausted=%t", retryExhausted), fmt.Sprintf("fail_closed=%t", failClosed))
+	}
 	if name == "ai-generation-route" || name == "ai-audit-persistence" {
 		markers = append(markers, fmt.Sprintf("organization_id=%s", organizationID), fmt.Sprintf("user_id=%s", userID), fmt.Sprintf("request_id=%s", requestID))
 	}
@@ -348,6 +393,46 @@ func exactAIMarkers(name, requestID, citationID, organizationID, userID string) 
 		markers = append(markers, fmt.Sprintf("citation_id=%s", citationID))
 	}
 	return markers
+}
+
+func extractAIProvider(text string) string {
+	match := aiProviderPattern.FindStringSubmatch(text)
+	if len(match) < 2 {
+		return ""
+	}
+	return match[1]
+}
+
+func extractAIChatModel(text string) string {
+	match := aiChatModelPattern.FindStringSubmatch(text)
+	if len(match) < 2 {
+		return ""
+	}
+	return match[1]
+}
+
+func extractAIChatEndpoint(text string) string {
+	match := aiHTTPEndpointPattern.FindStringSubmatch(text)
+	if len(match) < 2 {
+		return ""
+	}
+	return match[1]
+}
+
+func extractAIHTTPTimeoutMS(text string) string {
+	match := aiHTTPTimeoutMSPattern.FindStringSubmatch(text)
+	if len(match) < 2 {
+		return ""
+	}
+	return match[1]
+}
+
+func extractAIMaxRetries(text string) string {
+	match := aiMaxRetriesPattern.FindStringSubmatch(text)
+	if len(match) < 2 {
+		return ""
+	}
+	return match[1]
 }
 
 func extractAIRequestID(text string) string {

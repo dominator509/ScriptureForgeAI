@@ -77,6 +77,14 @@ const aiRequestIDPattern = /\brequest_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const aiCitationIDPattern = /\bcitation_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const aiOrganizationIDPattern = /\borganization_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const aiUserIDPattern = /\buser_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const aiProviderValuePattern = /\bAI_PROVIDER=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/;
+const aiModelValuePattern = /\bAI_CHAT_MODEL=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b/;
+const aiEndpointValuePattern = /\bAI_CHAT_ENDPOINT=(https:\/\/\S+)\b/;
+const aiHTTPTimeoutMSValuePattern = /\bAI_HTTP_TIMEOUT_MS=([1-9][0-9]*)\b/;
+const aiMaxRetriesValuePattern = /\bAI_MAX_RETRIES=([0-9]+)\b/;
+const aiProviderTimeoutPattern = /\bprovider_timeout=true\b/i;
+const aiRetryExhaustedPattern = /\bretry_exhausted=true\b/i;
+const aiFailClosedPattern = /\bfail_closed=true\b/i;
 const zoomWebhookSignaturePattern = /\bx-zm-signature=(v0[:=][0-9a-f]{64})\b/i;
 const zoomWebhookTimestampPattern = /\bx-zm-request-timestamp=([0-9]{10,})\b/i;
 const zoomPlainTokenPattern = /\bplain_token=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
@@ -1691,6 +1699,8 @@ function validateStrictReleaseItemEvidence(item, manifest) {
       false,
       'EXT-AI-001 strict release evidence must include tenant-RLS audit markers on ai-audit-persistence',
     );
+    const providerSegment = findEvidenceSegment(evidence, 'ai-provider-config');
+    const degradationSegment = findEvidenceSegment(evidence, 'ai-timeout-degradation');
     const generationSegment = evidence
       .map((artifact) => String(artifact.result_summary ?? ''))
       .map((summary) => findEvidenceSegment([{ result_summary: summary }], 'ai-generation-route'))
@@ -1703,9 +1713,19 @@ function validateStrictReleaseItemEvidence(item, manifest) {
       .map((artifact) => String(artifact.result_summary ?? ''))
       .map((summary) => findEvidenceSegment([{ result_summary: summary }], 'ai-audit-persistence'))
       .find(Boolean);
+    assert.ok(providerSegment, 'EXT-AI-001 strict release evidence must include ai-provider-config segment');
+    assert.ok(degradationSegment, 'EXT-AI-001 strict release evidence must include ai-timeout-degradation segment');
     assert.ok(generationSegment, 'EXT-AI-001 strict release evidence must include ai-generation-route segment');
     assert.ok(citationSegment, 'EXT-AI-001 strict release evidence must include ai-citation-verification segment');
     assert.ok(auditSegment, 'EXT-AI-001 strict release evidence must include ai-audit-persistence segment');
+    assert.match(providerSegment, aiProviderValuePattern, 'EXT-AI-001 strict release ai-provider-config segment must include AI_PROVIDER=<provider>');
+    assert.match(providerSegment, aiModelValuePattern, 'EXT-AI-001 strict release ai-provider-config segment must include AI_CHAT_MODEL=<model>');
+    assert.match(providerSegment, aiEndpointValuePattern, 'EXT-AI-001 strict release ai-provider-config segment must include HTTPS AI_CHAT_ENDPOINT=<url>');
+    assert.match(providerSegment, aiHTTPTimeoutMSValuePattern, 'EXT-AI-001 strict release ai-provider-config segment must include positive AI_HTTP_TIMEOUT_MS=<ms>');
+    assert.match(providerSegment, aiMaxRetriesValuePattern, 'EXT-AI-001 strict release ai-provider-config segment must include AI_MAX_RETRIES=<count>');
+    assert.match(degradationSegment, aiProviderTimeoutPattern, 'EXT-AI-001 strict release ai-timeout-degradation segment must include provider_timeout=true');
+    assert.match(degradationSegment, aiRetryExhaustedPattern, 'EXT-AI-001 strict release ai-timeout-degradation segment must include retry_exhausted=true');
+    assert.match(degradationSegment, aiFailClosedPattern, 'EXT-AI-001 strict release ai-timeout-degradation segment must include fail_closed=true');
     const generationRequestID = generationSegment.match(aiRequestIDPattern)?.[1] ?? '';
     const generationOrganizationID = generationSegment.match(aiOrganizationIDPattern)?.[1] ?? '';
     const generationUserID = generationSegment.match(aiUserIDPattern)?.[1] ?? '';
