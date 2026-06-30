@@ -11,9 +11,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
+
+var alertDeliveryIDPattern = regexp.MustCompile(`(?i)\bdelivery_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
 
 type config struct {
 	ProbeOTEL          bool
@@ -68,6 +71,7 @@ type probeResult struct {
 	Passed        bool   `json:"passed"`
 	StatusCode    int    `json:"status_code,omitempty"`
 	LatencyMS     int64  `json:"latency_ms,omitempty"`
+	DeliveryID    string `json:"delivery_id,omitempty"`
 	ResultSummary string `json:"result_summary"`
 }
 
@@ -532,10 +536,20 @@ func probeContains(client *http.Client, name, target string, required []string, 
 	} else {
 		passed = passed && containsAnyFold(text, required)
 	}
+	deliveryID := ""
+	if name == "alert-delivery-status" {
+		deliveryID = extractMatch(text, alertDeliveryIDPattern)
+		if deliveryID == "" {
+			passed = false
+		}
+	}
 	passed = passed && containsNoneFold(text, forbiddenObservabilityMarkers())
 	summary := fmt.Sprintf("got HTTP %d in %dms", resp.StatusCode, latency)
 	if passed {
 		summary = fmt.Sprintf("%s; verified markers: %s", summary, strings.Join(required, ", "))
+		if name == "alert-delivery-status" {
+			summary += fmt.Sprintf("; delivery_id=%s", deliveryID)
+		}
 	} else {
 		summary = fmt.Sprintf("%s; missing required marker or contains forbidden mock/local-only marker", summary)
 	}
@@ -545,6 +559,7 @@ func probeContains(client *http.Client, name, target string, required []string, 
 		Passed:        passed,
 		StatusCode:    resp.StatusCode,
 		LatencyMS:     latency,
+		DeliveryID:    deliveryID,
 		ResultSummary: summary,
 	}
 }
@@ -577,6 +592,14 @@ func containsNoneFold(text string, needles []string) bool {
 		}
 	}
 	return true
+}
+
+func extractMatch(text string, pattern *regexp.Regexp) string {
+	match := pattern.FindStringSubmatch(text)
+	if len(match) < 2 {
+		return ""
+	}
+	return match[1]
 }
 
 func forbiddenObservabilityMarkers() []string {

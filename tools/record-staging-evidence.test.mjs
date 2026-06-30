@@ -502,6 +502,25 @@ function observabilityProbeTarget(name) {
   return `https://observability.staging.scriptureforge.ai/${name}`;
 }
 
+function observabilityProbeReportProbe(name, overrides = {}) {
+  const probe = {
+    name,
+    passed: true,
+    target: observabilityProbeTarget(name),
+    status_code: 200,
+    result_summary: observabilityProbeMarkerSummaries[name],
+    ...overrides,
+  };
+  if (name === 'alert-delivery-status' && !Object.hasOwn(overrides, 'delivery_id')) {
+    probe.delivery_id = 'am-delivery-123';
+  }
+  return probe;
+}
+
+function observabilityProbeReportProbes(names = Object.keys(observabilityProbeMarkerSummaries), overridesForName = () => ({})) {
+  return names.map((name) => observabilityProbeReportProbe(name, overridesForName(name)));
+}
+
 const performanceReportSummaries = {
   http: 'profile=staging_http target=https://api.staging.scriptureforge.ai/health concurrency=500 duration_ms=60000 duration_ms>=60000 min_rps=5000 max_p99_ms=200 production_target_rps=5000 production_target_p99_ms=200 production_min_duration_ms=60000 observed_rps=5200 observed_p99_ms=180 threshold_pass=true http_replica_count=2 dependency_postgres_p99_ms=32 dependency_redis_p99_ms=18 release_candidate=abc123 service_version=scriptureforge-api:abc123; verified markers: staging_http, https://, min_rps, 5000, max_p99_ms, 200, observed_rps, observed_p99_ms, release_candidate, service_version, http_replica_artifact_url, http_replica_artifact_verified, http_replica_count=2, dependency_telemetry_artifact_url, dependency_telemetry_artifact_verified, dependency_latency_artifact_verified=true, dependency_postgres_p99_ms=32, dependency_redis_p99_ms=18, http_distinct_artifacts=true',
   websocket: 'staging artifact profile=staging_websocket target=wss://api.staging.scriptureforge.ai/api/v1/rooms/stream/room-1 concurrency=500 duration_ms=60000 duration_ms>=60000 min_rps=500 max_p99_ms=200 production_target_rps=500 production_target_p99_ms=200 production_min_duration_ms=60000 observed_rps=620 observed_p99_ms=140 threshold_pass=true release_candidate=abc123 service_version=scriptureforge-api:abc123 production_min_ws_events=30000 ws_origin=https://web.staging.scriptureforge.ai ws_room_id=room-1 ws_authenticated=true ws_expected_events=30000 ws_unique_sequences=30000 ws_min_sequence=1 ws_max_sequence=30000 ws_polling_latest_sequence=30000 ws_sequence_contiguous=true ws_replica_artifact_url=https://artifacts.staging.scriptureforge.ai/load/ws-replicas.txt ws_reconnect_artifact_url=https://artifacts.staging.scriptureforge.ai/load/ws-reconnect.txt ws_polling_artifact_url=https://artifacts.staging.scriptureforge.ai/load/ws-polling.txt redis_telemetry_artifact_url=https://artifacts.staging.scriptureforge.ai/load/redis-telemetry.txt ws_replica_count=2 room_broadcast_drops=0; verified markers: staging artifact, staging_websocket, wss://, min_rps, 500, max_p99_ms, 200, observed_rps, observed_p99_ms, release_candidate, service_version, ws_sequence_contiguous=true, ws_origin=https://, ws_room_id, ws_authenticated=true, ws_expected_events, ws_unique_sequences, ws_min_sequence, ws_max_sequence, ws_polling_latest_sequence, redis_telemetry_artifact_url=https://, ws_replica_artifact_url=https://, ws_replica_artifact_verified, ws_replica_count=2, ws_reconnect_artifact_url=https://, ws_reconnect_artifact_verified, ws_reconnect_sequence_continues=true, ws_polling_artifact_url=https://, ws_polling_artifact_verified, ws_polling_artifact_latest_sequence_validated=true, ws_polling_artifact_latest_sequence_matches_run=true, redis_telemetry_artifact_verified, ws_distinct_artifacts=true, room_broadcast_drops=0',
@@ -4588,13 +4607,7 @@ test('recordEvidence records production-grade observability evidence', () => {
       alert_name: 'ScriptureForgeHighErrorRate',
       alert_receiver: 'staging-release',
       evidence_items: ['OBS-OTEL-001', 'OBS-ALERT-001'],
-      probes: probeNames.map((name) => ({
-        name,
-        passed: true,
-        target: observabilityProbeTarget(name),
-        status_code: 200,
-        result_summary: observabilityProbeMarkerSummaries[name],
-      })),
+      probes: observabilityProbeReportProbes(probeNames),
     },
     'artifacts/observabilityprobe.json',
     'go run ./tools/observabilityprobe -probe-otel -probe-alerts',
@@ -4742,11 +4755,7 @@ test('recordEvidence rejects observability evidence for a different release cand
         alert_name: 'ScriptureForgeHighErrorRate',
         alert_receiver: 'staging-release',
         evidence_items: ['OBS-OTEL-001', 'OBS-ALERT-001'],
-        probes: probeNames.map((name) => ({
-          name,
-          passed: true,
-          target: observabilityProbeTarget(name),
-          status_code: 200,
+        probes: observabilityProbeReportProbes(probeNames, (name) => ({
           result_summary: observabilityProbeMarkerSummaries[name]
             .replaceAll('release_candidate=abc123', 'release_candidate=def456')
             .replaceAll('service_version=scriptureforge-api:abc123', 'service_version=scriptureforge-api:def456'),
@@ -4817,14 +4826,10 @@ test('recordEvidence rejects observability evidence with duplicate alert artifac
         alert_name: 'ScriptureForgeHighErrorRate',
         alert_receiver: 'staging-release',
         evidence_items: ['OBS-ALERT-001'],
-        probes: probeNames.map((name) => ({
-          name,
-          passed: true,
+        probes: observabilityProbeReportProbes(probeNames, (name) => ({
           target: name === 'telemetry-retention-policy'
             ? 'https://observability.staging.scriptureforge.ai/alert-delivery-status'
             : observabilityProbeTarget(name),
-          status_code: 200,
-          result_summary: observabilityProbeMarkerSummaries[name],
         })),
       },
       'artifacts/observabilityprobe.json',
@@ -4932,11 +4937,7 @@ test('recordEvidence rejects observability evidence without verified marker summ
         alert_name: 'ScriptureForgeHighErrorRate',
         alert_receiver: 'staging-release',
         evidence_items: ['OBS-OTEL-001', 'OBS-ALERT-001'],
-        probes: Object.keys(observabilityProbeMarkerSummaries).map((name) => ({
-          name,
-          passed: true,
-          target: observabilityProbeTarget(name),
-          status_code: 200,
+        probes: observabilityProbeReportProbes(Object.keys(observabilityProbeMarkerSummaries), (name) => ({
           result_summary: name === 'alert-delivery-status'
             ? 'got HTTP 200; verified markers: staging artifact, success, delivered, test alert, alertmanager, alertname=ScriptureForgeHighErrorRate, receiver=staging-release, release_candidate=abc123, service_version=scriptureforge-api:abc123'
             : observabilityProbeMarkerSummaries[name],
@@ -4946,6 +4947,32 @@ test('recordEvidence rejects observability evidence without verified marker summ
       'go run ./tools/observabilityprobe -probe-otel -probe-alerts',
     ),
     /alert-delivery-status result_summary must include verified marker delivery_id=/,
+  );
+});
+
+test('recordEvidence rejects observability alert delivery evidence without structured delivery ID', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'OBS-ALERT-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        alert_name: 'ScriptureForgeHighErrorRate',
+        alert_receiver: 'staging-release',
+        evidence_items: ['OBS-ALERT-001'],
+        probes: observabilityProbeReportProbes([
+          'dashboard-import',
+          'alert-rules-loaded',
+          'alert-delivery-status',
+          'telemetry-retention-policy',
+        ], (name) => (name === 'alert-delivery-status' ? { delivery_id: undefined } : {})),
+      },
+      'artifacts/observabilityprobe.json',
+      'go run ./tools/observabilityprobe -probe-alerts',
+    ),
+    /OBS-ALERT-001 alert-delivery-status probe must include structured delivery_id/,
   );
 });
 
@@ -4964,7 +4991,7 @@ test('recordEvidence rejects observability alert delivery contradiction markers'
         probes: [
           { name: 'dashboard-import', passed: true, target: 'https://grafana.staging.scriptureforge.ai/d/scriptureforge', status_code: 200, result_summary: observabilityProbeMarkerSummaries['dashboard-import'] },
           { name: 'alert-rules-loaded', passed: true, target: 'https://prometheus.staging.scriptureforge.ai/rules', status_code: 200, result_summary: observabilityProbeMarkerSummaries['alert-rules-loaded'] },
-          { name: 'alert-delivery-status', passed: true, target: 'https://alertmanager.staging.scriptureforge.ai/status', status_code: 200, result_summary: `${observabilityProbeMarkerSummaries['alert-delivery-status']}; alert silenced; not delivered` },
+          observabilityProbeReportProbe('alert-delivery-status', { target: 'https://alertmanager.staging.scriptureforge.ai/status', result_summary: `${observabilityProbeMarkerSummaries['alert-delivery-status']}; alert silenced; not delivered` }),
           { name: 'telemetry-retention-policy', passed: true, target: 'https://observability.staging.scriptureforge.ai/retention', status_code: 200, result_summary: observabilityProbeMarkerSummaries['telemetry-retention-policy'] },
         ],
       },
@@ -5132,7 +5159,7 @@ test('recordEvidence rejects observability evidence without full alert-rule cove
         probes: [
           { name: 'dashboard-import', passed: true, target: 'https://grafana.staging.scriptureforge.ai/d/scriptureforge', status_code: 200, result_summary: observabilityProbeMarkerSummaries['dashboard-import'] },
           { name: 'alert-rules-loaded', passed: true, target: 'https://prometheus.staging.scriptureforge.ai/rules', status_code: 200, result_summary: observabilityProbeMarkerSummaries['alert-rules-loaded'].replace('ScriptureForgeRoomStreamFailures, ', '') },
-          { name: 'alert-delivery-status', passed: true, target: 'https://alertmanager.staging.scriptureforge.ai/status', status_code: 200, result_summary: observabilityProbeMarkerSummaries['alert-delivery-status'] },
+          observabilityProbeReportProbe('alert-delivery-status', { target: 'https://alertmanager.staging.scriptureforge.ai/status' }),
           { name: 'telemetry-retention-policy', passed: true, target: 'https://observability.staging.scriptureforge.ai/retention', status_code: 200, result_summary: observabilityProbeMarkerSummaries['telemetry-retention-policy'] },
         ],
       },

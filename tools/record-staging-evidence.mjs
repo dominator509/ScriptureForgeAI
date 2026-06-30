@@ -217,6 +217,7 @@ const aiModelPattern = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
 const aiEndpointPattern = /^https:\/\/\S+$/;
 const aiPositiveIntegerPattern = /^[1-9][0-9]*$/;
 const aiNonNegativeIntegerPattern = /^[0-9]+$/;
+const observabilityDeliveryIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const mobilePlatformsPattern = /^(?=.*\bandroid\b)(?=.*\bios\b)[A-Za-z0-9_,.-]+$/i;
 const mobileReleaseChannelPattern = /^staging$/i;
 const mobileExpoProfilePattern = /^staging$/i;
@@ -1727,10 +1728,12 @@ function validateObservabilityEvidence(report, manifest) {
     assert.match(alertName, /^\S+$/, 'OBS-ALERT-001 report must include alert_name as a concrete token');
     assert.match(alertReceiver, /^\S+$/, 'OBS-ALERT-001 report must include alert_receiver as a concrete token');
     const deliveryProbe = observedProbes.get('alert-delivery-status');
+    const deliveryID = String(deliveryProbe?.delivery_id ?? '').trim();
+    assert.match(deliveryID, observabilityDeliveryIDPattern, 'OBS-ALERT-001 alert-delivery-status probe must include structured delivery_id');
     assertSummaryIncludesMarkers('alert-delivery-status', String(deliveryProbe?.result_summary ?? ''), [
       `alertname=${alertName}`,
       `receiver=${alertReceiver}`,
-      'delivery_id=',
+      `delivery_id=${deliveryID}`,
     ]);
   }
 }

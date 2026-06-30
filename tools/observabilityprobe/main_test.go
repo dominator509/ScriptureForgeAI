@@ -24,7 +24,7 @@ func requiredOTELSummaryMarkers(traceID string) map[string][]string {
 var requiredAlertSummaryMarkers = map[string][]string{
 	"dashboard-import":           {"staging artifact", "ScriptureForge", "scriptureforge_http_requests_total", "scriptureforge_http_request_duration_seconds_sum", "websocket_active_connections_count", "room_broadcast", "ai_inference_duration_seconds", "scriptureforge_rust_engine_", "trace_id", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs"},
 	"alert-rules-loaded":         {"staging artifact", "ScriptureForgeHighErrorRate", "ScriptureForgeTrafficAbsent", "ScriptureForgeAuthFailureSpike", "ScriptureForgeAbuseLimitSpike", "ScriptureForgeRouteLatencyElevated", "ScriptureForgeDependencyFailures", "ScriptureForgeAIInferenceLatencyElevated", "ScriptureForgeJournalWriteFailures", "ScriptureForgeRoomStreamFailures", "ScriptureForgeRoomBroadcastDrops", "ScriptureForgeRustEngineFailures", "scriptureforge_http_requests_total", "scriptureforge_dependency_operations_total", "ai_inference_duration_seconds", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs"},
-	"alert-delivery-status":      {"staging artifact", "success", "delivered", "test alert", "alertmanager", "delivery_id=", "alertname=ScriptureForgeHighErrorRate", "receiver=staging-release", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs"},
+	"alert-delivery-status":      {"staging artifact", "success", "delivered", "test alert", "alertmanager", "delivery_id=am-delivery-123", "alertname=ScriptureForgeHighErrorRate", "receiver=staging-release", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs"},
 	"telemetry-retention-policy": {"staging artifact", "retention", "30 days", "trace", "logs", "metrics", "distinct_alert_artifacts=true", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs"},
 }
 
@@ -346,6 +346,11 @@ func TestRunEmitsAlertEvidenceWhenAlertProofsPass(t *testing.T) {
 	}
 	if result.AlertName != "ScriptureForgeHighErrorRate" || result.AlertReceiver != "staging-release" {
 		t.Fatalf("unexpected alert identity: %+v", result)
+	}
+	for _, probe := range result.Probes {
+		if probe.Name == "alert-delivery-status" && probe.DeliveryID != "am-delivery-123" {
+			t.Fatalf("alert delivery_id = %q, want %q", probe.DeliveryID, "am-delivery-123")
+		}
 	}
 	assertProbeSummariesIncludeMarkers(t, result.Probes, requiredAlertSummaryMarkers)
 }
