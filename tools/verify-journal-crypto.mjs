@@ -32,6 +32,7 @@ export const journalCryptoProofMarkers = [
   'associated_data_salt_binding=true',
   'non_extractable_key=true',
   'key_disposal=true',
+  'revoked_key_rejected=true',
   'web_key_disposal=true',
   'buffer_zeroization=true',
   'runtime_buffer_zeroization=true',
@@ -123,6 +124,9 @@ for (const requiredLifecycleSnippet of [
   'const keyMaterial = await provider.subtle.importKey',
   'createJournalCryptoKeyHandle',
   'disposeJournalCryptoKey',
+  'revokedJournalKeys',
+  'Journal crypto key has been disposed',
+  'Journal crypto key was not derived by client-side journal key derivation',
   'runJournalCryptoSelfTest',
 ]) {
   if (!source.includes(requiredLifecycleSnippet)) {
@@ -196,7 +200,10 @@ for (const requiredWebKeyLifecycleSnippet of [
   'createJournalCryptoKeyHandle',
   'getJournalCryptoKey',
   'disposeJournalCryptoKey',
+  'revokedJournalKeys',
   'Journal crypto key handle has been disposed',
+  'Journal crypto key has been disposed',
+  'Journal crypto key was not derived by client-side journal key derivation',
 ]) {
   if (!webCryptoSource.includes(requiredWebKeyLifecycleSnippet)) {
     throw new Error(`web journal crypto missing disposable key handle control: ${requiredWebKeyLifecycleSnippet}`);
@@ -220,6 +227,9 @@ for (const requiredMobileCryptoSmokeSnippet of [
   'journal key derivation rejects blank passphrase or server salt',
   'non-extractable',
   'disposed handles cannot encrypt',
+  'disposing a handle must revoke stale raw key references',
+  'journal encryption rejects keys not derived by the journal crypto module',
+  'mobile_crypto_revoked_key_rejected=true',
   'local smoke reports WebCrypto fallback as non-production provider',
   'production native-required mode fails closed',
   'journal crypto self-test emits native-device evidence markers',
@@ -244,6 +254,9 @@ for (const requiredWebCryptoSmokeSnippet of [
   'web journal key derivation rejects blank passphrase or server salt',
   'non-extractable',
   'web journal key handles dispose active key references',
+  'disposing a handle must revoke stale raw key references',
+  'web journal encryption rejects keys not derived by the journal crypto module',
+  'web_crypto_revoked_key_rejected=true',
   'disposed web journal plaintext',
 ]) {
   if (!webCryptoSmokeSource.includes(requiredWebCryptoSmokeSnippet)) {
@@ -453,6 +466,36 @@ try {
 if (!disposedHandleRejected) {
   throw new Error('journal key lifecycle allowed encryption after disposal');
 }
+let revokedKeyRejected = false;
+try {
+  await encryptJournalData(plaintext, key);
+} catch (error) {
+  revokedKeyRejected = /disposed/.test(error.message);
+}
+if (!revokedKeyRejected) {
+  throw new Error('journal key lifecycle allowed encryption with a stale raw key after disposal');
+}
+
+const untrackedKey = await webcrypto.subtle.importKey(
+  'raw',
+  webcrypto.getRandomValues(new Uint8Array(32)),
+  { name: 'AES-GCM' },
+  false,
+  ['encrypt', 'decrypt'],
+);
+let untrackedKeyRejected = false;
+try {
+  await encryptJournalData('untracked journal key plaintext', untrackedKey);
+} catch (error) {
+  untrackedKeyRejected = /not derived by client-side journal key derivation/.test(error.message);
+}
+if (!untrackedKeyRejected) {
+  throw new Error('journal crypto accepted a key that was not derived by the journal crypto module');
+}
+const fallbackKeyForNativeRequired = await deriveIsolationKey(
+  'correct horse battery staple',
+  'journal:v1:fallback-key-native-required',
+);
 
 const previousNativeRequired = process.env.EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO;
 try {
@@ -552,7 +595,7 @@ try {
   execute(requireWithoutQuickCrypto, nativeRequiredModule, nativeRequiredModule.exports, Buffer);
   let fallbackKeyRejected = false;
   try {
-    await loadedModule.exports.encryptJournalData(plaintext, key);
+    await loadedModule.exports.encryptJournalData(plaintext, fallbackKeyForNativeRequired);
   } catch (error) {
     fallbackKeyRejected = /required native provider/.test(error.message);
   }

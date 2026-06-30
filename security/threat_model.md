@@ -1,6 +1,6 @@
 # ScriptureForgeAI Production Threat Model
 
-Status last updated: 2026-06-25
+Status last updated: 2026-06-30
 
 ## Scope
 
@@ -33,7 +33,7 @@ This is a repo-local threat model. It does not replace staging evidence for AWS 
 | Spoofing | User/admin identity, WebSocket participants, Zoom webhooks | JWT claim verification, privileged-role TOTP enforcement, refresh rotation/revocation, WebSocket JWT checks, Zoom signature verification | Clean pushed CI, staging auth abuse telemetry, live Zoom webhook delivery proof |
 | Tampering | Journal payloads, room events, AI citations, deployment config | Strict journal payload decoding, encrypted-only journal storage, room event envelopes, Redis Lua sequence mutation, citation verification, Terraform invariant validator | Staging Redis ordering proof, deployed config drift monitoring |
 | Repudiation | Auth, AI generation, room/socket incidents, Zoom callbacks | JSON access logs with trace IDs, `/metrics`, `ai_request_logs`, `citation_trails`, webhook idempotency records | Deployed log/metric/trace retention, dashboard import, alert delivery |
-| Information Disclosure | Tenant data, journal plaintext, secrets, provider responses | PostgreSQL RLS, tenant handler tests, AES-GCM client crypto, passphrase/salt byte wiping, disposable journal key handles, plaintext journal rejection, secret hygiene scanning, IRSA/CSI skeleton | Staging secret sync proof, native-device crypto validation, cloud access review |
+| Information Disclosure | Tenant data, journal plaintext, secrets, provider responses | PostgreSQL RLS, tenant handler tests, AES-GCM client crypto, passphrase/salt byte wiping, disposable journal key handles with stale-key revocation, plaintext journal rejection, secret hygiene scanning, IRSA/CSI skeleton | Staging secret sync proof, native-device crypto validation, cloud access review |
 | Denial of Service | Auth, AI, journal, rooms, WebSockets, dependencies | Configurable route/socket abuse limits with bounded identity buckets, bounded HTTP clients, WebSocket frame limits/deadlines, circuit breaker for Zoom, local load harness | Staging load test against real ingress/API/Redis/Postgres/AI, rate-limit observation under real client identity |
 | Elevation of Privilege | Tenant boundaries, privileged roles, workload secret access | RLS on tenant tables, `auth.SetTenantContext`, role-forcing registration tests, privileged MFA, least-privilege Secrets Manager IAM skeleton | Staging IAM/IRSA proof, clean SAST/SCA/TruffleHog results, threat-model review signoff |
 
@@ -41,7 +41,7 @@ This is a repo-local threat model. It does not replace staging evidence for AWS 
 
 - Tenant isolation: `tests/integration/tenant_handler_rls_test.go` and `tests/integration/table_rls_test.go` cover same-tenant success and cross-tenant denial for handler paths and tenant tables.
 - Auth/session: `tests/integration/auth_session_test.go` and `cmd/platform-engine/routes_test.go` cover canonical and legacy routes, registration role forcing, short access-token TTL, refresh rotation/revocation, logout, privileged MFA, and auth abuse buckets.
-- Journal confidentiality: backend journal handlers reject plaintext/passphrase fields, persist ciphertext-only entries, and deny cross-user/cross-tenant reads; `tools/verify-journal-crypto.mjs` checks AES-GCM behavior, non-extractable keys, derivation byte wiping, and disposed key-handle rejection in the Node-backed mobile crypto harness.
+- Journal confidentiality: backend journal handlers reject plaintext/passphrase fields, persist ciphertext-only entries, and deny cross-user/cross-tenant reads; `tools/verify-journal-crypto.mjs` checks AES-GCM behavior, non-extractable keys, derivation byte wiping, disposed key-handle rejection, stale raw-key revocation, and untracked-key rejection in the Node-backed mobile/web crypto harness.
 - WebSocket integrity: `internal/ports/rooms_realtime_test.go`, `internal/domain/room/redis_lua_test.go`, and `tools/loadtest` cover membership-gated events, rejected invalid frames, reconnect behavior, HTTP polling, and Redis-backed ordering.
 - AI safety/auditability: `internal/adapters/llm/client_test.go` and `internal/ports/ai_audit_integration_test.go` cover missing-key failure, timeouts, citation-free/hallucinated-citation rejection, and audit persistence without live provider calls.
 - Zoom resilience: `internal/adapters/integration_zoom/*_test.go` covers timeouts, circuit-open fallback, signature denial, duplicate webhook safety, and meeting-to-room mapping.

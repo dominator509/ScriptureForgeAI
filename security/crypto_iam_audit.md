@@ -1,6 +1,6 @@
 # Cryptography, Identity, and IAM Audit
 
-Status last updated: 2026-06-25
+Status last updated: 2026-06-30
 
 ## Authentication And Sessions
 
@@ -26,6 +26,7 @@ Local evidence is in `tests/integration/tenant_handler_rls_test.go` and `tests/i
 - Journal plaintext and passphrases are client-side only.
 - Backend journal handlers reject unknown plaintext/passphrase fields and persist encrypted payload metadata only.
 - Web/mobile journal flows use AES-GCM with PBKDF2-derived, non-extractable key handles in the current harness.
+- Web/mobile encryption rejects stale raw key references after disposable handle disposal and rejects keys not derived by the journal crypto module.
 - Mobile derivation wipes passphrase and salt byte buffers in a `finally` path after PBKDF2 setup.
 - Mobile journal UI stores keys through disposable handles, clears replaced/unmounted key references, and rejects disposed-handle encryption.
 - Mobile production readiness still requires EAS/native-device proof for the native crypto binding outside Node/WebCrypto shims.

@@ -37,6 +37,7 @@ test('journal crypto proof markers cover native provider binding and harness che
   );
   assert.ok(journalCryptoProofMarkers.includes('blank_key_input_rejected=true'));
   assert.ok(journalCryptoProofMarkers.includes('associated_data_salt_binding=true'));
+  assert.ok(journalCryptoProofMarkers.includes('revoked_key_rejected=true'));
   assert.ok(journalCryptoProofMarkers.includes('runtime_buffer_zeroization=true'));
   assert.ok(journalCryptoProofMarkers.includes('native_device_self_test_export=true'));
   assert.ok(journalCryptoProofMarkers.includes('native_device_self_test_markers=true'));

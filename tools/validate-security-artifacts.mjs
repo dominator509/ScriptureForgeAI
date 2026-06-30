@@ -35,7 +35,7 @@ export const stalePhrases = [
 
 export const requiredCoverage = {
   'security/threat_model.md': [
-    'Status last updated: 2026-06-25',
+    'Status last updated: 2026-06-30',
     'STRIDE Analysis',
     'Trust Boundaries',
     'Spoofing',
@@ -44,6 +44,7 @@ export const requiredCoverage = {
     'Information Disclosure',
     'passphrase/salt byte wiping',
     'disposable journal key handles',
+    'stale-key revocation',
     'Denial of Service',
     'Elevation of Privilege',
     'Residual Risks Blocking Production Claim',
@@ -56,6 +57,7 @@ export const requiredCoverage = {
     'Journal plaintext and passphrases are client-side only',
     'wipes passphrase and salt byte buffers',
     'disposable handles',
+    'stale raw key references',
     'IRSA',
     'Secrets Store CSI',
   ],

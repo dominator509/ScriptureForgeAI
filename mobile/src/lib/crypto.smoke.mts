@@ -24,6 +24,7 @@ const mobileCryptoSmokeProofMarkers = [
   'mobile_crypto_native_required_fail_closed=true',
   'mobile_crypto_native_required_self_test_fail_closed=true',
   'mobile_crypto_self_test_markers=true',
+  'mobile_crypto_revoked_key_rejected=true',
 ];
 
 beforeEach(() => {
@@ -107,6 +108,26 @@ test('journal keys are non-extractable and disposed handles cannot encrypt', asy
   await assert.rejects(
     async () => encryptJournalData(plaintext, getJournalCryptoKey(handle)),
     /disposed/,
+  );
+  await assert.rejects(
+    () => encryptJournalData('stale mobile key reference after disposal', key),
+    /disposed/,
+    'disposing a handle must revoke stale raw key references',
+  );
+});
+
+test('journal encryption rejects keys not derived by the journal crypto module', async () => {
+  const importedKey = await webcrypto.subtle.importKey(
+    'raw',
+    webcrypto.getRandomValues(new Uint8Array(32)),
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt', 'decrypt'],
+  );
+
+  await assert.rejects(
+    () => encryptJournalData('untracked mobile key plaintext', importedKey),
+    /not derived by client-side journal key derivation/,
   );
 });
 

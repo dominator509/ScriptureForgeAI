@@ -13,6 +13,8 @@ export interface JournalCryptoKeyHandle {
 }
 
 export const JOURNAL_PBKDF2_ITERATIONS = 600000;
+const derivedJournalKeys = new WeakSet<CryptoKey>();
+const revokedJournalKeys = new WeakSet<CryptoKey>();
 
 export function journalAssociatedData(saltID: string, saltVersion: number): string {
     return `scriptureforge-journal:v1:salt_id=${saltID}:salt_version=${saltVersion}`;
@@ -65,7 +67,7 @@ export async function deriveIsolationKey(passphrase: string, salt: string): Prom
     );
     try {
         // Match the architecture's journal key-derivation work factor.
-        return await window.crypto.subtle.deriveKey(
+        const key = await window.crypto.subtle.deriveKey(
             {
                 name: "PBKDF2",
                 salt: saltBytes,
@@ -77,6 +79,8 @@ export async function deriveIsolationKey(passphrase: string, salt: string): Prom
             false,
             ["encrypt", "decrypt"] as CryptoKeyUsage[]
         );
+        derivedJournalKeys.add(key);
+        return key;
     } finally {
         passphraseBytes.fill(0);
         saltBytes.fill(0);
@@ -96,8 +100,20 @@ export function getJournalCryptoKey(handle: JournalCryptoKeyHandle): CryptoKey {
 
 export function disposeJournalCryptoKey(handle: JournalCryptoKeyHandle | null): void {
     if (!handle) return;
+    if (handle.key) {
+        revokedJournalKeys.add(handle.key);
+    }
     handle.key = null;
     handle.disposed = true;
+}
+
+function assertUsableJournalCryptoKey(key: CryptoKey): void {
+    if (revokedJournalKeys.has(key)) {
+        throw new Error("Journal crypto key has been disposed");
+    }
+    if (!derivedJournalKeys.has(key)) {
+        throw new Error("Journal crypto key was not derived by client-side journal key derivation");
+    }
 }
 
 /**
@@ -105,6 +121,7 @@ export function disposeJournalCryptoKey(handle: JournalCryptoKeyHandle | null): 
  * This guarantees zero-knowledge containment before network transmission.
  */
 export async function encryptJournalData(plaintext: string, key: CryptoKey, associatedData?: string): Promise<EncryptedPayload> {
+    assertUsableJournalCryptoKey(key);
     const encoder = new TextEncoder();
     const plaintextBytes = encoder.encode(plaintext);
     const associatedDataBytes = associatedData ? encoder.encode(associatedData) : undefined;
@@ -136,6 +153,7 @@ export async function encryptJournalData(plaintext: string, key: CryptoKey, asso
  * Decrypts an opaque AES-GCM payload back into plaintext entirely client-side.
  */
 export async function decryptJournalData(payload: EncryptedPayload, key: CryptoKey, associatedData?: string): Promise<string> {
+    assertUsableJournalCryptoKey(key);
     const decoder = new TextDecoder();
     const encoder = new TextEncoder();
     const ivBuffer = base64ToBuffer(payload.iv);

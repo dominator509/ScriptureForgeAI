@@ -83,6 +83,7 @@ interface SelectedCryptoProvider {
 }
 
 const keyProviders = new WeakMap<JournalCryptoKey, SelectedCryptoProvider>();
+const revokedJournalKeys = new WeakSet<JournalCryptoKey>();
 
 function getGlobalCrypto(): CryptoProvider | null {
   const candidate = (globalThis as { crypto?: CryptoProvider }).crypto;
@@ -129,7 +130,13 @@ function getSelectedCryptoProvider(): SelectedCryptoProvider {
 }
 
 function getCryptoProviderForKey(key: JournalCryptoKey): CryptoProvider {
-  const selected = keyProviders.get(key) ?? getSelectedCryptoProvider();
+  if (revokedJournalKeys.has(key)) {
+    throw new Error('Journal crypto key has been disposed');
+  }
+  const selected = keyProviders.get(key);
+  if (!selected) {
+    throw new Error('Journal crypto key was not derived by client-side journal key derivation');
+  }
   if (requiresNativeCrypto() && selected.name !== 'react-native-quick-crypto') {
     throw new Error('Journal crypto key was not derived by the required native provider');
   }
@@ -231,6 +238,9 @@ export function getJournalCryptoKey(handle: JournalCryptoKeyHandle): JournalCryp
 
 export function disposeJournalCryptoKey(handle: JournalCryptoKeyHandle | null): void {
   if (!handle) return;
+  if (handle.key) {
+    revokedJournalKeys.add(handle.key);
+  }
   handle.key = null;
   handle.disposed = true;
 }

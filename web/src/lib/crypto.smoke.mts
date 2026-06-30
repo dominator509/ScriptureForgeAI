@@ -19,6 +19,7 @@ const webCryptoSmokeProofMarkers = [
   'web_crypto_associated_data=true',
   'web_crypto_pbkdf2_600000=true',
   'web_crypto_key_disposal=true',
+  'web_crypto_revoked_key_rejected=true',
 ];
 
 beforeEach(() => {
@@ -99,6 +100,26 @@ test('web journal key handles dispose active key references', async () => {
   await assert.rejects(
     async () => encryptJournalData('disposed web journal plaintext', getJournalCryptoKey(handle)),
     /disposed/,
+  );
+  await assert.rejects(
+    () => encryptJournalData('stale web key reference after disposal', key),
+    /disposed/,
+    'disposing a handle must revoke stale raw key references',
+  );
+});
+
+test('web journal encryption rejects keys not derived by the journal crypto module', async () => {
+  const importedKey = await webcrypto.subtle.importKey(
+    'raw',
+    webcrypto.getRandomValues(new Uint8Array(32)),
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt', 'decrypt'],
+  );
+
+  await assert.rejects(
+    () => encryptJournalData('untracked web key plaintext', importedKey),
+    /not derived by client-side journal key derivation/,
   );
 });
 
