@@ -145,6 +145,14 @@ test('validateLocalGateReport rejects RLS DB reports without semantic proof mark
     () => validateLocalGateReport(missingSemanticMarker),
     /rls-db-integration output must include rls_table_journal_entries=true/,
   );
+
+  const missingHandlerWriteMarker = completeReport();
+  findGate(missingHandlerWriteMarker, 'rls-db-integration').stdout_tail = rlsProofOutput()
+    .replace(', journal_handler_cross_tenant_write_denied=true', '');
+  assert.throws(
+    () => validateLocalGateReport(missingHandlerWriteMarker),
+    /rls-db-integration output must include journal_handler_cross_tenant_write_denied=true/,
+  );
 });
 
 test('validateLocalGateReport rejects production evidence probe reports without wrapper proof markers', () => {

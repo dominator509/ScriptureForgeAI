@@ -290,6 +290,24 @@ func TestTenantScopedJournalHandlersEnforceRLS(t *testing.T) {
 	if mismatchedClaimRecorder.Code == http.StatusCreated {
 		t.Fatal("mismatched tenant/user claims created a cross-tenant journal entry")
 	}
+	setTenantForTest(ctx, t, db, tenantOrgA, func(ctx context.Context, tx pgx.Tx) {
+		var count int
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM journal_entries WHERE organization_id = $1 AND salt_id = 'journal:v1:test-a'`, tenantOrgA).Scan(&count); err != nil {
+			t.Fatalf("count tenant A journals after mismatched create: %v", err)
+		}
+		if count != 1 {
+			t.Fatalf("tenant A journal count after mismatched create = %d, want original one row", count)
+		}
+	})
+	setTenantForTest(ctx, t, db, tenantOrgB, func(ctx context.Context, tx pgx.Tx) {
+		var count int
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM journal_entries WHERE organization_id = $1 AND salt_id = 'journal:v1:test-a'`, tenantOrgB).Scan(&count); err != nil {
+			t.Fatalf("count tenant B journals after mismatched create: %v", err)
+		}
+		if count != 0 {
+			t.Fatalf("mismatched tenant/user journal create persisted %d tenant B rows, want 0", count)
+		}
+	})
 }
 
 func TestTenantScopedRoomActiveHandlerEnforcesRLS(t *testing.T) {
