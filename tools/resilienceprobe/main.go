@@ -24,6 +24,10 @@ var (
 	rpoMinutesPattern             = regexp.MustCompile(`(?i)\brpo_minutes=([0-9]+)\b`)
 	rtoMinutesPattern             = regexp.MustCompile(`(?i)\brto_minutes=([0-9]+)\b`)
 	restoreDurationMinutesPattern = regexp.MustCompile(`(?i)\brestore_duration_minutes=([0-9]+)\b`)
+	aiFaultPattern                = regexp.MustCompile(`(?i)\bai_fault=true\b`)
+	zoomOfflineFallbackPattern    = regexp.MustCompile(`(?i)\bzoom_offline_fallback=true\b`)
+	nonAIRoutesHealthyPattern     = regexp.MustCompile(`(?i)\bnon_ai_routes_healthy=true\b`)
+	zoomCircuitOpenPattern        = regexp.MustCompile(`(?i)\bzoom_circuit_open=true\b`)
 )
 
 type config struct {
@@ -62,6 +66,10 @@ type probeResult struct {
 	RPOMinutes             int    `json:"rpo_minutes,omitempty"`
 	RTOMinutes             int    `json:"rto_minutes,omitempty"`
 	RestoreDurationMinutes int    `json:"restore_duration_minutes,omitempty"`
+	AIFault                bool   `json:"ai_fault,omitempty"`
+	ZoomOfflineFallback    bool   `json:"zoom_offline_fallback,omitempty"`
+	NonAIRoutesHealthy     bool   `json:"non_ai_routes_healthy,omitempty"`
+	ZoomCircuitOpen        bool   `json:"zoom_circuit_open,omitempty"`
 	ResultSummary          string `json:"result_summary"`
 }
 
@@ -185,7 +193,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 			probeReadyOrArtifact(client, "api-ready-before-rollback", cfg.APIReadyBeforeURL, append([]string{"ready", "deployment_environment", "pre_rollback_version"}, releaseMarkers...)),
 			probeArtifact(client, "rollback-rollout-artifact", cfg.RolloutArtifactURL, append([]string{"rollout", "undo", "revision", "previous_revision", "target_revision", "scriptureforge-api", "successfully rolled out"}, releaseMarkers...)),
 			probeReadyOrArtifact(client, "api-ready-after-rollback", cfg.APIReadyAfterURL, append([]string{"ready", "deployment_environment", "post_rollback_version", "rolled_back_from", "rolled_back_to"}, releaseMarkers...)),
-			probeArtifact(client, "degradation-drill-artifact", cfg.DegradationDrillURL, append([]string{"AI", "Zoom", "degradation", "fallback", "AI_ORCHESTRATION_ENGINE_FAULT", "offline://in-person", "non-AI routes healthy", "zoom circuit open", "distinct_rollback_artifacts=true"}, releaseMarkers...)),
+			probeArtifact(client, "degradation-drill-artifact", cfg.DegradationDrillURL, append([]string{"AI", "Zoom", "degradation", "fallback", "AI_ORCHESTRATION_ENGINE_FAULT", "offline://in-person", "non-AI routes healthy", "zoom circuit open", "ai_fault=true", "zoom_offline_fallback=true", "non_ai_routes_healthy=true", "zoom_circuit_open=true", "distinct_rollback_artifacts=true"}, releaseMarkers...)),
 		)
 		evidenceItems = append(evidenceItems, "DR-ROLLBACK-001")
 	}
@@ -253,6 +261,10 @@ func probeArtifact(client *http.Client, name, target string, required []string) 
 		result.Passed = false
 		result.ResultSummary += fmt.Sprintf("; restore_duration_minutes %d exceeds rto_minutes %d", result.RestoreDurationMinutes, result.RTOMinutes)
 	}
+	if name == "degradation-drill-artifact" && (!result.AIFault || !result.ZoomOfflineFallback || !result.NonAIRoutesHealthy || !result.ZoomCircuitOpen) {
+		result.Passed = false
+		result.ResultSummary += "; structured ai_fault, zoom_offline_fallback, non_ai_routes_healthy, or zoom_circuit_open missing"
+	}
 	result.ResultSummary += resilienceStructuredSummaryMarkers(result)
 	return result
 }
@@ -269,6 +281,11 @@ func resilienceStructuredSummaryMarkers(result probeResult) string {
 			return ""
 		}
 		return fmt.Sprintf("; restore_job_id=%s source snapshot_id=%s rto_minutes=%d restore_duration_minutes=%d", result.RestoreJobID, result.SourceSnapshotID, result.RTOMinutes, result.RestoreDurationMinutes)
+	case "degradation-drill-artifact":
+		if !result.AIFault || !result.ZoomOfflineFallback || !result.NonAIRoutesHealthy || !result.ZoomCircuitOpen {
+			return ""
+		}
+		return "; ai_fault=true zoom_offline_fallback=true non_ai_routes_healthy=true zoom_circuit_open=true"
 	default:
 		return ""
 	}
@@ -304,6 +321,11 @@ func applyStructuredProbeFields(result *probeResult, text string) {
 		result.SourceSnapshotID = extractStringField(sourceSnapshotIDPattern, text)
 		result.RTOMinutes = extractPositiveIntField(rtoMinutesPattern, text)
 		result.RestoreDurationMinutes = extractPositiveIntField(restoreDurationMinutesPattern, text)
+	case "degradation-drill-artifact":
+		result.AIFault = aiFaultPattern.MatchString(text)
+		result.ZoomOfflineFallback = zoomOfflineFallbackPattern.MatchString(text)
+		result.NonAIRoutesHealthy = nonAIRoutesHealthyPattern.MatchString(text)
+		result.ZoomCircuitOpen = zoomCircuitOpenPattern.MatchString(text)
 	}
 }
 

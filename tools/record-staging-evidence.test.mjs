@@ -215,7 +215,7 @@ const resilienceProbeMarkerSummaries = {
   'api-ready-before-rollback': 'got HTTP 200; staging artifact; verified markers: ready, service_version, deployment_environment, pre_rollback_version, release_candidate=abc123, service_version=scriptureforge-api:abc123',
   'rollback-rollout-artifact': 'got HTTP 200; staging artifact; verified markers: rollout, undo, revision, previous_revision, target_revision, scriptureforge-api, successfully rolled out, release_candidate=abc123, service_version=scriptureforge-api:abc123',
   'api-ready-after-rollback': 'got HTTP 200; staging artifact; verified markers: ready, service_version, deployment_environment, post_rollback_version, rolled_back_from, rolled_back_to, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'degradation-drill-artifact': 'got HTTP 200; staging artifact; verified markers: AI, Zoom, degradation, fallback, AI_ORCHESTRATION_ENGINE_FAULT, offline://in-person, non-AI routes healthy, zoom circuit open, distinct_rollback_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123',
+  'degradation-drill-artifact': 'got HTTP 200; staging artifact; verified markers: AI, Zoom, degradation, fallback, AI_ORCHESTRATION_ENGINE_FAULT, offline://in-person, non-AI routes healthy, zoom circuit open, ai_fault=true, zoom_offline_fallback=true, non_ai_routes_healthy=true, zoom_circuit_open=true, distinct_rollback_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123; ai_fault=true zoom_offline_fallback=true non_ai_routes_healthy=true zoom_circuit_open=true',
   'backup-snapshot-artifact': 'got HTTP 200; staging artifact; verified markers: snapshot, snapshot_id=snap-123, available, encrypted, kms, retention, automated backup, source cluster, rpo_minutes=15, release_candidate=abc123, service_version=scriptureforge-api:abc123',
   'restore-drill-artifact': 'got HTTP 200; staging artifact; verified markers: restore, restore_job_id=restore-456, available, staging, restored endpoint, source snapshot_id=snap-123, checksum, isolated restore, rto_minutes=30, restore_duration_minutes=18, release_candidate=abc123, service_version=scriptureforge-api:abc123',
   'restored-database-smoke': 'got HTTP 200; staging artifact; verified markers: smoke passed, restored database, tenant, journal, auth, RLS, migration version, no plaintext journal, distinct_backup_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123',
@@ -250,6 +250,20 @@ function resilienceProbeReportProbe(name, overrides = {}) {
     }
     if (!Object.hasOwn(overrides, 'restore_duration_minutes')) {
       probe.restore_duration_minutes = 18;
+    }
+  }
+  if (name === 'degradation-drill-artifact') {
+    if (!Object.hasOwn(overrides, 'ai_fault')) {
+      probe.ai_fault = true;
+    }
+    if (!Object.hasOwn(overrides, 'zoom_offline_fallback')) {
+      probe.zoom_offline_fallback = true;
+    }
+    if (!Object.hasOwn(overrides, 'non_ai_routes_healthy')) {
+      probe.non_ai_routes_healthy = true;
+    }
+    if (!Object.hasOwn(overrides, 'zoom_circuit_open')) {
+      probe.zoom_circuit_open = true;
     }
   }
   return probe;
@@ -6458,15 +6472,11 @@ test('recordEvidence rejects rollback evidence with duplicate artifact URLs', ()
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
         evidence_items: ['DR-ROLLBACK-001'],
-        probes: probeNames.map((name) => ({
-          name,
-          passed: true,
-          target: name === 'degradation-drill-artifact'
-            ? 'https://artifacts.staging.scriptureforge.ai/resilience/rollback-rollout-artifact.txt'
-            : `https://artifacts.staging.scriptureforge.ai/resilience/${name}.txt`,
-          status_code: 200,
-          result_summary: resilienceProbeMarkerSummaries[name],
-        })),
+        probes: resilienceProbeReportProbes(probeNames, (name) => (
+          name === 'degradation-drill-artifact'
+            ? { target: 'https://artifacts.staging.scriptureforge.ai/resilience/rollback-rollout-artifact.txt' }
+            : {}
+        )),
       },
       'artifacts/resilienceprobe.json',
       'go run ./tools/resilienceprobe -probe-rollback',
@@ -6591,6 +6601,35 @@ test('recordEvidence rejects rollback evidence without distinct artifact marker'
       'go run ./tools/resilienceprobe -probe-rollback',
     ),
     /degradation-drill-artifact result_summary must include verified marker distinct_rollback_artifacts=true/,
+  );
+});
+
+test('recordEvidence rejects rollback degradation evidence without structured fallback fields', () => {
+  const probeNames = [
+    'api-ready-before-rollback',
+    'rollback-rollout-artifact',
+    'api-ready-after-rollback',
+    'degradation-drill-artifact',
+  ];
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DR-ROLLBACK-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['DR-ROLLBACK-001'],
+        probes: resilienceProbeReportProbes(probeNames, (name) => (
+          name === 'degradation-drill-artifact'
+            ? { ai_fault: undefined }
+            : {}
+        )),
+      },
+      'artifacts/resilienceprobe.json',
+      'go run ./tools/resilienceprobe -probe-rollback',
+    ),
+    /degradation-drill-artifact probe must include structured ai_fault=true/,
   );
 });
 

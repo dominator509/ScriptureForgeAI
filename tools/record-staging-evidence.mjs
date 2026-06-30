@@ -275,7 +275,7 @@ const requiredResilienceProbeSummaryMarkers = new Map([
   ['api-ready-before-rollback', ['staging artifact', 'ready', 'service_version', 'deployment_environment', 'pre_rollback_version', 'release_candidate']],
   ['rollback-rollout-artifact', ['staging artifact', 'rollout', 'undo', 'revision', 'previous_revision', 'target_revision', 'scriptureforge-api', 'successfully rolled out']],
   ['api-ready-after-rollback', ['staging artifact', 'ready', 'service_version', 'deployment_environment', 'post_rollback_version', 'rolled_back_from', 'rolled_back_to']],
-  ['degradation-drill-artifact', ['staging artifact', 'AI', 'Zoom', 'degradation', 'fallback', 'AI_ORCHESTRATION_ENGINE_FAULT', 'offline://in-person', 'non-AI routes healthy', 'zoom circuit open', 'distinct_rollback_artifacts=true']],
+  ['degradation-drill-artifact', ['staging artifact', 'AI', 'Zoom', 'degradation', 'fallback', 'AI_ORCHESTRATION_ENGINE_FAULT', 'offline://in-person', 'non-AI routes healthy', 'zoom circuit open', 'ai_fault=true', 'zoom_offline_fallback=true', 'non_ai_routes_healthy=true', 'zoom_circuit_open=true', 'distinct_rollback_artifacts=true']],
   ['backup-snapshot-artifact', ['staging artifact', 'snapshot', 'snapshot_id', 'available', 'encrypted', 'kms', 'retention', 'automated backup', 'source cluster', 'rpo_minutes']],
   ['restore-drill-artifact', ['staging artifact', 'restore', 'restore_job_id', 'available', 'staging', 'restored endpoint', 'source snapshot_id', 'checksum', 'isolated restore', 'rto_minutes', 'restore_duration_minutes']],
   ['restored-database-smoke', ['staging artifact', 'smoke passed', 'restored database', 'tenant', 'journal', 'auth', 'RLS', 'migration version', 'no plaintext journal', 'distinct_backup_artifacts=true']],
@@ -2043,6 +2043,18 @@ function validateResilienceEvidence(report, manifest) {
         `source snapshot_id=${sourceSnapshotID}`,
         `rto_minutes=${probe.rto_minutes}`,
         `restore_duration_minutes=${probe.restore_duration_minutes}`,
+      ]);
+    }
+    if (probe.name === 'degradation-drill-artifact') {
+      assert.equal(probe.ai_fault, true, 'degradation-drill-artifact probe must include structured ai_fault=true');
+      assert.equal(probe.zoom_offline_fallback, true, 'degradation-drill-artifact probe must include structured zoom_offline_fallback=true');
+      assert.equal(probe.non_ai_routes_healthy, true, 'degradation-drill-artifact probe must include structured non_ai_routes_healthy=true');
+      assert.equal(probe.zoom_circuit_open, true, 'degradation-drill-artifact probe must include structured zoom_circuit_open=true');
+      assertSummaryIncludesMarkers(probe.name, String(probe.result_summary ?? ''), [
+        'ai_fault=true',
+        'zoom_offline_fallback=true',
+        'non_ai_routes_healthy=true',
+        'zoom_circuit_open=true',
       ]);
     }
   }

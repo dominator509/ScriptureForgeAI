@@ -2694,10 +2694,10 @@ test('validateManifest strict release rejects degradation proof borrowed from ro
   item.evidence[0].result_summary = item.evidence[0].result_summary
     .replace(
       'rollback-rollout-artifact staging artifact rollout',
-      'rollback-rollout-artifact AI Zoom degradation fallback AI_ORCHESTRATION_ENGINE_FAULT offline://in-person non-AI routes healthy zoom circuit open distinct_rollback_artifacts=true staging artifact rollout',
+      'rollback-rollout-artifact AI Zoom degradation fallback AI_ORCHESTRATION_ENGINE_FAULT offline://in-person non-AI routes healthy zoom circuit open ai_fault=true zoom_offline_fallback=true non_ai_routes_healthy=true zoom_circuit_open=true distinct_rollback_artifacts=true staging artifact rollout',
     )
     .replace(
-      'degradation-drill-artifact staging artifact AI Zoom degradation fallback AI_ORCHESTRATION_ENGINE_FAULT offline://in-person non-AI routes healthy zoom circuit open distinct_rollback_artifacts=true release_candidate=',
+      'degradation-drill-artifact staging artifact AI Zoom degradation fallback AI_ORCHESTRATION_ENGINE_FAULT offline://in-person non-AI routes healthy zoom circuit open ai_fault=true zoom_offline_fallback=true non_ai_routes_healthy=true zoom_circuit_open=true distinct_rollback_artifacts=true release_candidate=',
       'degradation-drill-artifact release_candidate=',
     );
 
@@ -2715,6 +2715,21 @@ test('validateManifest strict release rejects rollback evidence without distinct
   const item = manifest.items.find((candidate) => candidate.id === 'DR-ROLLBACK-001');
   item.evidence[0].result_summary = item.evidence[0].result_summary
     .replace(' distinct_rollback_artifacts=true', '');
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /DR-ROLLBACK-001 strict release evidence must include a tools\/resilienceprobe JSON report/,
+  );
+});
+
+test('validateManifest strict release rejects rollback degradation evidence without structured fallback marker', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'DR-ROLLBACK-001');
+  item.evidence[0].result_summary = item.evidence[0].result_summary
+    .replace(' ai_fault=true', '');
 
   assert.throws(
     () => validateManifest(manifest, { strictRelease: true }),
@@ -3883,7 +3898,7 @@ function passedEvidenceFor(id) {
       : id === 'SEC-DBUSER-001'
         ? 'SEC-DBUSER-001 securityprobe passed: database-scoped-user staging artifact connected as scriptureforge_app current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grants=SELECT,INSERT,UPDATE,DELETE release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567'
       : id === 'DR-ROLLBACK-001'
-        ? 'DR-ROLLBACK-001 resilienceprobe passed: api-ready-before-rollback staging artifact ready service_version deployment_environment pre_rollback_version release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567; rollback-rollout-artifact staging artifact rollout undo revision previous_revision target_revision scriptureforge-api successfully rolled out release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567; api-ready-after-rollback staging artifact ready service_version deployment_environment post_rollback_version rolled_back_from rolled_back_to release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567; degradation-drill-artifact staging artifact AI Zoom degradation fallback AI_ORCHESTRATION_ENGINE_FAULT offline://in-person non-AI routes healthy zoom circuit open distinct_rollback_artifacts=true release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567'
+        ? 'DR-ROLLBACK-001 resilienceprobe passed: api-ready-before-rollback staging artifact ready service_version deployment_environment pre_rollback_version release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567; rollback-rollout-artifact staging artifact rollout undo revision previous_revision target_revision scriptureforge-api successfully rolled out release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567; api-ready-after-rollback staging artifact ready service_version deployment_environment post_rollback_version rolled_back_from rolled_back_to release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567; degradation-drill-artifact staging artifact AI Zoom degradation fallback AI_ORCHESTRATION_ENGINE_FAULT offline://in-person non-AI routes healthy zoom circuit open ai_fault=true zoom_offline_fallback=true non_ai_routes_healthy=true zoom_circuit_open=true distinct_rollback_artifacts=true release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567'
       : id === 'DR-BACKUP-001'
         ? 'DR-BACKUP-001 resilienceprobe passed: backup-snapshot-artifact staging artifact snapshot snapshot_id=snap-123 available encrypted kms retention automated backup source cluster rpo_minutes=15 release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567; restore-drill-artifact staging artifact restore restore_job_id=restore-456 available staging restored endpoint source snapshot_id=snap-123 checksum isolated restore rto_minutes=30 restore_duration_minutes=18 release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567; restored-database-smoke staging artifact smoke passed restored database tenant journal auth RLS migration version no plaintext journal distinct_backup_artifacts=true release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567'
       : id === 'ABUSE-LIMIT-001'
