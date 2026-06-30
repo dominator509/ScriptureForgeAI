@@ -8,14 +8,32 @@ export const requiredGates = [
   'TruffleHog Secret Scanning',
 ];
 
+export const ciReleaseEvidenceProofMarkers = [
+  'full_commit_sha_required=true',
+  'github_run_provenance_required=true',
+  'source_control_clean_verified=true',
+  'source_control_untracked_clean_verified=true',
+  'github_run_attempt_provenance_required=true',
+  'exact_sha_required_gates_scope=true',
+  'local_gate_markers_included=true',
+  'staging_gap_report_footer_contract_required=true',
+  'staging_gap_report_required_evidence_contract_required=true',
+  'trufflehog_marker_included=true',
+  'success_conclusion_required=true',
+];
+
 export function buildReleaseEvidence(env = process.env) {
   const workflow = env.GITHUB_WORKFLOW ?? 'Security Pipeline Verification';
   const job = env.GITHUB_JOB ?? 'security-audit';
   const sha = env.GITHUB_SHA ?? '';
   const runId = env.GITHUB_RUN_ID ?? '';
   const runAttempt = env.GITHUB_RUN_ATTEMPT ?? '';
+  const runNumber = env.GITHUB_RUN_NUMBER ?? '';
   const repository = env.GITHUB_REPOSITORY ?? '';
-  const ref = env.GITHUB_REF_NAME ?? env.GITHUB_REF ?? '';
+  const ref = env.GITHUB_REF ?? '';
+  const refName = env.GITHUB_REF_NAME ?? '';
+  const refType = env.GITHUB_REF_TYPE ?? '';
+  const eventName = env.GITHUB_EVENT_NAME ?? '';
   const actor = env.GITHUB_ACTOR ?? '';
   const serverURL = env.GITHUB_SERVER_URL ?? 'https://github.com';
 
@@ -24,6 +42,11 @@ export function buildReleaseEvidence(env = process.env) {
   assert.ok(job.length > 0, 'GITHUB_JOB is required');
   assert.ok(repository.length > 0, 'GITHUB_REPOSITORY is required');
   assert.ok(runId.length > 0, 'GITHUB_RUN_ID is required');
+  assert.ok(runAttempt.length > 0, 'GITHUB_RUN_ATTEMPT is required');
+  assert.ok(runNumber.length > 0, 'GITHUB_RUN_NUMBER is required');
+  assert.ok(ref.length > 0, 'GITHUB_REF is required');
+  assert.ok(refName.length > 0, 'GITHUB_REF_NAME is required');
+  assert.ok(eventName.length > 0, 'GITHUB_EVENT_NAME is required');
 
   const runURL = `${serverURL}/${repository}/actions/runs/${runId}`;
 
@@ -33,11 +56,23 @@ export function buildReleaseEvidence(env = process.env) {
     `job: ${job}`,
     `repository: ${repository}`,
     `ref: ${ref}`,
+    `ref_name: ${refName}`,
+    `ref_type: ${refType}`,
+    `event_name: ${eventName}`,
     `commit: ${sha}`,
     `run_id: ${runId}`,
     `run_attempt: ${runAttempt}`,
+    `run_number: ${runNumber}`,
     `actor: ${actor}`,
     `run_url: ${runURL}`,
+    'source_control_status: clean',
+    'source_control_clean: verified-before-evidence-write',
+    'source_control_untracked_status: clean',
+    'source_control_clean_command: git diff --quiet',
+    'source_control_cached_clean_command: git diff --cached --quiet',
+    'source_control_untracked_clean_command: git status --short',
+    'release_evidence_scope: exact-github-sha-required-gates',
+    `proof markers: ${ciReleaseEvidenceProofMarkers.join(', ')}`,
     'status: completed',
     'conclusion: success',
     'required gates:',

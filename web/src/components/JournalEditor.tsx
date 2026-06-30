@@ -1,38 +1,67 @@
 import React, { useState, useEffect } from 'react';
-import { deriveIsolationKey, encryptJournalData, decryptJournalData, EncryptedPayload } from '../lib/crypto';
+import {
+  createJournalCryptoKeyHandle,
+  decryptJournalData,
+  deriveIsolationKey,
+  disposeJournalCryptoKey,
+  encryptJournalData,
+  EncryptedPayload,
+  getJournalCryptoKey,
+  JournalCryptoKeyHandle,
+  journalAssociatedData,
+} from '../lib/crypto';
 import { EncryptedJournalEntry, getJournalBootstrap, JournalBootstrap, listJournalEntries, saveJournalEntry } from '../lib/api';
 import { useAppStore } from '../lib/store';
 
-// A fully functional component demonstrating Zero-Knowledge containment integrations
+// Client-side zero-knowledge journal editor. Plaintext never leaves this component.
 export const JournalEditor: React.FC = () => {
   const { currentRole, token } = useAppStore();
   const [plaintext, setPlaintext] = useState<string>('');
   const [passphrase, setPassphrase] = useState<string>('');
   const [encryptedData, setEncryptedData] = useState<EncryptedPayload | null>(null);
   const [entries, setEntries] = useState<EncryptedJournalEntry[]>([]);
-  const [cryptoKey, setCryptoKey] = useState<CryptoKey | null>(null);
+  const [keyHandle, setKeyHandle] = useState<JournalCryptoKeyHandle | null>(null);
   const [journalBootstrap, setJournalBootstrap] = useState<JournalBootstrap | null>(null);
   const [status, setStatus] = useState<string>('');
 
   // Derive the key automatically when passphrase is provided
   useEffect(() => {
     let isMounted = true;
+    setKeyHandle((previous) => {
+      disposeJournalCryptoKey(previous);
+      return null;
+    });
     if (passphrase.length >= 8 && journalBootstrap?.salt_id) {
       deriveIsolationKey(passphrase, journalBootstrap.salt_id)
         .then((key) => {
+          const derivedHandle = createJournalCryptoKeyHandle(key);
           if (isMounted) {
-            setCryptoKey(key);
+            setKeyHandle((previous) => {
+              disposeJournalCryptoKey(previous);
+              return derivedHandle;
+            });
             setStatus("Isolation Key Derived Successfully");
+          } else {
+            disposeJournalCryptoKey(derivedHandle);
           }
         })
         .catch(() => {
           if (isMounted) setStatus("Failed to derive isolation key");
         });
     } else {
-      setCryptoKey(null);
+      setKeyHandle((previous) => {
+        disposeJournalCryptoKey(previous);
+        return null;
+      });
       setStatus("Awaiting valid passphrase (min 8 chars)");
     }
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+      setKeyHandle((previous) => {
+        disposeJournalCryptoKey(previous);
+        return null;
+      });
+    };
   }, [passphrase, journalBootstrap?.salt_id]);
 
   useEffect(() => {
@@ -51,20 +80,36 @@ export const JournalEditor: React.FC = () => {
   // Ensure key is cleared upon dismount (Zero-Knowledge rule)
   useEffect(() => {
     return () => {
-      setCryptoKey(null);
+      setKeyHandle((previous) => {
+        disposeJournalCryptoKey(previous);
+        return null;
+      });
       setPassphrase('');
     };
   }, []);
 
   const handleSaveToNetwork = async (): Promise<void> => {
-    if (!cryptoKey || plaintext.trim() === '') return;
+    if (!keyHandle || plaintext.trim() === '') return;
 
     try {
-      const payload = await encryptJournalData(plaintext, cryptoKey);
+      if (!journalBootstrap) {
+        setStatus("Journal bootstrap unavailable.");
+        return;
+      }
+      const payload = await encryptJournalData(
+        plaintext,
+        getJournalCryptoKey(keyHandle),
+        journalAssociatedData(journalBootstrap.salt_id, journalBootstrap.salt_version),
+      );
       setEncryptedData(payload);
+      setPlaintext('');
+      setKeyHandle((previous) => {
+        disposeJournalCryptoKey(previous);
+        return null;
+      });
       setStatus("Successfully encrypted to opaque payload. Ready for network.");
 
-      if (token && journalBootstrap) {
+      if (token) {
         const saved = await saveJournalEntry(token, { ...payload, salt_id: journalBootstrap.salt_id, salt_version: journalBootstrap.salt_version });
         setEntries((current) => [saved, ...current]);
       }
@@ -76,10 +121,20 @@ export const JournalEditor: React.FC = () => {
 
   const handleReadFromNetwork = async (entry?: EncryptedPayload): Promise<void> => {
     const payload = entry ?? encryptedData;
-    if (!cryptoKey || !payload) return;
+    if (!keyHandle || !payload) return;
+    const entrySalt = payload as Partial<EncryptedJournalEntry>;
+    const associatedData = entrySalt.salt_id && typeof entrySalt.salt_version === 'number'
+      ? journalAssociatedData(entrySalt.salt_id, entrySalt.salt_version)
+      : journalBootstrap
+        ? journalAssociatedData(journalBootstrap.salt_id, journalBootstrap.salt_version)
+        : undefined;
+    if (!associatedData) {
+      setStatus("Journal bootstrap unavailable.");
+      return;
+    }
 
     try {
-      const decodedText = await decryptJournalData(payload, cryptoKey);
+      const decodedText = await decryptJournalData(payload, getJournalCryptoKey(keyHandle), associatedData);
       setPlaintext(decodedText);
       setStatus("Successfully decrypted from network payload.");
     } catch (err) {
@@ -119,14 +174,14 @@ export const JournalEditor: React.FC = () => {
       <div className="flex space-x-4">
         <button
           onClick={() => void handleSaveToNetwork()}
-          disabled={!token || !cryptoKey || plaintext === ''}
+          disabled={!token || !keyHandle || plaintext === ''}
           className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
         >
           Encrypt & Save
         </button>
         <button
           onClick={() => void handleReadFromNetwork()}
-          disabled={!cryptoKey || !encryptedData}
+          disabled={!keyHandle || !encryptedData}
           className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
         >
           Read & Decrypt

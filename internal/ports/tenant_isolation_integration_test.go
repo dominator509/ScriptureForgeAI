@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"scriptureforge/internal/domain/auth"
+	"scriptureforge/internal/domain/observability"
 )
 
 const (
@@ -28,6 +29,9 @@ func openTenantIsolationDB(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" || strings.Contains(databaseURL, "${") {
+		if os.Getenv("REQUIRE_DATABASE_URL") == "true" {
+			t.Fatal("DATABASE_URL is required when REQUIRE_DATABASE_URL=true for tenant isolation Postgres/RLS proof")
+		}
 		t.Skip("DATABASE_URL is required for tenant isolation Postgres/RLS proof")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -54,15 +58,20 @@ func ensureTenantIsolationRLSRole(ctx context.Context, t *testing.T, db *pgxpool
 	if !isSuperuser {
 		return
 	}
-	if _, err := db.Exec(ctx, `SELECT pg_advisory_lock(774412)`); err != nil {
+	conn, err := db.Acquire(ctx)
+	if err != nil {
+		t.Fatalf("acquire tenant isolation RLS test role setup connection: %v", err)
+	}
+	defer conn.Release()
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin tenant isolation RLS test role setup: %v", err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(774411)`); err != nil {
 		t.Fatalf("lock tenant isolation RLS test role setup: %v", err)
 	}
-	defer func() {
-		if _, err := db.Exec(ctx, `SELECT pg_advisory_unlock(774412)`); err != nil {
-			t.Fatalf("unlock tenant isolation RLS test role setup: %v", err)
-		}
-	}()
-	if _, err := db.Exec(ctx, `
+	if _, err := tx.Exec(ctx, `
 		DO $$
 		BEGIN
 			IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'scriptureforge_rls_test') THEN
@@ -74,6 +83,9 @@ func ensureTenantIsolationRLSRole(ctx context.Context, t *testing.T, db *pgxpool
 		GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO scriptureforge_rls_test;
 	`); err != nil {
 		t.Fatalf("ensure tenant isolation RLS test role: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit tenant isolation RLS test role setup: %v", err)
 	}
 }
 
@@ -104,23 +116,23 @@ func withTenantIsolationContext(ctx context.Context, t *testing.T, db *pgxpool.P
 
 func seedTenantIsolationFixtures(ctx context.Context, t *testing.T, db *pgxpool.Pool) {
 	t.Helper()
+	cleanupTenantIsolationFixtures(ctx, t, db)
+
 	withTenantIsolationContext(ctx, t, db, tenantIsolationOrgA, func(ctx context.Context, tx pgx.Tx) {
-		_, _ = tx.Exec(ctx, `DELETE FROM organizations WHERE id = $1`, tenantIsolationOrgA)
 		_, err := tx.Exec(ctx, `INSERT INTO organizations (id, name) VALUES ($1, 'Tenant Isolation A')`, tenantIsolationOrgA)
 		if err != nil {
 			t.Fatalf("seed tenant A org: %v", err)
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO users (id, organization_id, email, password_hash, role) VALUES ($1, $2, 'tenant-a@example.test', 'hash', 'member')`, tenantIsolationUserA, tenantIsolationOrgA); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO users (id, organization_id, email, password_hash, role) VALUES ($1, $2, 'tenant-isolation-a@example.test', 'hash', 'member')`, tenantIsolationUserA, tenantIsolationOrgA); err != nil {
 			t.Fatalf("seed tenant A user: %v", err)
 		}
 	})
 	withTenantIsolationContext(ctx, t, db, tenantIsolationOrgB, func(ctx context.Context, tx pgx.Tx) {
-		_, _ = tx.Exec(ctx, `DELETE FROM organizations WHERE id = $1`, tenantIsolationOrgB)
 		_, err := tx.Exec(ctx, `INSERT INTO organizations (id, name) VALUES ($1, 'Tenant Isolation B')`, tenantIsolationOrgB)
 		if err != nil {
 			t.Fatalf("seed tenant B org: %v", err)
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO users (id, organization_id, email, password_hash, role) VALUES ($1, $2, 'tenant-b@example.test', 'hash', 'member')`, tenantIsolationUserB, tenantIsolationOrgB); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO users (id, organization_id, email, password_hash, role) VALUES ($1, $2, 'tenant-isolation-b@example.test', 'hash', 'member')`, tenantIsolationUserB, tenantIsolationOrgB); err != nil {
 			t.Fatalf("seed tenant B user: %v", err)
 		}
 	})
@@ -130,6 +142,13 @@ func cleanupTenantIsolationFixtures(ctx context.Context, t *testing.T, db *pgxpo
 	t.Helper()
 	for _, orgID := range []string{tenantIsolationOrgA, tenantIsolationOrgB} {
 		withTenantIsolationContext(ctx, t, db, orgID, func(ctx context.Context, tx pgx.Tx) {
+			_, _ = tx.Exec(ctx, `DELETE FROM citation_trails WHERE organization_id = $1`, orgID)
+			_, _ = tx.Exec(ctx, `DELETE FROM ai_request_logs WHERE organization_id = $1`, orgID)
+			_, _ = tx.Exec(ctx, `DELETE FROM room_participants WHERE organization_id = $1`, orgID)
+			_, _ = tx.Exec(ctx, `DELETE FROM live_rooms WHERE organization_id = $1`, orgID)
+			_, _ = tx.Exec(ctx, `DELETE FROM journal_entries WHERE organization_id = $1`, orgID)
+			_, _ = tx.Exec(ctx, `DELETE FROM refresh_tokens WHERE organization_id = $1`, orgID)
+			_, _ = tx.Exec(ctx, `DELETE FROM scripture_texts WHERE organization_id = $1`, orgID)
 			_, _ = tx.Exec(ctx, `DELETE FROM users WHERE organization_id = $1`, orgID)
 			_, _ = tx.Exec(ctx, `DELETE FROM organizations WHERE id = $1`, orgID)
 		})
@@ -148,12 +167,14 @@ func TestJournalHandlersHonorTenantIsolation(t *testing.T) {
 	})
 
 	journal := &JournalHandler{DB: db}
-	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/journal_entries", strings.NewReader(`{"ciphertext":"tenant-a-payload","iv":"tenant-a-iv","salt_id":"tenant-a-salt","salt_version":1}`))
+	observer := observability.NewObserver(observability.Options{})
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/journal_entries", strings.NewReader(`{"ciphertext":"dGVuYW50LWEtc2VhbGVkLXBheWxvYWQ=","iv":"AQIDBAUGBwgJCgsM","salt_id":"journal:v1:tenant-a-salt","salt_version":1}`))
 	createReq = createReq.WithContext(context.WithValue(createReq.Context(), auth.ContextKeyUser, &auth.TokenClaims{
 		UserID:         tenantIsolationUserA,
 		OrganizationID: tenantIsolationOrgA,
 		Role:           "member",
 	}))
+	createReq = createReq.WithContext(observability.WithObserver(createReq.Context(), observer))
 	createRec := httptest.NewRecorder()
 	journal.ServeJournalEntries(createRec, createReq)
 	if createRec.Code != http.StatusCreated {
@@ -170,6 +191,7 @@ func TestJournalHandlersHonorTenantIsolation(t *testing.T) {
 		OrganizationID: tenantIsolationOrgB,
 		Role:           "member",
 	}))
+	getReq = getReq.WithContext(observability.WithObserver(getReq.Context(), observer))
 	getRec := httptest.NewRecorder()
 	journal.ServeJournalEntry(getRec, getReq)
 	if getRec.Code != http.StatusNotFound {
@@ -182,6 +204,7 @@ func TestJournalHandlersHonorTenantIsolation(t *testing.T) {
 		OrganizationID: tenantIsolationOrgB,
 		Role:           "member",
 	}))
+	listReq = listReq.WithContext(observability.WithObserver(listReq.Context(), observer))
 	listRec := httptest.NewRecorder()
 	journal.ServeJournalEntries(listRec, listReq)
 	if listRec.Code != http.StatusOK {
@@ -201,6 +224,7 @@ func TestJournalHandlersHonorTenantIsolation(t *testing.T) {
 		OrganizationID: tenantIsolationOrgA,
 		Role:           "member",
 	}))
+	ownerListReq = ownerListReq.WithContext(observability.WithObserver(ownerListReq.Context(), observer))
 	ownerListRec := httptest.NewRecorder()
 	journal.ServeJournalEntries(ownerListRec, ownerListReq)
 	if ownerListRec.Code != http.StatusOK {
@@ -212,6 +236,16 @@ func TestJournalHandlersHonorTenantIsolation(t *testing.T) {
 	}
 	if len(ownerEntries) != 1 || ownerEntries[0].ID != created.ID {
 		t.Fatalf("tenant A list expected one matching entry, got %#v", ownerEntries)
+	}
+	metrics := observer.Snapshot()
+	for _, expected := range []string{
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="journal_create",status="success"} 1`,
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="journal_read",status="not_found"} 1`,
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="journal_list",status="success"} 2`,
+	} {
+		if !strings.Contains(metrics, expected) {
+			t.Fatalf("journal tenant/RLS dependency metrics missing %s:\n%s", expected, metrics)
+		}
 	}
 	assertCrossTenantWriteBlocked(t, ctx, db, tenantIsolationOrgA, tenantIsolationOrgB, tenantIsolationUserB)
 }
@@ -232,6 +266,46 @@ func TestRoomHandlersHonorTenantIsolation(t *testing.T) {
 		DB:           db,
 		StateManager: roomState,
 	}
+	overrideReq := httptest.NewRequest(http.MethodPost, "/api/v1/rooms/create", strings.NewReader(`{"title":"Tenant Override Room","organization_id":"`+tenantIsolationOrgB+`","user_id":"`+tenantIsolationUserB+`"}`))
+	overrideReq = overrideReq.WithContext(context.WithValue(overrideReq.Context(), auth.ContextKeyUser, &auth.TokenClaims{
+		UserID:         tenantIsolationUserA,
+		OrganizationID: tenantIsolationOrgA,
+		Role:           "member",
+	}))
+	overrideRec := httptest.NewRecorder()
+	roomHandler.CreateRoomHandler(overrideRec, overrideReq)
+	if overrideRec.Code != http.StatusBadRequest {
+		t.Fatalf("tenant override room create status = %d body = %s, want 400", overrideRec.Code, overrideRec.Body.String())
+	}
+
+	mismatchedClaimReq := httptest.NewRequest(http.MethodPost, "/api/v1/rooms/create", strings.NewReader(`{"title":"Mismatched Tenant Claim Room"}`))
+	mismatchedClaimReq = mismatchedClaimReq.WithContext(context.WithValue(mismatchedClaimReq.Context(), auth.ContextKeyUser, &auth.TokenClaims{
+		UserID:         tenantIsolationUserA,
+		OrganizationID: tenantIsolationOrgB,
+		Role:           "member",
+	}))
+	mismatchedClaimRec := httptest.NewRecorder()
+	roomHandler.CreateRoomHandler(mismatchedClaimRec, mismatchedClaimReq)
+	if mismatchedClaimRec.Code == http.StatusCreated {
+		t.Fatal("mismatched tenant/user room create unexpectedly succeeded")
+	}
+	withTenantIsolationContext(ctx, t, db, tenantIsolationOrgB, func(ctx context.Context, tx pgx.Tx) {
+		var roomCount int
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM live_rooms WHERE organization_id = $1 AND title = 'Mismatched Tenant Claim Room'`, tenantIsolationOrgB).Scan(&roomCount); err != nil {
+			t.Fatalf("query mismatched tenant/user room create result: %v", err)
+		}
+		if roomCount != 0 {
+			t.Fatalf("mismatched tenant/user room create persisted %d rooms, want 0", roomCount)
+		}
+		var participantCount int
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM room_participants WHERE organization_id = $1 AND user_id = $2`, tenantIsolationOrgB, tenantIsolationUserA).Scan(&participantCount); err != nil {
+			t.Fatalf("query mismatched tenant/user room participant result: %v", err)
+		}
+		if participantCount != 0 {
+			t.Fatalf("mismatched tenant/user room create persisted %d participants, want 0", participantCount)
+		}
+	})
+
 	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/rooms/create", strings.NewReader(`{"title":"Tenant Isolation Room"}`))
 	createReq = createReq.WithContext(context.WithValue(createReq.Context(), auth.ContextKeyUser, &auth.TokenClaims{
 		UserID:         tenantIsolationUserA,
@@ -312,6 +386,9 @@ func TestRoomHandlersHonorTenantIsolation(t *testing.T) {
 }
 
 func TestSocketStreamIsTenantScoped(t *testing.T) {
+	t.Setenv("ALLOWED_WS_ORIGINS", "")
+	t.Setenv("DEPLOYMENT_ENVIRONMENT", "")
+
 	db := openTenantIsolationDB(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -362,7 +439,7 @@ func TestSocketStreamIsTenantScoped(t *testing.T) {
 	}))
 	defer server.Close()
 
-	wsForTenantA := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/v1/rooms/stream/" + roomID + "?tenant=tenant-a&client=a"
+	wsForTenantA := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/v1/rooms/stream/" + roomID + "?tenant=tenant-a&user=" + tenantIsolationUserA + "&client=a"
 	tenantAConn, _, err := websocket.DefaultDialer.Dial(wsForTenantA, nil)
 	if err != nil {
 		t.Fatalf("tenant A socket dial should succeed: %v", err)
@@ -371,7 +448,7 @@ func TestSocketStreamIsTenantScoped(t *testing.T) {
 		t.Fatalf("close tenant A socket: %v", err)
 	}
 
-	wsForTenantB := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/v1/rooms/stream/" + roomID + "?tenant=tenant-b&client=b"
+	wsForTenantB := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/v1/rooms/stream/" + roomID + "?tenant=tenant-b&user=" + tenantIsolationUserB + "&client=b"
 	tenantBConn, response, err := websocket.DefaultDialer.Dial(wsForTenantB, nil)
 	if err == nil {
 		_ = tenantBConn.Close()
@@ -401,6 +478,9 @@ func assertCrossTenantWriteBlocked(t *testing.T, ctx context.Context, db *pgxpoo
 		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM journal_entries WHERE organization_id = $1`, ownerOrg).Scan(&countBefore); err != nil {
 			t.Fatalf("check owner tenant journal baseline: %v", err)
 		}
+		if _, err := tx.Exec(ctx, `SAVEPOINT cross_tenant_write_attempt`); err != nil {
+			t.Fatalf("create cross-tenant write savepoint: %v", err)
+		}
 		_, err := tx.Exec(ctx, `
 			INSERT INTO journal_entries (organization_id, user_id, ciphertext, iv, salt_id, salt_version)
 			VALUES ($1, $2, 'cross-tenant-payload', 'cross-tenant-iv', 'cross-tenant-salt', 1)`,
@@ -409,6 +489,9 @@ func assertCrossTenantWriteBlocked(t *testing.T, ctx context.Context, db *pgxpoo
 		)
 		if err == nil {
 			t.Fatalf("cross-tenant write unexpectedly succeeded while tenant context was %s", foreignOrg)
+		}
+		if _, rollbackErr := tx.Exec(ctx, `ROLLBACK TO SAVEPOINT cross_tenant_write_attempt`); rollbackErr != nil {
+			t.Fatalf("rollback expected cross-tenant write denial: %v", rollbackErr)
 		}
 		var countAfter int
 		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM journal_entries WHERE organization_id = $1`, ownerOrg).Scan(&countAfter); err != nil {

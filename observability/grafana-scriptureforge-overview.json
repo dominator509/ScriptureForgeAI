@@ -95,16 +95,21 @@
     {
       "id": 4,
       "type": "timeseries",
-      "title": "Average Route Latency",
+      "title": "Route P99 Latency",
       "datasource": {
         "type": "prometheus",
         "uid": "${PROMETHEUS_DS_UID}"
       },
       "targets": [
         {
-          "expr": "sum by (method, path, status) (rate(scriptureforge_http_request_duration_seconds_sum[5m])) / clamp_min(sum by (method, path, status) (rate(scriptureforge_http_requests_total[5m])), 0.001)",
-          "legendFormat": "{{method}} {{path}} {{status}}",
+          "expr": "histogram_quantile(0.99, sum by (method, path, status, le) (rate(scriptureforge_http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{method}} {{path}} {{status}} p99",
           "refId": "A"
+        },
+        {
+          "expr": "sum by (method, path, status) (rate(scriptureforge_http_request_duration_seconds_sum[5m])) / clamp_min(sum by (method, path, status) (rate(scriptureforge_http_requests_total[5m])), 0.001)",
+          "legendFormat": "{{method}} {{path}} {{status}} avg",
+          "refId": "B"
         }
       ],
       "gridPos": {
@@ -116,6 +121,65 @@
     },
     {
       "id": 5,
+      "type": "timeseries",
+      "title": "Dependency Operations And Failures",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${PROMETHEUS_DS_UID}"
+      },
+      "targets": [
+        {
+          "expr": "sum by (dependency, operation, status) (rate(scriptureforge_dependency_operations_total[5m]))",
+          "legendFormat": "{{dependency}} {{operation}} {{status}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (dependency, operation, status) (rate(scriptureforge_dependency_operation_duration_seconds_sum[5m])) / clamp_min(sum by (dependency, operation, status) (rate(scriptureforge_dependency_operations_total[5m])), 0.001)",
+          "legendFormat": "{{dependency}} {{operation}} avg seconds",
+          "refId": "B"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Architecture Metric Profiles",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${PROMETHEUS_DS_UID}"
+      },
+      "targets": [
+        {
+          "expr": "websocket_active_connections_count",
+          "legendFormat": "active websocket connections",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(scriptureforge_dependency_operations_total{dependency=\"websocket\",operation=\"room_broadcast\",status=\"dropped\"}[5m]))",
+          "legendFormat": "room broadcast drops/sec",
+          "refId": "C"
+        },
+        {
+          "expr": "sum by (profile, status) (rate(ai_inference_duration_seconds_sum[5m])) / clamp_min(sum by (profile, status) (rate(ai_inference_duration_seconds_count[5m])), 0.001)",
+          "legendFormat": "{{profile}} {{status}} avg seconds",
+          "refId": "B"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      }
+    },
+    {
+      "id": 6,
       "type": "logs",
       "title": "Trace-Correlated Application Logs",
       "datasource": {
@@ -132,11 +196,11 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 12
+        "y": 28
       }
     },
     {
-      "id": 6,
+      "id": 7,
       "type": "timeseries",
       "title": "Rust Engine gRPC Activity",
       "datasource": {
@@ -164,7 +228,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 20
+        "y": 36
       }
     }
   ]

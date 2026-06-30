@@ -2,6 +2,20 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const terraformDir = new URL('../build/terraform/', import.meta.url);
+const platformEngineMain = new URL('../cmd/platform-engine/main.go', import.meta.url);
+
+export const deploymentSkeletonProofMarkers = [
+  'remote_state_backend=true',
+  'irsa_secret_access=true',
+  'secretproviderclass_sync=true',
+  'tls_ingress=true',
+  'rds_backup_final_snapshot=true',
+  'redis_runtime_wiring=true',
+  'grpc_engine_wiring=true',
+  'otel_runtime_wiring=true',
+  'hpa_pdb_rollout_safety=true',
+  'root_database_url_absent=true',
+];
 
 async function readTerraform(name) {
   return readFile(new URL(name, terraformDir), 'utf8');
@@ -16,6 +30,7 @@ const [app, service, variables, iam, versions, tfvarsExample, backendExample] = 
   readTerraform('terraform.tfvars.example'),
   readTerraform('backend.hcl.example'),
 ]);
+const platformMain = await readFile(platformEngineMain, 'utf8');
 
 function requireIncludes(source, snippets, label) {
   for (const snippet of snippets) {
@@ -27,6 +42,23 @@ function requireMatches(source, patterns, label) {
   for (const pattern of patterns) {
     assert.ok(pattern.test(source), `${label} missing ${pattern}`);
   }
+}
+
+export function validatePlatformRuntimeConfig(platformMain) {
+  requireIncludes(
+    platformMain,
+    [
+      'func requiresConfiguredGRPCAddress() bool',
+      'DEPLOYMENT_ENVIRONMENT',
+      'GRPC_ENGINE_ADDRESS environment variable is required in staging/production',
+      'grpcAddr = "localhost:50051"',
+    ],
+    'platform engine runtime config',
+  );
+  assert.ok(
+    /case "staging", "production", "prod":\s*\n\s*return true/.test(platformMain),
+    'platform engine must require explicit GRPC_ENGINE_ADDRESS for staging/production/prod',
+  );
 }
 
 requireIncludes(
@@ -222,4 +254,6 @@ assert.ok(!app.includes('aws_rds_cluster.postgres.master_username'), 'workload m
 assert.ok(!app.includes('postgres://'), 'workload manifests must source DATABASE_URL from Secrets Manager, not inline PostgreSQL URLs');
 assert.ok(!tfvarsExample.includes('skip_final_snapshot = true'), 'tfvars example must not preserve production-hostile snapshot defaults');
 
-console.log('deployment skeleton invariants validated');
+validatePlatformRuntimeConfig(platformMain);
+
+console.log(`deployment skeleton and runtime config invariants validated: ${deploymentSkeletonProofMarkers.join(', ')}`);

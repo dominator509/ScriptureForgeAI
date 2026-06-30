@@ -12,9 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"scriptureforge/scriptureforge/proto/engine"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"scriptureforge/internal/domain/observability"
+	"scriptureforge/scriptureforge/proto/engine"
 )
 
 // SearchResult models the expected return from the scripture engine
@@ -143,9 +144,16 @@ func generateEmbedding(ctx context.Context, text string) ([]float32, error) {
 
 // Search maps the Go request to the Rust gRPC protobuf request
 func (g *GRPCScriptureClient) Search(ctx context.Context, orgID string, query string, topK int) ([]SearchResult, error) {
+	started := time.Now()
+	status := "success"
+	defer func() {
+		observability.ObserveDependencyFromContext(ctx, "rust_engine", "vector_search", status, time.Since(started))
+	}()
+
 	// Call OpenAI to get the actual float32 vector embedding
 	realVector, err := generateEmbedding(ctx, query)
 	if err != nil {
+		status = "embedding_error"
 		return nil, fmt.Errorf("failed to generate embedding: %v", err)
 	}
 
@@ -158,6 +166,7 @@ func (g *GRPCScriptureClient) Search(ctx context.Context, orgID string, query st
 
 	resp, err := g.client.SearchByVector(ctx, req)
 	if err != nil {
+		status = "grpc_error"
 		return nil, err
 	}
 

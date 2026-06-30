@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const requiredFiles = [
+export const requiredFiles = [
   'security/threat_model.md',
   'security/crypto_iam_audit.md',
   'security/sast_sca_report.md',
@@ -11,16 +11,29 @@ const requiredFiles = [
   'security/dependency_risk_register.md',
 ];
 
-const stalePhrases = [
+export const securityArtifactsProofMarkers = [
+  'threat_model_stride=true',
+  'crypto_iam_review=true',
+  'sast_sca_report=true',
+  'domain_specific_audit=true',
+  'fuzzing_report=true',
+  'secret_handling_review=true',
+  'dependency_risk_register=true',
+  'stale_security_claims_rejected=true',
+  'residual_risk_signoff_path=true',
+];
+
+export const stalePhrases = [
   'No MFA currently enforced',
   'Terraform configurations located in `build/terraform/main.tf`',
   'All dependencies resolve to stable semantic versions without known active CVEs',
   'Two hardcoded connection strings discovered',
   'postgres://forge_admin_root:testpassword',
   'PlatformException',
+  'future-incompatibility warning that should be addressed',
 ];
 
-const requiredCoverage = {
+export const requiredCoverage = {
   'security/threat_model.md': [
     'Status last updated: 2026-06-25',
     'STRIDE Analysis',
@@ -50,7 +63,7 @@ const requiredCoverage = {
     'go vet ./...',
     'TruffleHog',
     'DRR-001',
-    'sqlx-postgres v0.7.4',
+    'sqlx-postgres 0.9.0',
     'build/terraform',
     'PodDisruptionBudgets',
     'Horizontal Pod Autoscalers',
@@ -85,26 +98,56 @@ const requiredCoverage = {
     'expo@56.0.12, uuid@7.0.3',
     'Expo',
     'Risk decision',
+    'Risk owner: Security/release owner',
+    'Accepted by: Release owner and security reviewer',
+    'Review due: 2026-07-25',
+    'Expires: 2026-08-25',
     'Required closure',
   ],
 };
 
-const contents = new Map();
-
-for (const file of requiredFiles) {
-  contents.set(file, await readFile(file, 'utf8'));
-}
-
-const allSecurityText = [...contents.values()].join('\n');
-for (const phrase of stalePhrases) {
-  assert.ok(!allSecurityText.includes(phrase), `security artifacts contain stale phrase: ${phrase}`);
-}
-
-for (const [file, snippets] of Object.entries(requiredCoverage)) {
-  const content = contents.get(file);
-  for (const snippet of snippets) {
-    assert.ok(content.includes(snippet), `${file} missing ${snippet}`);
+export async function loadSecurityArtifactContents(files = requiredFiles) {
+  const contents = new Map();
+  for (const file of files) {
+    contents.set(file, await readFile(file, 'utf8'));
   }
+  return contents;
 }
 
-console.log('security artifacts validated');
+export function validateSecurityArtifactContents(contents, {
+  staleClaimPhrases = stalePhrases,
+  coverage = requiredCoverage,
+} = {}) {
+  const allSecurityText = [...contents.values()].join('\n');
+  for (const phrase of staleClaimPhrases) {
+    assert.ok(!allSecurityText.includes(phrase), `security artifacts contain stale phrase: ${phrase}`);
+  }
+
+  for (const [file, snippets] of Object.entries(coverage)) {
+    const content = contents.get(file);
+    assert.equal(typeof content, 'string', `${file} must be loaded for security artifact validation`);
+    for (const snippet of snippets) {
+      assert.ok(content.includes(snippet), `${file} missing ${snippet}`);
+    }
+  }
+
+  return {
+    proofMarkers: securityArtifactsProofMarkers,
+  };
+}
+
+export async function validateSecurityArtifacts(files = requiredFiles) {
+  return validateSecurityArtifactContents(await loadSecurityArtifactContents(files));
+}
+
+async function main() {
+  const result = await validateSecurityArtifacts();
+  console.log(`security artifacts validated: ${result.proofMarkers.join(', ')}`);
+}
+
+if (import.meta.url === `file://${process.argv[1]?.replaceAll('\\', '/')}` || process.argv[1]?.endsWith('validate-security-artifacts.mjs')) {
+  main().catch((error) => {
+    console.error(error.message);
+    process.exit(1);
+  });
+}

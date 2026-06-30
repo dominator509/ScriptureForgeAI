@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { beforeEach, test } from 'node:test';
+import { after, beforeEach, test } from 'node:test';
 import {
   API_BASE_URL,
   createRoom,
@@ -11,6 +11,7 @@ import {
   logoutSession,
   refreshSession,
   registerAccount,
+  resolveMobileRuntimeConfig,
   roomStreamUrl,
   saveJournalEntry,
   WS_BASE_URL,
@@ -22,6 +23,12 @@ type FetchCall = {
 };
 
 const calls: FetchCall[] = [];
+const mobileAPISmokeProofMarkers = [
+  'mobile_api_auth_mfa=true',
+  'mobile_api_encrypted_journal=true',
+  'mobile_api_rooms_ws=true',
+  'mobile_runtime_native_required_guard=true',
+];
 
 const jsonResponse = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -112,4 +119,115 @@ test('room helpers create, list, and build encoded websocket stream URLs', async
       [`${API_BASE_URL}/api/v1/rooms/create`, 'POST'],
     ],
   );
+});
+
+test('mobile runtime config keeps local defaults only outside strict staging mode', () => {
+  const config = resolveMobileRuntimeConfig({});
+
+  assert.equal(config.apiBaseUrl, 'http://localhost:8080');
+  assert.equal(config.wsBaseUrl, 'ws://localhost:8080');
+  assert.equal(config.strictStaging, false);
+});
+
+test('mobile runtime config rejects local or insecure endpoints in native-required builds', () => {
+  assert.throws(
+    () => resolveMobileRuntimeConfig({
+      EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO: 'true',
+      EXPO_PUBLIC_API_BASE_URL: 'http://localhost:8080',
+      EXPO_PUBLIC_WS_BASE_URL: 'wss://mobile-api.staging.scriptureforge.ai',
+    }),
+    /EXPO_PUBLIC_API_BASE_URL must use public non-local https/,
+  );
+  assert.throws(
+    () => resolveMobileRuntimeConfig({
+      EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO: 'true',
+      EXPO_PUBLIC_API_BASE_URL: 'https://mobile-api.staging.scriptureforge.ai',
+      EXPO_PUBLIC_WS_BASE_URL: 'ws://mobile-api.staging.scriptureforge.ai',
+    }),
+    /EXPO_PUBLIC_WS_BASE_URL must use public non-local wss/,
+  );
+  assert.throws(
+    () => resolveMobileRuntimeConfig({
+      EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO: 'true',
+      EXPO_PUBLIC_API_BASE_URL: 'https://172.16.0.25',
+      EXPO_PUBLIC_WS_BASE_URL: 'wss://mobile-api.staging.scriptureforge.ai',
+    }),
+    /EXPO_PUBLIC_API_BASE_URL must use public non-local https/,
+  );
+  assert.throws(
+    () => resolveMobileRuntimeConfig({
+      EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO: 'true',
+      EXPO_PUBLIC_API_BASE_URL: 'https://[fd00::25]',
+      EXPO_PUBLIC_WS_BASE_URL: 'wss://mobile-api.staging.scriptureforge.ai',
+    }),
+    /EXPO_PUBLIC_API_BASE_URL must use public non-local https/,
+  );
+  assert.throws(
+    () => resolveMobileRuntimeConfig({
+      EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO: 'true',
+      EXPO_PUBLIC_API_BASE_URL: 'https://[::ffff:172.16.0.25]',
+      EXPO_PUBLIC_WS_BASE_URL: 'wss://mobile-api.staging.scriptureforge.ai',
+    }),
+    /EXPO_PUBLIC_API_BASE_URL must use public non-local https/,
+  );
+  assert.throws(
+    () => resolveMobileRuntimeConfig({
+      EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO: 'true',
+      EXPO_PUBLIC_API_BASE_URL: 'https://mobile-api.staging.scriptureforge.ai',
+      EXPO_PUBLIC_WS_BASE_URL: 'wss://169.254.10.20',
+    }),
+    /EXPO_PUBLIC_WS_BASE_URL must use public non-local wss/,
+  );
+  assert.throws(
+    () => resolveMobileRuntimeConfig({
+      EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO: 'true',
+      EXPO_PUBLIC_API_BASE_URL: 'https://api.staging.example',
+      EXPO_PUBLIC_WS_BASE_URL: 'wss://mobile-api.staging.scriptureforge.ai',
+    }),
+    /EXPO_PUBLIC_API_BASE_URL must use public non-local https/,
+  );
+  assert.throws(
+    () => resolveMobileRuntimeConfig({
+      EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO: 'true',
+      EXPO_PUBLIC_API_BASE_URL: 'https://mobile-api.staging.scriptureforge.ai',
+      EXPO_PUBLIC_WS_BASE_URL: 'wss://app.example.com',
+    }),
+    /EXPO_PUBLIC_WS_BASE_URL must use public non-local wss/,
+  );
+});
+
+test('mobile runtime config rejects staging or production builds without native crypto enforcement', () => {
+  assert.throws(
+    () => resolveMobileRuntimeConfig({
+      EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT: 'staging',
+      EXPO_PUBLIC_API_BASE_URL: 'https://mobile-api.staging.scriptureforge.ai',
+      EXPO_PUBLIC_WS_BASE_URL: 'wss://mobile-api.staging.scriptureforge.ai',
+    }),
+    /EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true is required/,
+  );
+  assert.throws(
+    () => resolveMobileRuntimeConfig({
+      EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT: 'production',
+      EXPO_PUBLIC_API_BASE_URL: 'https://mobile-api.scriptureforge.ai',
+      EXPO_PUBLIC_WS_BASE_URL: 'wss://mobile-api.scriptureforge.ai',
+    }),
+    /EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true is required/,
+  );
+});
+
+test('mobile runtime config accepts explicit staging HTTPS and WSS endpoints with native crypto enforcement', () => {
+  const config = resolveMobileRuntimeConfig({
+    EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT: 'staging',
+    EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO: 'true',
+    EXPO_PUBLIC_API_BASE_URL: 'https://mobile-api.staging.scriptureforge.ai',
+    EXPO_PUBLIC_WS_BASE_URL: 'wss://mobile-api.staging.scriptureforge.ai',
+  });
+
+  assert.equal(config.apiBaseUrl, 'https://mobile-api.staging.scriptureforge.ai');
+  assert.equal(config.wsBaseUrl, 'wss://mobile-api.staging.scriptureforge.ai');
+  assert.equal(config.strictStaging, true);
+});
+
+after(() => {
+  console.log(`mobile api smoke proof: ${mobileAPISmokeProofMarkers.join(', ')}`);
 });

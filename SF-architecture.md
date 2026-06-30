@@ -122,8 +122,8 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
     *   `GET /api/v1/rooms/state/{room_id}`
     *   `POST /api/webhooks/zoom`
 *   **Data Entities:** `LiveRoom`, `RoomParticipant`, `RealtimeStateEvent`, `AttendanceLog`.
-*   **Security Considerations:** Token authorization inside the initial WebSocket upgrade handshake. Socket identifiers must match active database user accounts.
-*   **Failure Modes & Logic Risks:** State race conditions (multiple users updating fields or chat states concurrently). Mitigation relies on processing mutations through single-threaded Redis Lua scripts, achieving lockstep linear event tracking.
+*   **Security Considerations:** Token authorization inside the initial WebSocket upgrade handshake. Socket identifiers must match active database user accounts. `ALLOWED_WS_ORIGINS` is required in staging and production; if it is missing under `DEPLOYMENT_ENVIRONMENT=staging|production|prod`, WebSocket upgrades fail closed instead of accepting localhost/no-origin fallbacks.
+*   **Failure Modes & Logic Risks:** State race conditions (multiple users updating fields or chat states concurrently). Mitigation relies on processing mutations through single-threaded Redis Lua scripts, achieving lockstep linear event tracking. Production evidence for live rooms must prove authenticated WSS load, contiguous Redis sequencing, reconnect behavior, and HTTP polling fallback against the same staged room state, with separate artifacts for replica distribution, reconnect, polling fallback, and Redis telemetry proof.
 
 ---
 
@@ -148,7 +148,7 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
 ### 6.5 Persistence & Data Layout Layer
 *   **Database:** **PostgreSQL 17+** with the **pgvector** module extension activated.
 *   **Caching & State Cache Engine:** **Redis 7.4+**
-*   **Justification:** PostgreSQL manages core entity mappings with rigorous transactional safety rules (ACID compliance) and row-level protection filters. `pgvector` drives our internal multi-dimensional semantic search and theological data tracking indexes. Redis stores ephemeral state models for active Live Rooms, orchestrates the pub/sub event distribution lines, and controls global API rate-limiting blocks.
+*   **Justification:** PostgreSQL manages core entity mappings with rigorous transactional safety rules (ACID compliance) and row-level protection filters. `pgvector` drives our internal multi-dimensional semantic search and theological data tracking indexes. Redis stores ephemeral state models for active Live Rooms, orchestrates the pub/sub event distribution lines, and controls global API rate-limiting blocks. Auth login additionally applies a hashed account-scoped throttle derived from normalized organization ID plus email, so credential spraying cannot bypass controls by rotating client IPs and limiter metrics do not expose account identifiers.
 
 ---
 
@@ -562,6 +562,8 @@ REQUIREMENT: Ensure all test cases compile flawlessly without dependencies on ex
   └─ Progressive Routing Shift: 1% -> 10% -> 50% -> 100%
 ```
 
+The staging deployment verification step must attach real Terraform and Kubernetes artifacts through `tools/deploymentprobe`. `DEPLOY-TF-001` and `DEPLOY-K8S-001` evidence is accepted only when probe summaries carry both verified deployment markers and `staging artifact` provenance; Terraform approval fallback evidence must include a structured `change_ticket=<ticket-id>` marker when it substitutes for apply output, and strict-release validation rejects approval summaries that omit that ticket ID. Mock, placeholder, synthetic, stubbed, test-only, dry-run, localhost, or loopback artifacts are treated as non-production evidence.
+
 ### 16.1 Infrastructure Configuration Framework (Terraform Plan Abstract)
 ```hcl
 # Core Persistent Deployment Layout
@@ -593,7 +595,7 @@ resource "aws_rds_cluster" "storage_backend_postgres" {
 ## 17. Observability and Analytics
 
 ### 17.1 Telemetry Implementation Design
-*   **Distributed Trace Integration:** OpenTelemetry instrumentation spans intercept every business method execution path. Trace headers propagate across external service barriers via standard context mappings (`X-Trace-ID`), logging exact database durations, parsing latencies, and third-party call dependencies.
+*   **Distributed Trace Integration:** OpenTelemetry instrumentation spans intercept every business method execution path. Trace headers propagate across external service barriers via standard context mappings (`X-Trace-ID`), logging exact database durations, parsing latencies, and third-party call dependencies. Production observability evidence must use real 32-character non-zero lowercase hex OpenTelemetry trace IDs, not placeholder correlation strings.
 *   **Metric Instrumentation Profiles:** Core components expose diagnostic metrics to tracking systems at standard `/metrics` ports.
     *   `http_requests_total{status, route}`: Monitor active system traffic velocities.
     *   `websocket_active_connections_count`: Monitor synchronized system load levels.
@@ -619,7 +621,7 @@ resource "aws_rds_cluster" "storage_backend_postgres" {
 - [ ] Row-Level Security (RLS) policies are active and verified across all PostgreSQL tables.
 - [ ] Database storage components apply static encryption using AWS KMS keys.
 - [ ] Production API endpoints score an A+ ranking under SSL Labs cryptographic evaluations.
-- [ ] Load testing profiles confirm sustainable performance at 5,000 requests per second while keeping P99 latency figures below 200ms.
+- [ ] Load testing profiles confirm sustainable performance at 5,000 requests per second while keeping P99 latency figures below 200ms, with WebSocket evidence also proving authenticated WSS origin behavior, Redis sequence ordering, reconnect behavior, HTTP polling fallback, and distinct replica/reconnect/polling/Redis telemetry artifacts.
 - [ ] Zero-Knowledge client encryption tests show clean client memory space teardowns without tracking key fragments in background processes.
 - [ ] Automated rate limit policies reject requests when traffic limits pass design parameters.
 - [ ] OpenTelemetry dashboards successfully trace transactions across all service layers.

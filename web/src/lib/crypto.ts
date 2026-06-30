@@ -7,6 +7,26 @@ export interface EncryptedPayload {
 
 type CryptoKeyUsage = 'decrypt' | 'deriveBits' | 'deriveKey' | 'encrypt';
 
+export interface JournalCryptoKeyHandle {
+    key: CryptoKey | null;
+    disposed: boolean;
+}
+
+export const JOURNAL_PBKDF2_ITERATIONS = 600000;
+
+export function journalAssociatedData(saltID: string, saltVersion: number): string {
+    return `scriptureforge-journal:v1:salt_id=${saltID}:salt_version=${saltVersion}`;
+}
+
+function assertJournalKeyInputs(passphrase: string, salt: string): void {
+    if (passphrase.trim() === '') {
+        throw new Error('Journal passphrase is required for client-side key derivation');
+    }
+    if (salt.trim() === '') {
+        throw new Error('Journal server salt material is required for client-side key derivation');
+    }
+}
+
 function bufferToBase64(buffer: ArrayBuffer): string {
     const bytes = new Uint8Array(buffer);
     let binary = '';
@@ -31,6 +51,7 @@ function base64ToBuffer(base64: string): ArrayBuffer {
  * Ensures that all cryptographic key generation happens purely client-side.
  */
 export async function deriveIsolationKey(passphrase: string, salt: string): Promise<CryptoKey> {
+    assertJournalKeyInputs(passphrase, salt);
     const encoder = new TextEncoder();
     const passphraseBytes = encoder.encode(passphrase);
     const saltBytes = encoder.encode(salt);
@@ -43,12 +64,12 @@ export async function deriveIsolationKey(passphrase: string, salt: string): Prom
         ["deriveBits", "deriveKey"] as CryptoKeyUsage[]
     );
     try {
-        // 210,000 iterations for SHA-256 PBKDF2 is the OWASP recommended minimum for 2024.
+        // Match the architecture's journal key-derivation work factor.
         return await window.crypto.subtle.deriveKey(
             {
                 name: "PBKDF2",
                 salt: saltBytes,
-                iterations: 210000,
+                iterations: JOURNAL_PBKDF2_ITERATIONS,
                 hash: "SHA-256",
             },
             keyMaterial,
@@ -62,13 +83,31 @@ export async function deriveIsolationKey(passphrase: string, salt: string): Prom
     }
 }
 
+export function createJournalCryptoKeyHandle(key: CryptoKey): JournalCryptoKeyHandle {
+    return { key, disposed: false };
+}
+
+export function getJournalCryptoKey(handle: JournalCryptoKeyHandle): CryptoKey {
+    if (handle.disposed || !handle.key) {
+        throw new Error("Journal crypto key handle has been disposed");
+    }
+    return handle.key;
+}
+
+export function disposeJournalCryptoKey(handle: JournalCryptoKeyHandle | null): void {
+    if (!handle) return;
+    handle.key = null;
+    handle.disposed = true;
+}
+
 /**
  * Encrypts plaintext data into a safe opaque payload using AES-256-GCM.
  * This guarantees zero-knowledge containment before network transmission.
  */
-export async function encryptJournalData(plaintext: string, key: CryptoKey): Promise<EncryptedPayload> {
+export async function encryptJournalData(plaintext: string, key: CryptoKey, associatedData?: string): Promise<EncryptedPayload> {
     const encoder = new TextEncoder();
     const plaintextBytes = encoder.encode(plaintext);
+    const associatedDataBytes = associatedData ? encoder.encode(associatedData) : undefined;
     // GCM recommended IV size is 12 bytes (96 bits)
     const iv = window.crypto.getRandomValues(new Uint8Array(12));
     try {
@@ -76,6 +115,7 @@ export async function encryptJournalData(plaintext: string, key: CryptoKey): Pro
             {
                 name: "AES-GCM",
                 iv: iv,
+                additionalData: associatedDataBytes,
             },
             key,
             plaintextBytes
@@ -87,6 +127,7 @@ export async function encryptJournalData(plaintext: string, key: CryptoKey): Pro
         };
     } finally {
         plaintextBytes.fill(0);
+        associatedDataBytes?.fill(0);
         iv.fill(0);
     }
 }
@@ -94,17 +135,20 @@ export async function encryptJournalData(plaintext: string, key: CryptoKey): Pro
 /**
  * Decrypts an opaque AES-GCM payload back into plaintext entirely client-side.
  */
-export async function decryptJournalData(payload: EncryptedPayload, key: CryptoKey): Promise<string> {
+export async function decryptJournalData(payload: EncryptedPayload, key: CryptoKey, associatedData?: string): Promise<string> {
     const decoder = new TextDecoder();
+    const encoder = new TextEncoder();
     const ivBuffer = base64ToBuffer(payload.iv);
     const ciphertextBuffer = base64ToBuffer(payload.ciphertext);
     const ivBytes = new Uint8Array(ivBuffer);
     const ciphertextBytes = new Uint8Array(ciphertextBuffer);
+    const associatedDataBytes = associatedData ? encoder.encode(associatedData) : undefined;
     try {
         const decryptedBuffer = await window.crypto.subtle.decrypt(
             {
                 name: "AES-GCM",
                 iv: ivBytes,
+                additionalData: associatedDataBytes,
             },
             key,
             ciphertextBytes
@@ -120,5 +164,6 @@ export async function decryptJournalData(payload: EncryptedPayload, key: CryptoK
     } finally {
         ivBytes.fill(0);
         ciphertextBytes.fill(0);
+        associatedDataBytes?.fill(0);
     }
 }

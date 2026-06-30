@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { beforeEach, test } from 'node:test';
+import { after, beforeEach, test } from 'node:test';
 import {
   API_BASE_URL,
   createRoom,
@@ -11,10 +11,12 @@ import {
   logout,
   refreshSession,
   register,
+  resolveWebRuntimeConfig,
   roomStreamUrl,
   saveJournalEntry,
   WS_BASE_URL,
 } from './api.ts';
+import { JOURNAL_PBKDF2_ITERATIONS } from './crypto.ts';
 
 type FetchCall = {
   url: string;
@@ -22,6 +24,12 @@ type FetchCall = {
 };
 
 const calls: FetchCall[] = [];
+const webAPISmokeProofMarkers = [
+  'web_api_auth_routes=true',
+  'web_api_encrypted_journal=true',
+  'web_api_rooms_ws=true',
+  'web_runtime_strict_endpoint_guard=true',
+];
 
 const jsonResponse = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -99,6 +107,10 @@ test('journal helpers list, save, and load encrypted payloads without plaintext 
   assert.equal(new Headers(calls[2]?.init.headers).get('Authorization'), 'Bearer access-token');
 });
 
+test('web journal key derivation uses architecture PBKDF2 work factor', () => {
+  assert.equal(JOURNAL_PBKDF2_ITERATIONS, 600000);
+});
+
 test('room helpers create, list, and build encoded websocket stream URLs', async () => {
   assert.equal((await listRooms('access-token'))[0]?.id, 'room-1');
   assert.equal((await createRoom('access-token', 'Study')).title, 'Study');
@@ -112,4 +124,95 @@ test('room helpers create, list, and build encoded websocket stream URLs', async
       [`${API_BASE_URL}/api/v1/rooms/create`, 'POST'],
     ],
   );
+});
+
+test('web runtime config keeps local defaults only outside strict staging mode', () => {
+  const config = resolveWebRuntimeConfig({});
+
+  assert.equal(config.apiBaseUrl, 'http://localhost:8080');
+  assert.equal(config.wsBaseUrl, 'ws://localhost:8080');
+  assert.equal(config.strictStaging, false);
+});
+
+test('web runtime config rejects local or insecure endpoints in staging builds', () => {
+  assert.throws(
+    () => resolveWebRuntimeConfig({
+      NEXT_PUBLIC_DEPLOYMENT_ENVIRONMENT: 'staging',
+      NEXT_PUBLIC_API_BASE_URL: 'http://localhost:8080',
+      NEXT_PUBLIC_WS_BASE_URL: 'wss://web-api.staging.scriptureforge.ai',
+    }),
+    /NEXT_PUBLIC_API_BASE_URL must use public non-local https/,
+  );
+  assert.throws(
+    () => resolveWebRuntimeConfig({
+      NEXT_PUBLIC_DEPLOYMENT_ENVIRONMENT: 'production',
+      NEXT_PUBLIC_API_BASE_URL: 'https://web-api.staging.scriptureforge.ai',
+      NEXT_PUBLIC_WS_BASE_URL: 'ws://web-api.staging.scriptureforge.ai',
+    }),
+    /NEXT_PUBLIC_WS_BASE_URL must use public non-local wss/,
+  );
+  assert.throws(
+    () => resolveWebRuntimeConfig({
+      NEXT_PUBLIC_DEPLOYMENT_ENVIRONMENT: 'staging',
+      NEXT_PUBLIC_API_BASE_URL: 'https://10.0.0.15',
+      NEXT_PUBLIC_WS_BASE_URL: 'wss://web-api.staging.scriptureforge.ai',
+    }),
+    /NEXT_PUBLIC_API_BASE_URL must use public non-local https/,
+  );
+  assert.throws(
+    () => resolveWebRuntimeConfig({
+      NEXT_PUBLIC_DEPLOYMENT_ENVIRONMENT: 'staging',
+      NEXT_PUBLIC_API_BASE_URL: 'https://[fd00::15]',
+      NEXT_PUBLIC_WS_BASE_URL: 'wss://web-api.staging.scriptureforge.ai',
+    }),
+    /NEXT_PUBLIC_API_BASE_URL must use public non-local https/,
+  );
+  assert.throws(
+    () => resolveWebRuntimeConfig({
+      NEXT_PUBLIC_DEPLOYMENT_ENVIRONMENT: 'staging',
+      NEXT_PUBLIC_API_BASE_URL: 'https://[::ffff:10.0.0.15]',
+      NEXT_PUBLIC_WS_BASE_URL: 'wss://web-api.staging.scriptureforge.ai',
+    }),
+    /NEXT_PUBLIC_API_BASE_URL must use public non-local https/,
+  );
+  assert.throws(
+    () => resolveWebRuntimeConfig({
+      NEXT_PUBLIC_DEPLOYMENT_ENVIRONMENT: 'staging',
+      NEXT_PUBLIC_API_BASE_URL: 'https://web-api.staging.scriptureforge.ai',
+      NEXT_PUBLIC_WS_BASE_URL: 'wss://192.168.1.20',
+    }),
+    /NEXT_PUBLIC_WS_BASE_URL must use public non-local wss/,
+  );
+  assert.throws(
+    () => resolveWebRuntimeConfig({
+      NEXT_PUBLIC_DEPLOYMENT_ENVIRONMENT: 'staging',
+      NEXT_PUBLIC_API_BASE_URL: 'https://api.staging.example',
+      NEXT_PUBLIC_WS_BASE_URL: 'wss://web-api.staging.scriptureforge.ai',
+    }),
+    /NEXT_PUBLIC_API_BASE_URL must use public non-local https/,
+  );
+  assert.throws(
+    () => resolveWebRuntimeConfig({
+      NEXT_PUBLIC_DEPLOYMENT_ENVIRONMENT: 'staging',
+      NEXT_PUBLIC_API_BASE_URL: 'https://web-api.staging.scriptureforge.ai',
+      NEXT_PUBLIC_WS_BASE_URL: 'wss://app.example.com',
+    }),
+    /NEXT_PUBLIC_WS_BASE_URL must use public non-local wss/,
+  );
+});
+
+test('web runtime config accepts explicit staging HTTPS and WSS endpoints', () => {
+  const config = resolveWebRuntimeConfig({
+    NEXT_PUBLIC_DEPLOYMENT_ENVIRONMENT: 'staging',
+    NEXT_PUBLIC_API_BASE_URL: 'https://web-api.staging.scriptureforge.ai',
+    NEXT_PUBLIC_WS_BASE_URL: 'wss://web-api.staging.scriptureforge.ai',
+  });
+
+  assert.equal(config.apiBaseUrl, 'https://web-api.staging.scriptureforge.ai');
+  assert.equal(config.wsBaseUrl, 'wss://web-api.staging.scriptureforge.ai');
+  assert.equal(config.strictStaging, true);
+});
+
+after(() => {
+  console.log(`web api smoke proof: ${webAPISmokeProofMarkers.join(', ')}`);
 });

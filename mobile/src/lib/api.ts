@@ -1,5 +1,127 @@
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
-export const WS_BASE_URL = process.env.EXPO_PUBLIC_WS_BASE_URL ?? 'ws://localhost:8080';
+type MobileRuntimeEnv = {
+  [key: string]: string | undefined;
+  EXPO_PUBLIC_API_BASE_URL?: string;
+  EXPO_PUBLIC_WS_BASE_URL?: string;
+  EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT?: string;
+  EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO?: string;
+};
+
+export interface MobileRuntimeConfig {
+  apiBaseUrl: string;
+  wsBaseUrl: string;
+  strictStaging: boolean;
+}
+
+const localAPIBaseURL = 'http://localhost:8080';
+const localWSBaseURL = 'ws://localhost:8080';
+
+function isStrictMobileEnvironment(env: MobileRuntimeEnv): boolean {
+  const deploymentEnvironment = (env.EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT ?? '').toLowerCase();
+  return env.EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO === 'true' || ['staging', 'production', 'prod'].includes(deploymentEnvironment);
+}
+
+function assertNativeCryptoRequired(env: MobileRuntimeEnv): void {
+  const deploymentEnvironment = (env.EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT ?? '').toLowerCase();
+  if (['staging', 'production', 'prod'].includes(deploymentEnvironment) && env.EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO !== 'true') {
+    throw new Error('EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true is required for staging or production mobile builds');
+  }
+}
+
+function isLocalOrPrivateURL(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return isLocalOrPrivateHost(parsed.hostname) || isReservedPlaceholderHost(parsed.hostname);
+  } catch {
+    return true;
+  }
+}
+
+function isReservedPlaceholderHost(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase();
+  return host.endsWith('.example')
+    || host === 'example.com'
+    || host.endsWith('.example.com')
+    || host === 'example.org'
+    || host.endsWith('.example.org')
+    || host === 'example.net'
+    || host.endsWith('.example.net')
+    || host.endsWith('.test')
+    || host.endsWith('.invalid');
+}
+
+function isLocalOrPrivateHost(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  if (host === 'localhost' || host === '::' || host === '::1') {
+    return true;
+  }
+  const mappedIPv4 = ipv4MappedHost(host);
+  if (mappedIPv4) {
+    return isLocalOrPrivateHost(mappedIPv4);
+  }
+  if (/^f[cd][0-9a-f]*:/i.test(host) || /^fe[89ab][0-9a-f]*:/i.test(host)) {
+    return true;
+  }
+  const parts = host.split('.').map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return false;
+  }
+  const [first, second] = parts;
+  return first === 0
+    || first === 10
+    || first === 127
+    || (first === 169 && second === 254)
+    || (first === 172 && second >= 16 && second <= 31)
+    || (first === 192 && second === 168);
+}
+
+function ipv4MappedHost(host: string): string | null {
+  if (!host.startsWith('::ffff:')) {
+    return null;
+  }
+  const mapped = host.slice('::ffff:'.length);
+  if (mapped.includes('.')) {
+    return mapped;
+  }
+  const hextets = mapped.split(':').filter(Boolean).map((part) => Number.parseInt(part, 16));
+  if (hextets.length === 0 || hextets.length > 2 || hextets.some((part) => !Number.isInteger(part) || part < 0 || part > 0xffff)) {
+    return null;
+  }
+  const value = hextets.length === 1 ? hextets[0] : (hextets[0] << 16) + hextets[1];
+  return [
+    (value >>> 24) & 255,
+    (value >>> 16) & 255,
+    (value >>> 8) & 255,
+    value & 255,
+  ].join('.');
+}
+
+function assertStrictMobileURL(name: string, value: string, protocol: 'https:' | 'wss:'): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`${name} must be an absolute ${protocol}// URL for staging or production mobile builds`);
+  }
+  if (parsed.protocol !== protocol || isLocalOrPrivateURL(value)) {
+    throw new Error(`${name} must use public non-local ${protocol}// for staging or production mobile builds`);
+  }
+}
+
+export function resolveMobileRuntimeConfig(env: MobileRuntimeEnv = process.env): MobileRuntimeConfig {
+  const strictStaging = isStrictMobileEnvironment(env);
+  const apiBaseUrl = env.EXPO_PUBLIC_API_BASE_URL ?? localAPIBaseURL;
+  const wsBaseUrl = env.EXPO_PUBLIC_WS_BASE_URL ?? localWSBaseURL;
+  if (strictStaging) {
+    assertNativeCryptoRequired(env);
+    assertStrictMobileURL('EXPO_PUBLIC_API_BASE_URL', apiBaseUrl, 'https:');
+    assertStrictMobileURL('EXPO_PUBLIC_WS_BASE_URL', wsBaseUrl, 'wss:');
+  }
+  return { apiBaseUrl, wsBaseUrl, strictStaging };
+}
+
+const runtimeConfig = resolveMobileRuntimeConfig();
+export const API_BASE_URL = runtimeConfig.apiBaseUrl;
+export const WS_BASE_URL = runtimeConfig.wsBaseUrl;
 
 export interface AuthSession {
   token: string;

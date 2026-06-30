@@ -67,3 +67,56 @@ func TestJournalBootstrapRequiresConfiguredSecret(t *testing.T) {
 		t.Fatalf("bootstrap without secret status = %d body = %s, want 500", recorder.Code, recorder.Body.String())
 	}
 }
+
+func TestJournalCreateRejectsMalformedEncryptedEnvelopeBeforeDatabase(t *testing.T) {
+	handler := &JournalHandler{}
+	claims := &auth.TokenClaims{
+		UserID:         "user-123",
+		OrganizationID: "org-456",
+		Role:           "member",
+	}
+
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{
+			name: "plaintext ciphertext",
+			body: `{"ciphertext":"Lord, help me","iv":"AQIDBAUGBwgJCgsM","salt_id":"journal:v1:test","salt_version":1}`,
+		},
+		{
+			name: "short iv",
+			body: `{"ciphertext":"c2VhbGVkLWNpcGhlcnRleHQtYmxvYg==","iv":"AQID","salt_id":"journal:v1:test","salt_version":1}`,
+		},
+		{
+			name: "unversioned salt",
+			body: `{"ciphertext":"c2VhbGVkLWNpcGhlcnRleHQtYmxvYg==","iv":"AQIDBAUGBwgJCgsM","salt_id":"test","salt_version":1}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/journal_entries", strings.NewReader(tc.body))
+			request = request.WithContext(context.WithValue(request.Context(), auth.ContextKeyUser, claims))
+			recorder := httptest.NewRecorder()
+
+			handler.ServeJournalEntries(recorder, request)
+
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("malformed journal envelope status = %d body = %s, want 400", recorder.Code, recorder.Body.String())
+			}
+		})
+	}
+
+	validRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/journal_entries",
+		strings.NewReader(`{"ciphertext":"c2VhbGVkLWNpcGhlcnRleHQtYmxvYg==","iv":"AQIDBAUGBwgJCgsM","salt_id":"journal:v1:test","salt_version":1}`),
+	)
+	validRequest = validRequest.WithContext(context.WithValue(validRequest.Context(), auth.ContextKeyUser, claims))
+	validRecorder := httptest.NewRecorder()
+
+	handler.ServeJournalEntries(validRecorder, validRequest)
+
+	if validRecorder.Code != http.StatusInternalServerError {
+		t.Fatalf("valid encrypted envelope status = %d body = %s, want DB configuration error 500", validRecorder.Code, validRecorder.Body.String())
+	}
+}

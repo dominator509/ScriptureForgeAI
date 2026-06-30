@@ -39,6 +39,6 @@ This local review does not replace release-time secret scanning or cloud-side ev
 - Clean pushed CI output from `tools/validate-secret-hygiene.mjs` and TruffleHog.
 - Confirmation that real staging/production secrets live only in the chosen secret manager or CI secret store.
 - Evidence that Terraform state is remote, encrypted, access-controlled, and does not contain plaintext application secrets.
-- Staging proof that the Secrets Store CSI driver and AWS provider are installed, IRSA can read only the configured secret ARNs, synced Kubernetes secrets are created without plaintext values being committed to source, and `DATABASE_URL` uses a scoped application database user instead of the RDS root user.
+- Staging proof that the Secrets Store CSI driver and AWS provider are installed, IRSA can read only the configured secret ARNs, synced Kubernetes secrets are created without plaintext or base64-encoded secret values in evidence artifacts, and `DATABASE_URL` uses a scoped application database user instead of the RDS root user.
 - Rotated staging credentials after any test deployment that used temporary values.
 - Owner review of secret access roles for GitHub Actions, AWS Secrets Manager, EKS workloads, and operators.

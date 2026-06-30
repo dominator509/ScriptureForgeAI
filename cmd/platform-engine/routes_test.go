@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -101,6 +100,55 @@ func TestHealthRoutesExposeLivenessAndDependencyReadiness(t *testing.T) {
 	}
 }
 
+func TestLoadConfigDefaultsGRPCAddressOnlyForLocalDevelopment(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://local.example/scriptureforge")
+	t.Setenv("REDIS_URL", "redis://local.example:6379")
+	t.Setenv("DEPLOYMENT_ENVIRONMENT", "development")
+	t.Setenv("GRPC_ENGINE_ADDRESS", "")
+
+	cfg, errConfig := loadConfig()
+	if errConfig != nil {
+		t.Fatalf("loadConfig returned error for local development: %v", errConfig)
+	}
+	if cfg.GRPCAddress != "localhost:50051" {
+		t.Fatalf("local GRPCAddress = %q, want localhost:50051", cfg.GRPCAddress)
+	}
+}
+
+func TestLoadConfigRequiresGRPCAddressInStagingAndProduction(t *testing.T) {
+	for _, environment := range []string{"staging", "production", "prod"} {
+		t.Run(environment, func(t *testing.T) {
+			t.Setenv("DATABASE_URL", "postgres://staging.example/scriptureforge")
+			t.Setenv("REDIS_URL", "rediss://staging.example:6379")
+			t.Setenv("DEPLOYMENT_ENVIRONMENT", environment)
+			t.Setenv("GRPC_ENGINE_ADDRESS", "")
+
+			cfg, errConfig := loadConfig()
+			if errConfig == nil {
+				t.Fatalf("loadConfig returned cfg=%#v, want missing GRPC_ENGINE_ADDRESS error", cfg)
+			}
+			if errConfig.Category != ConfigurationFault || !strings.Contains(errConfig.Message, "GRPC_ENGINE_ADDRESS") {
+				t.Fatalf("loadConfig error = %#v, want GRPC_ENGINE_ADDRESS configuration fault", errConfig)
+			}
+		})
+	}
+}
+
+func TestLoadConfigAcceptsExplicitProductionGRPCAddress(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://staging.example/scriptureforge")
+	t.Setenv("REDIS_URL", "rediss://staging.example:6379")
+	t.Setenv("DEPLOYMENT_ENVIRONMENT", "staging")
+	t.Setenv("GRPC_ENGINE_ADDRESS", "scriptureforge-rust-engine:50051")
+
+	cfg, errConfig := loadConfig()
+	if errConfig != nil {
+		t.Fatalf("loadConfig returned error with explicit GRPC_ENGINE_ADDRESS: %v", errConfig)
+	}
+	if cfg.GRPCAddress != "scriptureforge-rust-engine:50051" {
+		t.Fatalf("GRPCAddress = %q, want scriptureforge-rust-engine:50051", cfg.GRPCAddress)
+	}
+}
+
 func TestMountedAuthRoutesEnforceAbuseRateLimit(t *testing.T) {
 	t.Setenv("ABUSE_LIMIT_AUTH_REQUESTS", "1")
 	t.Setenv("ABUSE_LIMIT_AUTH_WINDOW_SECONDS", "60")
@@ -151,70 +199,184 @@ func TestLegacyAuthAliasSharesCanonicalAbuseBucket(t *testing.T) {
 	}
 }
 
-func TestRouteProfilesEnforceRateLimitsForAIJournalRoomsAndWebSocket(t *testing.T) {
+func TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles(t *testing.T) {
 	tests := []struct {
 		name           string
 		profileEnvName string
 		profileEnvKey  string
 		path           string
 		method         string
-		requiresDB     bool
+		body           string
+		role           string
 	}{
 		{
-			name:           "ai",
+			name:           "auth register canonical",
+			profileEnvName: abuse.ProfileAuth,
+			profileEnvKey:  "ABUSE_LIMIT_AUTH_REQUESTS",
+			path:           "/api/v1/auth/register",
+			method:         http.MethodPost,
+			body:           `{"email":"not-an-email","password":"short","organization_id":""}`,
+		},
+		{
+			name:           "auth login canonical",
+			profileEnvName: abuse.ProfileAuth,
+			profileEnvKey:  "ABUSE_LIMIT_AUTH_REQUESTS",
+			path:           "/api/v1/auth/login",
+			method:         http.MethodPost,
+			body:           `{"email":"member@example.test","password":"password-without-org"}`,
+		},
+		{
+			name:           "auth refresh canonical",
+			profileEnvName: abuse.ProfileAuth,
+			profileEnvKey:  "ABUSE_LIMIT_AUTH_REQUESTS",
+			path:           "/api/v1/auth/refresh",
+			method:         http.MethodPost,
+			body:           `{}`,
+		},
+		{
+			name:           "auth logout canonical",
+			profileEnvName: abuse.ProfileAuth,
+			profileEnvKey:  "ABUSE_LIMIT_AUTH_REQUESTS",
+			path:           "/api/v1/auth/logout",
+			method:         http.MethodPost,
+			body:           `{}`,
+		},
+		{
+			name:           "auth mfa verify canonical",
+			profileEnvName: abuse.ProfileAuth,
+			profileEnvKey:  "ABUSE_LIMIT_AUTH_REQUESTS",
+			path:           "/api/v1/auth/mfa/verify",
+			method:         http.MethodPost,
+			body:           `{}`,
+		},
+		{
+			name:           "auth mfa enroll canonical",
+			profileEnvName: abuse.ProfileAuth,
+			profileEnvKey:  "ABUSE_LIMIT_AUTH_REQUESTS",
+			path:           "/api/v1/auth/mfa/enroll",
+			method:         http.MethodPost,
+			role:           "member",
+		},
+		{
+			name:           "auth workspace switch canonical",
+			profileEnvName: abuse.ProfileAuth,
+			profileEnvKey:  "ABUSE_LIMIT_AUTH_REQUESTS",
+			path:           "/api/v1/workspaces/switch",
+			method:         http.MethodPost,
+			body:           `{"organization_id":"test-org-id"}`,
+		},
+		{
+			name:           "auth register legacy alias",
+			profileEnvName: abuse.ProfileAuth,
+			profileEnvKey:  "ABUSE_LIMIT_AUTH_REQUESTS",
+			path:           "/api/auth/register",
+			method:         http.MethodPost,
+			body:           `{"email":"not-an-email","password":"short","organization_id":""}`,
+		},
+		{
+			name:           "auth login legacy alias",
+			profileEnvName: abuse.ProfileAuth,
+			profileEnvKey:  "ABUSE_LIMIT_AUTH_REQUESTS",
+			path:           "/api/auth/login",
+			method:         http.MethodPost,
+			body:           `{"email":"member@example.test","password":"password-without-org"}`,
+		},
+		{
+			name:           "ai canonical study generation",
 			profileEnvName: abuse.ProfileAI,
 			profileEnvKey:  "ABUSE_LIMIT_AI_REQUESTS",
 			path:           "/api/v1/ai/generate/study",
 			method:         http.MethodPost,
-			requiresDB:     false,
 		},
 		{
-			name:           "journal",
+			name:           "ai legacy curriculum alias",
+			profileEnvName: abuse.ProfileAI,
+			profileEnvKey:  "ABUSE_LIMIT_AI_REQUESTS",
+			path:           "/api/ai/curriculum",
+			method:         http.MethodPost,
+		},
+		{
+			name:           "journal bootstrap",
+			profileEnvName: abuse.ProfileJournal,
+			profileEnvKey:  "ABUSE_LIMIT_JOURNAL_REQUESTS",
+			path:           "/api/v1/journal/bootstrap",
+			method:         http.MethodGet,
+		},
+		{
+			name:           "journal list",
 			profileEnvName: abuse.ProfileJournal,
 			profileEnvKey:  "ABUSE_LIMIT_JOURNAL_REQUESTS",
 			path:           "/api/v1/journal_entries",
 			method:         http.MethodGet,
-			requiresDB:     true,
 		},
 		{
-			name:           "rooms",
+			name:           "journal create",
+			profileEnvName: abuse.ProfileJournal,
+			profileEnvKey:  "ABUSE_LIMIT_JOURNAL_REQUESTS",
+			path:           "/api/v1/journal_entries",
+			method:         http.MethodPost,
+			body:           `{"ciphertext":"cipher","iv":"iv","salt_id":"salt","salt_version":1}`,
+		},
+		{
+			name:           "journal read",
+			profileEnvName: abuse.ProfileJournal,
+			profileEnvKey:  "ABUSE_LIMIT_JOURNAL_REQUESTS",
+			path:           "/api/v1/journal_entries/entry-1",
+			method:         http.MethodGet,
+		},
+		{
+			name:           "rooms create",
+			profileEnvName: abuse.ProfileRooms,
+			profileEnvKey:  "ABUSE_LIMIT_ROOMS_REQUESTS",
+			path:           "/api/v1/rooms/create",
+			method:         http.MethodPost,
+			body:           `{"title":"Rate Limited Room"}`,
+		},
+		{
+			name:           "rooms active",
 			profileEnvName: abuse.ProfileRooms,
 			profileEnvKey:  "ABUSE_LIMIT_ROOMS_REQUESTS",
 			path:           "/api/v1/rooms/active",
 			method:         http.MethodGet,
-			requiresDB:     true,
 		},
 		{
-			name:           "websocket",
+			name:           "rooms state polling",
+			profileEnvName: abuse.ProfileRooms,
+			profileEnvKey:  "ABUSE_LIMIT_ROOMS_REQUESTS",
+			path:           "/api/v1/rooms/state/room-1",
+			method:         http.MethodGet,
+		},
+		{
+			name:           "websocket stream",
 			profileEnvName: abuse.ProfileWebSocket,
 			profileEnvKey:  "ABUSE_LIMIT_WEBSOCKET_REQUESTS",
 			path:           "/api/v1/rooms/stream/room-1",
 			method:         http.MethodGet,
-			requiresDB:     true,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if test.requiresDB && os.Getenv("DATABASE_URL") == "" {
-				t.Skip("DATABASE_URL required for DB-backed route profile assertion")
-			}
 			t.Setenv(test.profileEnvKey, "1")
-			t.Setenv(test.profileEnvName+"_WINDOW_SECONDS", "60")
+			t.Setenv("ABUSE_LIMIT_"+strings.ToUpper(test.profileEnvName)+"_WINDOW_SECONDS", "60")
 			t.Setenv("JWT_SECRET_KEY", "route-profile-test-secret")
 			router := setupRoutes(nil, nil, nil)
-			token, err := auth.GenerateToken("test-user-id", "test-org-id", "admin", time.Minute)
+			role := test.role
+			if role == "" {
+				role = "admin"
+			}
+			token, err := auth.GenerateToken("test-user-id", "test-org-id", role, time.Minute)
 			if err != nil {
 				t.Fatalf("generate token: %v", err)
 			}
 			remoteAddr := "192.0.2.10:49152"
 
-			firstStatus, _, firstError := exerciseRouteRawWithMethodAndAuth(t, router, test.path, "", remoteAddr, test.method, token)
+			firstStatus, _, firstError := exerciseRouteRawWithMethodAndAuth(t, router, test.path, test.body, remoteAddr, test.method, token)
 			if firstStatus == http.StatusTooManyRequests {
 				t.Fatalf("%s first status = %d error = %#v, should be below limit", test.name, firstStatus, firstError)
 			}
 
-			secondStatus, secondHeaders, secondError := exerciseRouteRawWithMethodAndAuth(t, router, test.path, "", remoteAddr, test.method, token)
+			secondStatus, secondHeaders, secondError := exerciseRouteRawWithMethodAndAuth(t, router, test.path, test.body, remoteAddr, test.method, token)
 			if secondStatus != http.StatusTooManyRequests {
 				t.Fatalf("%s second status = %d error = %#v, want 429", test.name, secondStatus, secondError)
 			}

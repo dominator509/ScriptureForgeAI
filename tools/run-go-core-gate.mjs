@@ -1,0 +1,117 @@
+import { spawnSync } from 'node:child_process';
+import { platform } from 'node:os';
+
+export const goTestProofMarkers = [
+  'go_test_all_packages=true',
+  'go_count_one=true',
+  'go_timeout_90s=true',
+  'repo_go_toolchain=true',
+];
+
+export const goVetProofMarkers = [
+  'go_vet_all_packages=true',
+  'go_static_analysis=true',
+  'repo_go_toolchain=true',
+];
+
+export function defaultGoBin(platformName = platform()) {
+  return platformName === 'win32' ? '.\\.tools\\go\\bin\\go.exe' : './.tools/go/bin/go';
+}
+
+export function goArgsForMode(mode) {
+  if (mode === 'test') {
+    return {
+      args: ['test', './...', '-count=1', '-timeout=90s'],
+      proofName: 'go-test-gate',
+      markers: goTestProofMarkers,
+    };
+  }
+  if (mode === 'vet') {
+    return {
+      args: ['vet', './...'],
+      proofName: 'go-vet-gate',
+      markers: goVetProofMarkers,
+    };
+  }
+  throw new Error(`unsupported Go gate mode ${mode || '<empty>'}`);
+}
+
+export function runGoCoreGate({
+  mode,
+  bin,
+  cwd = process.cwd(),
+  spawnSyncImpl = spawnSync,
+  platformName = platform(),
+  env = process.env,
+} = {}) {
+  const command = bin || defaultGoBin(platformName);
+  const plan = goArgsForMode(mode);
+  const child = spawnSyncImpl(command, plan.args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: 'pipe',
+    env,
+  });
+  const output = `${child.stdout || ''}${child.stderr || ''}${child.error ? child.error.message : ''}`;
+  return {
+    exitCode: child.status ?? 1,
+    output,
+    command,
+    args: plan.args,
+    proofName: plan.proofName,
+    markers: plan.markers,
+  };
+}
+
+export function parseArgs(rawArgs) {
+  const parsed = {};
+  for (let i = 0; i < rawArgs.length; i += 1) {
+    const arg = rawArgs[i];
+    if (arg === '--mode' || arg === '--bin' || arg === '--cwd') {
+      parsed[arg.slice(2)] = rawArgs[i + 1];
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith('--mode=')) {
+      parsed.mode = arg.slice('--mode='.length);
+      continue;
+    }
+    if (arg.startsWith('--bin=')) {
+      parsed.bin = arg.slice('--bin='.length);
+      continue;
+    }
+    if (arg.startsWith('--cwd=')) {
+      parsed.cwd = arg.slice('--cwd='.length);
+      continue;
+    }
+    throw new Error(`unknown argument ${arg}`);
+  }
+  return parsed;
+}
+
+function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const result = runGoCoreGate({
+    mode: args.mode,
+    bin: args.bin,
+    cwd: args.cwd || process.cwd(),
+  });
+  if (result.output) {
+    const stream = result.exitCode === 0 ? process.stdout : process.stderr;
+    stream.write(result.output.endsWith('\n') ? result.output : `${result.output}\n`);
+  }
+  if (result.exitCode === 0) {
+    console.log(`${result.proofName} validated: ${result.markers.join(', ')}`);
+    process.exit(0);
+  }
+  process.exit(result.exitCode);
+}
+
+if (import.meta.url === `file://${process.argv[1]?.replaceAll('\\', '/')}` || process.argv[1]?.endsWith('run-go-core-gate.mjs')) {
+  try {
+    main();
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
+  }
+}

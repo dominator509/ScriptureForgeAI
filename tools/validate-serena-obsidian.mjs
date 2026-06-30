@@ -6,6 +6,8 @@ import path from 'node:path';
 const projectConfigPath = '.serena/project.yml';
 const architectureDocPath = 'SF-architecture.md';
 const roadmapDocPath = 'SF-roadmap.md';
+const readmePath = 'README.md';
+const repoBriefPath = 'REPO_BRIEF.md';
 const obsidianNotePath = 'production-readiness/obsidian-production-readiness.md';
 const serenaSetupPath = 'production-readiness/serena-setup.md';
 const routeSourcePath = 'cmd/platform-engine/main.go';
@@ -142,14 +144,18 @@ export async function validateSerenaObsidianSync({ workspaceRoot = process.cwd()
   const projectPath = path.join(workspaceRoot, projectConfigPath);
   const architecturePath = path.join(workspaceRoot, architectureDocPath);
   const roadmapPath = path.join(workspaceRoot, roadmapDocPath);
+  const readmePathAbs = path.join(workspaceRoot, readmePath);
+  const repoBriefPathAbs = path.join(workspaceRoot, repoBriefPath);
   const obsidianPath = path.join(workspaceRoot, obsidianNotePath);
   const serenaSetupPathAbs = path.join(workspaceRoot, serenaSetupPath);
   const routeSourcePathAbs = path.join(workspaceRoot, routeSourcePath);
 
-  const [projectText, architectureText, roadmapText, obsidianText, serenaSetupText, routeSourceText] = await Promise.all([
+  const [projectText, architectureText, roadmapText, readmeText, repoBriefText, obsidianText, serenaSetupText, routeSourceText] = await Promise.all([
     readFile(projectPath, 'utf8'),
     readFile(architecturePath, 'utf8'),
     readFile(roadmapPath, 'utf8'),
+    readFile(readmePathAbs, 'utf8'),
+    readFile(repoBriefPathAbs, 'utf8'),
     readFile(obsidianPath, 'utf8'),
     readFile(serenaSetupPathAbs, 'utf8'),
     readFile(routeSourcePathAbs, 'utf8'),
@@ -238,6 +244,12 @@ export async function validateSerenaObsidianSync({ workspaceRoot = process.cwd()
 
   assert.ok(obsidianTextBody.includes('serena-setup.md'), 'Obsidian tracker should reference serena setup');
   assert.ok(obsidianTextBody.includes(requiredPreMergeTask), 'Obsidian tracker should include Serena/Obsidian pre-merge gate');
+  assert.ok(repoBriefText.includes('terraform fmt -check -recursive'), 'REPO_BRIEF Terraform command must match recursive local/CI fmt gate');
+  assert.ok(!repoBriefText.includes('terraform fmt -check &&'), 'REPO_BRIEF must not document non-recursive Terraform fmt gate');
+  assert.ok(readmeText.includes('terraform -chdir=build/terraform init -backend=false'), 'README Terraform init command must target build/terraform');
+  assert.ok(readmeText.includes('terraform -chdir=build/terraform fmt -check -recursive'), 'README Terraform fmt command must target build/terraform recursively');
+  assert.ok(readmeText.includes('terraform -chdir=build/terraform validate'), 'README Terraform validate command must target build/terraform');
+  assert.ok(!readmeText.includes('terraform fmt -check\n'), 'README must not document non-recursive root Terraform fmt gate');
 }
 
 if (import.meta.url === `file://${process.argv[1]?.replaceAll('\\', '/')}` || process.argv[1]?.endsWith('validate-serena-obsidian.mjs')) {

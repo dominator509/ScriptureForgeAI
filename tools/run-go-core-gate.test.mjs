@@ -1,0 +1,85 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+  defaultGoBin,
+  goArgsForMode,
+  goTestProofMarkers,
+  goVetProofMarkers,
+  parseArgs,
+  runGoCoreGate,
+} from './run-go-core-gate.mjs';
+
+test('parseArgs supports mode, bin, and cwd', () => {
+  const args = parseArgs(['--mode', 'test', '--bin=go', '--cwd', 'repo']);
+  assert.equal(args.mode, 'test');
+  assert.equal(args.bin, 'go');
+  assert.equal(args.cwd, 'repo');
+});
+
+test('defaultGoBin resolves repo-local Go by platform', () => {
+  assert.equal(defaultGoBin('win32'), '.\\.tools\\go\\bin\\go.exe');
+  assert.equal(defaultGoBin('linux'), './.tools/go/bin/go');
+});
+
+test('goArgsForMode defines all-package test and vet gates', () => {
+  assert.deepEqual(goArgsForMode('test'), {
+    args: ['test', './...', '-count=1', '-timeout=90s'],
+    proofName: 'go-test-gate',
+    markers: goTestProofMarkers,
+  });
+  assert.deepEqual(goArgsForMode('vet'), {
+    args: ['vet', './...'],
+    proofName: 'go-vet-gate',
+    markers: goVetProofMarkers,
+  });
+  assert.throws(() => goArgsForMode('fmt'), /unsupported Go gate mode/);
+});
+
+test('runGoCoreGate runs go test with release proof markers', () => {
+  const calls = [];
+  const result = runGoCoreGate({
+    mode: 'test',
+    bin: 'go',
+    cwd: 'repo',
+    spawnSyncImpl(command, args, options) {
+      calls.push({ command, args, options });
+      return { status: 0, stdout: 'ok scriptureforge/internal/ports\n', stderr: '' };
+    },
+    env: { GOCACHE: '.gocache', GO_ENV: 'testing' },
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.proofName, 'go-test-gate');
+  assert.deepEqual(result.markers, goTestProofMarkers);
+  assert.equal(calls[0].command, 'go');
+  assert.deepEqual(calls[0].args, ['test', './...', '-count=1', '-timeout=90s']);
+  assert.equal(calls[0].options.env.GO_ENV, 'testing');
+});
+
+test('runGoCoreGate runs go vet with static-analysis proof markers', () => {
+  const result = runGoCoreGate({
+    mode: 'vet',
+    bin: 'go',
+    spawnSyncImpl() {
+      return { status: 0, stdout: '', stderr: '' };
+    },
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.proofName, 'go-vet-gate');
+  assert.deepEqual(result.markers, goVetProofMarkers);
+  assert.deepEqual(result.args, ['vet', './...']);
+});
+
+test('runGoCoreGate propagates failing Go output', () => {
+  const result = runGoCoreGate({
+    mode: 'test',
+    bin: 'go',
+    spawnSyncImpl() {
+      return { status: 1, stdout: '', stderr: 'FAIL scriptureforge/internal/ports\n' };
+    },
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /FAIL scriptureforge\/internal\/ports/);
+});

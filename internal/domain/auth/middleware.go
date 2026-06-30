@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"scriptureforge/internal/domain/observability"
 )
 
 type contextKey string
@@ -62,6 +64,7 @@ func RBACMiddleware(next http.Handler, requiredRole string) http.Handler {
 		}
 
 		// Inject verified claims into the request context to eliminate parameter spoofing
+		observability.EnrichRequestLogFields(r.Context(), claims.OrganizationID, claims.UserID, claims.Role)
 		ctx := context.WithValue(r.Context(), ContextKeyUser, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

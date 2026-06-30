@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -11,7 +12,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -19,7 +22,8 @@ import (
 type WebhookPayload struct {
 	Event   string `json:"event"`
 	Payload struct {
-		Object struct {
+		PlainToken string `json:"plainToken"`
+		Object     struct {
 			Id        string `json:"id"`
 			Topic     string `json:"topic"`
 			StartTime string `json:"start_time"`
@@ -33,10 +37,12 @@ type WebhookHandler struct {
 	ResolveRoomID func(ctx context.Context, meetingID string) (string, error)
 	mu            sync.Mutex
 	processed     map[string]struct{}
+	inFlight      map[string]struct{}
 	processedFIFO []string
 }
 
 const maxProcessedZoomDeliveries = 4096
+const maxZoomWebhookClockSkew = 5 * time.Minute
 
 type roomStateWriter interface {
 	SetRoomActiveState(ctx context.Context, roomID string, active bool) error
@@ -46,11 +52,48 @@ func NewWebhookHandler(sm roomStateWriter, db ...*pgxpool.Pool) *WebhookHandler 
 	handler := &WebhookHandler{
 		StateManager: sm,
 		processed:    map[string]struct{}{},
+		inFlight:     map[string]struct{}{},
 	}
 	if len(db) > 0 {
 		handler.DB = db[0]
 	}
 	return handler
+}
+
+func (h *WebhookHandler) beginDelivery(r *http.Request, payload WebhookPayload, body []byte) (string, bool) {
+	deliveryID := zoomDeliveryID(r, payload, body)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.processed == nil {
+		h.processed = map[string]struct{}{}
+	}
+	if h.inFlight == nil {
+		h.inFlight = map[string]struct{}{}
+	}
+	if _, exists := h.processed[deliveryID]; exists {
+		return deliveryID, false
+	}
+	if _, exists := h.inFlight[deliveryID]; exists {
+		return deliveryID, false
+	}
+	h.inFlight[deliveryID] = struct{}{}
+	return deliveryID, true
+}
+
+func (h *WebhookHandler) finishDelivery(deliveryID string, processed bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.processed == nil {
+		h.processed = map[string]struct{}{}
+	}
+	if h.inFlight == nil {
+		h.inFlight = map[string]struct{}{}
+	}
+	delete(h.inFlight, deliveryID)
+	if !processed {
+		return
+	}
+	h.addProcessedLocked(deliveryID)
 }
 
 func (h *WebhookHandler) markDeliveryProcessed(r *http.Request, payload WebhookPayload, body []byte) bool {
@@ -63,6 +106,11 @@ func (h *WebhookHandler) markDeliveryProcessed(r *http.Request, payload WebhookP
 	if _, exists := h.processed[deliveryID]; exists {
 		return false
 	}
+	h.addProcessedLocked(deliveryID)
+	return true
+}
+
+func (h *WebhookHandler) addProcessedLocked(deliveryID string) {
 	h.processed[deliveryID] = struct{}{}
 	h.processedFIFO = append(h.processedFIFO, deliveryID)
 	if len(h.processedFIFO) > maxProcessedZoomDeliveries {
@@ -70,7 +118,6 @@ func (h *WebhookHandler) markDeliveryProcessed(r *http.Request, payload WebhookP
 		h.processedFIFO = h.processedFIFO[1:]
 		delete(h.processed, oldest)
 	}
-	return true
 }
 
 func zoomDeliveryID(r *http.Request, payload WebhookPayload, body []byte) string {
@@ -83,6 +130,25 @@ func zoomDeliveryID(r *http.Request, payload WebhookPayload, body []byte) string
 	return "body:" + hex.EncodeToString(sum[:])
 }
 
+func (h *WebhookHandler) resolveRoomID(ctx context.Context, meetingID string) (string, bool) {
+	if h.ResolveRoomID != nil {
+		mappedRoomID, err := h.ResolveRoomID(ctx, meetingID)
+		return mappedRoomID, err == nil && mappedRoomID != ""
+	}
+	if h.DB == nil {
+		return "", false
+	}
+	var roomID string
+	err := h.DB.QueryRow(ctx, `SELECT id FROM live_rooms WHERE meeting_external_id = $1`, meetingID).Scan(&roomID)
+	if err != nil {
+		if err != sql.ErrNoRows {
+			log.Printf("Zoom webhook room lookup failed for meeting %s: %v", meetingID, err)
+		}
+		return "", false
+	}
+	return roomID, roomID != ""
+}
+
 // verifyZoomSignature validates the Zoom webhook signature to ensure authenticity
 func verifyZoomSignature(r *http.Request, body []byte) bool {
 	zoomSignature := r.Header.Get("x-zm-signature")
@@ -93,6 +159,16 @@ func verifyZoomSignature(r *http.Request, body []byte) bool {
 		return false
 	}
 
+	timestampUnix, err := strconv.ParseInt(zoomTimestamp, 10, 64)
+	if err != nil {
+		return false
+	}
+	requestTime := time.Unix(timestampUnix, 0)
+	now := time.Now()
+	if requestTime.Before(now.Add(-maxZoomWebhookClockSkew)) || requestTime.After(now.Add(maxZoomWebhookClockSkew)) {
+		return false
+	}
+
 	message := fmt.Sprintf("v0:%s:%s", zoomTimestamp, string(body))
 
 	mac := hmac.New(sha256.New, []byte(zoomSecretToken))
@@ -100,6 +176,19 @@ func verifyZoomSignature(r *http.Request, body []byte) bool {
 	expectedSignature := "v0=" + hex.EncodeToString(mac.Sum(nil))
 
 	return hmac.Equal([]byte(expectedSignature), []byte(zoomSignature))
+}
+
+func zoomURLValidationResponse(plainToken string) (map[string]string, bool) {
+	secret := os.Getenv("ZOOM_WEBHOOK_SECRET_TOKEN")
+	if plainToken == "" || secret == "" {
+		return nil, false
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(plainToken))
+	return map[string]string{
+		"plainToken":     plainToken,
+		"encryptedToken": hex.EncodeToString(mac.Sum(nil)),
+	}, true
 }
 
 func (h *WebhookHandler) HandleZoomWebhook(w http.ResponseWriter, r *http.Request) {
@@ -121,36 +210,53 @@ func (h *WebhookHandler) HandleZoomWebhook(w http.ResponseWriter, r *http.Reques
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	if !h.markDeliveryProcessed(r, payload, bodyBytes) {
+	if payload.Event == "endpoint.url_validation" {
+		response, ok := zoomURLValidationResponse(payload.Payload.PlainToken)
+		if !ok {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(response)
+		return
+	}
+	meetingID := payload.Payload.Object.Id
+	roomID, ok := h.resolveRoomID(r.Context(), meetingID)
+	if !ok {
+		log.Printf("Webhook: No live room mapping for Zoom meeting %s", meetingID)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	deliveryID, ok := h.beginDelivery(r, payload, bodyBytes)
+	if !ok {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
-	meetingID := payload.Payload.Object.Id
-	roomID := meetingID
-	if h.ResolveRoomID != nil {
-		if mappedRoomID, err := h.ResolveRoomID(r.Context(), meetingID); err == nil && mappedRoomID != "" {
-			roomID = mappedRoomID
-		}
-	} else if h.DB != nil {
-		_ = h.DB.QueryRow(r.Context(), `SELECT id FROM live_rooms WHERE meeting_external_id = $1`, meetingID).Scan(&roomID)
-	}
-
 	// Map Zoom business logic events to local Redis state mutations
+	var mutationErr error
 	switch payload.Event {
 	case "meeting.started":
 		log.Printf("Webhook: Meeting %s started", meetingID)
 		if h.StateManager != nil {
-			_ = h.StateManager.SetRoomActiveState(r.Context(), roomID, true)
+			mutationErr = h.StateManager.SetRoomActiveState(r.Context(), roomID, true)
 		}
 	case "meeting.ended":
 		log.Printf("Webhook: Meeting %s ended", meetingID)
 		if h.StateManager != nil {
-			_ = h.StateManager.SetRoomActiveState(r.Context(), roomID, false)
+			mutationErr = h.StateManager.SetRoomActiveState(r.Context(), roomID, false)
 		}
 	default:
 		log.Printf("Webhook: Unhandled event %s for meeting %s", payload.Event, meetingID)
 	}
+	if mutationErr != nil {
+		log.Printf("Webhook: room state update failed for Zoom meeting %s mapped to room %s: %v", meetingID, roomID, mutationErr)
+		h.finishDelivery(deliveryID, false)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	h.finishDelivery(deliveryID, true)
 
 	w.WriteHeader(http.StatusOK)
 }

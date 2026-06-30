@@ -5,12 +5,15 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"scriptureforge/internal/domain/auth"
+	"scriptureforge/internal/domain/observability"
 )
 
 type JournalHandler struct {
@@ -29,6 +32,12 @@ type JournalPayload struct {
 type JournalBootstrapResponse struct {
 	SaltID      string `json:"salt_id"`
 	SaltVersion int    `json:"salt_version"`
+}
+
+const journalAESGCMIVBytes = 12
+
+func observeJournalPostgres(r *http.Request, operation, status string, start time.Time) {
+	observability.ObserveDependencyFromContext(r.Context(), "postgres", operation, status, time.Since(start))
 }
 
 func (h *JournalHandler) ServeJournalBootstrap(w http.ResponseWriter, r *http.Request) {
@@ -93,13 +102,22 @@ func (h *JournalHandler) ServeJournalEntry(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	start := time.Now()
+	status := "error"
+	if h.DB == nil {
+		observeJournalPostgres(r, "journal_read", status, start)
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Journal database is not configured", Code: http.StatusInternalServerError})
+		return
+	}
 	tx, err := h.DB.Begin(r.Context())
 	if err != nil {
+		observeJournalPostgres(r, "journal_read", status, start)
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to open tenant transaction", Code: http.StatusInternalServerError})
 		return
 	}
 	defer tx.Rollback(r.Context())
 	if err := auth.SetTenantContext(r.Context(), tx, claims.OrganizationID); err != nil {
+		observeJournalPostgres(r, "journal_read", status, start)
 		sendAuthError(w, err.(*auth.PlatformException))
 		return
 	}
@@ -115,9 +133,13 @@ func (h *JournalHandler) ServeJournalEntry(w http.ResponseWriter, r *http.Reques
 		claims.UserID,
 	).Scan(&entry.ID, &entry.Ciphertext, &entry.IV, &entry.SaltID, &entry.SaltVersion, &entry.CreatedAt)
 	if err != nil {
+		status = "not_found"
+		observeJournalPostgres(r, "journal_read", status, start)
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Journal entry not found", Code: http.StatusNotFound})
 		return
 	}
+	status = "success"
+	observeJournalPostgres(r, "journal_read", status, start)
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(entry)
@@ -140,14 +162,27 @@ func (h *JournalHandler) createJournalEntry(w http.ResponseWriter, r *http.Reque
 	if req.SaltVersion == 0 {
 		req.SaltVersion = 1
 	}
+	if err := validateEncryptedJournalPayload(req); err != nil {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: err.Error(), Code: http.StatusBadRequest})
+		return
+	}
 
+	start := time.Now()
+	status := "error"
+	if h.DB == nil {
+		observeJournalPostgres(r, "journal_create", status, start)
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Journal database is not configured", Code: http.StatusInternalServerError})
+		return
+	}
 	tx, err := h.DB.Begin(r.Context())
 	if err != nil {
+		observeJournalPostgres(r, "journal_create", status, start)
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to open tenant transaction", Code: http.StatusInternalServerError})
 		return
 	}
 	defer tx.Rollback(r.Context())
 	if err := auth.SetTenantContext(r.Context(), tx, claims.OrganizationID); err != nil {
+		observeJournalPostgres(r, "journal_create", status, start)
 		sendAuthError(w, err.(*auth.PlatformException))
 		return
 	}
@@ -165,17 +200,49 @@ func (h *JournalHandler) createJournalEntry(w http.ResponseWriter, r *http.Reque
 		req.SaltVersion,
 	).Scan(&req.ID, &req.CreatedAt)
 	if err != nil {
+		observeJournalPostgres(r, "journal_create", status, start)
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to persist encrypted journal payload", Code: http.StatusInternalServerError})
 		return
 	}
 	if err := tx.Commit(r.Context()); err != nil {
+		observeJournalPostgres(r, "journal_create", status, start)
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to commit journal payload", Code: http.StatusInternalServerError})
 		return
 	}
+	status = "success"
+	observeJournalPostgres(r, "journal_create", status, start)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(req)
+}
+
+func validateEncryptedJournalPayload(payload JournalPayload) error {
+	ciphertext, err := decodeStrictBase64(payload.Ciphertext)
+	if err != nil || len(ciphertext) < 16 {
+		return fmt.Errorf("Invalid encrypted journal payload")
+	}
+	iv, err := decodeStrictBase64(payload.IV)
+	if err != nil || len(iv) != journalAESGCMIVBytes {
+		return fmt.Errorf("Invalid encrypted journal payload")
+	}
+	if !strings.HasPrefix(payload.SaltID, "journal:v") || !strings.Contains(payload.SaltID, ":") {
+		return fmt.Errorf("Invalid encrypted journal payload")
+	}
+	if payload.SaltVersion < 1 {
+		return fmt.Errorf("Invalid encrypted journal payload")
+	}
+	return nil
+}
+
+func decodeStrictBase64(value string) ([]byte, error) {
+	if strings.TrimSpace(value) != value || value == "" {
+		return nil, fmt.Errorf("invalid base64")
+	}
+	if decoded, err := base64.StdEncoding.Strict().DecodeString(value); err == nil {
+		return decoded, nil
+	}
+	return base64.RawStdEncoding.Strict().DecodeString(value)
 }
 
 func (h *JournalHandler) listJournalEntries(w http.ResponseWriter, r *http.Request) {
@@ -185,13 +252,22 @@ func (h *JournalHandler) listJournalEntries(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	start := time.Now()
+	status := "error"
+	if h.DB == nil {
+		observeJournalPostgres(r, "journal_list", status, start)
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Journal database is not configured", Code: http.StatusInternalServerError})
+		return
+	}
 	tx, err := h.DB.Begin(r.Context())
 	if err != nil {
+		observeJournalPostgres(r, "journal_list", status, start)
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to open tenant transaction", Code: http.StatusInternalServerError})
 		return
 	}
 	defer tx.Rollback(r.Context())
 	if err := auth.SetTenantContext(r.Context(), tx, claims.OrganizationID); err != nil {
+		observeJournalPostgres(r, "journal_list", status, start)
 		sendAuthError(w, err.(*auth.PlatformException))
 		return
 	}
@@ -207,6 +283,7 @@ func (h *JournalHandler) listJournalEntries(w http.ResponseWriter, r *http.Reque
 		claims.UserID,
 	)
 	if err != nil {
+		observeJournalPostgres(r, "journal_list", status, start)
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to list journal entries", Code: http.StatusInternalServerError})
 		return
 	}
@@ -216,11 +293,14 @@ func (h *JournalHandler) listJournalEntries(w http.ResponseWriter, r *http.Reque
 	for rows.Next() {
 		var entry JournalPayload
 		if err := rows.Scan(&entry.ID, &entry.Ciphertext, &entry.IV, &entry.SaltID, &entry.SaltVersion, &entry.CreatedAt); err != nil {
+			observeJournalPostgres(r, "journal_list", status, start)
 			sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to decode journal entry", Code: http.StatusInternalServerError})
 			return
 		}
 		entries = append(entries, entry)
 	}
+	status = "success"
+	observeJournalPostgres(r, "journal_list", status, start)
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(entries)

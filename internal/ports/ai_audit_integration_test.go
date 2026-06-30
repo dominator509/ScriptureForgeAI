@@ -2,6 +2,8 @@ package ports
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -10,6 +12,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"scriptureforge/internal/adapters/llm"
+	"scriptureforge/internal/domain/ai"
 	"scriptureforge/internal/domain/auth"
 )
 
@@ -25,6 +29,9 @@ func openAIAuditDB(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" || strings.Contains(databaseURL, "${") {
+		if os.Getenv("REQUIRE_DATABASE_URL") == "true" {
+			t.Fatal("DATABASE_URL is required when REQUIRE_DATABASE_URL=true for AI audit-log Postgres/RLS proof")
+		}
 		t.Skip("DATABASE_URL is required for AI audit-log Postgres/RLS proof")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -51,15 +58,20 @@ func ensureAIAuditRLSRole(ctx context.Context, t *testing.T, db *pgxpool.Pool) {
 	if !isSuperuser {
 		return
 	}
-	if _, err := db.Exec(ctx, `SELECT pg_advisory_lock(774411)`); err != nil {
+	conn, err := db.Acquire(ctx)
+	if err != nil {
+		t.Fatalf("acquire AI audit RLS test role setup connection: %v", err)
+	}
+	defer conn.Release()
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin AI audit RLS test role setup: %v", err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(774411)`); err != nil {
 		t.Fatalf("lock AI audit RLS test role setup: %v", err)
 	}
-	defer func() {
-		if _, err := db.Exec(ctx, `SELECT pg_advisory_unlock(774411)`); err != nil {
-			t.Fatalf("unlock AI audit RLS test role setup: %v", err)
-		}
-	}()
-	if _, err := db.Exec(ctx, `
+	if _, err := tx.Exec(ctx, `
 		DO $$
 		BEGIN
 			IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'scriptureforge_rls_test') THEN
@@ -71,6 +83,9 @@ func ensureAIAuditRLSRole(ctx context.Context, t *testing.T, db *pgxpool.Pool) {
 		GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO scriptureforge_rls_test;
 	`); err != nil {
 		t.Fatalf("ensure AI audit RLS test role: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit AI audit RLS test role setup: %v", err)
 	}
 }
 
@@ -181,4 +196,88 @@ func TestAIRequestLogPersistsCitationsAndHonorsTenantRLS(t *testing.T) {
 			t.Fatalf("cross-tenant AI audit visibility logs=%d citations=%d, want 0/0", visibleLogs, visibleCitations)
 		}
 	})
+}
+
+func TestGenerateCurriculumHandlerPersistsAuditRowsWithTenantRLS(t *testing.T) {
+	db := openAIAuditDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	seedAIAuditFixtures(ctx, t, db)
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		cleanupAIAuditFixtures(cleanupCtx, t, db)
+	})
+
+	llmServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]string{"role": "assistant", "content": "Creation study grounded in [Genesis 1:1]."}},
+			},
+		})
+	}))
+	defer llmServer.Close()
+
+	handler := &AIHandler{
+		DB:              db,
+		RAGEngine:       ai.NewRAGEngine(fakeAIVectorDB{}),
+		Verifier:        ai.NewResponseVerificationSubsystem(),
+		LLMClient:       &llm.LLMClient{APIKey: "test-key", Endpoint: llmServer.URL, Model: "test-model", HTTPClient: llmServer.Client(), MaxRetries: 0},
+		MapReduceWorker: ai.NewMapReduceWorker(4000),
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/ai/generate/study", strings.NewReader(`{"topic":"creation"}`))
+	request = request.WithContext(context.WithValue(request.Context(), auth.ContextKeyUser, &auth.TokenClaims{
+		UserID:         aiAuditUserA,
+		OrganizationID: aiAuditOrgA,
+		Role:           "member",
+	}))
+	recorder := httptest.NewRecorder()
+
+	handler.GenerateCurriculumHandler(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("AI generation status = %d body = %s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "[Genesis 1:1]") {
+		t.Fatalf("AI generation response did not include verified citation: %s", recorder.Body.String())
+	}
+
+	withAIAuditTenant(ctx, t, db, aiAuditOrgA, func(ctx context.Context, tx pgx.Tx) {
+		var logCount, citationCount int
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM ai_request_logs WHERE organization_id = $1 AND user_id = $2 AND prompt LIKE '%creation%' AND status = 'succeeded'`, aiAuditOrgA, aiAuditUserA).Scan(&logCount); err != nil {
+			t.Fatalf("query handler AI audit logs: %v", err)
+		}
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM citation_trails WHERE organization_id = $1 AND citation = '[Genesis 1:1]' AND verified = TRUE`, aiAuditOrgA).Scan(&citationCount); err != nil {
+			t.Fatalf("query handler AI citation trails: %v", err)
+		}
+		if logCount != 1 || citationCount != 1 {
+			t.Fatalf("handler AI audit counts logs=%d citations=%d, want 1/1", logCount, citationCount)
+		}
+	})
+
+	withAIAuditTenant(ctx, t, db, aiAuditOrgB, func(ctx context.Context, tx pgx.Tx) {
+		var visibleLogs, visibleCitations int
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM ai_request_logs WHERE prompt LIKE '%creation%'`).Scan(&visibleLogs); err != nil {
+			t.Fatalf("query cross-tenant handler AI logs: %v", err)
+		}
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM citation_trails WHERE citation = '[Genesis 1:1]'`).Scan(&visibleCitations); err != nil {
+			t.Fatalf("query cross-tenant handler AI citations: %v", err)
+		}
+		if visibleLogs != 0 || visibleCitations != 0 {
+			t.Fatalf("cross-tenant handler AI audit visibility logs=%d citations=%d, want 0/0", visibleLogs, visibleCitations)
+		}
+	})
+}
+
+type fakeAIVectorDB struct{}
+
+func (fakeAIVectorDB) Search(context.Context, string, string, int) ([]ai.SearchResult, error) {
+	return []ai.SearchResult{{
+		Book:            "Genesis",
+		Chapter:         1,
+		Verse:           1,
+		TextContent:     "In the beginning God created the heavens and the earth.",
+		SimilarityScore: 0.99,
+	}}, nil
 }

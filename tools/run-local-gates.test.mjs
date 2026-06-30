@@ -13,12 +13,135 @@ test('parseArgs supports dry run, report, continue, and only', () => {
 
 test('buildGatePlan returns all gates by default and selected gates by id', () => {
   assert.equal(buildGatePlan().length, gateDefinitions.length);
-  const selected = buildGatePlan({ only: ['go-test', 'web-build'] });
-  assert.deepEqual(selected.map((gate) => gate.id), ['go-test', 'web-build']);
+  const selected = buildGatePlan({ only: ['go-test', 'rls-db-integration', 'web-build'] });
+  assert.deepEqual(selected.map((gate) => gate.id), ['go-test', 'rls-db-integration', 'web-build']);
+  const rlsGate = selected.find((gate) => gate.id === 'rls-db-integration');
+  assert.equal(rlsGate.env.REQUIRE_DATABASE_URL, 'true');
+  assert.equal(rlsGate.command.some((part) => part.endsWith('tools/run-rls-db-integration-docker.mjs')), true);
+  assert.match(rlsGate.display, /REQUIRE_DATABASE_URL=true/);
 });
 
 test('buildGatePlan rejects unknown gates', () => {
   assert.throws(() => buildGatePlan({ only: ['missing-gate'] }), /unknown local gate/);
+});
+
+test('buildGatePlan runs Rust tests against the committed lockfile', () => {
+  const [rustGate] = buildGatePlan({ only: ['rust-cargo-test'] });
+  assert.equal(rustGate.command.includes('--locked'), true);
+  assert.match(rustGate.display, /cargo(?:\.exe)? test --locked/);
+});
+
+test('buildGatePlan wraps Go test and vet gates with proof markers', () => {
+  const [goTestGate] = buildGatePlan({ only: ['go-test'] });
+  assert.ok(goTestGate.command.includes('tools/run-go-core-gate.mjs'));
+  assert.match(goTestGate.display, /tools\/run-go-core-gate\.mjs --mode test --bin/);
+  assert.match(goTestGate.display, /GOCACHE=\.gocache/);
+
+  const [goVetGate] = buildGatePlan({ only: ['go-vet'] });
+  assert.ok(goVetGate.command.includes('tools/run-go-core-gate.mjs'));
+  assert.match(goVetGate.display, /tools\/run-go-core-gate\.mjs --mode vet --bin/);
+  assert.match(goVetGate.display, /GOCACHE=\.gocache/);
+});
+
+test('buildGatePlan wraps production evidence probe tests with proof markers', () => {
+  const [probeGate] = buildGatePlan({ only: ['evidence-probes'] });
+  assert.ok(
+    probeGate.command.includes('tools/run-go-probe-tests.mjs'),
+    'evidence-probes must use the proof-marker wrapper',
+  );
+  assert.match(probeGate.display, /tools\/run-go-probe-tests\.mjs --bin/);
+  assert.match(probeGate.display, /GOCACHE=\.gocache/);
+});
+
+test('buildGatePlan wraps Terraform fmt and validate gates with proof markers', () => {
+  const [fmtGate] = buildGatePlan({ only: ['terraform-fmt'] });
+  assert.ok(fmtGate.command.includes('tools/run-terraform-command.mjs'));
+  assert.match(fmtGate.display, /tools\/run-terraform-command\.mjs --mode fmt --bin/);
+
+  const [validateGate] = buildGatePlan({ only: ['terraform-validate'] });
+  assert.ok(validateGate.command.includes('tools/run-terraform-command.mjs'));
+  assert.match(validateGate.display, /tools\/run-terraform-command\.mjs --mode validate --bin/);
+});
+
+test('buildGatePlan includes readiness sync unit tests in the tooling gate', () => {
+  const [toolingGate] = buildGatePlan({ only: ['tooling-tests'] });
+  assert.ok(
+    toolingGate.command.includes('tools/sync-obsidian-readiness.test.mjs'),
+    'tooling-tests must cover Obsidian readiness snapshot sync behavior',
+  );
+  assert.ok(
+    toolingGate.command.includes('tools/sync-staging-evidence-contract.test.mjs'),
+    'tooling-tests must cover staging evidence contract sync behavior',
+  );
+  assert.ok(
+    toolingGate.command.includes('tools/run-client-command.test.mjs'),
+    'tooling-tests must cover client command wrapper behavior',
+  );
+  assert.ok(
+    toolingGate.command.includes('tools/run-go-core-gate.test.mjs'),
+    'tooling-tests must cover Go core gate wrapper behavior',
+  );
+  assert.ok(
+    toolingGate.command.includes('tools/run-go-probe-tests.test.mjs'),
+    'tooling-tests must cover production evidence probe wrapper behavior',
+  );
+  assert.ok(
+    toolingGate.command.includes('tools/run-terraform-command.test.mjs'),
+    'tooling-tests must cover Terraform command wrapper behavior',
+  );
+  assert.ok(
+    toolingGate.command.includes('tools/verify-journal-crypto.test.mjs'),
+    'tooling-tests must cover journal crypto verifier proof markers',
+  );
+  assert.match(toolingGate.display, /tools\/sync-obsidian-readiness\.test\.mjs/);
+  assert.match(toolingGate.display, /tools\/sync-staging-evidence-contract\.test\.mjs/);
+  assert.match(toolingGate.display, /tools\/run-client-command\.test\.mjs/);
+  assert.match(toolingGate.display, /tools\/run-go-core-gate\.test\.mjs/);
+  assert.match(toolingGate.display, /tools\/run-go-probe-tests\.test\.mjs/);
+  assert.match(toolingGate.display, /tools\/run-terraform-command\.test\.mjs/);
+  assert.match(toolingGate.display, /tools\/verify-journal-crypto\.test\.mjs/);
+});
+
+test('buildGatePlan includes local and strict staging PATH readiness gates before expensive gates', () => {
+  const gates = buildGatePlan();
+  const localPathIndex = gates.findIndex((gate) => gate.id === 'project-path-readiness');
+  const strictPathIndex = gates.findIndex((gate) => gate.id === 'strict-staging-path-readiness');
+  const goTestIndex = gates.findIndex((gate) => gate.id === 'go-test');
+
+  assert.equal(localPathIndex, 0);
+  assert.equal(strictPathIndex, 1);
+  assert.ok(strictPathIndex < goTestIndex, 'strict staging PATH readiness should run before expensive gates');
+  assert.match(gates[strictPathIndex].command.join(' '), /--strict-staging/);
+});
+
+test('buildGatePlan checks staging evidence contract before Obsidian snapshot', () => {
+  const gates = buildGatePlan();
+  const contractIndex = gates.findIndex((gate) => gate.id === 'staging-evidence-contract-check');
+  const obsidianIndex = gates.findIndex((gate) => gate.id === 'obsidian-readiness-snapshot-check');
+  assert.ok(contractIndex >= 0, 'local gates must include staging evidence contract sync check');
+  assert.ok(obsidianIndex >= 0, 'local gates must include Obsidian readiness snapshot check');
+  assert.ok(contractIndex < obsidianIndex, 'contract sync should run before Obsidian snapshot validation');
+
+  const [contractGate] = buildGatePlan({ only: ['staging-evidence-contract-check'] });
+  assert.match(contractGate.display, /tools\/sync-staging-evidence-contract\.mjs --check/);
+});
+
+test('buildGatePlan includes blocker-rendering staging evidence gap report gate', () => {
+  const gates = buildGatePlan();
+  const validationIndex = gates.findIndex((gate) => gate.id === 'staging-evidence-validation');
+  const gapReportIndex = gates.findIndex((gate) => gate.id === 'staging-evidence-gap-report');
+  const obsidianIndex = gates.findIndex((gate) => gate.id === 'obsidian-readiness-snapshot-check');
+  assert.ok(validationIndex >= 0, 'local gates must include staging evidence validation');
+  assert.ok(gapReportIndex >= 0, 'local gates must include staging evidence gap reporting');
+  assert.ok(obsidianIndex >= 0, 'local gates must include Obsidian readiness snapshot check');
+  assert.ok(validationIndex < gapReportIndex, 'gap report should run after manifest validation');
+  assert.ok(gapReportIndex < obsidianIndex, 'gap report should run before Obsidian snapshot validation');
+
+  const [gapReportGate] = buildGatePlan({ only: ['staging-evidence-gap-report'] });
+  assert.match(gapReportGate.display, /tools\/report-staging-evidence-gaps\.mjs/);
+  assert.match(gapReportGate.display, /--manifest production-readiness\/staging-evidence\.example\.json/);
+  assert.match(gapReportGate.display, /--contract-manifest production-readiness\/staging-evidence\.example\.json/);
+  assert.match(gapReportGate.display, /--allow-blockers/);
 });
 
 test('resolveGateForExecution makes cwd and cache env paths absolute', () => {
@@ -28,8 +151,12 @@ test('resolveGateForExecution makes cwd and cache env paths absolute', () => {
   assert.equal(isAbsolute(goGate.env.GOCACHE), true);
   assert.equal(goGate.env.GOCACHE, resolve(root, '.gocache'));
 
-  const webGate = resolveGateForExecution(buildGatePlan({ only: ['web-build'] })[0], root);
-  assert.equal(webGate.cwd, resolve(root, 'web'));
+  const webSmokeGate = resolveGateForExecution(buildGatePlan({ only: ['web-smoke'] })[0], root);
+  assert.equal(webSmokeGate.cwd, resolve(root, 'web'));
+
+  const webBuildGate = resolveGateForExecution(buildGatePlan({ only: ['web-build'] })[0], root);
+  assert.equal(webBuildGate.cwd, root);
+  assert.match(webBuildGate.command.join(' '), /--cwd web/);
 });
 
 test('buildSpawnPlan launches Windows command shims through cmd', () => {

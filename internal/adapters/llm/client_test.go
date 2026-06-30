@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"scriptureforge/internal/domain/ai"
+	"scriptureforge/internal/domain/observability"
 )
 
 func TestExecuteFailsClosedWhenAPIKeyMissingEvenInTesting(t *testing.T) {
@@ -49,7 +50,9 @@ func TestExecuteUsesBoundedHTTPClientTimeout(t *testing.T) {
 		MaxRetries: 0,
 	}
 
-	_, err := client.Execute(context.Background(), "study genesis", "[Genesis 1:1] In the beginning", ai.NewResponseVerificationSubsystem())
+	observer := observability.NewObserver(observability.Options{})
+	ctx := observability.WithObserver(context.Background(), observer)
+	_, err := client.Execute(ctx, "study genesis", "[Genesis 1:1] In the beginning", ai.NewResponseVerificationSubsystem())
 	if err == nil {
 		t.Fatal("Execute returned nil error, want timeout fault")
 	}
@@ -62,6 +65,10 @@ func TestExecuteUsesBoundedHTTPClientTimeout(t *testing.T) {
 	}
 	if !strings.Contains(pe.Message, "LLM request failed") {
 		t.Fatalf("timeout message = %q, want LLM request failed", pe.Message)
+	}
+	metrics := observer.Snapshot()
+	if !strings.Contains(metrics, `scriptureforge_dependency_operations_total{dependency="ai_provider",operation="chat_completion",status="timeout_or_network_error"} 1`) {
+		t.Fatalf("AI timeout dependency metric missing:\n%s", metrics)
 	}
 }
 
@@ -114,7 +121,9 @@ func TestExecuteRejectsCitationFreeAndHallucinatedResponses(t *testing.T) {
 				MaxRetries: 0,
 			}
 
-			_, err := client.Execute(context.Background(), "study genesis", "[Genesis 1:1] In the beginning", ai.NewResponseVerificationSubsystem())
+			observer := observability.NewObserver(observability.Options{})
+			ctx := observability.WithObserver(context.Background(), observer)
+			_, err := client.Execute(ctx, "study genesis", "[Genesis 1:1] In the beginning", ai.NewResponseVerificationSubsystem())
 			if err == nil {
 				t.Fatal("Execute returned nil error, want verification fault")
 			}
@@ -127,6 +136,10 @@ func TestExecuteRejectsCitationFreeAndHallucinatedResponses(t *testing.T) {
 			}
 			if !strings.Contains(pe.Message, tt.wantMessagePart) {
 				t.Fatalf("verification message = %q, want %q", pe.Message, tt.wantMessagePart)
+			}
+			metrics := observer.Snapshot()
+			if !strings.Contains(metrics, `scriptureforge_dependency_operations_total{dependency="ai_provider",operation="chat_completion",status="verification_failed"} 1`) {
+				t.Fatalf("AI verification dependency metric missing:\n%s", metrics)
 			}
 		})
 	}
@@ -152,11 +165,17 @@ func TestExecuteReturnsVerifiedCitationResponse(t *testing.T) {
 		MaxRetries: 0,
 	}
 
-	response, err := client.Execute(context.Background(), "study genesis", "[Genesis 1:1] In the beginning", ai.NewResponseVerificationSubsystem())
+	observer := observability.NewObserver(observability.Options{})
+	ctx := observability.WithObserver(context.Background(), observer)
+	response, err := client.Execute(ctx, "study genesis", "[Genesis 1:1] In the beginning", ai.NewResponseVerificationSubsystem())
 	if err != nil {
 		t.Fatalf("Execute verified response error: %v", err)
 	}
 	if !strings.Contains(response, "[Genesis 1:1]") {
 		t.Fatalf("verified response = %q, want expected citation", response)
+	}
+	metrics := observer.Snapshot()
+	if !strings.Contains(metrics, `scriptureforge_dependency_operations_total{dependency="ai_provider",operation="chat_completion",status="success"} 1`) {
+		t.Fatalf("AI success dependency metric missing:\n%s", metrics)
 	}
 }

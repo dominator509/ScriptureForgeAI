@@ -11,14 +11,16 @@ import (
 	"time"
 
 	"scriptureforge/internal/domain/auth"
+	"scriptureforge/internal/domain/observability"
 )
 
 const (
-	ProfileAuth      = "auth"
-	ProfileAI        = "ai"
-	ProfileJournal   = "journal"
-	ProfileRooms     = "rooms"
-	ProfileWebSocket = "websocket"
+	ProfileAuth        = "auth"
+	ProfileAuthAccount = "auth_account"
+	ProfileAI          = "ai"
+	ProfileJournal     = "journal"
+	ProfileRooms       = "rooms"
+	ProfileWebSocket   = "websocket"
 )
 
 type Profile struct {
@@ -28,14 +30,16 @@ type Profile struct {
 }
 
 type Policy struct {
-	Profiles map[string]Profile
+	Profiles   map[string]Profile
+	MaxBuckets int
 }
 
 type Limiter struct {
-	mu      sync.Mutex
-	policy  Policy
-	buckets map[string]bucket
-	now     func() time.Time
+	mu         sync.Mutex
+	policy     Policy
+	buckets    map[string]bucket
+	now        func() time.Time
+	maxBuckets int
 }
 
 type bucket struct {
@@ -50,6 +54,14 @@ type decision struct {
 	resetAt    time.Time
 }
 
+type Result struct {
+	Allowed    bool
+	Limit      int
+	RetryAfter time.Duration
+	Remaining  int
+	ResetAt    time.Time
+}
+
 type rateLimitError struct {
 	Category string `json:"category"`
 	Message  string `json:"message"`
@@ -58,12 +70,13 @@ type rateLimitError struct {
 
 func PolicyFromEnv() Policy {
 	return Policy{Profiles: map[string]Profile{
-		ProfileAuth:      profileFromEnv(ProfileAuth, 10, time.Minute),
-		ProfileAI:        profileFromEnv(ProfileAI, 20, time.Minute),
-		ProfileJournal:   profileFromEnv(ProfileJournal, 120, time.Minute),
-		ProfileRooms:     profileFromEnv(ProfileRooms, 120, time.Minute),
-		ProfileWebSocket: profileFromEnv(ProfileWebSocket, 30, time.Minute),
-	}}
+		ProfileAuth:        profileFromEnv(ProfileAuth, 10, time.Minute),
+		ProfileAuthAccount: profileFromEnv(ProfileAuthAccount, 5, time.Minute),
+		ProfileAI:          profileFromEnv(ProfileAI, 20, time.Minute),
+		ProfileJournal:     profileFromEnv(ProfileJournal, 120, time.Minute),
+		ProfileRooms:       profileFromEnv(ProfileRooms, 120, time.Minute),
+		ProfileWebSocket:   profileFromEnv(ProfileWebSocket, 30, time.Minute),
+	}, MaxBuckets: intFromEnv("ABUSE_LIMIT_MAX_BUCKETS", 100000)}
 }
 
 func profileFromEnv(name string, defaultLimit int, defaultWindow time.Duration) Profile {
@@ -92,15 +105,38 @@ func intFromEnv(name string, fallback int) int {
 }
 
 func NewLimiter(policy Policy) *Limiter {
+	maxBuckets := policy.MaxBuckets
+	if maxBuckets < 1 {
+		maxBuckets = 100000
+	}
 	return &Limiter{
-		policy:  policy,
-		buckets: map[string]bucket{},
-		now:     time.Now,
+		policy:     policy,
+		buckets:    map[string]bucket{},
+		now:        time.Now,
+		maxBuckets: maxBuckets,
 	}
 }
 
 func NewDefaultLimiter() *Limiter {
 	return NewLimiter(PolicyFromEnv())
+}
+
+func (l *Limiter) Check(profileName string, identity string) (Result, bool) {
+	profile, ok := l.policy.Profiles[profileName]
+	if !ok || profile.Limit < 1 || profile.Window <= 0 {
+		return Result{Allowed: true}, false
+	}
+	if strings.TrimSpace(identity) == "" {
+		identity = "unknown"
+	}
+	decision := l.allow(profile, identity)
+	return Result{
+		Allowed:    decision.allowed,
+		Limit:      profile.Limit,
+		RetryAfter: decision.retryAfter,
+		Remaining:  decision.remaining,
+		ResetAt:    decision.resetAt,
+	}, true
 }
 
 func (l *Limiter) Middleware(profileName string, next http.Handler) http.Handler {
@@ -111,7 +147,13 @@ func (l *Limiter) Middleware(profileName string, next http.Handler) http.Handler
 			return
 		}
 
+		started := time.Now()
 		decision := l.allow(profile, identityForRequest(r, profileName))
+		metricStatus := "allowed"
+		if !decision.allowed {
+			metricStatus = "limited"
+		}
+		observability.ObserveDependencyFromContext(r.Context(), "abuse_limiter", profile.Name, metricStatus, time.Since(started))
 		writeRateLimitHeaders(w, profile, decision.remaining, decision.resetAt)
 		if !decision.allowed {
 			writeRateLimitError(w, profile, decision)
@@ -128,6 +170,10 @@ func (l *Limiter) allow(profile Profile, identity string) decision {
 
 	now := l.now()
 	key := profile.Name + ":" + identity
+	l.pruneExpired(now)
+	if _, exists := l.buckets[key]; !exists && len(l.buckets) >= l.maxBuckets {
+		key = profile.Name + ":overflow"
+	}
 	current := l.buckets[key]
 	if current.windowEnd.IsZero() || !now.Before(current.windowEnd) {
 		windowEnd := now.Add(profile.Window)
@@ -140,6 +186,14 @@ func (l *Limiter) allow(profile Profile, identity string) decision {
 	current.count++
 	l.buckets[key] = current
 	return decision{allowed: true, remaining: profile.Limit - current.count, resetAt: current.windowEnd}
+}
+
+func (l *Limiter) pruneExpired(now time.Time) {
+	for key, current := range l.buckets {
+		if !current.windowEnd.IsZero() && !now.Before(current.windowEnd) {
+			delete(l.buckets, key)
+		}
+	}
 }
 
 func identityForRequest(r *http.Request, profileName string) string {
@@ -171,11 +225,11 @@ func trustProxyHeaders() bool {
 func forwardedClientIP(r *http.Request) string {
 	forwardedFor := r.Header.Get("X-Forwarded-For")
 	for _, candidate := range strings.Split(forwardedFor, ",") {
-		if ip := normalizeClientIP(candidate); ip != "" {
+		if ip := normalizePublicClientIP(candidate); ip != "" {
 			return ip
 		}
 	}
-	return normalizeClientIP(r.Header.Get("X-Real-IP"))
+	return normalizePublicClientIP(r.Header.Get("X-Real-IP"))
 }
 
 func normalizeClientIP(raw string) string {
@@ -188,6 +242,18 @@ func normalizeClientIP(raw string) string {
 	}
 	ip := net.ParseIP(candidate)
 	if ip == nil {
+		return ""
+	}
+	return ip.String()
+}
+
+func normalizePublicClientIP(raw string) string {
+	normalized := normalizeClientIP(raw)
+	if normalized == "" {
+		return ""
+	}
+	ip := net.ParseIP(normalized)
+	if ip == nil || ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() {
 		return ""
 	}
 	return ip.String()

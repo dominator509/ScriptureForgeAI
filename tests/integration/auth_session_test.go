@@ -17,6 +17,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"scriptureforge/internal/domain/auth"
+	"scriptureforge/internal/domain/observability"
 	"scriptureforge/internal/ports"
 )
 
@@ -47,6 +48,11 @@ func seedAuthOrganization(ctx context.Context, t *testing.T, tx pgx.Tx) {
 func authJSONRequest(method, target string, payload any) *http.Request {
 	body, _ := json.Marshal(payload)
 	return httptest.NewRequest(method, target, bytes.NewReader(body))
+}
+
+func authObservedJSONRequest(method, target string, payload any, observer *observability.Observer) *http.Request {
+	req := authJSONRequest(method, target, payload)
+	return req.WithContext(observability.WithObserver(req.Context(), observer))
 }
 
 func decodeAuthResponse(t *testing.T, recorder *httptest.ResponseRecorder) ports.AuthResponse {
@@ -104,13 +110,14 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 	})
 
 	handler := &ports.AuthHandler{DB: db}
+	observer := observability.NewObserver(observability.Options{})
 	registerRecorder := httptest.NewRecorder()
-	handler.RegisterHandler(registerRecorder, authJSONRequest(http.MethodPost, "/api/v1/auth/register", map[string]any{
+	handler.RegisterHandler(registerRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/register", map[string]any{
 		"email":           authUserEmail,
 		"password":        authPassword,
 		"organization_id": authOrgID,
 		"role":            "admin",
-	}))
+	}, observer))
 	if registerRecorder.Code != http.StatusCreated {
 		t.Fatalf("register status = %d body = %s", registerRecorder.Code, registerRecorder.Body.String())
 	}
@@ -146,20 +153,20 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 		}
 	})
 	expiredRecorder := httptest.NewRecorder()
-	handler.RefreshHandler(expiredRecorder, authJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
+	handler.RefreshHandler(expiredRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
 		"refresh_token":   registered.RefreshToken,
 		"organization_id": authOrgID,
-	}))
+	}, observer))
 	if expiredRecorder.Code != http.StatusUnauthorized {
 		t.Fatalf("expired refresh token status = %d body = %s, want 401", expiredRecorder.Code, expiredRecorder.Body.String())
 	}
 
 	loginRecorder := httptest.NewRecorder()
-	handler.LoginHandler(loginRecorder, authJSONRequest(http.MethodPost, "/api/v1/auth/login", map[string]any{
+	handler.LoginHandler(loginRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/login", map[string]any{
 		"email":           authUserEmail,
 		"password":        authPassword,
 		"organization_id": authOrgID,
-	}))
+	}, observer))
 	if loginRecorder.Code != http.StatusOK {
 		t.Fatalf("login status = %d body = %s", loginRecorder.Code, loginRecorder.Body.String())
 	}
@@ -169,10 +176,10 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 	}
 
 	refreshRecorder := httptest.NewRecorder()
-	handler.RefreshHandler(refreshRecorder, authJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
+	handler.RefreshHandler(refreshRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
 		"refresh_token":   login.RefreshToken,
 		"organization_id": authOrgID,
-	}))
+	}, observer))
 	if refreshRecorder.Code != http.StatusOK {
 		t.Fatalf("refresh status = %d body = %s", refreshRecorder.Code, refreshRecorder.Body.String())
 	}
@@ -182,39 +189,52 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 	}
 
 	oldTokenRecorder := httptest.NewRecorder()
-	handler.RefreshHandler(oldTokenRecorder, authJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
+	handler.RefreshHandler(oldTokenRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
 		"refresh_token":   login.RefreshToken,
 		"organization_id": authOrgID,
-	}))
+	}, observer))
 	if oldTokenRecorder.Code != http.StatusUnauthorized {
 		t.Fatalf("old refresh token status = %d body = %s, want 401", oldTokenRecorder.Code, oldTokenRecorder.Body.String())
 	}
 
 	crossTenantRecorder := httptest.NewRecorder()
-	handler.RefreshHandler(crossTenantRecorder, authJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
+	handler.RefreshHandler(crossTenantRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
 		"refresh_token":   refreshed.RefreshToken,
 		"organization_id": tenantOrgB,
-	}))
+	}, observer))
 	if crossTenantRecorder.Code != http.StatusUnauthorized {
 		t.Fatalf("cross-tenant refresh status = %d body = %s, want 401", crossTenantRecorder.Code, crossTenantRecorder.Body.String())
 	}
 
 	logoutRecorder := httptest.NewRecorder()
-	handler.LogoutHandler(logoutRecorder, authJSONRequest(http.MethodPost, "/api/v1/auth/logout", map[string]any{
+	handler.LogoutHandler(logoutRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/logout", map[string]any{
 		"refresh_token":   refreshed.RefreshToken,
 		"organization_id": authOrgID,
-	}))
+	}, observer))
 	if logoutRecorder.Code != http.StatusNoContent {
 		t.Fatalf("logout status = %d body = %s", logoutRecorder.Code, logoutRecorder.Body.String())
 	}
 
 	revokedRecorder := httptest.NewRecorder()
-	handler.RefreshHandler(revokedRecorder, authJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
+	handler.RefreshHandler(revokedRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
 		"refresh_token":   refreshed.RefreshToken,
 		"organization_id": authOrgID,
-	}))
+	}, observer))
 	if revokedRecorder.Code != http.StatusUnauthorized {
 		t.Fatalf("revoked refresh token status = %d body = %s, want 401", revokedRecorder.Code, revokedRecorder.Body.String())
+	}
+
+	metrics := observer.Snapshot()
+	for _, expected := range []string{
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_register",status="success"} 1`,
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_login",status="success"} 1`,
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_refresh",status="success"} 1`,
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_refresh",status="invalid_or_expired"} 4`,
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_logout",status="success"} 1`,
+	} {
+		if !strings.Contains(metrics, expected) {
+			t.Fatalf("auth/session dependency metrics missing %s:\n%s", expected, metrics)
+		}
 	}
 }
 
@@ -255,12 +275,13 @@ func TestPrivilegedLoginRequiresAndVerifiesMFA(t *testing.T) {
 	})
 
 	handler := &ports.AuthHandler{DB: db}
+	observer := observability.NewObserver(observability.Options{})
 	missingMFARecorder := httptest.NewRecorder()
-	handler.LoginHandler(missingMFARecorder, authJSONRequest(http.MethodPost, "/api/v1/auth/login", map[string]any{
+	handler.LoginHandler(missingMFARecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/login", map[string]any{
 		"email":           authAdminEmail,
 		"password":        authPassword,
 		"organization_id": authOrgID,
-	}))
+	}, observer))
 	if missingMFARecorder.Code != http.StatusUnauthorized {
 		t.Fatalf("missing MFA login status = %d body = %s, want 401", missingMFARecorder.Code, missingMFARecorder.Body.String())
 	}
@@ -270,12 +291,12 @@ func TestPrivilegedLoginRequiresAndVerifiesMFA(t *testing.T) {
 	}
 
 	verifiedRecorder := httptest.NewRecorder()
-	handler.LoginHandler(verifiedRecorder, authJSONRequest(http.MethodPost, "/api/v1/auth/login", map[string]any{
+	handler.LoginHandler(verifiedRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/login", map[string]any{
 		"email":           authAdminEmail,
 		"password":        authPassword,
 		"organization_id": authOrgID,
 		"mfa_code":        totpCode(t, authMFASecret, time.Now()),
-	}))
+	}, observer))
 	if verifiedRecorder.Code != http.StatusOK {
 		t.Fatalf("verified MFA login status = %d body = %s", verifiedRecorder.Code, verifiedRecorder.Body.String())
 	}
@@ -289,6 +310,16 @@ func TestPrivilegedLoginRequiresAndVerifiesMFA(t *testing.T) {
 	}
 	if claims.Role != "admin" || claims.OrganizationID != authOrgID || claims.UserID != authAdminID {
 		t.Fatalf("verified MFA claims = %#v", claims)
+	}
+	metrics := observer.Snapshot()
+	for _, expected := range []string{
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_login",status="mfa_required"} 1`,
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_login",status="success"} 1`,
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_issue_refresh_token",status="success"} 1`,
+	} {
+		if !strings.Contains(metrics, expected) {
+			t.Fatalf("privileged auth dependency metrics missing %s:\n%s", expected, metrics)
+		}
 	}
 }
 
@@ -363,6 +394,7 @@ func TestMFAEnrollAndVerifyFlowForPrivilegedUsers(t *testing.T) {
 	})
 
 	handler := &ports.AuthHandler{DB: db}
+	observer := observability.NewObserver(observability.Options{})
 	adminClaims := &auth.TokenClaims{
 		UserID:         authAdminID,
 		OrganizationID: authOrgID,
@@ -371,6 +403,7 @@ func TestMFAEnrollAndVerifyFlowForPrivilegedUsers(t *testing.T) {
 
 	enrollReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/mfa/enroll", strings.NewReader(`{}`))
 	enrollReq = enrollReq.WithContext(context.WithValue(enrollReq.Context(), auth.ContextKeyUser, adminClaims))
+	enrollReq = enrollReq.WithContext(observability.WithObserver(enrollReq.Context(), observer))
 	enrollRec := httptest.NewRecorder()
 	handler.MFAEnrollHandler(enrollRec, enrollReq)
 	if enrollRec.Code != http.StatusOK {
@@ -387,6 +420,7 @@ func TestMFAEnrollAndVerifyFlowForPrivilegedUsers(t *testing.T) {
 
 	verifyWrongReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/mfa/verify", strings.NewReader(`{"mfa_code":"000000"}`))
 	verifyWrongReq = verifyWrongReq.WithContext(context.WithValue(verifyWrongReq.Context(), auth.ContextKeyUser, adminClaims))
+	verifyWrongReq = verifyWrongReq.WithContext(observability.WithObserver(verifyWrongReq.Context(), observer))
 	verifyWrongRec := httptest.NewRecorder()
 	handler.MFAVerifyHandler(verifyWrongRec, verifyWrongReq)
 	if verifyWrongRec.Code != http.StatusUnauthorized {
@@ -396,6 +430,7 @@ func TestMFAEnrollAndVerifyFlowForPrivilegedUsers(t *testing.T) {
 	currentCode := totpCode(t, rawSecret, time.Now())
 	verifyReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/mfa/verify", strings.NewReader(`{"mfa_code":"`+currentCode+`"}`))
 	verifyReq = verifyReq.WithContext(context.WithValue(verifyReq.Context(), auth.ContextKeyUser, adminClaims))
+	verifyReq = verifyReq.WithContext(observability.WithObserver(verifyReq.Context(), observer))
 	verifyRec := httptest.NewRecorder()
 	handler.MFAVerifyHandler(verifyRec, verifyReq)
 	if verifyRec.Code != http.StatusOK {
@@ -416,9 +451,20 @@ func TestMFAEnrollAndVerifyFlowForPrivilegedUsers(t *testing.T) {
 	}
 	memberVerifyReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/mfa/verify", strings.NewReader(`{"mfa_code":"`+currentCode+`"}`))
 	memberVerifyReq = memberVerifyReq.WithContext(context.WithValue(memberVerifyReq.Context(), auth.ContextKeyUser, memberClaims))
+	memberVerifyReq = memberVerifyReq.WithContext(observability.WithObserver(memberVerifyReq.Context(), observer))
 	memberVerifyRec := httptest.NewRecorder()
 	handler.MFAVerifyHandler(memberVerifyRec, memberVerifyReq)
 	if memberVerifyRec.Code != http.StatusForbidden {
 		t.Fatalf("member mfa verify status = %d body = %s, want 403", memberVerifyRec.Code, memberVerifyRec.Body.String())
+	}
+	metrics := observer.Snapshot()
+	for _, expected := range []string{
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_mfa_enroll",status="success"} 1`,
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_mfa_verify",status="invalid_code"} 1`,
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_mfa_verify",status="success"} 1`,
+	} {
+		if !strings.Contains(metrics, expected) {
+			t.Fatalf("MFA dependency metrics missing %s:\n%s", expected, metrics)
+		}
 	}
 }

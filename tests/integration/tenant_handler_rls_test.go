@@ -32,6 +32,9 @@ func openTenantIsolationDB(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" || strings.Contains(databaseURL, "${") {
+		if os.Getenv("REQUIRE_DATABASE_URL") == "true" {
+			t.Fatal("DATABASE_URL is required when REQUIRE_DATABASE_URL=true for handler-level Postgres/RLS tenant isolation proof")
+		}
 		t.Skip("DATABASE_URL is required for handler-level Postgres/RLS tenant isolation proof")
 	}
 
@@ -59,15 +62,20 @@ func ensureTenantRLSRole(ctx context.Context, t *testing.T, db *pgxpool.Pool) {
 	if !isSuperuser {
 		return
 	}
-	if _, err := db.Exec(ctx, `SELECT pg_advisory_lock(774411)`); err != nil {
+	conn, err := db.Acquire(ctx)
+	if err != nil {
+		t.Fatalf("acquire RLS test role setup connection: %v", err)
+	}
+	defer conn.Release()
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin RLS test role setup: %v", err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(774411)`); err != nil {
 		t.Fatalf("lock RLS test role setup: %v", err)
 	}
-	defer func() {
-		if _, err := db.Exec(ctx, `SELECT pg_advisory_unlock(774411)`); err != nil {
-			t.Fatalf("unlock RLS test role setup: %v", err)
-		}
-	}()
-	if _, err := db.Exec(ctx, `
+	if _, err := tx.Exec(ctx, `
 		DO $$
 		BEGIN
 			IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'scriptureforge_rls_test') THEN
@@ -79,6 +87,9 @@ func ensureTenantRLSRole(ctx context.Context, t *testing.T, db *pgxpool.Pool) {
 		GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO scriptureforge_rls_test;
 	`); err != nil {
 		t.Fatalf("ensure RLS test role: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit RLS test role setup: %v", err)
 	}
 }
 
@@ -111,6 +122,30 @@ func cleanupTenantFixtures(ctx context.Context, t *testing.T, db *pgxpool.Pool) 
 	t.Helper()
 	for _, orgID := range []string{tenantOrgA, tenantOrgB} {
 		setTenantForTest(ctx, t, db, orgID, func(ctx context.Context, tx pgx.Tx) {
+			if _, err := tx.Exec(ctx, `DELETE FROM citation_trails WHERE organization_id = $1`, orgID); err != nil {
+				t.Fatalf("cleanup tenant %s citation trails: %v", orgID, err)
+			}
+			if _, err := tx.Exec(ctx, `DELETE FROM ai_request_logs WHERE organization_id = $1`, orgID); err != nil {
+				t.Fatalf("cleanup tenant %s ai request logs: %v", orgID, err)
+			}
+			if _, err := tx.Exec(ctx, `DELETE FROM room_participants WHERE organization_id = $1`, orgID); err != nil {
+				t.Fatalf("cleanup tenant %s room participants: %v", orgID, err)
+			}
+			if _, err := tx.Exec(ctx, `DELETE FROM live_rooms WHERE organization_id = $1`, orgID); err != nil {
+				t.Fatalf("cleanup tenant %s live rooms: %v", orgID, err)
+			}
+			if _, err := tx.Exec(ctx, `DELETE FROM journal_entries WHERE organization_id = $1`, orgID); err != nil {
+				t.Fatalf("cleanup tenant %s journal entries: %v", orgID, err)
+			}
+			if _, err := tx.Exec(ctx, `DELETE FROM refresh_tokens WHERE organization_id = $1`, orgID); err != nil {
+				t.Fatalf("cleanup tenant %s refresh tokens: %v", orgID, err)
+			}
+			if _, err := tx.Exec(ctx, `DELETE FROM scripture_texts WHERE organization_id = $1`, orgID); err != nil {
+				t.Fatalf("cleanup tenant %s scripture texts: %v", orgID, err)
+			}
+			if _, err := tx.Exec(ctx, `DELETE FROM users WHERE organization_id = $1`, orgID); err != nil {
+				t.Fatalf("cleanup tenant %s users: %v", orgID, err)
+			}
 			if _, err := tx.Exec(ctx, `DELETE FROM organizations WHERE id = $1`, orgID); err != nil {
 				t.Fatalf("cleanup tenant %s: %v", orgID, err)
 			}
@@ -166,13 +201,20 @@ func TestTenantScopedJournalHandlersEnforceRLS(t *testing.T) {
 	})
 
 	handler := &ports.JournalHandler{DB: db}
-	payload := []byte(`{"ciphertext":"cipher-a","iv":"iv-a","salt_id":"journal:a:v1","salt_version":1}`)
+	payload := []byte(`{"ciphertext":"c2VhbGVkLWNpcGhlcnRleHQtYmxvYg==","iv":"AQIDBAUGBwgJCgsM","salt_id":"journal:v1:test-a","salt_version":1}`)
 
-	plaintextPayload := []byte(`{"ciphertext":"cipher-a","iv":"iv-a","salt_id":"journal:a:v1","salt_version":1,"plaintext":"Lord, help me","passphrase":"do-not-store"}`)
+	plaintextPayload := []byte(`{"ciphertext":"c2VhbGVkLWNpcGhlcnRleHQtYmxvYg==","iv":"AQIDBAUGBwgJCgsM","salt_id":"journal:v1:test-a","salt_version":1,"plaintext":"Lord, help me","passphrase":"do-not-store"}`)
 	plaintextRecorder := httptest.NewRecorder()
 	handler.ServeJournalEntries(plaintextRecorder, requestWithClaims(http.MethodPost, "/api/v1/journal_entries", plaintextPayload, tenantUserA, tenantOrgA))
 	if plaintextRecorder.Code != http.StatusBadRequest {
 		t.Fatalf("plaintext journal payload status = %d body = %s, want 400", plaintextRecorder.Code, plaintextRecorder.Body.String())
+	}
+
+	plaintextCiphertextPayload := []byte(`{"ciphertext":"Lord, help me","iv":"AQIDBAUGBwgJCgsM","salt_id":"journal:v1:test-a","salt_version":1}`)
+	plaintextCiphertextRecorder := httptest.NewRecorder()
+	handler.ServeJournalEntries(plaintextCiphertextRecorder, requestWithClaims(http.MethodPost, "/api/v1/journal_entries", plaintextCiphertextPayload, tenantUserA, tenantOrgA))
+	if plaintextCiphertextRecorder.Code != http.StatusBadRequest {
+		t.Fatalf("plaintext ciphertext journal payload status = %d body = %s, want 400", plaintextCiphertextRecorder.Code, plaintextCiphertextRecorder.Body.String())
 	}
 	setTenantForTest(ctx, t, db, tenantOrgA, func(ctx context.Context, tx pgx.Tx) {
 		var count int

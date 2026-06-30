@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"scriptureforge/internal/domain/ai"
+	"scriptureforge/internal/domain/observability"
 )
 
 // LLMClient represents a network-isolated execution engine connector.
@@ -92,7 +93,15 @@ func (c *LLMClient) BuildRigorousPrompt(safePrompt string, compiledContext strin
 
 // Execute triggers the network call, processes the boundaries, and runs verification.
 func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledContext string, verifier *ai.ResponseVerificationSubsystem) (string, error) {
+	start := time.Now()
+	status := "error"
+	defer func() {
+		duration := time.Since(start)
+		observability.ObserveDependencyFromContext(ctx, "ai_provider", "chat_completion", status, duration)
+		observability.ObserveAIInferenceFromContext(ctx, c.Model, status, duration)
+	}()
 	if c.APIKey == "" {
+		status = "configuration_error"
 		return "", &ai.PlatformException{
 			Category: "AI_CONFIGURATION_FAULT",
 			Message:  "OPENAI_API_KEY is not configured",
@@ -110,11 +119,13 @@ func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledCont
 
 	jsonBody, err := json.Marshal(reqBody)
 	if err != nil {
+		status = "request_encode_error"
 		return "", err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Endpoint, bytes.NewBuffer(jsonBody))
 	if err != nil {
+		status = "request_build_error"
 		return "", err
 	}
 
@@ -132,6 +143,7 @@ func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledCont
 		}
 	}
 	if err != nil {
+		status = "timeout_or_network_error"
 		return "", &ai.PlatformException{
 			Category: "AI_ORCHESTRATION_ENGINE_FAULT",
 			Message:  fmt.Sprintf("LLM request failed: %v", err),
@@ -142,15 +154,18 @@ func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledCont
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
+		status = strconv.Itoa(resp.StatusCode)
 		return "", fmt.Errorf("LLM API returned status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var aiResp openaiResponse
 	if err := json.NewDecoder(resp.Body).Decode(&aiResp); err != nil {
+		status = "response_decode_error"
 		return "", err
 	}
 
 	if len(aiResp.Choices) == 0 {
+		status = "empty_response"
 		return "", fmt.Errorf("no choices returned from LLM")
 	}
 
@@ -158,8 +173,10 @@ func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledCont
 
 	// Explicit Response Verification Subsystem Integration
 	if err := verifier.Verify(generatedResponse, compiledContext); err != nil {
+		status = "verification_failed"
 		return "", err // Output score dropped, fault returned immediately
 	}
 
+	status = "success"
 	return generatedResponse, nil
 }

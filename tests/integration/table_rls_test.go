@@ -73,6 +73,28 @@ func TestTenantRLSCoversAllTenantTables(t *testing.T) {
 		"ai_request_logs":   1,
 		"citation_trails":   1,
 	})
+	assertTenantScopedRowVisibility(ctx, t, db, tenantOrgA, []tenantTableVisibilityProbe{
+		{table: "organizations", predicate: "id = $1", ownID: tenantOrgA, blockedID: tenantOrgB},
+		{table: "users", predicate: "id = $1", ownID: tenantUserA, blockedID: tenantUserB},
+		{table: "scripture_texts", predicate: "id = $1", ownID: tenantScriptureA, blockedID: tenantScriptureB},
+		{table: "refresh_tokens", predicate: "id = $1", ownID: tenantRefreshA, blockedID: tenantRefreshB},
+		{table: "journal_entries", predicate: "id = $1", ownID: tenantJournalA, blockedID: tenantJournalB},
+		{table: "live_rooms", predicate: "id = $1", ownID: tenantRoomA, blockedID: tenantRoomB},
+		{table: "room_participants", predicate: "room_id = $1", ownID: tenantRoomA, blockedID: tenantRoomB},
+		{table: "ai_request_logs", predicate: "id = $1", ownID: tenantAILogA, blockedID: tenantAILogB},
+		{table: "citation_trails", predicate: "id = $1", ownID: tenantCitationA, blockedID: tenantCitationB},
+	})
+	assertTenantScopedRowVisibility(ctx, t, db, tenantOrgB, []tenantTableVisibilityProbe{
+		{table: "organizations", predicate: "id = $1", ownID: tenantOrgB, blockedID: tenantOrgA},
+		{table: "users", predicate: "id = $1", ownID: tenantUserB, blockedID: tenantUserA},
+		{table: "scripture_texts", predicate: "id = $1", ownID: tenantScriptureB, blockedID: tenantScriptureA},
+		{table: "refresh_tokens", predicate: "id = $1", ownID: tenantRefreshB, blockedID: tenantRefreshA},
+		{table: "journal_entries", predicate: "id = $1", ownID: tenantJournalB, blockedID: tenantJournalA},
+		{table: "live_rooms", predicate: "id = $1", ownID: tenantRoomB, blockedID: tenantRoomA},
+		{table: "room_participants", predicate: "room_id = $1", ownID: tenantRoomB, blockedID: tenantRoomA},
+		{table: "ai_request_logs", predicate: "id = $1", ownID: tenantAILogB, blockedID: tenantAILogA},
+		{table: "citation_trails", predicate: "id = $1", ownID: tenantCitationB, blockedID: tenantCitationA},
+	})
 
 	setTenantForTest(ctx, t, db, tenantOrgA, func(ctx context.Context, tx pgx.Tx) {
 		requireRLSWriteDenied(t, ctx, tx, `INSERT INTO organizations (id, name) VALUES ($1, 'Cross Tenant Org')`, tenantWriteProbe)
@@ -84,7 +106,53 @@ func TestTenantRLSCoversAllTenantTables(t *testing.T) {
 		requireRLSWriteDenied(t, ctx, tx, `INSERT INTO room_participants (organization_id, room_id, user_id) VALUES ($1, $2, $3)`, tenantOrgB, tenantRoomB, tenantUserB)
 		requireRLSWriteDenied(t, ctx, tx, `INSERT INTO ai_request_logs (id, organization_id, user_id, prompt, status) VALUES ($1, $2, $3, 'cross prompt', 'failed')`, tenantWriteProbe, tenantOrgB, tenantUserB)
 		requireRLSWriteDenied(t, ctx, tx, `INSERT INTO citation_trails (id, organization_id, ai_request_log_id, citation, verified) VALUES ($1, $2, $3, '[Cross 1:1]', false)`, tenantWriteProbe, tenantOrgB, tenantAILogB)
+		requireRLSMutationHidden(t, ctx, tx, "organizations", "cross-tenant update hidden", `UPDATE organizations SET name = 'mutated by tenant A' WHERE id = $1`, tenantOrgB)
+		requireRLSMutationHidden(t, ctx, tx, "users", "cross-tenant update hidden", `UPDATE users SET email = 'mutated-user@example.test' WHERE id = $1`, tenantUserB)
+		requireRLSMutationHidden(t, ctx, tx, "scripture_texts", "cross-tenant update hidden", `UPDATE scripture_texts SET content = 'mutated scripture' WHERE id = $1`, tenantScriptureB)
+		requireRLSMutationHidden(t, ctx, tx, "refresh_tokens", "cross-tenant update hidden", `UPDATE refresh_tokens SET revoked_at = now() WHERE id = $1`, tenantRefreshB)
+		requireRLSMutationHidden(t, ctx, tx, "journal_entries", "cross-tenant update hidden", `UPDATE journal_entries SET ciphertext = 'mutated cipher' WHERE id = $1`, tenantJournalB)
+		requireRLSMutationHidden(t, ctx, tx, "live_rooms", "cross-tenant update hidden", `UPDATE live_rooms SET title = 'mutated room' WHERE id = $1`, tenantRoomB)
+		requireRLSMutationHidden(t, ctx, tx, "room_participants", "cross-tenant update hidden", `UPDATE room_participants SET joined_at = now() WHERE room_id = $1 AND user_id = $2`, tenantRoomB, tenantUserB)
+		requireRLSMutationHidden(t, ctx, tx, "ai_request_logs", "cross-tenant update hidden", `UPDATE ai_request_logs SET status = 'failed' WHERE id = $1`, tenantAILogB)
+		requireRLSMutationHidden(t, ctx, tx, "citation_trails", "cross-tenant update hidden", `UPDATE citation_trails SET verified = false WHERE id = $1`, tenantCitationB)
+		requireRLSMutationHidden(t, ctx, tx, "citation_trails", "cross-tenant delete hidden", `DELETE FROM citation_trails WHERE id = $1`, tenantCitationB)
+		requireRLSMutationHidden(t, ctx, tx, "ai_request_logs", "cross-tenant delete hidden", `DELETE FROM ai_request_logs WHERE id = $1`, tenantAILogB)
+		requireRLSMutationHidden(t, ctx, tx, "room_participants", "cross-tenant delete hidden", `DELETE FROM room_participants WHERE room_id = $1 AND user_id = $2`, tenantRoomB, tenantUserB)
+		requireRLSMutationHidden(t, ctx, tx, "live_rooms", "cross-tenant delete hidden", `DELETE FROM live_rooms WHERE id = $1`, tenantRoomB)
+		requireRLSMutationHidden(t, ctx, tx, "journal_entries", "cross-tenant delete hidden", `DELETE FROM journal_entries WHERE id = $1`, tenantJournalB)
+		requireRLSMutationHidden(t, ctx, tx, "refresh_tokens", "cross-tenant delete hidden", `DELETE FROM refresh_tokens WHERE id = $1`, tenantRefreshB)
+		requireRLSMutationHidden(t, ctx, tx, "scripture_texts", "cross-tenant delete hidden", `DELETE FROM scripture_texts WHERE id = $1`, tenantScriptureB)
+		requireRLSMutationHidden(t, ctx, tx, "users", "cross-tenant delete hidden", `DELETE FROM users WHERE id = $1`, tenantUserB)
+		requireRLSMutationHidden(t, ctx, tx, "organizations", "cross-tenant delete hidden", `DELETE FROM organizations WHERE id = $1`, tenantOrgB)
 	})
+}
+
+type tenantTableVisibilityProbe struct {
+	table     string
+	predicate string
+	ownID     string
+	blockedID string
+}
+
+func assertTenantScopedRowVisibility(ctx context.Context, t *testing.T, db *pgxpool.Pool, orgID string, probes []tenantTableVisibilityProbe) {
+	t.Helper()
+	setTenantForTest(ctx, t, db, orgID, func(ctx context.Context, tx pgx.Tx) {
+		for _, probe := range probes {
+			assertTenantRowCount(t, ctx, tx, probe.table, probe.predicate, probe.ownID, 1, "same-tenant read visible")
+			assertTenantRowCount(t, ctx, tx, probe.table, probe.predicate, probe.blockedID, 0, "cross-tenant read hidden")
+		}
+	})
+}
+
+func assertTenantRowCount(t *testing.T, ctx context.Context, tx pgx.Tx, table, predicate, id string, want int, label string) {
+	t.Helper()
+	var got int
+	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM `+table+` WHERE `+predicate, id).Scan(&got); err != nil {
+		t.Fatalf("%s query failed for %s id %s: %v", label, table, id, err)
+	}
+	if got != want {
+		t.Fatalf("%s for %s id %s = %d, want %d", label, table, id, got, want)
+	}
 }
 
 func seedTableRLSFixtures(ctx context.Context, t *testing.T, db *pgxpool.Pool) {
@@ -121,5 +189,16 @@ func requireRLSWriteDenied(t *testing.T, ctx context.Context, tx pgx.Tx, sql str
 		t.Fatalf("cross-tenant write unexpectedly succeeded: %s", sql)
 	} else if !strings.Contains(err.Error(), "row-level security") && !strings.Contains(err.Error(), "violates foreign key constraint") {
 		t.Fatalf("cross-tenant write failed for unexpected reason: %v", err)
+	}
+}
+
+func requireRLSMutationHidden(t *testing.T, ctx context.Context, tx pgx.Tx, table, label, sql string, args ...any) {
+	t.Helper()
+	tag, err := tx.Exec(ctx, sql, args...)
+	if err != nil {
+		t.Fatalf("%s for %s failed unexpectedly: %v", label, table, err)
+	}
+	if tag.RowsAffected() != 0 {
+		t.Fatalf("%s for %s affected %d rows, want 0", label, table, tag.RowsAffected())
 	}
 }

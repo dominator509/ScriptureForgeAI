@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -13,6 +15,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"scriptureforge/internal/domain/auth"
+	"scriptureforge/internal/domain/observability"
 )
 
 type RoomEvent struct {
@@ -35,6 +38,7 @@ type SocketConnection struct {
 	StateManager        roomEventStore
 	Hub                 *RoomHub
 	MembershipValidator func(r *http.Request, claims *auth.TokenClaims, roomID string) bool
+	eventMu             sync.Mutex
 }
 
 type roomEventStore interface {
@@ -43,16 +47,73 @@ type roomEventStore interface {
 
 func allowedWSOrigin(r *http.Request) bool {
 	allowed := os.Getenv("ALLOWED_WS_ORIGINS")
-	origin := r.Header.Get("Origin")
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	strictOrigins := requiresConfiguredWSOrigins()
 	if allowed == "" {
+		if strictOrigins {
+			return false
+		}
 		return origin == "" || strings.HasPrefix(origin, "http://localhost") || strings.HasPrefix(origin, "http://127.0.0.1")
 	}
 	for _, candidate := range strings.Split(allowed, ",") {
-		if strings.TrimSpace(candidate) == origin {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		if strictOrigins && (!isPublicHTTPSOrigin(candidate) || !isPublicHTTPSOrigin(origin)) {
+			continue
+		}
+		if candidate == origin {
 			return true
 		}
 	}
 	return false
+}
+
+func isPublicHTTPSOrigin(raw string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" {
+		return false
+	}
+	if parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return false
+	}
+	host := parsed.Hostname()
+	return !isReservedPlaceholderOriginHost(host) && !isLocalOrPrivateOriginHost(host)
+}
+
+func isReservedPlaceholderOriginHost(host string) bool {
+	normalized := strings.TrimSuffix(strings.ToLower(strings.Trim(host, "[]")), ".")
+	return normalized == "example" ||
+		strings.HasSuffix(normalized, ".example") ||
+		normalized == "example.com" ||
+		strings.HasSuffix(normalized, ".example.com") ||
+		normalized == "example.org" ||
+		strings.HasSuffix(normalized, ".example.org") ||
+		normalized == "example.net" ||
+		strings.HasSuffix(normalized, ".example.net") ||
+		normalized == "test" ||
+		strings.HasSuffix(normalized, ".test") ||
+		normalized == "invalid" ||
+		strings.HasSuffix(normalized, ".invalid")
+}
+
+func isLocalOrPrivateOriginHost(host string) bool {
+	normalized := strings.TrimSuffix(strings.ToLower(strings.Trim(host, "[]")), ".")
+	if normalized == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(normalized)
+	return ip != nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() || ip.IsLinkLocalUnicast())
+}
+
+func requiresConfiguredWSOrigins() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("DEPLOYMENT_ENVIRONMENT"))) {
+	case "prod", "production", "staging":
+		return true
+	default:
+		return false
+	}
 }
 
 func roomIDFromPath(path string) string {
@@ -64,6 +125,14 @@ func (s *SocketConnection) validateRoomMembership(r *http.Request, claims *auth.
 		return s.MembershipValidator(r, claims, roomID)
 	}
 	if roomID == "" || strings.Contains(roomID, "/") {
+		return false
+	}
+	start := time.Now()
+	status := "error"
+	defer func() {
+		observability.ObserveDependencyFromContext(r.Context(), "postgres", "room_membership", status, time.Since(start))
+	}()
+	if s.DB == nil {
 		return false
 	}
 	tx, err := s.DB.Begin(r.Context())
@@ -84,7 +153,14 @@ func (s *SocketConnection) validateRoomMembership(r *http.Request, claims *auth.
 		roomID,
 		claims.UserID,
 	).Scan(&count)
-	return err == nil && count > 0
+	if err == nil && count > 0 {
+		status = "success"
+		return true
+	}
+	if err == nil {
+		status = "denied"
+	}
+	return false
 }
 
 func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request) {
@@ -96,6 +172,11 @@ func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request
 	roomID := roomIDFromPath(r.URL.Path)
 	if !s.validateRoomMembership(r, claims, roomID) {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Room membership required", Code: http.StatusForbidden})
+		return
+	}
+	if s.StateManager == nil {
+		observability.ObserveDependencyFromContext(r.Context(), "redis", "room_append_event", "unavailable", 0)
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Room state manager is not configured", Code: http.StatusServiceUnavailable})
 		return
 	}
 	hub := s.Hub
@@ -110,6 +191,8 @@ func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request
 		return
 	}
 	defer conn.Close()
+	releaseActiveConnection := observability.ObserveWebSocketActiveConnectionFromContext(r.Context())
+	defer releaseActiveConnection()
 
 	events, unsubscribe := hub.Subscribe(roomID)
 	defer unsubscribe()
@@ -125,6 +208,9 @@ func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request
 		writeMu.Lock()
 		defer writeMu.Unlock()
 		return conn.WriteControl(messageType, data, time.Now().Add(wsWriteWait))
+	}
+	closePolicyViolation := func(reason string) {
+		_ = writeControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, reason))
 	}
 	defer close(done)
 	go func() {
@@ -170,22 +256,35 @@ func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request
 		}
 		var event RoomEvent
 		if err := json.Unmarshal(message, &event); err != nil || event.Type == "" || event.RoomID != roomID {
-			_ = writeJSON(map[string]string{"error": "invalid room event"})
-			continue
+			closePolicyViolation("invalid room event")
+			break
 		}
 		event.SentAt = time.Now().UTC()
 		event.Sequence = 0
 		wire, err := json.Marshal(event)
 		if err != nil {
-			_ = writeJSON(map[string]string{"error": "invalid room event"})
-			continue
+			closePolicyViolation("invalid room event")
+			break
 		}
+		s.eventMu.Lock()
+		start := time.Now()
 		seq, err := s.StateManager.AppendRoomEvent(r.Context(), roomID, string(wire))
+		redisStatus := "success"
 		if err != nil {
+			redisStatus = "error"
+			observability.ObserveDependencyFromContext(r.Context(), "redis", "room_append_event", redisStatus, time.Since(start))
+			s.eventMu.Unlock()
 			_ = writeJSON(map[string]string{"error": "failed to persist room event"})
 			continue
 		}
+		observability.ObserveDependencyFromContext(r.Context(), "redis", "room_append_event", redisStatus, time.Since(start))
 		event.Sequence = seq
-		hub.Broadcast(roomID, event)
+		broadcastStart := time.Now()
+		broadcastStatus := "success"
+		if result := hub.Broadcast(roomID, event); result.Dropped > 0 {
+			broadcastStatus = "dropped"
+		}
+		observability.ObserveDependencyFromContext(r.Context(), "websocket", "room_broadcast", broadcastStatus, time.Since(broadcastStart))
+		s.eventMu.Unlock()
 	}
 }

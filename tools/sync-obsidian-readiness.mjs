@@ -1,14 +1,27 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import { formatObsidian, summarizeGaps } from './report-staging-evidence-gaps.mjs';
 import { validateManifest } from './validate-staging-evidence.mjs';
+import { buildPathReport } from './verify-project-path.mjs';
 
 const snapshotStartMarker = '<!-- OBSIDIAN-STAGING-EVIDENCE-SNAPSHOT-START -->';
 const snapshotEndMarker = '<!-- OBSIDIAN-STAGING-EVIDENCE-SNAPSHOT-END -->';
 
+export const obsidianReadinessProofMarkers = [
+  'manifest_validated=true',
+  'gap_summary_rendered=true',
+  'snapshot_markers_present=true',
+  'strict_staging_path_status_rendered=true',
+  'contract_drift_status_rendered=true',
+  'release_candidate_match_status_rendered=true',
+  'snapshot_body_current=true',
+];
+
 export function parseArgs(argv) {
   const args = {
     manifest: process.env.STAGING_EVIDENCE_FILE ?? 'production-readiness/staging-evidence.staging.json',
+    contractManifest: process.env.STAGING_EVIDENCE_CONTRACT_FILE ?? 'production-readiness/staging-evidence.example.json',
     note: 'production-readiness/obsidian-production-readiness.md',
     check: false,
     apply: false,
@@ -16,6 +29,9 @@ export function parseArgs(argv) {
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--manifest') {
       args.manifest = argv[i + 1];
+      i += 1;
+    } else if (argv[i] === '--contract-manifest') {
+      args.contractManifest = argv[i + 1];
       i += 1;
     } else if (argv[i] === '--note') {
       args.note = argv[i + 1];
@@ -33,6 +49,7 @@ export function parseArgs(argv) {
   }
 
   assert.ok(args.manifest, '--manifest must not be empty');
+  assert.ok(args.contractManifest, '--contract-manifest must not be empty');
   assert.ok(args.note, '--note must not be empty');
   return args;
 }
@@ -80,17 +97,24 @@ function escapeRegExp(value) {
 
 export async function syncObsidianReadiness({
   manifestPath,
+  contractManifestPath = null,
   notePath,
   expectedReleaseCandidate = null,
   check = false,
   apply = false,
+  pathReportBuilder = buildPathReport,
 } = {}) {
   assert.ok(manifestPath, 'manifestPath required');
   assert.ok(notePath, 'notePath required');
 
   const manifest = await readJSON(manifestPath);
+  const contractManifest = contractManifestPath ? await readJSON(contractManifestPath) : null;
   validateManifest(manifest, { strictRelease: false });
-  const summary = summarizeGaps(manifest, { expectedReleaseCandidate });
+  const summary = summarizeGaps(manifest, {
+    expectedReleaseCandidate,
+    strictPathReport: pathReportBuilder({ strictStaging: true }),
+    contractManifest,
+  });
   const snapshotBody = normalizeSnapshotText(formatObsidian(summary));
   const newSnapshot = formatSnapshot(summary);
   const noteText = await readFile(notePath, 'utf8');
@@ -125,8 +149,9 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const result = await syncObsidianReadiness({
     manifestPath: args.manifest,
+    contractManifestPath: args.contractManifest,
     notePath: args.note,
-    expectedReleaseCandidate: args.expectedReleaseCandidate,
+    expectedReleaseCandidate: args.expectedReleaseCandidate ?? readCurrentGitHead(process.cwd()),
     check: args.check,
     apply: args.apply,
   });
@@ -134,9 +159,17 @@ async function main() {
   if (result.snapshot) {
     process.stdout.write(`${result.snapshot}\n`);
   } else if (args.check) {
-    console.log(`Obsidian readiness snapshot is in sync: ${args.note}`);
+    console.log(`Obsidian readiness snapshot is in sync: ${args.note}: ${obsidianReadinessProofMarkers.join(', ')}`);
   } else if (result.changed) {
     console.log(`Updated Obsidian readiness snapshot in ${args.note}`);
+  }
+}
+
+function readCurrentGitHead(cwd) {
+  try {
+    return execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim();
+  } catch {
+    return null;
   }
 }
 

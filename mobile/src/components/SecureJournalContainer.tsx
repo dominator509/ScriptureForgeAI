@@ -7,6 +7,7 @@ import {
   encryptJournalData,
   EncryptedPayload,
   getJournalCryptoKey,
+  journalAssociatedData,
   JournalCryptoKeyHandle,
 } from '../lib/crypto';
 import { getJournalBootstrap, JournalBootstrap, saveJournalEntry } from '../lib/api';
@@ -23,6 +24,12 @@ export const SecureJournalContainer: React.FC = () => {
   useEffect(() => {
     if (!session) {
       setJournalBootstrap(null);
+      setPlaintext('');
+      setPassphrase('');
+      setKeyHandle(previous => {
+        disposeJournalCryptoKey(previous);
+        return null;
+      });
       return;
     }
     getJournalBootstrap(session.token)
@@ -36,13 +43,16 @@ export const SecureJournalContainer: React.FC = () => {
     if (passphrase.length >= 8 && journalBootstrap?.salt_id) {
       deriveIsolationKey(passphrase, journalBootstrap.salt_id)
         .then(k => {
+          const derivedHandle = createJournalCryptoKeyHandle(k);
           if (isMounted) {
-            activeHandle = createJournalCryptoKeyHandle(k);
+            activeHandle = derivedHandle;
             setKeyHandle(previous => {
               disposeJournalCryptoKey(previous);
               return activeHandle;
             });
             setStatus("Isolation Key Derived Successfully");
+          } else {
+            disposeJournalCryptoKey(derivedHandle);
           }
         })
         .catch((error: Error) => {
@@ -76,7 +86,6 @@ export const SecureJournalContainer: React.FC = () => {
 
   const handleSave = async () => {
     if (keyHandle && plaintext) {
-      const encrypted: EncryptedPayload = await encryptJournalData(plaintext, getJournalCryptoKey(keyHandle));
       if (!session) {
         setStatus('Sign in before saving encrypted journal entries.');
         return;
@@ -85,7 +94,13 @@ export const SecureJournalContainer: React.FC = () => {
         setStatus('Journal bootstrap unavailable.');
         return;
       }
+      const encrypted: EncryptedPayload = await encryptJournalData(
+        plaintext,
+        getJournalCryptoKey(keyHandle),
+        journalAssociatedData(journalBootstrap.salt_id, journalBootstrap.salt_version),
+      );
       await saveJournalEntry(session.token, { ...encrypted, salt_id: journalBootstrap.salt_id, salt_version: journalBootstrap.salt_version });
+      setPlaintext('');
       setStatus(`Saved securely! IV: ${encrypted.iv.substring(0, 10)}...`);
     }
   };

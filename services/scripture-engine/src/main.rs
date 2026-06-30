@@ -13,6 +13,9 @@ use tokio::net::TcpListener;
 use tonic::server::NamedService;
 use tonic::{transport::Server, Request, Response, Status};
 
+const EMBEDDING_DIMENSION: usize = 1536;
+const MAX_VECTOR_SEARCH_RESULTS: i32 = 100;
+
 pub mod scriptureforge {
     pub mod engine {
         tonic::include_proto!("scriptureforge.engine");
@@ -108,44 +111,58 @@ impl ScriptureEngine for MyScriptureEngine {
             ],
         );
 
+        if let Err(status) = validate_vector_search_request(&req) {
+            self.metrics
+                .vector_search_failures_total
+                .fetch_add(1, Ordering::Relaxed);
+            emit_log(
+                "warn",
+                "search_by_vector_rejected",
+                &[
+                    ("trace_id", trace_id.clone()),
+                    ("organization_id", req.organization_id.clone()),
+                    ("error", status.message().to_string()),
+                ],
+            );
+            return Err(status);
+        }
+
         // Execute functional vector search via pgvector using the HNSW index.
         // We use string manipulation to build the array structure for pgvector.
         let vector_string = format!("{:?}", req.query_vector);
 
         // This is functional querying mapping explicitly to Phase 1's tables
-        let query = format!(
+        let pool = &self.db_pool;
+        let organization_id = req.organization_id.clone();
+
+        let rows = sqlx::query(
             "SELECT book, chapter, verse, content, 1 - (embedding <=> $1::vector) as similarity
              FROM scripture_texts
              WHERE organization_id = $2::uuid AND 1 - (embedding <=> $1::vector) >= $4
              ORDER BY embedding <=> $1::vector
-             LIMIT $3"
-        );
-
-        let pool = &self.db_pool;
-        let organization_id = req.organization_id.clone();
-
-        let rows = sqlx::query(&query)
-            .bind(vector_string)
-            .bind(organization_id.clone())
-            .bind(req.top_k_results)
-            .bind(req.minimum_similarity_threshold)
-            .fetch_all(pool)
-            .await
-            .map_err(|e| {
-                self.metrics
-                    .vector_search_failures_total
-                    .fetch_add(1, Ordering::Relaxed);
-                emit_log(
-                    "error",
-                    "search_by_vector_failed",
-                    &[
-                        ("trace_id", trace_id.clone()),
-                        ("organization_id", organization_id.clone()),
-                        ("error", e.to_string()),
-                    ],
-                );
-                Status::internal(format!("Database error: {}", e))
-            })?;
+             LIMIT $3",
+        )
+        .bind(vector_string)
+        .bind(organization_id.clone())
+        .bind(req.top_k_results)
+        .bind(req.minimum_similarity_threshold)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| {
+            self.metrics
+                .vector_search_failures_total
+                .fetch_add(1, Ordering::Relaxed);
+            emit_log(
+                "error",
+                "search_by_vector_failed",
+                &[
+                    ("trace_id", trace_id.clone()),
+                    ("organization_id", organization_id.clone()),
+                    ("error", e.to_string()),
+                ],
+            );
+            Status::internal(format!("Database error: {}", e))
+        })?;
 
         let mut results = Vec::new();
 
@@ -242,6 +259,37 @@ fn metrics_address() -> Result<SocketAddr, std::net::AddrParseError> {
 
 fn scripture_engine_service_name() -> &'static str {
     <ScriptureEngineServer<MyScriptureEngine> as NamedService>::NAME
+}
+
+fn validate_vector_search_request(req: &VectorSearchRequest) -> Result<(), Status> {
+    if req.organization_id.trim().is_empty() {
+        return Err(Status::invalid_argument("organization_id is required"));
+    }
+    if req.query_vector.len() != EMBEDDING_DIMENSION {
+        return Err(Status::invalid_argument(format!(
+            "query_vector must contain exactly {} dimensions",
+            EMBEDDING_DIMENSION
+        )));
+    }
+    if req.query_vector.iter().any(|value| !value.is_finite()) {
+        return Err(Status::invalid_argument(
+            "query_vector must contain only finite values",
+        ));
+    }
+    if req.top_k_results < 1 || req.top_k_results > MAX_VECTOR_SEARCH_RESULTS {
+        return Err(Status::invalid_argument(format!(
+            "top_k_results must be between 1 and {}",
+            MAX_VECTOR_SEARCH_RESULTS
+        )));
+    }
+    if !req.minimum_similarity_threshold.is_finite()
+        || !(0.0..=1.0).contains(&req.minimum_similarity_threshold)
+    {
+        return Err(Status::invalid_argument(
+            "minimum_similarity_threshold must be between 0 and 1",
+        ));
+    }
+    Ok(())
 }
 
 impl RustEngineMetrics {
@@ -379,12 +427,16 @@ fn json_escape(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::scriptureforge::engine::scripture_engine_client::ScriptureEngineClient;
+    use super::scriptureforge::engine::scripture_engine_server::ScriptureEngineServer;
     use super::scriptureforge::engine::{
-        EmbedTextRequest, EmbedTextResponse, SearchResult, VectorSearchResponse,
+        EmbedTextRequest, EmbedTextResponse, SearchResult, VectorSearchRequest,
+        VectorSearchResponse,
     };
     use super::{
         bind_address, extract_trace_id, json_escape, metrics_address, observability_config,
-        scripture_engine_service_name, traceparent_from_request, RustEngineMetrics,
+        scripture_engine_service_name, traceparent_from_request, validate_vector_search_request,
+        RustEngineMetrics, EMBEDDING_DIMENSION, MAX_VECTOR_SEARCH_RESULTS,
     };
     use std::sync::atomic::Ordering;
     use tonic::Request;
@@ -423,6 +475,55 @@ mod tests {
 
         assert_eq!(response.results.len(), 1);
         assert_eq!(response.results[0].book, "Romans");
+    }
+
+    #[test]
+    fn generated_grpc_client_and_server_types_compile() {
+        let client_type = std::any::type_name::<ScriptureEngineClient<tonic::transport::Channel>>();
+        let server_type = std::any::type_name::<ScriptureEngineServer<super::MyScriptureEngine>>();
+
+        assert!(client_type.contains("ScriptureEngineClient"));
+        assert!(server_type.contains("ScriptureEngineServer"));
+        assert_eq!(
+            scripture_engine_service_name(),
+            "scriptureforge.engine.ScriptureEngine"
+        );
+    }
+
+    #[test]
+    fn vector_search_request_rejects_unbounded_or_invalid_inputs() {
+        let valid = VectorSearchRequest {
+            organization_id: "00000000-0000-0000-0000-000000000001".into(),
+            query_vector: vec![0.0; EMBEDDING_DIMENSION],
+            top_k_results: 10,
+            minimum_similarity_threshold: 0.5,
+        };
+
+        assert!(validate_vector_search_request(&valid).is_ok());
+
+        let mut missing_org = valid.clone();
+        missing_org.organization_id = " ".into();
+        assert!(validate_vector_search_request(&missing_org).is_err());
+
+        let mut wrong_dimension = valid.clone();
+        wrong_dimension.query_vector.pop();
+        assert!(validate_vector_search_request(&wrong_dimension).is_err());
+
+        let mut non_finite_vector = valid.clone();
+        non_finite_vector.query_vector[0] = f32::NAN;
+        assert!(validate_vector_search_request(&non_finite_vector).is_err());
+
+        let mut zero_top_k = valid.clone();
+        zero_top_k.top_k_results = 0;
+        assert!(validate_vector_search_request(&zero_top_k).is_err());
+
+        let mut excessive_top_k = valid.clone();
+        excessive_top_k.top_k_results = MAX_VECTOR_SEARCH_RESULTS + 1;
+        assert!(validate_vector_search_request(&excessive_top_k).is_err());
+
+        let mut bad_threshold = valid;
+        bad_threshold.minimum_similarity_threshold = 1.1;
+        assert!(validate_vector_search_request(&bad_threshold).is_err());
     }
 
     #[test]

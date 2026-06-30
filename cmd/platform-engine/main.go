@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -76,6 +77,13 @@ func loadConfig() (*Config, *PlatformException) {
 
 	grpcAddr := os.Getenv("GRPC_ENGINE_ADDRESS")
 	if grpcAddr == "" {
+		if requiresConfiguredGRPCAddress() {
+			return nil, &PlatformException{
+				Category: ConfigurationFault,
+				Message:  "GRPC_ENGINE_ADDRESS environment variable is required in staging/production",
+				Code:     500,
+			}
+		}
 		grpcAddr = "localhost:50051"
 	}
 
@@ -87,6 +95,15 @@ func loadConfig() (*Config, *PlatformException) {
 	}, nil
 }
 
+func requiresConfiguredGRPCAddress() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("DEPLOYMENT_ENVIRONMENT"))) {
+	case "staging", "production", "prod":
+		return true
+	default:
+		return false
+	}
+}
+
 func setupRoutes(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisClient *redis.Client) http.Handler {
 	mux := http.ServeMux{}
 	abuseLimiter := abuse.NewDefaultLimiter()
@@ -96,7 +113,7 @@ func setupRoutes(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisClient *redis.
 	mux.Handle("/metrics", observer.MetricsHandler())
 
 	// Auth Endpoints
-	authHandler := &ports.AuthHandler{DB: dbpool}
+	authHandler := &ports.AuthHandler{DB: dbpool, AccountLimiter: abuseLimiter}
 	mux.Handle("/api/v1/auth/register", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.RegisterHandler)))
 	mux.Handle("/api/v1/auth/login", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.LoginHandler)))
 	mux.Handle("/api/v1/auth/refresh", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.RefreshHandler)))

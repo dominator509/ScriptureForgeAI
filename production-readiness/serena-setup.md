@@ -3,6 +3,7 @@
 Use this file as the team template for enabling full multi-language Serena indexing in this repository:
 
 ```yaml
+language_backend: LSP
 languages:
   - go
   - typescript
@@ -17,10 +18,34 @@ additional_workspace_folders:
   - services/scripture-engine
   - production-readiness
   - tools
+
+ignored_paths:
+  - node_modules
+  - web/node_modules
+  - mobile/node_modules
+  - .next
+  - web/.next
+  - dist
+  - coverage
+  - target
+  - services/scripture-engine/target
+  - .terraform
+  - build/terraform/.terraform
+  - artifacts
+  - .tools
+  - .gocache
+  - .npm-cache
+  - .serena/cache
+  - "*.tsbuildinfo"
+  - "*.tfstate"
+  - "*.tfstate.*"
+  - "production-readiness/staging-evidence.staging.json"
 ```
 
 After saving these values in `.serena/project.yml`, restart Serena so route and symbol
 lookups can cross `web`, `mobile`, and Rust workspace files without repeated re-indexes.
+
+`REPO_BRIEF.md` is the compact durable context file for Serena and Obsidian handoff. Link to it instead of copying large sections of roadmap, architecture, or audit files into notes.
 
 ```powershell
 # Validate Serena/Obsidian drift gate from this repo root.

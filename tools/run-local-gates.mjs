@@ -10,32 +10,39 @@ const npmBin = isWindows ? 'npm.cmd' : 'npm';
 const nodeBin = process.execPath;
 
 export const gateDefinitions = [
-  { id: 'go-test', command: [goBin, 'test', './...', '-count=1', '-timeout=90s'], env: { GOCACHE: '.gocache' } },
-  { id: 'go-vet', command: [goBin, 'vet', './...'], env: { GOCACHE: '.gocache' } },
-  { id: 'evidence-probes', command: [goBin, 'test', './tools/ciprobe', './tools/stagingprobe', './tools/tenantprobe', './tools/rustprobe', './tools/observabilityprobe', './tools/securityprobe', './tools/resilienceprobe', './tools/mobileprobe', './tools/deploymentprobe', './tools/abuseprobe', './tools/zoomprobe', './tools/aiprobe', './tools/loadtest', '-count=1'], env: { GOCACHE: '.gocache' } },
+  { id: 'project-path-readiness', command: [nodeBin, 'tools/verify-project-path.mjs'] },
+  { id: 'strict-staging-path-readiness', command: [nodeBin, 'tools/verify-project-path.mjs', '--strict-staging'] },
+  { id: 'go-test', command: [nodeBin, 'tools/run-go-core-gate.mjs', '--mode', 'test', '--bin', goBin], env: { GOCACHE: '.gocache' } },
+  { id: 'go-vet', command: [nodeBin, 'tools/run-go-core-gate.mjs', '--mode', 'vet', '--bin', goBin], env: { GOCACHE: '.gocache' } },
+  { id: 'rls-db-integration', command: [nodeBin, 'tools/run-rls-db-integration-docker.mjs'], env: { GOCACHE: '.gocache', REQUIRE_DATABASE_URL: 'true' } },
+  { id: 'evidence-probes', command: [nodeBin, 'tools/run-go-probe-tests.mjs', '--bin', goBin], env: { GOCACHE: '.gocache' } },
   { id: 'web-audit', command: [nodeBin, 'tools/run-npm-audit.mjs', '--cwd', 'web', '--level', 'moderate', '--bin', npmBin] },
   { id: 'web-smoke', command: [npmBin, 'run', 'smoke'], cwd: 'web' },
-  { id: 'web-typecheck', command: [npmBin, 'run', 'typecheck'], cwd: 'web' },
-  { id: 'web-build', command: [npmBin, 'run', 'build'], cwd: 'web' },
+  { id: 'web-typecheck', command: [nodeBin, 'tools/run-client-command.mjs', '--cwd', 'web', '--script', 'typecheck', '--proof-name', 'web-typecheck-gate', '--marker', 'web_typescript_no_emit=true', '--marker', 'web_runtime_types=true', '--bin', npmBin] },
+  { id: 'web-build', command: [nodeBin, 'tools/run-client-command.mjs', '--cwd', 'web', '--script', 'build', '--proof-name', 'web-build-gate', '--marker', 'next_build=true', '--marker', 'web_production_bundle=true', '--bin', npmBin] },
   { id: 'mobile-audit', command: [nodeBin, 'tools/run-npm-audit.mjs', '--cwd', 'mobile', '--level', 'high', '--bin', npmBin] },
   { id: 'mobile-smoke', command: [npmBin, 'run', 'smoke'], cwd: 'mobile' },
-  { id: 'mobile-build-check', command: [npmBin, 'run', 'build:check'], cwd: 'mobile' },
+  { id: 'mobile-build-check', command: [nodeBin, 'tools/run-client-command.mjs', '--cwd', 'mobile', '--script', 'build:check', '--proof-name', 'mobile-build-check-gate', '--marker', 'mobile_typecheck=true', '--marker', 'mobile_smoke=true', '--marker', 'mobile_crypto_verification=true', '--bin', npmBin] },
   { id: 'rust-protobuf-validation', command: [nodeBin, 'tools/verify-rust-protobuf.mjs'] },
-  { id: 'rust-cargo-test', command: [cargoBin, 'test', '--manifest-path', 'services/scripture-engine/Cargo.toml'], env: { CARGO_HOME: '.tools/cargo', RUSTUP_HOME: '.tools/rustup' } },
-  { id: 'terraform-fmt', command: [terraformBin, '-chdir=build/terraform', 'fmt', '-check', '-recursive'] },
+  { id: 'rust-cargo-test', command: [cargoBin, 'test', '--locked', '--manifest-path', 'services/scripture-engine/Cargo.toml'], env: { CARGO_HOME: '.tools/cargo', RUSTUP_HOME: '.tools/rustup' } },
+  { id: 'terraform-fmt', command: [nodeBin, 'tools/run-terraform-command.mjs', '--mode', 'fmt', '--bin', terraformBin] },
   { id: 'terraform-init-validate', command: [nodeBin, 'tools/run-terraform-init.mjs', '--bin', terraformBin, '--arg', '-chdir=build/terraform', '--arg', 'init', '--arg', '-backend=false'] },
-  { id: 'terraform-validate', command: [terraformBin, '-chdir=build/terraform', 'validate'] },
+  { id: 'terraform-validate', command: [nodeBin, 'tools/run-terraform-command.mjs', '--mode', 'validate', '--bin', terraformBin] },
   { id: 'observability-validation', command: [nodeBin, 'tools/validate-observability.mjs'] },
+  { id: 'rls-schema-validation', command: [nodeBin, 'tools/validate-rls-schema.mjs'] },
   { id: 'deployment-skeleton-validation', command: [nodeBin, 'tools/validate-deployment-skeleton.mjs'] },
   { id: 'staging-evidence-validation', command: [nodeBin, 'tools/validate-staging-evidence.mjs'] },
+  { id: 'staging-evidence-gap-report', command: [nodeBin, 'tools/report-staging-evidence-gaps.mjs', '--manifest', 'production-readiness/staging-evidence.example.json', '--contract-manifest', 'production-readiness/staging-evidence.example.json', '--allow-blockers'] },
   { id: 'ci-workflow-validation', command: [nodeBin, 'tools/validate-ci-workflow.mjs'] },
+  { id: 'ci-evidence-gate-validation', command: [nodeBin, 'tools/validate-ci-evidence-gates.mjs'] },
   { id: 'security-artifacts-validation', command: [nodeBin, 'tools/validate-security-artifacts.mjs'] },
   { id: 'dependency-risk-validation', command: [nodeBin, 'tools/validate-dependency-risk.mjs'] },
   { id: 'secret-hygiene-validation', command: [nodeBin, 'tools/validate-secret-hygiene.mjs'] },
   { id: 'journal-crypto-validation', command: [nodeBin, 'tools/verify-journal-crypto.mjs'] },
   { id: 'serena-obsidian-validation', command: [nodeBin, 'tools/validate-serena-obsidian.mjs'] },
+  { id: 'staging-evidence-contract-check', command: [nodeBin, 'tools/sync-staging-evidence-contract.mjs', '--check'] },
   { id: 'obsidian-readiness-snapshot-check', command: [nodeBin, 'tools/sync-obsidian-readiness.mjs', '--check'] },
-  { id: 'tooling-tests', command: [nodeBin, '--test', 'tools/run-local-gates.test.mjs', 'tools/validate-local-gate-report.test.mjs', 'tools/validate-ci-workflow.test.mjs', 'tools/validate-dependency-risk.test.mjs', 'tools/validate-staging-evidence.test.mjs', 'tools/verify-production-readiness.test.mjs', 'tools/record-staging-evidence.test.mjs', 'tools/bootstrap-staging-evidence.test.mjs', 'tools/report-staging-evidence-gaps.test.mjs', 'tools/write-ci-release-evidence.test.mjs', 'tools/verify-rust-protobuf.test.mjs'] },
+  { id: 'tooling-tests', command: [nodeBin, '--test', 'tools/run-local-gates.test.mjs', 'tools/run-client-command.test.mjs', 'tools/run-go-core-gate.test.mjs', 'tools/run-go-probe-tests.test.mjs', 'tools/run-npm-audit.test.mjs', 'tools/run-terraform-command.test.mjs', 'tools/run-terraform-init.test.mjs', 'tools/run-rls-db-integration.test.mjs', 'tools/run-rls-db-integration-docker.test.mjs', 'tools/validate-local-gate-report.test.mjs', 'tools/validate-ci-workflow.test.mjs', 'tools/validate-ci-evidence-gates.test.mjs', 'tools/validate-deployment-skeleton.test.mjs', 'tools/validate-rls-schema.test.mjs', 'tools/validate-observability.test.mjs', 'tools/validate-dependency-risk.test.mjs', 'tools/validate-security-artifacts.test.mjs', 'tools/validate-secret-hygiene.test.mjs', 'tools/validate-staging-evidence.test.mjs', 'tools/verify-journal-crypto.test.mjs', 'tools/verify-production-readiness.test.mjs', 'tools/record-staging-evidence.test.mjs', 'tools/bootstrap-staging-evidence.test.mjs', 'tools/report-staging-evidence-gaps.test.mjs', 'tools/sync-staging-evidence-contract.test.mjs', 'tools/sync-obsidian-readiness.test.mjs', 'tools/write-ci-release-evidence.test.mjs', 'tools/verify-rust-protobuf.test.mjs', 'tools/verify-project-path.test.mjs'] },
 ];
 
 export function parseArgs(argv) {
@@ -105,7 +112,7 @@ export async function runGatePlan(plan, { dryRun = false, continueOnFailure = fa
   const failed = results.filter((result) => result.exit_code !== 0);
   return {
     schema_version: 1,
-    git_head: readGitHead(),
+    ...readGitState(),
     observed_at: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
     duration_ms: Date.now() - startedAt.getTime(),
     threshold_pass: failed.length === 0 && results.length === plan.length,
@@ -119,6 +126,37 @@ export async function runGatePlan(plan, { dryRun = false, continueOnFailure = fa
 
 function readGitHead() {
   return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+}
+
+function readGitState() {
+  const statusShort = execFileSync('git', ['status', '--short'], { encoding: 'utf8' }).trimEnd();
+  const branch = execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim();
+  const upstream = readOptionalGit(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}']);
+  let ahead = 0;
+  let behind = 0;
+  if (upstream) {
+    const divergence = readOptionalGit(['rev-list', '--left-right', '--count', `HEAD...${upstream}`]);
+    const [left, right] = divergence.split(/\s+/).map((value) => Number.parseInt(value, 10));
+    ahead = Number.isFinite(left) ? left : 0;
+    behind = Number.isFinite(right) ? right : 0;
+  }
+  return {
+    git_head: readGitHead(),
+    git_branch: branch,
+    git_upstream: upstream,
+    git_ahead: ahead,
+    git_behind: behind,
+    git_status_clean: statusShort === '',
+    git_status_short: statusShort,
+  };
+}
+
+function readOptionalGit(args) {
+  try {
+    return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {
+    return '';
+  }
 }
 
 export async function writeReport(path, report) {
@@ -204,7 +242,10 @@ function quoteWindowsShellArg(value) {
 
 function commandDisplay(gate) {
   const prefix = gate.cwd ? `(cd ${gate.cwd}) ` : '';
-  return `${prefix}${gate.command.join(' ')}`;
+  const envPrefix = gate.env
+    ? `${Object.entries(gate.env).map(([key, value]) => `${key}=${value}`).join(' ')} `
+    : '';
+  return `${prefix}${envPrefix}${gate.command.join(' ')}`;
 }
 
 function tail(value, maxLength = 4000) {

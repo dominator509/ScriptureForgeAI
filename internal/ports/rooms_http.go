@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"scriptureforge/internal/domain/auth"
+	"scriptureforge/internal/domain/observability"
 )
 
 type RoomHandler struct {
@@ -39,6 +41,14 @@ func (h *RoomHandler) validateRoomMembership(r *http.Request, claims *auth.Token
 	if roomID == "" || strings.Contains(roomID, "/") {
 		return false
 	}
+	start := time.Now()
+	status := "error"
+	defer func() {
+		observability.ObserveDependencyFromContext(r.Context(), "postgres", "room_membership", status, time.Since(start))
+	}()
+	if h.DB == nil {
+		return false
+	}
 	tx, err := h.DB.Begin(r.Context())
 	if err != nil {
 		return false
@@ -57,7 +67,14 @@ func (h *RoomHandler) validateRoomMembership(r *http.Request, claims *auth.Token
 		roomID,
 		claims.UserID,
 	).Scan(&count)
-	return err == nil && count > 0
+	if err == nil && count > 0 {
+		status = "success"
+		return true
+	}
+	if err == nil {
+		status = "denied"
+	}
+	return false
 }
 
 func (h *RoomHandler) CreateRoomHandler(w http.ResponseWriter, r *http.Request) {
@@ -71,18 +88,34 @@ func (h *RoomHandler) CreateRoomHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var req CreateRoomRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Title) == "" {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil || strings.TrimSpace(req.Title) == "" {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Room title is required", Code: http.StatusBadRequest})
 		return
 	}
+	if h.StateManager == nil {
+		observability.ObserveDependencyFromContext(r.Context(), "redis", "room_set_active", "unavailable", 0)
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Room state manager is not configured", Code: http.StatusServiceUnavailable})
+		return
+	}
 
+	start := time.Now()
+	dbStatus := "error"
+	if h.DB == nil {
+		observability.ObserveDependencyFromContext(r.Context(), "postgres", "room_create", dbStatus, time.Since(start))
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Room database is not configured", Code: http.StatusInternalServerError})
+		return
+	}
 	tx, err := h.DB.Begin(r.Context())
 	if err != nil {
+		observability.ObserveDependencyFromContext(r.Context(), "postgres", "room_create", dbStatus, time.Since(start))
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to open tenant transaction", Code: http.StatusInternalServerError})
 		return
 	}
 	defer tx.Rollback(r.Context())
 	if err := auth.SetTenantContext(r.Context(), tx, claims.OrganizationID); err != nil {
+		observability.ObserveDependencyFromContext(r.Context(), "postgres", "room_create", dbStatus, time.Since(start))
 		sendAuthError(w, err.(*auth.PlatformException))
 		return
 	}
@@ -98,6 +131,7 @@ func (h *RoomHandler) CreateRoomHandler(w http.ResponseWriter, r *http.Request) 
 		strings.TrimSpace(req.Title),
 	).Scan(&roomResp.ID, &roomResp.Title, &roomResp.IsActive, &roomResp.CreatedAt)
 	if err != nil {
+		observability.ObserveDependencyFromContext(r.Context(), "postgres", "room_create", dbStatus, time.Since(start))
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to create room", Code: http.StatusInternalServerError})
 		return
 	}
@@ -109,14 +143,23 @@ func (h *RoomHandler) CreateRoomHandler(w http.ResponseWriter, r *http.Request) 
 		claims.UserID,
 	)
 	if err != nil {
+		observability.ObserveDependencyFromContext(r.Context(), "postgres", "room_create", dbStatus, time.Since(start))
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to join room host", Code: http.StatusInternalServerError})
 		return
 	}
 	if err := tx.Commit(r.Context()); err != nil {
+		observability.ObserveDependencyFromContext(r.Context(), "postgres", "room_create", dbStatus, time.Since(start))
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to commit room", Code: http.StatusInternalServerError})
 		return
 	}
-	_ = h.StateManager.SetRoomActiveState(r.Context(), roomResp.ID, true)
+	dbStatus = "success"
+	observability.ObserveDependencyFromContext(r.Context(), "postgres", "room_create", dbStatus, time.Since(start))
+	redisStart := time.Now()
+	redisStatus := "success"
+	if err := h.StateManager.SetRoomActiveState(r.Context(), roomResp.ID, true); err != nil {
+		redisStatus = "error"
+	}
+	observability.ObserveDependencyFromContext(r.Context(), "redis", "room_set_active", redisStatus, time.Since(redisStart))
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -133,13 +176,22 @@ func (h *RoomHandler) ActiveRoomsHandler(w http.ResponseWriter, r *http.Request)
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Unauthorized access", Code: http.StatusUnauthorized})
 		return
 	}
+	start := time.Now()
+	status := "error"
+	if h.DB == nil {
+		observability.ObserveDependencyFromContext(r.Context(), "postgres", "rooms_active", status, time.Since(start))
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Room database is not configured", Code: http.StatusInternalServerError})
+		return
+	}
 	tx, err := h.DB.Begin(r.Context())
 	if err != nil {
+		observability.ObserveDependencyFromContext(r.Context(), "postgres", "rooms_active", status, time.Since(start))
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to open tenant transaction", Code: http.StatusInternalServerError})
 		return
 	}
 	defer tx.Rollback(r.Context())
 	if err := auth.SetTenantContext(r.Context(), tx, claims.OrganizationID); err != nil {
+		observability.ObserveDependencyFromContext(r.Context(), "postgres", "rooms_active", status, time.Since(start))
 		sendAuthError(w, err.(*auth.PlatformException))
 		return
 	}
@@ -160,6 +212,7 @@ func (h *RoomHandler) ActiveRoomsHandler(w http.ResponseWriter, r *http.Request)
 		claims.UserID,
 	)
 	if err != nil {
+		observability.ObserveDependencyFromContext(r.Context(), "postgres", "rooms_active", status, time.Since(start))
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to list rooms", Code: http.StatusInternalServerError})
 		return
 	}
@@ -168,11 +221,14 @@ func (h *RoomHandler) ActiveRoomsHandler(w http.ResponseWriter, r *http.Request)
 	for rows.Next() {
 		var roomResp RoomResponse
 		if err := rows.Scan(&roomResp.ID, &roomResp.Title, &roomResp.IsActive, &roomResp.CreatedAt); err != nil {
+			observability.ObserveDependencyFromContext(r.Context(), "postgres", "rooms_active", status, time.Since(start))
 			sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to decode room", Code: http.StatusInternalServerError})
 			return
 		}
 		rooms = append(rooms, roomResp)
 	}
+	status = "success"
+	observability.ObserveDependencyFromContext(r.Context(), "postgres", "rooms_active", status, time.Since(start))
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(rooms)
 }
@@ -196,11 +252,21 @@ func (h *RoomHandler) RoomStateHandler(w http.ResponseWriter, r *http.Request) {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Room membership required", Code: http.StatusForbidden})
 		return
 	}
+	if h.StateManager == nil {
+		observability.ObserveDependencyFromContext(r.Context(), "redis", "room_get_latest", "unavailable", 0)
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Room state manager is not configured", Code: http.StatusServiceUnavailable})
+		return
+	}
+	start := time.Now()
+	status := "success"
 	state, err := h.StateManager.GetLatestRoomEvent(r.Context(), roomID)
 	if err != nil {
+		status = "error"
+		observability.ObserveDependencyFromContext(r.Context(), "redis", "room_get_latest", status, time.Since(start))
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to load room state", Code: http.StatusInternalServerError})
 		return
 	}
+	observability.ObserveDependencyFromContext(r.Context(), "redis", "room_get_latest", status, time.Since(start))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(state))
