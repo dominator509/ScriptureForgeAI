@@ -67,6 +67,12 @@ describe('validate-observability', () => {
     expectValidationFailure(cloneSources({ rustEngine }), /Rust engine observability missing traceparent_from_request/);
   });
 
+  it('rejects Rust metrics method restriction drift', () => {
+    const rustEngine = baseSources.rustEngine.replaceAll('"405 Method Not Allowed"', '"404 Not Found"');
+
+    expectValidationFailure(cloneSources({ rustEngine }), /Rust engine observability missing "405 Method Not Allowed"/);
+  });
+
   it('rejects staging evidence contract drift for external Rust metrics proof', () => {
     const observabilityProbe = baseSources.observabilityProbe.replace(
       'normalizeExternalStagingURL(cfg.RustMetricsURL, "rust-metrics-url")',

@@ -36,6 +36,13 @@ pub struct RustEngineMetrics {
     vector_search_failures_total: AtomicU64,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct MetricsHttpResponse {
+    status: &'static str,
+    headers: Vec<(&'static str, &'static str)>,
+    body: String,
+}
+
 #[tonic::async_trait]
 impl ScriptureEngine for MyScriptureEngine {
     async fn process_text_embedding(
@@ -317,6 +324,42 @@ impl RustEngineMetrics {
     }
 }
 
+fn metrics_response_for_request(request: &str, metrics: &RustEngineMetrics) -> MetricsHttpResponse {
+    let mut parts = request
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .split_whitespace();
+    let method = parts.next().unwrap_or_default();
+    let path = parts.next().unwrap_or_default();
+
+    if path != "/metrics" {
+        return MetricsHttpResponse {
+            status: "404 Not Found",
+            headers: vec![],
+            body: "not found\n".to_string(),
+        };
+    }
+
+    match method {
+        "GET" => MetricsHttpResponse {
+            status: "200 OK",
+            headers: vec![],
+            body: metrics.render_prometheus(),
+        },
+        "HEAD" => MetricsHttpResponse {
+            status: "200 OK",
+            headers: vec![],
+            body: String::new(),
+        },
+        _ => MetricsHttpResponse {
+            status: "405 Method Not Allowed",
+            headers: vec![("Allow", "GET, HEAD")],
+            body: "method not allowed\n".to_string(),
+        },
+    }
+}
+
 async fn run_metrics_server(
     addr: SocketAddr,
     metrics: Arc<RustEngineMetrics>,
@@ -338,17 +381,19 @@ async fn run_metrics_server(
                 Err(error) if error.kind() == ErrorKind::UnexpectedEof => String::new(),
                 Err(_) => return,
             };
-            let (status, body) = if request.starts_with("GET /metrics ") {
-                ("200 OK", metrics.render_prometheus())
-            } else {
-                ("404 Not Found", "not found\n".to_string())
-            };
+            let response = metrics_response_for_request(&request, metrics.as_ref());
+            let extra_headers = response
+                .headers
+                .iter()
+                .map(|(name, value)| format!("{}: {}\r\n", name, value))
+                .collect::<String>();
             let response = format!(
-                "HTTP/1.1 {}\r\nContent-Type: text/plain; version=0.0.4\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                status,
-                body.len(),
-                body
-            );
+				"HTTP/1.1 {}\r\nContent-Type: text/plain; version=0.0.4\r\n{}Content-Length: {}\r\nConnection: close\r\n\r\n{}",
+				response.status,
+				extra_headers,
+				response.body.as_bytes().len(),
+				response.body
+			);
             let _ = stream.write_all(response.as_bytes()).await;
         });
     }
@@ -434,9 +479,10 @@ mod tests {
         VectorSearchResponse,
     };
     use super::{
-        bind_address, extract_trace_id, json_escape, metrics_address, observability_config,
-        scripture_engine_service_name, traceparent_from_request, validate_vector_search_request,
-        RustEngineMetrics, EMBEDDING_DIMENSION, MAX_VECTOR_SEARCH_RESULTS,
+        bind_address, extract_trace_id, json_escape, metrics_address, metrics_response_for_request,
+        observability_config, scripture_engine_service_name, traceparent_from_request,
+        validate_vector_search_request, RustEngineMetrics, EMBEDDING_DIMENSION,
+        MAX_VECTOR_SEARCH_RESULTS,
     };
     use std::sync::atomic::Ordering;
     use tonic::Request;
@@ -618,5 +664,31 @@ mod tests {
         assert!(rendered.contains("scriptureforge_rust_engine_embedding_failures_total 1"));
         assert!(rendered.contains("scriptureforge_rust_engine_vector_search_requests_total 3"));
         assert!(rendered.contains("scriptureforge_rust_engine_vector_search_failures_total 1"));
+    }
+
+    #[test]
+    fn metrics_http_response_allows_get_and_head_only() {
+        let metrics = RustEngineMetrics::default();
+        metrics.embedding_requests_total.store(2, Ordering::Relaxed);
+
+        let get = metrics_response_for_request("GET /metrics HTTP/1.1\r\n\r\n", &metrics);
+        assert_eq!(get.status, "200 OK");
+        assert!(get
+            .body
+            .contains("scriptureforge_rust_engine_embedding_requests_total 2"));
+
+        let head = metrics_response_for_request("HEAD /metrics HTTP/1.1\r\n\r\n", &metrics);
+        assert_eq!(head.status, "200 OK");
+        assert_eq!(head.body, "");
+
+        let post = metrics_response_for_request("POST /metrics HTTP/1.1\r\n\r\n", &metrics);
+        assert_eq!(post.status, "405 Method Not Allowed");
+        assert_eq!(post.headers, vec![("Allow", "GET, HEAD")]);
+        assert!(!post
+            .body
+            .contains("scriptureforge_rust_engine_embedding_requests_total"));
+
+        let wrong_path = metrics_response_for_request("GET /health HTTP/1.1\r\n\r\n", &metrics);
+        assert_eq!(wrong_path.status, "404 Not Found");
     }
 }

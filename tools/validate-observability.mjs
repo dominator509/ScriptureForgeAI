@@ -215,6 +215,11 @@ for (const phrase of [
   'emit_log',
   'observability_config',
   'render_prometheus',
+  'metrics_response_for_request',
+  '"HEAD"',
+  '"405 Method Not Allowed"',
+  '("Allow", "GET, HEAD")',
+  'metrics_http_response_allows_get_and_head_only',
   'run_metrics_server',
   'scriptureforge-rust-engine',
 ]) {
