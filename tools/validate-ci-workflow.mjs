@@ -30,7 +30,7 @@ export const requiredMarkers = [
   { id: 'ci-kubectl-install', text: 'https://dl.k8s.io/release/v1.34.1/bin/linux/amd64/kubectl' },
   { id: 'ci-path-readiness', text: 'Validate CI Project PATH Readiness' },
   { id: 'strict-staging-path-readiness', text: 'node tools/verify-project-path.mjs --ci --strict-staging' },
-  { id: 'rls-integration', text: 'go test ./tests/integration ./internal/ports -count=1 -timeout=90s -v' },
+  { id: 'rls-integration', text: 'node tools/run-rls-db-integration.mjs --bin go' },
   { id: 'rls-integration-requires-db', text: 'REQUIRE_DATABASE_URL: "true"' },
   { id: 'http-load-smoke', text: 'go run ./tools/loadtest -self-test' },
   { id: 'websocket-load-smoke', text: 'go run ./tools/loadtest -websocket-self-test' },

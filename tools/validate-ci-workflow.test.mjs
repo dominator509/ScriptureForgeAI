@@ -37,6 +37,16 @@ test('validateCIWorkflow rejects skip-tolerant RLS integration configuration', a
   );
 });
 
+test('validateCIWorkflow rejects raw RLS go test without semantic proof wrapper', async () => {
+  const text = await readFile('.github/workflows/security.yml', 'utf8');
+  const broken = text.replace('node tools/run-rls-db-integration.mjs --bin go', 'go test ./tests/integration ./internal/ports -count=1 -timeout=90s -v');
+  assert.notEqual(broken, text, 'fixture workflow must include semantic RLS wrapper');
+  assert.throws(
+    () => validateCIWorkflow(broken),
+    /rls-integration/,
+  );
+});
+
 test('validateCIWorkflow rejects missing CI PATH readiness validation', async () => {
   const text = await readFile('.github/workflows/security.yml', 'utf8');
   const broken = text.replace(

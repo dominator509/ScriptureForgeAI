@@ -7,6 +7,7 @@ import {
   rlsDBRequiredTests,
   rlsDBSemanticProofMarkers,
   rlsDBTestPattern,
+  parseArgs,
   validateRLSDBGoTestOutput,
   validateDatabaseURL,
 } from './run-rls-db-integration.mjs';
@@ -36,6 +37,12 @@ test('buildRLSDBIntegrationCommand targets the required DB-backed RLS tests', ()
   for (const marker of rlsDBRequiredTests) {
     assert.match(rlsDBTestPattern, new RegExp(marker));
   }
+});
+
+test('parseArgs accepts an explicit Go binary for CI setup-go environments', () => {
+  assert.deepEqual(parseArgs(['--bin', 'go']), { goBin: 'go' });
+  assert.throws(() => parseArgs(['--bin']), /requires a Go executable path/);
+  assert.throws(() => parseArgs(['--unknown']), /unknown argument --unknown/);
 });
 
 test('rlsDBProofMarkers include semantic tenant isolation coverage markers', () => {

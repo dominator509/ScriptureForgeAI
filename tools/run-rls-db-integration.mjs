@@ -108,6 +108,24 @@ export function buildRLSDBIntegrationEnv(env = process.env, workspaceRoot = proc
   };
 }
 
+export function parseArgs(argv) {
+  const args = {
+    goBin: defaultGoBin,
+  };
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] === '--bin') {
+      if (!argv[i + 1]) {
+        throw new Error('--bin requires a Go executable path');
+      }
+      args.goBin = argv[i + 1];
+      i += 1;
+    } else {
+      throw new Error(`unknown argument ${argv[i]}`);
+    }
+  }
+  return args;
+}
+
 export function runRLSDBIntegration({ env = process.env, workspaceRoot = process.cwd(), goBin = defaultGoBin } = {}) {
   validateDatabaseURL(env);
   const [command, ...args] = buildRLSDBIntegrationCommand({ goBin });
@@ -159,7 +177,8 @@ function assertTestOutput(condition, message) {
 
 async function main() {
   try {
-    const exitCode = await runRLSDBIntegration();
+    const args = parseArgs(process.argv.slice(2));
+    const exitCode = await runRLSDBIntegration({ goBin: args.goBin });
     process.exit(exitCode);
   } catch (error) {
     console.error(error.message);

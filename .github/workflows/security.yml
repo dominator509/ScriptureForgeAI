@@ -88,7 +88,7 @@ jobs:
         DATABASE_URL: postgres://postgres:scriptureforge@localhost:55433/scriptureforge?sslmode=disable
         REQUIRE_DATABASE_URL: "true"
         JWT_SECRET_KEY: ci-test-secret-for-scriptureforge-auth-and-rls
-      run: go test ./tests/integration ./internal/ports -count=1 -timeout=90s -v
+      run: node tools/run-rls-db-integration.mjs --bin go
 
     - name: Run Local Performance Harness Smoke
       run: go run ./tools/loadtest -self-test -duration=2s -concurrency=8 -min-rps=100 -max-p99=200ms
