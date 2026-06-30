@@ -38,6 +38,7 @@ type SocketConnection struct {
 	StateManager        roomEventStore
 	Hub                 *RoomHub
 	MembershipValidator func(r *http.Request, claims *auth.TokenClaims, roomID string) bool
+	hubMu               sync.Mutex
 	eventMu             sync.Mutex
 }
 
@@ -120,6 +121,15 @@ func roomIDFromPath(path string) string {
 	return strings.TrimPrefix(path, "/api/v1/rooms/stream/")
 }
 
+func (s *SocketConnection) roomHub() *RoomHub {
+	s.hubMu.Lock()
+	defer s.hubMu.Unlock()
+	if s.Hub == nil {
+		s.Hub = NewRoomHub()
+	}
+	return s.Hub
+}
+
 func (s *SocketConnection) validateRoomMembership(r *http.Request, claims *auth.TokenClaims, roomID string) bool {
 	if s.MembershipValidator != nil {
 		return s.MembershipValidator(r, claims, roomID)
@@ -179,10 +189,7 @@ func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Room state manager is not configured", Code: http.StatusServiceUnavailable})
 		return
 	}
-	hub := s.Hub
-	if hub == nil {
-		hub = NewRoomHub()
-	}
+	hub := s.roomHub()
 
 	upgrader := websocket.Upgrader{CheckOrigin: allowedWSOrigin}
 	conn, err := upgrader.Upgrade(w, r, nil)

@@ -387,6 +387,39 @@ func TestLiveRoomFanOutDeliversEveryAcceptedEventToEverySubscriber(t *testing.T)
 	}
 }
 
+func TestLiveRoomInitializesSharedHubWhenNotConfigured(t *testing.T) {
+	store := &fakeRoomEventStore{}
+	socket := &SocketConnection{
+		StateManager: store,
+		MembershipValidator: func(r *http.Request, claims *auth.TokenClaims, roomID string) bool {
+			return roomID == "room-1" && claims.OrganizationID == "org-1" && claims.UserID != ""
+		},
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims := &auth.TokenClaims{UserID: "user-" + r.URL.Query().Get("client"), OrganizationID: "org-1", Role: "member"}
+		socket.HandleLiveRoom(w, r.WithContext(context.WithValue(r.Context(), auth.ContextKeyUser, claims)))
+	}))
+	defer server.Close()
+
+	sender := dialRoom(t, server.URL, "room-1", "nil-hub-sender")
+	defer sender.Close()
+	peer := dialRoom(t, server.URL, "room-1", "nil-hub-peer")
+	defer peer.Close()
+	waitForRoomSubscribers(t, socket.roomHub(), "room-1", 2)
+
+	if err := sender.WriteJSON(RoomEvent{Type: "cursor", RoomID: "room-1", Payload: json.RawMessage(`{"marker":"nil-hub-fanout"}`)}); err != nil {
+		t.Fatalf("write nil-hub fan-out event: %v", err)
+	}
+	senderEvent := readRoomEventWithPayload(t, sender, "nil-hub-fanout", 1)
+	peerEvent := readRoomEventWithPayload(t, peer, "nil-hub-fanout", 1)
+	if senderEvent.Sequence != 1 || peerEvent.Sequence != 1 {
+		t.Fatalf("nil-hub fan-out sequences sender=%d peer=%d, want both 1", senderEvent.Sequence, peerEvent.Sequence)
+	}
+	if got := store.appendCount(); got != 1 {
+		t.Fatalf("nil-hub fan-out append count = %d, want 1", got)
+	}
+}
+
 func TestLiveRoomReportsDroppedBroadcastForLaggingSubscriber(t *testing.T) {
 	store := &fakeRoomEventStore{}
 	hub := NewRoomHub()
