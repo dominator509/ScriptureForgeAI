@@ -17,7 +17,7 @@ var requiredZoomProbeSummaryMarkers = map[string][]string{
 	"zoom-timeout-circuit-fallback":      {"staging artifact", "timeout", "provider timeout", "circuit", "open", "circuit_open_fallback", "fallback", "offline://in-person", "provider_timeout=true", "circuit_open=true", "offline_fallback=true", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom"},
 	"zoom-webhook-signature-delivery":    {"staging artifact", "webhook", "signature", "x-zm-signature=v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "x-zm-request-timestamp=1710000000", "stale", "replay", "401", "invalid", "signed", "200", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom"},
 	"zoom-webhook-url-validation":        {"staging artifact", "endpoint.url_validation", "plain_token=zoom-plain-123", "encrypted_token=zoom-encrypted-456", "validation_response=200", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom"},
-	"zoom-duplicate-webhook-idempotency": {"staging artifact", "duplicate", "x-zm-trackingid=zm-track-123", "delivery_id=", "delivery id", "same Zoom event", "idempotent", "200", "single state mutation", "no duplicate side effects", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom"},
+	"zoom-duplicate-webhook-idempotency": {"staging artifact", "duplicate", "x-zm-trackingid=zm-track-123", "delivery_id=", "delivery id", "same Zoom event", "idempotent", "200", "single state mutation", "no duplicate side effects", "single_state_mutation=true", "no_duplicate_side_effects=true", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom"},
 	"zoom-meeting-room-mapping":          {"staging artifact", "meeting_external_id=", "live_rooms", "internal_room_id=", "redis room state", "mapped", "unknown meeting ignored", "no external meeting id fallback", "distinct_zoom_artifacts=true", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom"},
 }
 
@@ -93,7 +93,7 @@ func TestRunEmitsZoomEvidenceWhenArtifactsPass(t *testing.T) {
 		case "/validation":
 			_, _ = w.Write([]byte(zoomURLValidationEvidence + zoomReleaseEvidence))
 		case "/duplicate":
-			_, _ = w.Write([]byte("duplicate webhook x-zm-trackingid=zm-track-123 delivery_id=zm-delivery-123 delivery id same Zoom event idempotent 200 single state mutation no duplicate side effects" + zoomReleaseEvidence))
+			_, _ = w.Write([]byte("duplicate webhook x-zm-trackingid=zm-track-123 delivery_id=zm-delivery-123 delivery id same Zoom event idempotent 200 single state mutation no duplicate side effects single_state_mutation=true no_duplicate_side_effects=true" + zoomReleaseEvidence))
 		case "/mapping":
 			_, _ = w.Write([]byte("meeting_external_id=zoom-123 mapped to live_rooms internal_room_id=room-abc redis room state updated; unknown meeting ignored; no external meeting id fallback distinct_zoom_artifacts=true" + zoomReleaseEvidence))
 		default:
@@ -125,6 +125,7 @@ func TestRunEmitsZoomEvidenceWhenArtifactsPass(t *testing.T) {
 	assertWebhookSignatureProof(t, result.Probes, "v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "1710000000")
 	assertURLValidationProof(t, result.Probes, "zoom-plain-123", "zoom-encrypted-456", "200")
 	assertDuplicateWebhookIDProof(t, result.Probes, "zm-delivery-123", "zm-track-123")
+	assertDuplicateWebhookSideEffectProof(t, result.Probes)
 	assertRoomMappingIDs(t, result.Probes, "zoom-123", "room-abc")
 }
 
@@ -142,7 +143,7 @@ func TestRunAcceptsOfflineMeetingFallbackEvidence(t *testing.T) {
 		case "/validation":
 			_, _ = w.Write([]byte("endpoint.url_validation 200 plain_token=zoom-plain-123 encrypted_token=zoom-encrypted-456 validation_response=200" + zoomReleaseEvidence))
 		case "/duplicate":
-			_, _ = w.Write([]byte("duplicate webhook x-zm-trackingid=zm-track-123 delivery_id=zm-delivery-123 delivery id same Zoom event idempotent 200 single state mutation no duplicate side effects" + zoomReleaseEvidence))
+			_, _ = w.Write([]byte("duplicate webhook x-zm-trackingid=zm-track-123 delivery_id=zm-delivery-123 delivery id same Zoom event idempotent 200 single state mutation no duplicate side effects single_state_mutation=true no_duplicate_side_effects=true" + zoomReleaseEvidence))
 		case "/mapping":
 			_, _ = w.Write([]byte("meeting_external_id=zoom-123 mapped live_rooms internal_room_id=room-abc redis room state unknown meeting ignored no external meeting id fallback distinct_zoom_artifacts=true" + zoomReleaseEvidence))
 		}
@@ -204,6 +205,22 @@ func assertDuplicateWebhookIDProof(t *testing.T, probes []probeResult, wantDeliv
 			}
 			if probe.TrackingID != wantTrackingID {
 				t.Fatalf("duplicate webhook tracking_id = %q, want %q", probe.TrackingID, wantTrackingID)
+			}
+			return
+		}
+	}
+	t.Fatal("missing zoom-duplicate-webhook-idempotency probe")
+}
+
+func assertDuplicateWebhookSideEffectProof(t *testing.T, probes []probeResult) {
+	t.Helper()
+	for _, probe := range probes {
+		if probe.Name == "zoom-duplicate-webhook-idempotency" {
+			if !probe.SingleStateMutation {
+				t.Fatal("duplicate webhook proof missing single_state_mutation=true")
+			}
+			if !probe.NoDuplicateSideEffects {
+				t.Fatal("duplicate webhook proof missing no_duplicate_side_effects=true")
 			}
 			return
 		}
@@ -585,6 +602,37 @@ func TestRunFailsWhenDuplicateWebhookLacksTrackingHeaderProof(t *testing.T) {
 	err := runWithClient(stagingZoomConfig(time.Second), &output, clientForHTTPServer(t, server))
 	if err == nil {
 		t.Fatalf("expected missing x-zm-trackingid proof to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "zoom-duplicate-webhook-idempotency") {
+		t.Fatalf("report missing duplicate webhook probe:\n%s", output.String())
+	}
+}
+
+func TestRunFailsWhenDuplicateWebhookLacksStructuredSideEffectProof(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth":
+			_, _ = w.Write([]byte("Zoom oauth account_credentials status ok token redacted" + zoomReleaseEvidence))
+		case "/meeting":
+			_, _ = w.Write([]byte("meeting created join_url=https://zoom.us/j/123456789" + zoomReleaseEvidence))
+		case "/resilience":
+			_, _ = w.Write([]byte("provider timeout drill opened circuit; circuit open circuit_open_fallback returned offline://in-person fallback" + zoomReleaseEvidence))
+		case "/webhook":
+			_, _ = w.Write([]byte(zoomWebhookEvidence + zoomReleaseEvidence))
+		case "/validation":
+			_, _ = w.Write([]byte("endpoint.url_validation 200 plain_token=zoom-plain-123 encrypted_token=zoom-encrypted-456 validation_response=200" + zoomReleaseEvidence))
+		case "/duplicate":
+			_, _ = w.Write([]byte("duplicate webhook x-zm-trackingid=zm-track-123 delivery_id=zm-delivery-123 delivery id same Zoom event idempotent 200 single state mutation no duplicate side effects" + zoomReleaseEvidence))
+		case "/mapping":
+			_, _ = w.Write([]byte("meeting_external_id=zoom-123 mapped live_rooms internal_room_id=room-abc redis room state unknown meeting ignored no external meeting id fallback distinct_zoom_artifacts=true" + zoomReleaseEvidence))
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := runWithClient(stagingZoomConfig(time.Second), &output, clientForHTTPServer(t, server))
+	if err == nil {
+		t.Fatalf("expected missing structured duplicate side-effect proof to fail:\n%s", output.String())
 	}
 	if !strings.Contains(output.String(), "zoom-duplicate-webhook-idempotency") {
 		t.Fatalf("report missing duplicate webhook probe:\n%s", output.String())

@@ -68,7 +68,7 @@ const zoomSegmentMarkerRequirements = new Map([
   ['zoom-timeout-circuit-fallback', ['staging artifact', 'timeout', 'provider timeout', 'circuit', 'open', 'circuit_open_fallback', 'fallback', 'offline://in-person', 'release_candidate=', 'service_version=']],
   ['zoom-webhook-signature-delivery', ['staging artifact', 'webhook', 'signature', 'x-zm-signature=', 'x-zm-request-timestamp=', 'stale', 'replay', '401', 'invalid', 'signed', '200', 'release_candidate=', 'service_version=']],
   ['zoom-webhook-url-validation', ['staging artifact', 'endpoint.url_validation', 'plain_token=', 'encrypted_token=', 'validation_response=200', 'release_candidate=', 'service_version=']],
-  ['zoom-duplicate-webhook-idempotency', ['staging artifact', 'duplicate', 'x-zm-trackingid=', 'delivery_id=', 'delivery id', 'same Zoom event', 'idempotent', '200', 'single state mutation', 'no duplicate side effects', 'release_candidate=', 'service_version=']],
+  ['zoom-duplicate-webhook-idempotency', ['staging artifact', 'duplicate', 'x-zm-trackingid=', 'delivery_id=', 'delivery id', 'same Zoom event', 'idempotent', '200', 'single state mutation', 'no duplicate side effects', 'single_state_mutation=true', 'no_duplicate_side_effects=true', 'release_candidate=', 'service_version=']],
   ['zoom-meeting-room-mapping', ['staging artifact', 'meeting_external_id=', 'live_rooms', 'internal_room_id=', 'redis room state', 'mapped', 'unknown meeting ignored', 'no external meeting id fallback', 'distinct_zoom_artifacts=true', 'release_candidate=', 'service_version=']],
 ]);
 const aiCitationVerificationPattern = /ai-citation-verification(?=[^;]*staging artifact)(?=[^;]*no-citation rejected)(?=[^;]*hallucinated citation rejected)(?=[^;]*verified citation accepted)(?=[^;]*citation_trails)(?=[^;]*citation_id=)/i;
@@ -93,6 +93,9 @@ const zoomValidationResponsePattern = /\bvalidation_response=200\b/i;
 const zoomMeetingExternalIDPattern = /\bmeeting_external_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const zoomInternalRoomIDPattern = /\binternal_room_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const zoomTrackingIDPattern = /\bx-zm-trackingid=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const zoomDeliveryIDPattern = /\bdelivery_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const zoomSingleStateMutationPattern = /\bsingle_state_mutation=true\b/i;
+const zoomNoDuplicateSideEffectsPattern = /\bno_duplicate_side_effects=true\b/i;
 const zoomProviderTimeoutPattern = /\bprovider_timeout=true\b/i;
 const zoomCircuitOpenPattern = /\bcircuit_open=true\b/i;
 const zoomOfflineFallbackPattern = /\boffline_fallback=true\b/i;
@@ -1760,6 +1763,21 @@ function validateStrictReleaseItemEvidence(item, manifest) {
       duplicateSegment,
       zoomTrackingIDPattern,
       'EXT-ZOOM-001 zoom-duplicate-webhook-idempotency must include concrete x-zm-trackingid=<id>',
+    );
+    assert.match(
+      duplicateSegment,
+      zoomDeliveryIDPattern,
+      'EXT-ZOOM-001 zoom-duplicate-webhook-idempotency must include concrete delivery_id=<id>',
+    );
+    assert.match(
+      duplicateSegment,
+      zoomSingleStateMutationPattern,
+      'EXT-ZOOM-001 zoom-duplicate-webhook-idempotency must include single_state_mutation=true',
+    );
+    assert.match(
+      duplicateSegment,
+      zoomNoDuplicateSideEffectsPattern,
+      'EXT-ZOOM-001 zoom-duplicate-webhook-idempotency must include no_duplicate_side_effects=true',
     );
     const roomMappingSegment = findEvidenceSegment(evidence, 'zoom-meeting-room-mapping');
     assert.match(

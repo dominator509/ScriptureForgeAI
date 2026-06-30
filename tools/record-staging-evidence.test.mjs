@@ -279,7 +279,7 @@ const zoomProbeMarkerSummaries = {
   'zoom-timeout-circuit-fallback': 'got HTTP 200; staging artifact; verified markers: timeout, provider timeout, circuit, open, circuit_open_fallback, fallback, offline://in-person, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123; provider_timeout=true; circuit_open=true; offline_fallback=true',
   'zoom-webhook-signature-delivery': 'got HTTP 200; staging artifact; verified markers: webhook, signature, x-zm-signature=v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, x-zm-request-timestamp=1710000000, stale, replay, 401, invalid, signed, 200, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
   'zoom-webhook-url-validation': 'got HTTP 200; staging artifact; verified markers: endpoint.url_validation, plain_token=zoom-plain-123, encrypted_token=zoom-encrypted-456, validation_response=200, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
-  'zoom-duplicate-webhook-idempotency': 'got HTTP 200; staging artifact; verified markers: duplicate, x-zm-trackingid=zm-track-123, delivery_id=zm-delivery-123, delivery id, same Zoom event, idempotent, 200, single state mutation, no duplicate side effects, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'zoom-duplicate-webhook-idempotency': 'got HTTP 200; staging artifact; verified markers: duplicate, x-zm-trackingid=zm-track-123, delivery_id=zm-delivery-123, delivery id, same Zoom event, idempotent, 200, single state mutation, no duplicate side effects, single_state_mutation=true, no_duplicate_side_effects=true, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
   'zoom-meeting-room-mapping': 'got HTTP 200; staging artifact; verified markers: meeting_external_id=zoom-123, live_rooms, internal_room_id=room-abc, redis room state, mapped, unknown meeting ignored, no external meeting id fallback, distinct_zoom_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
 };
 
@@ -297,6 +297,12 @@ function zoomProbeReportProbe(name, overrides = {}) {
   }
   if (name === 'zoom-duplicate-webhook-idempotency' && !Object.hasOwn(overrides, 'tracking_id')) {
     probe.tracking_id = 'zm-track-123';
+  }
+  if (name === 'zoom-duplicate-webhook-idempotency' && !Object.hasOwn(overrides, 'single_state_mutation')) {
+    probe.single_state_mutation = true;
+  }
+  if (name === 'zoom-duplicate-webhook-idempotency' && !Object.hasOwn(overrides, 'no_duplicate_side_effects')) {
+    probe.no_duplicate_side_effects = true;
   }
   if (name === 'zoom-webhook-signature-delivery' && !Object.hasOwn(overrides, 'webhook_signature')) {
     probe.webhook_signature = 'v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
@@ -3292,6 +3298,70 @@ test('recordEvidence rejects Zoom duplicate evidence without tracking header pro
       'go run ./tools/zoomprobe',
     ),
     /zoom-duplicate-webhook-idempotency result_summary must include verified marker x-zm-trackingid=/,
+  );
+});
+
+test('recordEvidence rejects Zoom duplicate evidence without structured side-effect booleans', () => {
+  const probeNames = Object.keys(zoomProbeMarkerSummaries);
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'EXT-ZOOM-001' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['EXT-ZOOM-001'],
+        probes: zoomProbeReportProbes(probeNames, (name) => (
+          name === 'zoom-duplicate-webhook-idempotency' ? { single_state_mutation: false } : {}
+        )),
+      },
+      'artifacts/zoomprobe.json',
+      'go run ./tools/zoomprobe',
+    ),
+    /zoom-duplicate-webhook-idempotency probe must include structured single_state_mutation=true/,
+  );
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'EXT-ZOOM-001' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['EXT-ZOOM-001'],
+        probes: zoomProbeReportProbes(probeNames, (name) => (
+          name === 'zoom-duplicate-webhook-idempotency' ? { no_duplicate_side_effects: false } : {}
+        )),
+      },
+      'artifacts/zoomprobe.json',
+      'go run ./tools/zoomprobe',
+    ),
+    /zoom-duplicate-webhook-idempotency probe must include structured no_duplicate_side_effects=true/,
+  );
+});
+
+test('recordEvidence rejects Zoom duplicate evidence when side-effect summary markers are missing', () => {
+  const probeNames = Object.keys(zoomProbeMarkerSummaries);
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'EXT-ZOOM-001' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['EXT-ZOOM-001'],
+        probes: zoomProbeReportProbes(probeNames, (name) => ({
+          result_summary: name === 'zoom-duplicate-webhook-idempotency'
+            ? zoomProbeMarkerSummaries[name].replace(', single_state_mutation=true, no_duplicate_side_effects=true', '')
+            : zoomProbeMarkerSummaries[name],
+        })),
+      },
+      'artifacts/zoomprobe.json',
+      'go run ./tools/zoomprobe',
+    ),
+    /zoom-duplicate-webhook-idempotency result_summary must include verified marker single_state_mutation=true/,
   );
 });
 
