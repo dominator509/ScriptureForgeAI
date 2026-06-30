@@ -171,6 +171,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Mobile Native Provider Structured Report Guard**: `tools/mobileprobe` now emits structured `provider=react-native-quick-crypto` and `native_required=true` JSON fields on the passing `mobile-native-crypto-smoke` probe, giving `CLIENT-MOBILE-001` evidence a machine-readable native provider assertion in addition to the marker summary.
 - [x] **Mobile Native Provider Exact Marker Guard**: `tools/mobileprobe`, staging evidence recording, and strict-release validation now require the native crypto smoke artifact itself to carry exact `provider=react-native-quick-crypto` and `native_required=true` markers, so broad provider-status text cannot stand in for the machine-readable native-provider assertion.
 - [x] **Mobile Native Provider Extracted Binding Guard**: `tools/mobileprobe` extracts the first `provider=` and `native_required=` values from native crypto smoke artifacts and rejects reports unless they bind to `react-native-quick-crypto` and `true`, so later native markers cannot mask an earlier fallback/provider line.
+- [x] **Mobile Native Provider Ingestion Guard**: staging evidence recording and strict-release validation now enforce the same first-value provider/native-required binding for `CLIENT-MOBILE-001`, preventing hand-recorded mobile evidence from bypassing `tools/mobileprobe` with later matching native markers.
 - [x] **Client Strict Endpoint Placeholder Guard**: web and mobile strict runtime config reject reserved documentation/sample API and WebSocket hosts such as `.example`, `example.com`, `.test`, and `.invalid`, so staging or production builds cannot ship with endpoints that would later be rejected by staging evidence probes.
 - [x] **Web Endpoint Fail-Closed Guard**: web API config rejects local, private-network including IPv6 unique-local and IPv4-mapped private IPv6, link-local, unspecified, and insecure API/WebSocket endpoints when `NEXT_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging|production|prod`, preserving localhost defaults only for local development.
 - [x] **Web Client Exact Release Binding Guard**: `tools/stagingprobe`, the staging evidence recorder, and strict staging manifest validation require deployed browser auth, encrypted journal, and room/WebSocket smoke artifacts to carry exact `release_candidate=<manifest release_candidate>` plus `service_version` markers before `CLIENT-WEB-001` can support final readiness.
@@ -323,11 +324,11 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 1
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: 7ad2ce2f02c3187f772ca519182a5a6c585e8bbc
+- expected_release_candidate: 7cbf2a957f2376a56a94376ed9210e777f0bd0bc
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: 7ad2ce2f02c3187f772ca519182a5a6c585e8bbc
+    - expected_release_candidate: 7cbf2a957f2376a56a94376ed9210e777f0bd0bc
     - actual_release_candidate: ce96c283410756444a63b1345646fc69cf274d22
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
     - required: tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted

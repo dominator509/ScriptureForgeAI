@@ -1800,6 +1800,52 @@ test('recordEvidence rejects mobile native crypto evidence without exact provide
   }
 });
 
+test('recordEvidence rejects mobile native crypto evidence with mismatched provider bindings', () => {
+  for (const { probeOverrides, expected } of [
+    {
+      probeOverrides: { provider: 'expo-secure-store' },
+      expected: /mobile-native-crypto-smoke probe must include structured provider=react-native-quick-crypto/,
+    },
+    {
+      probeOverrides: {
+        result_summary: mobileProbeMarkerSummaries['mobile-native-crypto-smoke'].replace(
+          'provider=react-native-quick-crypto, native-required true',
+          'provider=expo-secure-store, native_required=true, provider=react-native-quick-crypto, native-required true',
+        ),
+      },
+      expected: /mobile-native-crypto-smoke probe must include structured provider=react-native-quick-crypto/,
+    },
+  ]) {
+    assert.throws(
+      () => recordEvidence(
+        { release_candidate: 'abc123', items: [{ id: 'CLIENT-MOBILE-001' }] },
+        {
+          observed_at: '2026-06-25T12:00:00Z',
+          threshold_pass: true,
+          release_candidate: 'abc123',
+          service_version: 'scriptureforge-mobile:abc123',
+          evidence_items: ['CLIENT-MOBILE-001'],
+          probes: [
+            mobileEASProbe(),
+            {
+              name: 'mobile-native-crypto-smoke',
+              passed: true,
+              target: 'https://artifacts.staging.scriptureforge.ai/mobile/native-crypto-smoke.txt',
+              status_code: 200,
+              result_summary: mobileProbeMarkerSummaries['mobile-native-crypto-smoke'],
+              ...probeOverrides,
+            },
+            mobileConfigProbe(),
+          ],
+        },
+        'artifacts/mobileprobe.json',
+        'go run ./tools/mobileprobe',
+      ),
+      expected,
+    );
+  }
+});
+
 test('recordEvidence rejects mobile evidence without verified marker summaries', () => {
   assert.throws(
     () => recordEvidence(

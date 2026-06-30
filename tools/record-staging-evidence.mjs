@@ -227,6 +227,10 @@ const mobileAPIBaseURLPattern = /^https:\/\/\S+$/;
 const mobileWSBaseURLPattern = /^wss:\/\/\S+$/;
 const mobileRequireNativeCryptoPattern = /^true$/i;
 const mobileDeploymentEnvironmentPattern = /^staging$/i;
+const mobileNativeProviderPattern = /^react-native-quick-crypto$/;
+const mobileNativeRequiredPattern = /^true$/i;
+const mobileNativeProviderSummaryPattern = /\bprovider=([A-Za-z0-9_.:-]+)\b/i;
+const mobileNativeRequiredSummaryPattern = /\bnative_required=(true|false)\b/i;
 const mobileAssociatedDataSaltIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
 const mobileAssociatedDataVersionPattern = /^[1-9][0-9]*$/;
 const mobileAssociatedDataSaltIDSummaryPattern = /\bassociated_data_salt_id=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b/i;
@@ -1313,11 +1317,17 @@ function validateMobileEvidence(report, manifest) {
       ]);
     }
     if (probe.name === 'mobile-native-crypto-smoke') {
+      const provider = String(probe.provider ?? extractFirstMatch(summary, mobileNativeProviderSummaryPattern)).trim();
+      const nativeRequired = String(probe.native_required ?? extractFirstMatch(summary, mobileNativeRequiredSummaryPattern)).trim();
       const associatedDataSaltID = String(probe.associated_data_salt_id ?? extractFirstMatch(summary, mobileAssociatedDataSaltIDSummaryPattern)).trim();
       const associatedDataVersion = String(probe.associated_data_salt_version ?? extractFirstMatch(summary, mobileAssociatedDataVersionSummaryPattern)).trim();
+      assert.match(provider, mobileNativeProviderPattern, 'mobile-native-crypto-smoke probe must include structured provider=react-native-quick-crypto');
+      assert.match(nativeRequired, mobileNativeRequiredPattern, 'mobile-native-crypto-smoke probe must include structured native_required=true');
       assert.match(associatedDataSaltID, mobileAssociatedDataSaltIDPattern, 'mobile-native-crypto-smoke probe must include structured associated_data_salt_id');
       assert.match(associatedDataVersion, mobileAssociatedDataVersionPattern, 'mobile-native-crypto-smoke probe must include positive structured associated_data_salt_version');
       assertSummaryIncludesMarkers(probe.name, summary, [
+        `provider=${provider}`,
+        `native_required=${nativeRequired}`,
         `associated_data_salt_id=${associatedDataSaltID}`,
         `associated_data_salt_version=${associatedDataVersion}`,
       ]);

@@ -2105,6 +2105,23 @@ test('validateManifest strict release rejects mobile crypto proof without exact 
   }
 });
 
+test('validateManifest strict release rejects mobile crypto proof with mismatched first provider binding', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'CLIENT-MOBILE-001');
+  item.evidence[0].result_summary = item.evidence[0].result_summary.replace(
+    'mobile-native-crypto-smoke staging artifact runJournalCryptoSelfTest react-native-quick-crypto',
+    'mobile-native-crypto-smoke staging artifact runJournalCryptoSelfTest provider=expo-secure-store native_required=true react-native-quick-crypto',
+  );
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /CLIENT-MOBILE-001 mobile-native-crypto-smoke must bind first provider marker to react-native-quick-crypto/,
+  );
+});
+
 test('validateManifest strict release rejects mobile staging config proof borrowed from EAS segment', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',

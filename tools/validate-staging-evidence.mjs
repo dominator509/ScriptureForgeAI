@@ -102,6 +102,8 @@ const mobileAPIBaseURLPattern = /\bEXPO_PUBLIC_API_BASE_URL=(https:\/\/\S+)\b/i;
 const mobileWSBaseURLPattern = /\bEXPO_PUBLIC_WS_BASE_URL=(wss:\/\/\S+)\b/i;
 const mobileRequireNativeCryptoPattern = /\bEXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true\b/i;
 const mobileDeploymentEnvironmentPattern = /\bEXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging\b/i;
+const mobileNativeProviderPattern = /\bprovider=([A-Za-z0-9_.:-]+)\b/i;
+const mobileNativeRequiredPattern = /\bnative_required=(true|false)\b/i;
 const mobileAssociatedDataSaltIDPattern = /\bassociated_data_salt_id=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b/i;
 const mobileAssociatedDataVersionPattern = /\bassociated_data_salt_version=([1-9][0-9]*)\b/i;
 const webSmokeUserIDPattern = /\buser_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
@@ -1556,6 +1558,10 @@ function validateStrictReleaseItemEvidence(item, manifest) {
       'CLIENT-MOBILE-001 mobile-eas-or-device-run must include expo_profile=staging',
     );
     const cryptoSegment = findEvidenceSegment(evidence, 'mobile-native-crypto-smoke');
+    const nativeProvider = cryptoSegment.match(mobileNativeProviderPattern)?.[1] ?? '';
+    const nativeRequired = cryptoSegment.match(mobileNativeRequiredPattern)?.[1] ?? '';
+    assert.equal(nativeProvider, 'react-native-quick-crypto', 'CLIENT-MOBILE-001 mobile-native-crypto-smoke must bind first provider marker to react-native-quick-crypto');
+    assert.equal(nativeRequired, 'true', 'CLIENT-MOBILE-001 mobile-native-crypto-smoke must bind first native_required marker to true');
     assert.match(
       cryptoSegment,
       mobileAssociatedDataSaltIDPattern,
