@@ -159,6 +159,31 @@ func TestRunFailsWhenNativeCryptoOmitsExactProviderMarkers(t *testing.T) {
 	}
 }
 
+func TestRunFailsWhenNativeCryptoBindsWrongProviderFirst(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/eas":
+			_, _ = w.Write([]byte("staging artifact EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging" + mobileReleaseMarkersText))
+		case "/crypto":
+			_, _ = w.Write([]byte("staging artifact runJournalCryptoSelfTest provider=expo-secure-store native_required=false react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM native smoke round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized" + mobileReleaseMarkersText))
+		case "/config":
+			_, _ = w.Write([]byte("staging artifact EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging" + mobileReleaseMarkersText))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := runWithClient(stagingMobileConfig(time.Second), &output, clientForHTTPServer(t, server))
+	if err == nil {
+		t.Fatalf("expected native crypto artifact with wrong first provider binding to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "mobile-native-crypto-smoke") {
+		t.Fatalf("report missing crypto probe:\n%s", output.String())
+	}
+}
+
 func TestRunFailsWhenNativeCryptoOmitsConcreteAssociatedDataSaltValues(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
