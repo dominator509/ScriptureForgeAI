@@ -123,11 +123,19 @@ func TestProbeHTTPSRedirectRequiresHTTPSLocation(t *testing.T) {
 }
 
 func TestAppendVerifiedMarkers(t *testing.T) {
-	summary := appendVerifiedMarkers("TLS1.3 certificate valid", []string{"api-tls", "TLS", "certificate", "cert_not_after"})
-	for _, marker := range []string{"verified markers", "api-tls", "TLS", "certificate", "cert_not_after"} {
+	summary := appendVerifiedMarkers("TLS1.3 certificate valid", []string{"api-tls", "TLS", "certificate", "cert_not_after", "cert_hostname=api.staging.scriptureforge.ai", "cert_issuer=Amazon"})
+	for _, marker := range []string{"verified markers", "api-tls", "TLS", "certificate", "cert_not_after", "cert_hostname=api.staging.scriptureforge.ai", "cert_issuer=Amazon"} {
 		if !strings.Contains(summary, marker) {
 			t.Fatalf("summary %q omitted marker %q", summary, marker)
 		}
+	}
+}
+
+func TestCertificateNameTokenNormalizesIssuer(t *testing.T) {
+	got := certificateNameToken("CN=Amazon RSA 2048 M02, O=Amazon, C=US")
+	want := "CN-Amazon_RSA_2048_M02__O-Amazon__C-US"
+	if got != want {
+		t.Fatalf("certificateNameToken() = %q, want %q", got, want)
 	}
 }
 

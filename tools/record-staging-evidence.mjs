@@ -264,10 +264,10 @@ const forbiddenDeploymentSummaryMarkers = [
 const requiredStagingProbeSummaryMarkers = new Map([
   ['api-live', ['api-live', '/live', 'HTTP 200']],
   ['api-ready', ['api-ready', '/ready', 'HTTP 200']],
-  ['api-tls', ['api-tls', 'TLS', 'certificate', 'cert_not_after']],
+  ['api-tls', ['api-tls', 'TLS', 'certificate', 'cert_not_after', 'cert_hostname=', 'cert_issuer=']],
   ['api-http-redirect', ['api-http-redirect', 'HTTP', 'HTTPS', 'redirect']],
   ['web-root', ['web-root', 'web root', 'HTTP 200']],
-  ['web-tls', ['web-tls', 'TLS', 'certificate', 'cert_not_after']],
+  ['web-tls', ['web-tls', 'TLS', 'certificate', 'cert_not_after', 'cert_hostname=', 'cert_issuer=']],
   ['web-http-redirect', ['web-http-redirect', 'HTTP', 'HTTPS', 'redirect']],
 ]);
 
@@ -792,13 +792,19 @@ function assertHTTPProbe(probesByName, name, expectedTarget, expectedStatus, ext
 }
 
 function assertTLSProbe(probesByName, name, expectedTarget, extraMarkers = []) {
-  const probe = probesByName.get(name);
-  assert.ok(probe, `DEPLOY-TLS-001 report must include ${name} probe`);
-  assert.equal(probe.passed, true, `${name} must pass`);
-  assert.equal(String(probe.target ?? ''), expectedTarget, `${name} target must match ${expectedTarget}`);
-  assert.ok(String(probe.tls_version ?? '').trim(), `${name} must include tls_version`);
-  assert.match(String(probe.cert_not_after ?? ''), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, `${name} must include cert_not_after`);
-  assertSummaryIncludesMarkers(name, String(probe.result_summary ?? ''), [...(requiredStagingProbeSummaryMarkers.get(name) ?? []), ...extraMarkers]);
+	const probe = probesByName.get(name);
+	assert.ok(probe, `DEPLOY-TLS-001 report must include ${name} probe`);
+	assert.equal(probe.passed, true, `${name} must pass`);
+	assert.equal(String(probe.target ?? ''), expectedTarget, `${name} target must match ${expectedTarget}`);
+	assert.ok(String(probe.tls_version ?? '').trim(), `${name} must include tls_version`);
+	assert.match(String(probe.cert_not_after ?? ''), /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, `${name} must include cert_not_after`);
+	const expectedHostname = new URL(expectedTarget).hostname.toLowerCase();
+	const certHostname = String(probe.cert_hostname ?? '').trim().toLowerCase();
+	const certIssuer = String(probe.cert_issuer ?? '').trim();
+	assert.equal(certHostname, expectedHostname, `${name} must include cert_hostname matching ${expectedHostname}`);
+	assert.match(certIssuer, /^[A-Za-z0-9][A-Za-z0-9._:-]*$/, `${name} must include structured cert_issuer`);
+	assertSummaryIncludesMarkers(name, String(probe.result_summary ?? ''), [`cert_hostname=${certHostname}`, `cert_issuer=${certIssuer}`]);
+	assertSummaryIncludesMarkers(name, String(probe.result_summary ?? ''), [...(requiredStagingProbeSummaryMarkers.get(name) ?? []), ...extraMarkers]);
 }
 
 function assertRedirectProbe(probesByName, name, extraMarkers = []) {

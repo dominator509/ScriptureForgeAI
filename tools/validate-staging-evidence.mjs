@@ -107,6 +107,8 @@ const mobileNativeProviderPattern = /\bprovider=([A-Za-z0-9_.:-]+)\b/i;
 const mobileNativeRequiredPattern = /\bnative_required=(true|false)\b/i;
 const mobileAssociatedDataSaltIDPattern = /\bassociated_data_salt_id=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b/i;
 const mobileAssociatedDataVersionPattern = /\bassociated_data_salt_version=([1-9][0-9]*)\b/i;
+const tlsCertHostnamePattern = /\bcert_hostname=([A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z0-9.-]+)\b/i;
+const tlsCertIssuerPattern = /\bcert_issuer=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const webSmokeUserIDPattern = /\buser_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const webSmokeOrganizationIDPattern = /\borganization_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const webSmokeJournalIDPattern = /\bjournal_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
@@ -187,15 +189,15 @@ const tenantSegmentMarkerRequirements = new Map([
 const tlsSegmentMarkerRequirements = new Map([
   ['api-live', ['/live', 'HTTP 200', 'release_candidate=', 'service_version=']],
   ['api-ready', ['/ready', 'HTTP 200', 'release_candidate=', 'service_version=']],
-  ['api-tls', ['TLS', 'certificate', 'cert_not_after', 'release_candidate=', 'service_version=']],
+  ['api-tls', ['TLS', 'certificate', 'cert_not_after', 'cert_hostname=', 'cert_issuer=', 'release_candidate=', 'service_version=']],
   ['api-http-redirect', ['HTTP', 'HTTPS', 'redirect', 'release_candidate=', 'service_version=']],
   ['web-root', ['web root', 'HTTP 200', 'release_candidate=', 'service_version=']],
-  ['web-tls', ['TLS', 'certificate', 'cert_not_after', 'release_candidate=', 'service_version=']],
+  ['web-tls', ['TLS', 'certificate', 'cert_not_after', 'cert_hostname=', 'cert_issuer=', 'release_candidate=', 'service_version=']],
   ['web-http-redirect', ['HTTP', 'HTTPS', 'redirect', 'release_candidate=', 'service_version=']],
 ]);
 const webClientSegmentMarkerRequirements = new Map([
   ['web-root', ['web root', 'HTTP 200']],
-  ['web-tls', ['TLS', 'certificate', 'cert_not_after']],
+  ['web-tls', ['TLS', 'certificate', 'cert_not_after', 'cert_hostname=', 'cert_issuer=']],
   ['web-http-redirect', ['HTTP', 'HTTPS', 'redirect']],
   ['web-auth-browser-smoke', ['staging artifact', 'login', 'register', 'authenticated', 'https://', 'user_id=', 'organization_id=', 'distinct_web_artifacts=true', 'release_candidate=', 'service_version=']],
   ['web-journal-browser-smoke', ['staging artifact', 'journal', 'encrypted', 'save', 'load', 'plaintext absent', 'associated data', 'wrong associated data rejected', 'user_id=', 'organization_id=', 'journal_id=', 'distinct_web_artifacts=true', 'release_candidate=', 'service_version=']],
@@ -447,6 +449,8 @@ export const strictProbeFamilies = {
       'TLS',
       'certificate',
       'cert_not_after',
+      'cert_hostname=',
+      'cert_issuer=',
       'api-http-redirect',
       'HTTP',
       'HTTPS',
@@ -815,6 +819,8 @@ export const strictProbeFamilies = {
       'TLS',
       'certificate',
       'cert_not_after',
+      'cert_hostname=',
+      'cert_issuer=',
       'web-http-redirect',
       'HTTP',
       'HTTPS',
@@ -1372,6 +1378,7 @@ function validateStrictReleaseItemEvidence(item, manifest) {
         `DEPLOY-TLS-001 strict release evidence must include TLS/web markers on ${segment}`,
       );
     }
+    assertStrictTLSCertificateIdentity(evidence, 'DEPLOY-TLS-001', ['api-tls', 'web-tls']);
   }
   if (item.id === 'CLIENT-WEB-001') {
     for (const [segment, markers] of webClientSegmentMarkerRequirements) {
@@ -1386,6 +1393,7 @@ function validateStrictReleaseItemEvidence(item, manifest) {
         `CLIENT-WEB-001 strict release evidence must include web client markers on ${segment}`,
       );
     }
+    assertStrictTLSCertificateIdentity(evidence, 'CLIENT-WEB-001', ['web-tls']);
     assertStrictWebSmokeIdentityLinkage(evidence);
   }
   if (item.id === 'SEC-SECRETS-001') {
@@ -2065,6 +2073,23 @@ function assertStrictBackupRestoreSnapshotLinkage(evidence) {
     restoreDurationMinutes <= rtoMinutes,
     `DR-BACKUP-001 strict release restore_duration_minutes ${restoreDurationMinutes} must be <= rto_minutes ${rtoMinutes}`,
   );
+}
+
+function assertStrictTLSCertificateIdentity(evidence, itemID, segments) {
+  for (const segment of segments) {
+    const segmentText = findEvidenceSegment(evidence, segment);
+    assert.ok(segmentText, `${itemID} strict release evidence must include ${segment} segment`);
+    assert.match(
+      segmentText,
+      tlsCertHostnamePattern,
+      `${itemID} ${segment} must include concrete cert_hostname=<hostname>`,
+    );
+    assert.match(
+      segmentText,
+      tlsCertIssuerPattern,
+      `${itemID} ${segment} must include concrete cert_issuer=<issuer>`,
+    );
+  }
 }
 
 function assertStrictWebSmokeIdentityLinkage(evidence) {

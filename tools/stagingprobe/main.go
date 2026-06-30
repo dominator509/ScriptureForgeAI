@@ -63,6 +63,8 @@ type probeResult struct {
 	LatencyMS      int64  `json:"latency_ms,omitempty"`
 	TLSVersion     string `json:"tls_version,omitempty"`
 	CertNotAfter   string `json:"cert_not_after,omitempty"`
+	CertHostname   string `json:"cert_hostname,omitempty"`
+	CertIssuer     string `json:"cert_issuer,omitempty"`
 	RedirectTo     string `json:"redirect_to,omitempty"`
 	UserID         string `json:"user_id,omitempty"`
 	OrganizationID string `json:"organization_id,omitempty"`
@@ -680,9 +682,13 @@ func probeTLS(name, target string, timeout time.Duration, releaseMarkers []strin
 	if time.Until(cert.NotAfter) < 14*24*time.Hour {
 		return failedProbe(name, target, "certificate expires in less than 14 days")
 	}
+	certIssuer := certificateNameToken(cert.Issuer.String())
+	if certIssuer == "" {
+		return failedProbe(name, target, "certificate issuer was empty")
+	}
 	summary := appendVerifiedMarkers(
 		fmt.Sprintf("%s certificate valid until %s", tlsVersionName(state.Version), cert.NotAfter.UTC().Format("2006-01-02")),
-		append([]string{name, "TLS", "certificate", "cert_not_after"}, releaseMarkers...),
+		append([]string{name, "TLS", "certificate", "cert_not_after", "cert_hostname=" + serverName, "cert_issuer=" + certIssuer}, releaseMarkers...),
 	)
 	return probeResult{
 		Name:          name,
@@ -691,8 +697,20 @@ func probeTLS(name, target string, timeout time.Duration, releaseMarkers []strin
 		LatencyMS:     latency,
 		TLSVersion:    tlsVersionName(state.Version),
 		CertNotAfter:  cert.NotAfter.UTC().Format("2006-01-02T15:04:05Z"),
+		CertHostname:  serverName,
+		CertIssuer:    certIssuer,
 		ResultSummary: summary,
 	}
+}
+
+func certificateNameToken(name string) string {
+	cleaned := strings.TrimSpace(name)
+	cleaned = strings.ReplaceAll(cleaned, " ", "_")
+	cleaned = strings.ReplaceAll(cleaned, ",", "_")
+	cleaned = strings.ReplaceAll(cleaned, "=", "-")
+	cleaned = strings.ReplaceAll(cleaned, "/", "_")
+	cleaned = strings.ReplaceAll(cleaned, ":", "-")
+	return strings.Trim(cleaned, "_")
 }
 
 func probeHTTPSRedirect(client *http.Client, name, httpsBase string, releaseMarkers []string) probeResult {

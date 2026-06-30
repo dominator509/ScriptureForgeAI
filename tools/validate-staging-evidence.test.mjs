@@ -955,17 +955,32 @@ test('validateManifest strict release rejects API TLS proof borrowed from web TL
   const item = manifest.items.find((candidate) => candidate.id === 'DEPLOY-TLS-001');
   item.evidence[0].result_summary = item.evidence[0].result_summary
     .replace(
-      'web-tls TLS certificate cert_not_after',
-      'web-tls TLS certificate cert_not_after api-tls certificate cert_not_after',
+      'web-tls TLS certificate cert_not_after cert_hostname=app.staging.scriptureforge.ai cert_issuer=Amazon_RSA_2048_M02',
+      'web-tls TLS certificate cert_not_after cert_hostname=app.staging.scriptureforge.ai cert_issuer=Amazon_RSA_2048_M02 api-tls certificate cert_not_after',
     )
     .replace(
-      'api-tls TLS certificate cert_not_after',
+      'api-tls TLS certificate cert_not_after cert_hostname=api.staging.scriptureforge.ai cert_issuer=Amazon_RSA_2048_M02',
       'api-tls',
     );
 
   assert.throws(
     () => validateManifest(manifest, { strictRelease: true }),
     /DEPLOY-TLS-001 strict release evidence must include TLS\/web markers on api-tls/,
+  );
+});
+
+test('validateManifest strict release rejects TLS evidence without concrete certificate issuer', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'DEPLOY-TLS-001');
+  item.evidence[0].result_summary = item.evidence[0].result_summary
+    .replace('api-tls TLS certificate cert_not_after cert_hostname=api.staging.scriptureforge.ai cert_issuer=Amazon_RSA_2048_M02', 'api-tls TLS certificate cert_not_after cert_hostname=api.staging.scriptureforge.ai cert_issuer=');
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /DEPLOY-TLS-001 api-tls must include concrete cert_issuer=<issuer>/,
   );
 });
 
@@ -3898,10 +3913,10 @@ function tlsSummary(releaseCandidate) {
   return [
     'DEPLOY-TLS-001 stagingprobe passed: api-live /live HTTP 200',
     'api-ready /ready HTTP 200',
-    'api-tls TLS certificate cert_not_after',
+    'api-tls TLS certificate cert_not_after cert_hostname=api.staging.scriptureforge.ai cert_issuer=Amazon_RSA_2048_M02',
     'api-http-redirect HTTP HTTPS redirect',
     'web-root web root HTTP 200',
-    'web-tls TLS certificate cert_not_after',
+    'web-tls TLS certificate cert_not_after cert_hostname=app.staging.scriptureforge.ai cert_issuer=Amazon_RSA_2048_M02',
     'web-http-redirect HTTP HTTPS redirect',
   ].map((segment) => `${segment} ${release}`).join('; ');
 }
@@ -3944,7 +3959,7 @@ function webClientSummary(releaseCandidate) {
   const release = `release_candidate=${releaseCandidate} service_version=scriptureforge-web:${releaseCandidate}`;
   return [
     'CLIENT-WEB-001 stagingprobe passed: web-root web root HTTP 200',
-    'web-tls TLS certificate cert_not_after',
+    'web-tls TLS certificate cert_not_after cert_hostname=app.staging.scriptureforge.ai cert_issuer=Amazon_RSA_2048_M02',
     'web-http-redirect HTTP HTTPS redirect',
     'web-auth-browser-smoke staging artifact login register authenticated https:// user_id=user-staging organization_id=org-staging distinct_web_artifacts=true',
     'web-journal-browser-smoke staging artifact journal encrypted save load plaintext absent associated data wrong associated data rejected user_id=user-staging organization_id=org-staging journal_id=journal-staging distinct_web_artifacts=true',

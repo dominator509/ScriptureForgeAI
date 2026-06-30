@@ -180,6 +180,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Staging TLS/Web Probe Host Guard**: `tools/stagingprobe` rejects reserved documentation/sample hosts such as `.example`, `example.com`, `.test`, and `.invalid`, plus localhost, loopback, private-network, unspecified, and link-local API/web bases plus DNS, ACM, and browser-smoke artifact URLs before emitting `DEPLOY-TLS-001` or `CLIENT-WEB-001`.
 - [x] **Staging TLS/Web Segment Guard**: strict-release validation now requires `DEPLOY-TLS-001` and `CLIENT-WEB-001` stagingprobe summaries to carry API health, TLS, redirect, web root, browser auth, encrypted journal, and room/WebSocket markers in their own segments so deployed web proof cannot borrow markers across checks.
 - [x] **Staging TLS Exact Release Binding Guard**: `tools/stagingprobe`, the staging evidence recorder, and strict staging manifest validation require API live/readiness, API/web TLS, and HTTP-to-HTTPS redirect summaries to carry exact `release_candidate=<manifest release_candidate>` plus `service_version` markers before `DEPLOY-TLS-001` can support final readiness.
+- [x] **Staging TLS Certificate Identity Guard**: `tools/stagingprobe`, the staging evidence recorder, and strict staging manifest validation require API/web TLS summaries to carry concrete `cert_hostname=<hostname>` and `cert_issuer=<issuer>` markers, and the recorder rejects hostnames that do not match the probed target.
 - [x] **Staging TLS/Web Artifact Alias Guard**: `tools/stagingprobe` canonicalizes TLS and web smoke artifact URLs before distinctness checks, so default-port, host-case, query-order, or fragment aliases cannot satisfy separate DNS, ACM, auth, journal, or room smoke proof roles.
 - [x] **Local WebSocket Origin Fail-Closed Guard**: `DEPLOYMENT_ENVIRONMENT=staging|production|prod` now rejects WebSocket upgrades when `ALLOWED_WS_ORIGINS` is missing or when configured/requested origins are insecure, local/private, or reserved documentation/sample hosts; localhost/no-origin fallback is limited to local development/test shells.
 - [x] **Local WebSocket State Manager Fail-Closed Guard**: room creation, WebSocket stream upgrades, and HTTP polling fallback return controlled `503` errors when Redis-backed room state management is not configured, preventing partial room creation, unsequenced streams, or polling panics.
@@ -325,11 +326,11 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 1
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: 321703ce08d9513f3d97f4b43bb24da79cc00f57
+- expected_release_candidate: 3316d888b39cae87e896ef8b467718cc915d4be1
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: 321703ce08d9513f3d97f4b43bb24da79cc00f57
+    - expected_release_candidate: 3316d888b39cae87e896ef8b467718cc915d4be1
     - actual_release_candidate: ce96c283410756444a63b1345646fc69cf274d22
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
     - required: tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted

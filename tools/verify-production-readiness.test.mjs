@@ -922,10 +922,10 @@ function strictEvidenceSummary(id, releaseCandidate = sha) {
     return [
       'DEPLOY-TLS-001 stagingprobe passed: api-live /live HTTP 200',
       'api-ready /ready HTTP 200',
-      'api-tls TLS certificate cert_not_after',
+      'api-tls TLS certificate cert_not_after cert_hostname=api.staging.scriptureforge.ai cert_issuer=Amazon_RSA_2048_M02',
       'api-http-redirect HTTP HTTPS redirect',
       'web-root web root HTTP 200',
-      'web-tls TLS certificate cert_not_after',
+      'web-tls TLS certificate cert_not_after cert_hostname=app.staging.scriptureforge.ai cert_issuer=Amazon_RSA_2048_M02',
       'web-http-redirect HTTP HTTPS redirect',
     ].map((segment) => `${segment} ${release}`).join('; ');
   }
@@ -1021,7 +1021,7 @@ function webClientSummary(releaseCandidate) {
   const release = `release_candidate=${releaseCandidate} service_version=scriptureforge-web:${releaseCandidate}`;
   return [
     'CLIENT-WEB-001 stagingprobe passed: web-root web root HTTP 200',
-    'web-tls TLS certificate cert_not_after',
+    'web-tls TLS certificate cert_not_after cert_hostname=app.staging.scriptureforge.ai cert_issuer=Amazon_RSA_2048_M02',
     'web-http-redirect HTTP HTTPS redirect',
     'web-auth-browser-smoke staging artifact login register authenticated https:// user_id=user-staging organization_id=org-staging distinct_web_artifacts=true',
     'web-journal-browser-smoke staging artifact journal encrypted save load plaintext absent associated data wrong associated data rejected user_id=user-staging organization_id=org-staging journal_id=journal-staging distinct_web_artifacts=true',
