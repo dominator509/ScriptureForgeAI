@@ -17,9 +17,9 @@ const mobileServiceVersion = "scriptureforge-mobile:abc123"
 const mobileReleaseMarkersText = " release_candidate=" + mobileReleaseCandidate + " service_version=" + mobileServiceVersion
 
 var requiredMobileProbeSummaryMarkers = map[string][]string{
-	"mobile-eas-or-device-run":   {"staging artifact", "eas", "build", "finished", "android", "ios", "native device", "installed app", "release channel staging", "expo profile staging", "release_candidate=" + mobileReleaseCandidate, "service_version=" + mobileServiceVersion, "distinct_mobile_artifacts=true"},
+	"mobile-eas-or-device-run":   {"staging artifact", "eas", "build", "finished", "android", "ios", "native device", "installed app", "release channel staging", "expo profile staging", "platforms=android,ios", "release_channel=staging", "expo_profile=staging", "release_candidate=" + mobileReleaseCandidate, "service_version=" + mobileServiceVersion, "distinct_mobile_artifacts=true"},
 	"mobile-native-crypto-smoke": {"staging artifact", "react-native-quick-crypto", "native provider", "native module loaded", "provider status react-native-quick-crypto", "native-required true", "AES-GCM", "round-trip", "unique_iv=true", "unique IV", "tamper rejected", "associated data", "wrong associated data rejected", "associated_data_salt_id=", "associated_data_salt_version=", "non-extractable", "provider-bound key", "fallback-derived key rejected", "key disposed", "disposed handle rejected", "passphrase wiped", "passphrase buffer zeroized", "salt wiped", "salt buffer zeroized", "plaintext cleared", "plaintext buffer zeroized", "release_candidate=" + mobileReleaseCandidate, "service_version=" + mobileServiceVersion, "distinct_mobile_artifacts=true"},
-	"mobile-staging-config":      {"staging artifact", "EXPO_PUBLIC_API_BASE_URL", "EXPO_PUBLIC_WS_BASE_URL", "EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true", "EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging", "https://", "wss://", "staging", "release_candidate=" + mobileReleaseCandidate, "service_version=" + mobileServiceVersion, "distinct_mobile_artifacts=true"},
+	"mobile-staging-config":      {"staging artifact", "EXPO_PUBLIC_API_BASE_URL", "EXPO_PUBLIC_WS_BASE_URL", "EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true", "EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging", "https://", "wss://", "staging", "EXPO_PUBLIC_API_BASE_URL=https://api.staging.example", "EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example", "release_candidate=" + mobileReleaseCandidate, "service_version=" + mobileServiceVersion, "distinct_mobile_artifacts=true"},
 }
 
 func stagingMobileConfig(timeout time.Duration) config {
@@ -76,7 +76,7 @@ func TestRunEmitsMobileEvidenceWhenArtifactsPass(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/eas":
-			_, _ = w.Write([]byte("staging artifact EAS build finished successfully for android and ios native device validation with installed app, release channel staging, and expo profile staging"))
+			_, _ = w.Write([]byte("staging artifact EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging"))
 		case "/crypto":
 			_, _ = w.Write([]byte("staging artifact runJournalCryptoSelfTest react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM native smoke round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
@@ -133,7 +133,7 @@ func TestRunFailsWhenNativeCryptoOmitsExactProviderMarkers(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
 				case "/eas":
-					_, _ = w.Write([]byte("staging artifact EAS build finished successfully for android and ios native device validation with installed app, release channel staging, and expo profile staging" + mobileReleaseMarkersText))
+					_, _ = w.Write([]byte("staging artifact EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging" + mobileReleaseMarkersText))
 				case "/crypto":
 					_, _ = w.Write([]byte(tc.cryptoText))
 				case "/config":
@@ -160,7 +160,7 @@ func TestRunFailsWhenMobileArtifactsOmitStagingProvenance(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/eas":
-			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, and expo profile staging"))
+			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging"))
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM native smoke round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
@@ -221,7 +221,7 @@ func TestRunFailsWhenNativeCryptoUsesNodeShim(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/eas":
-			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, and expo profile staging"))
+			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging"))
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized using node:webcrypto"))
 		case "/config":
@@ -244,7 +244,7 @@ func TestRunFailsWhenNativeCryptoUsesGenericNodeCrypto(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/eas":
-			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, and expo profile staging"))
+			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging"))
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized via Node crypto"))
 		case "/config":
@@ -267,7 +267,7 @@ func TestRunFailsWhenConfigUsesHardcodedProductionSocket(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/eas":
-			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, and expo profile staging"))
+			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging"))
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
@@ -290,7 +290,7 @@ func TestRunFailsWhenConfigUsesHardcodedProductionAPI(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/eas":
-			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, and expo profile staging"))
+			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging"))
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
@@ -313,7 +313,7 @@ func TestRunFailsWhenArtifactLacksReleaseMarkers(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/eas":
-			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, and expo profile staging"))
+			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging"))
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
@@ -336,7 +336,7 @@ func TestRunFailsWhenNativeCryptoLacksKeyLifecycleProof(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/eas":
-			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, and expo profile staging"))
+			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging"))
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected"))
 		case "/config":
@@ -359,7 +359,7 @@ func TestRunFailsWhenNativeCryptoLacksAssociatedDataProof(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/eas":
-			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, and expo profile staging"))
+			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging"))
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
@@ -382,7 +382,7 @@ func TestRunFailsWhenNativeCryptoLacksAssociatedDataSaltProof(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/eas":
-			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, and expo profile staging"))
+			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging"))
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
@@ -405,7 +405,7 @@ func TestRunFailsWhenNativeCryptoLacksZeroizedBufferProof(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/eas":
-			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, and expo profile staging"))
+			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging"))
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; passphrase wiped; salt wiped; plaintext cleared"))
 		case "/config":
@@ -428,7 +428,7 @@ func TestRunFailsWhenNativeCryptoLacksProviderBindingProof(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/eas":
-			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, and expo profile staging"))
+			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging"))
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded native-required true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; key disposed; disposed handle rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
@@ -451,7 +451,7 @@ func TestRunFailsWhenNativeCryptoUsesFallbackWebCrypto(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/eas":
-			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, and expo profile staging"))
+			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging"))
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized via fallback WebCrypto"))
 		case "/config":
@@ -471,7 +471,7 @@ func TestRunFailsWhenNativeCryptoUsesJavaScriptFallback(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/eas":
-			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, and expo profile staging"))
+			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging"))
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized through JavaScript fallback"))
 		case "/config":
@@ -494,7 +494,7 @@ func TestRunFailsWhenNativeCryptoUsesBrowserWebCryptoFallback(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/eas":
-			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, and expo profile staging"))
+			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging"))
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized through browser WebCrypto globalThis.crypto crypto.subtle shim"))
 		case "/config":
@@ -563,7 +563,7 @@ func TestRunFailsWhenEASArtifactIsDryRun(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/eas":
-			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, dry-run"))
+			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, dry-run"))
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
@@ -586,23 +586,23 @@ func TestRunFailsWhenEASArtifactUsesDevClientOrSimulator(t *testing.T) {
 	}{
 		{
 			name:    "dev client",
-			easText: "EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, dev client",
+			easText: "EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, dev client",
 		},
 		{
 			name:    "simulator validation",
-			easText: "EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, simulator validation",
+			easText: "EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, simulator validation",
 		},
 		{
 			name:    "Expo Go",
-			easText: "EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, Expo Go",
+			easText: "EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, Expo Go",
 		},
 		{
 			name:    "Android emulator",
-			easText: "EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, Android emulator",
+			easText: "EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, Android emulator",
 		},
 		{
 			name:    "remote debug",
-			easText: "EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, remote debug",
+			easText: "EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, remote debug",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -634,7 +634,7 @@ func TestRunFailsWhenConfigDoesNotRequireNativeCrypto(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/eas":
-			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, and expo profile staging"))
+			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging"))
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
@@ -671,7 +671,7 @@ func TestRunFailsWhenConfigContainsContradictoryStagingCryptoMarkers(t *testing.
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
 				case "/eas":
-					_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, and expo profile staging"))
+					_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging"))
 				case "/crypto":
 					_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 				case "/config":
@@ -696,7 +696,7 @@ func TestRunFailsWhenConfigLacksStagingDeploymentEnvironment(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/eas":
-			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, and expo profile staging"))
+			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging"))
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
@@ -719,7 +719,7 @@ func TestRunFailsWhenConfigUsesPrivateStagingEndpoints(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/eas":
-			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, and expo profile staging"))
+			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging"))
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":

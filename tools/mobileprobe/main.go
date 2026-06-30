@@ -11,8 +11,19 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
+)
+
+var (
+	mobilePlatformsPattern             = regexp.MustCompile(`(?i)\bplatforms=([A-Za-z0-9_,.-]+)\b`)
+	mobileReleaseChannelPattern        = regexp.MustCompile(`(?i)\brelease_channel=([A-Za-z0-9_.:-]+)\b`)
+	mobileExpoProfilePattern           = regexp.MustCompile(`(?i)\bexpo_profile=([A-Za-z0-9_.:-]+)\b`)
+	mobileAPIBaseURLPattern            = regexp.MustCompile(`(?i)\bEXPO_PUBLIC_API_BASE_URL=(https://[^\s;,]+)\b`)
+	mobileWSBaseURLPattern             = regexp.MustCompile(`(?i)\bEXPO_PUBLIC_WS_BASE_URL=(wss://[^\s;,]+)\b`)
+	mobileRequireNativeCryptoPattern   = regexp.MustCompile(`(?i)\bEXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=(true|false)\b`)
+	mobileDeploymentEnvironmentPattern = regexp.MustCompile(`(?i)\bEXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=([A-Za-z0-9_.:-]+)\b`)
 )
 
 type config struct {
@@ -34,14 +45,21 @@ type report struct {
 }
 
 type probeResult struct {
-	Name           string `json:"name"`
-	Target         string `json:"target"`
-	Passed         bool   `json:"passed"`
-	StatusCode     int    `json:"status_code,omitempty"`
-	LatencyMS      int64  `json:"latency_ms,omitempty"`
-	Provider       string `json:"provider,omitempty"`
-	NativeRequired *bool  `json:"native_required,omitempty"`
-	ResultSummary  string `json:"result_summary"`
+	Name                  string `json:"name"`
+	Target                string `json:"target"`
+	Passed                bool   `json:"passed"`
+	StatusCode            int    `json:"status_code,omitempty"`
+	LatencyMS             int64  `json:"latency_ms,omitempty"`
+	Provider              string `json:"provider,omitempty"`
+	NativeRequired        *bool  `json:"native_required,omitempty"`
+	Platforms             string `json:"platforms,omitempty"`
+	ReleaseChannel        string `json:"release_channel,omitempty"`
+	ExpoProfile           string `json:"expo_profile,omitempty"`
+	APIBaseURL            string `json:"api_base_url,omitempty"`
+	WSBaseURL             string `json:"ws_base_url,omitempty"`
+	RequireNativeCrypto   string `json:"require_native_crypto,omitempty"`
+	DeploymentEnvironment string `json:"deployment_environment,omitempty"`
+	ResultSummary         string `json:"result_summary"`
 }
 
 func main() {
@@ -161,13 +179,43 @@ func probeArtifact(client *http.Client, name, target string, required []string, 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512*1024))
 	text := string(body)
 	passed := resp.StatusCode >= 200 && resp.StatusCode < 300 && containsAllFold(text, required) && containsNoneFold(text, forbidden)
+	platforms := ""
+	releaseChannel := ""
+	expoProfile := ""
+	apiBaseURL := ""
+	wsBaseURL := ""
+	requireNativeCrypto := ""
+	deploymentEnvironment := ""
+	if name == "mobile-eas-or-device-run" {
+		platforms = extractMatch(text, mobilePlatformsPattern)
+		releaseChannel = extractMatch(text, mobileReleaseChannelPattern)
+		expoProfile = extractMatch(text, mobileExpoProfilePattern)
+		if platforms == "" || !containsAllFold(platforms, []string{"android", "ios"}) || releaseChannel != "staging" || expoProfile != "staging" {
+			passed = false
+		}
+	}
+	if name == "mobile-staging-config" {
+		apiBaseURL = extractMatch(text, mobileAPIBaseURLPattern)
+		wsBaseURL = extractMatch(text, mobileWSBaseURLPattern)
+		requireNativeCrypto = extractMatch(text, mobileRequireNativeCryptoPattern)
+		deploymentEnvironment = extractMatch(text, mobileDeploymentEnvironmentPattern)
+		if apiBaseURL == "" || wsBaseURL == "" || requireNativeCrypto != "true" || deploymentEnvironment != "staging" {
+			passed = false
+		}
+	}
 	summary := fmt.Sprintf("got HTTP %d in %dms", resp.StatusCode, latency)
 	if !passed {
 		summary += "; artifact missing required markers or contains forbidden local/shim markers"
 	} else {
 		summary += "; verified markers: " + strings.Join(required, ", ")
+		if name == "mobile-eas-or-device-run" {
+			summary += fmt.Sprintf(", platforms=%s, release_channel=%s, expo_profile=%s", platforms, releaseChannel, expoProfile)
+		}
+		if name == "mobile-staging-config" {
+			summary += fmt.Sprintf(", EXPO_PUBLIC_API_BASE_URL=%s, EXPO_PUBLIC_WS_BASE_URL=%s, EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=%s, EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=%s", apiBaseURL, wsBaseURL, requireNativeCrypto, deploymentEnvironment)
+		}
 	}
-	return probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, ResultSummary: summary}
+	return probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, Platforms: platforms, ReleaseChannel: releaseChannel, ExpoProfile: expoProfile, APIBaseURL: apiBaseURL, WSBaseURL: wsBaseURL, RequireNativeCrypto: requireNativeCrypto, DeploymentEnvironment: deploymentEnvironment, ResultSummary: summary}
 }
 
 func enrichNativeCryptoProbe(probe probeResult) probeResult {
@@ -243,6 +291,14 @@ func containsNoneFold(text string, needles []string) bool {
 		}
 	}
 	return true
+}
+
+func extractMatch(text string, pattern *regexp.Regexp) string {
+	match := pattern.FindStringSubmatch(text)
+	if len(match) < 2 {
+		return ""
+	}
+	return match[1]
 }
 
 func normalizeArtifactURL(raw, field string) (string, error) {

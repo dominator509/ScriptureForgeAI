@@ -217,6 +217,13 @@ const aiModelPattern = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
 const aiEndpointPattern = /^https:\/\/\S+$/;
 const aiPositiveIntegerPattern = /^[1-9][0-9]*$/;
 const aiNonNegativeIntegerPattern = /^[0-9]+$/;
+const mobilePlatformsPattern = /^(?=.*\bandroid\b)(?=.*\bios\b)[A-Za-z0-9_,.-]+$/i;
+const mobileReleaseChannelPattern = /^staging$/i;
+const mobileExpoProfilePattern = /^staging$/i;
+const mobileAPIBaseURLPattern = /^https:\/\/\S+$/;
+const mobileWSBaseURLPattern = /^wss:\/\/\S+$/;
+const mobileRequireNativeCryptoPattern = /^true$/i;
+const mobileDeploymentEnvironmentPattern = /^staging$/i;
 const tenantResourceIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const tenantOrgIDPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -1280,6 +1287,35 @@ function validateMobileEvidence(report, manifest) {
     const summary = String(probe.result_summary ?? '');
     assertSummaryIncludesMarkers(probe.name, summary, [...(requiredMobileProbeSummaryMarkers.get(probe.name) ?? []), ...reportReleaseMarkers]);
     assertSummaryExcludesMarkers(probe.name, summary, forbiddenMobileProbeSummaryMarkers);
+    if (probe.name === 'mobile-eas-or-device-run') {
+      const platforms = String(probe.platforms ?? '').trim();
+      const releaseChannel = String(probe.release_channel ?? '').trim();
+      const expoProfile = String(probe.expo_profile ?? '').trim();
+      assert.match(platforms, mobilePlatformsPattern, 'mobile-eas-or-device-run probe must include structured platforms with android and ios');
+      assert.match(releaseChannel, mobileReleaseChannelPattern, 'mobile-eas-or-device-run probe must include structured release_channel=staging');
+      assert.match(expoProfile, mobileExpoProfilePattern, 'mobile-eas-or-device-run probe must include structured expo_profile=staging');
+      assertSummaryIncludesMarkers(probe.name, summary, [
+        `platforms=${platforms}`,
+        `release_channel=${releaseChannel}`,
+        `expo_profile=${expoProfile}`,
+      ]);
+    }
+    if (probe.name === 'mobile-staging-config') {
+      const apiBaseURL = String(probe.api_base_url ?? '').trim();
+      const wsBaseURL = String(probe.ws_base_url ?? '').trim();
+      const requireNativeCrypto = String(probe.require_native_crypto ?? '').trim();
+      const deploymentEnvironment = String(probe.deployment_environment ?? '').trim();
+      assert.match(apiBaseURL, mobileAPIBaseURLPattern, 'mobile-staging-config probe must include structured HTTPS api_base_url');
+      assert.match(wsBaseURL, mobileWSBaseURLPattern, 'mobile-staging-config probe must include structured WSS ws_base_url');
+      assert.match(requireNativeCrypto, mobileRequireNativeCryptoPattern, 'mobile-staging-config probe must include structured require_native_crypto=true');
+      assert.match(deploymentEnvironment, mobileDeploymentEnvironmentPattern, 'mobile-staging-config probe must include structured deployment_environment=staging');
+      assertSummaryIncludesMarkers(probe.name, summary, [
+        `EXPO_PUBLIC_API_BASE_URL=${apiBaseURL}`,
+        `EXPO_PUBLIC_WS_BASE_URL=${wsBaseURL}`,
+        `EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=${requireNativeCrypto}`,
+        `EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=${deploymentEnvironment}`,
+      ]);
+    }
   }
   assertDistinctReportURLs('CLIENT-MOBILE-001', probes.map((probe) => [probe.name, String(probe.target ?? '')]));
   assert.equal(requiredProbes.size, 0, `CLIENT-MOBILE-001 report missing probes: ${[...requiredProbes].join(', ')}`);

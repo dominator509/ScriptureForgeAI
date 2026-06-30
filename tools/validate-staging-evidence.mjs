@@ -95,6 +95,13 @@ const zoomInternalRoomIDPattern = /\binternal_room_id=([A-Za-z0-9][A-Za-z0-9._:-
 const zoomProviderTimeoutPattern = /\bprovider_timeout=true\b/i;
 const zoomCircuitOpenPattern = /\bcircuit_open=true\b/i;
 const zoomOfflineFallbackPattern = /\boffline_fallback=true\b/i;
+const mobilePlatformsPattern = /\bplatforms=([A-Za-z0-9_,.-]*android[A-Za-z0-9_,.-]*ios[A-Za-z0-9_,.-]*|[A-Za-z0-9_,.-]*ios[A-Za-z0-9_,.-]*android[A-Za-z0-9_,.-]*)\b/i;
+const mobileReleaseChannelPattern = /\brelease_channel=staging\b/i;
+const mobileExpoProfilePattern = /\bexpo_profile=staging\b/i;
+const mobileAPIBaseURLPattern = /\bEXPO_PUBLIC_API_BASE_URL=(https:\/\/\S+)\b/i;
+const mobileWSBaseURLPattern = /\bEXPO_PUBLIC_WS_BASE_URL=(wss:\/\/\S+)\b/i;
+const mobileRequireNativeCryptoPattern = /\bEXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true\b/i;
+const mobileDeploymentEnvironmentPattern = /\bEXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging\b/i;
 const webSmokeUserIDPattern = /\buser_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const webSmokeOrganizationIDPattern = /\borganization_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const webSmokeJournalIDPattern = /\bjournal_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
@@ -1530,6 +1537,43 @@ function validateStrictReleaseItemEvidence(item, manifest) {
         `CLIENT-MOBILE-001 strict release evidence must include mobile markers on ${segment}`,
       );
     }
+    const easSegment = findEvidenceSegment(evidence, 'mobile-eas-or-device-run');
+    assert.match(
+      easSegment,
+      mobilePlatformsPattern,
+      'CLIENT-MOBILE-001 mobile-eas-or-device-run must include platforms with android and ios',
+    );
+    assert.match(
+      easSegment,
+      mobileReleaseChannelPattern,
+      'CLIENT-MOBILE-001 mobile-eas-or-device-run must include release_channel=staging',
+    );
+    assert.match(
+      easSegment,
+      mobileExpoProfilePattern,
+      'CLIENT-MOBILE-001 mobile-eas-or-device-run must include expo_profile=staging',
+    );
+    const configSegment = findEvidenceSegment(evidence, 'mobile-staging-config');
+    assert.match(
+      configSegment,
+      mobileAPIBaseURLPattern,
+      'CLIENT-MOBILE-001 mobile-staging-config must include HTTPS EXPO_PUBLIC_API_BASE_URL=<url>',
+    );
+    assert.match(
+      configSegment,
+      mobileWSBaseURLPattern,
+      'CLIENT-MOBILE-001 mobile-staging-config must include WSS EXPO_PUBLIC_WS_BASE_URL=<url>',
+    );
+    assert.match(
+      configSegment,
+      mobileRequireNativeCryptoPattern,
+      'CLIENT-MOBILE-001 mobile-staging-config must include EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true',
+    );
+    assert.match(
+      configSegment,
+      mobileDeploymentEnvironmentPattern,
+      'CLIENT-MOBILE-001 mobile-staging-config must include EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging',
+    );
   }
   if (item.id === 'PERF-HTTP-001') {
     for (const [segment, markers] of httpPerformanceSegmentMarkerRequirements) {

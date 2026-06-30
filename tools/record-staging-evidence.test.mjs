@@ -421,10 +421,39 @@ function abuseProbeReportProbes(overridesForName = () => ({})) {
 }
 
 const mobileProbeMarkerSummaries = {
-  'mobile-eas-or-device-run': 'got HTTP 200; verified markers: staging artifact, eas, build, finished, android, ios, native device, installed app, release channel staging, expo profile staging, release_candidate=abc123, service_version=scriptureforge-mobile:abc123, distinct_mobile_artifacts=true',
+  'mobile-eas-or-device-run': 'got HTTP 200; verified markers: staging artifact, eas, build, finished, android, ios, native device, installed app, release channel staging, expo profile staging, platforms=android,ios, release_channel=staging, expo_profile=staging, release_candidate=abc123, service_version=scriptureforge-mobile:abc123, distinct_mobile_artifacts=true',
   'mobile-native-crypto-smoke': 'got HTTP 200; verified markers: staging artifact, runJournalCryptoSelfTest, react-native-quick-crypto, native provider, native module loaded, provider status react-native-quick-crypto, provider=react-native-quick-crypto, native-required true, native_required=true, AES-GCM, round-trip, unique_iv=true, unique IV, tamper rejected, associated data, wrong associated data rejected, associated_data_salt_id=journal:self-test:server-derived-salt, associated_data_salt_version=1, non-extractable, provider-bound key, fallback-derived key rejected, key disposed, disposed handle rejected, passphrase wiped, passphrase buffer zeroized, salt wiped, salt buffer zeroized, plaintext cleared, plaintext buffer zeroized, release_candidate=abc123, service_version=scriptureforge-mobile:abc123, distinct_mobile_artifacts=true',
-  'mobile-staging-config': 'got HTTP 200; verified markers: staging artifact, EXPO_PUBLIC_API_BASE_URL, EXPO_PUBLIC_WS_BASE_URL, EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true, EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging, https://, wss://, staging, release_candidate=abc123, service_version=scriptureforge-mobile:abc123, distinct_mobile_artifacts=true',
+  'mobile-staging-config': 'got HTTP 200; verified markers: staging artifact, EXPO_PUBLIC_API_BASE_URL, EXPO_PUBLIC_WS_BASE_URL, EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true, EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging, https://, wss://, staging, EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai, EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai, release_candidate=abc123, service_version=scriptureforge-mobile:abc123, distinct_mobile_artifacts=true',
 };
+
+function mobileEASProbe(overrides = {}) {
+  return {
+    name: 'mobile-eas-or-device-run',
+    passed: true,
+    target: 'https://artifacts.staging.scriptureforge.ai/mobile/eas-build.txt',
+    status_code: 200,
+    platforms: 'android,ios',
+    release_channel: 'staging',
+    expo_profile: 'staging',
+    result_summary: mobileProbeMarkerSummaries['mobile-eas-or-device-run'],
+    ...overrides,
+  };
+}
+
+function mobileConfigProbe(overrides = {}) {
+  return {
+    name: 'mobile-staging-config',
+    passed: true,
+    target: 'https://artifacts.staging.scriptureforge.ai/mobile/staging-config.txt',
+    status_code: 200,
+    api_base_url: 'https://api.staging.scriptureforge.ai',
+    ws_base_url: 'wss://api.staging.scriptureforge.ai',
+    require_native_crypto: 'true',
+    deployment_environment: 'staging',
+    result_summary: mobileProbeMarkerSummaries['mobile-staging-config'],
+    ...overrides,
+  };
+}
 
 const rustProbeMarkerSummaries = {
   'rust-grpc-health': 'gRPC health status SERVING in 12ms; verified markers: staging artifact, grpc health, scriptureforge.engine.ScriptureEngine, SERVING, release_candidate=abc123, service_version=scriptureforge-rust-engine:abc123, deployment_environment=staging',
@@ -1584,13 +1613,7 @@ test('recordEvidence records production-grade mobile evidence', () => {
       service_version: 'scriptureforge-mobile:abc123',
       evidence_items: ['CLIENT-MOBILE-001'],
       probes: [
-        {
-          name: 'mobile-eas-or-device-run',
-          passed: true,
-          target: 'https://artifacts.staging.scriptureforge.ai/mobile/eas-build.txt',
-          status_code: 200,
-          result_summary: mobileProbeMarkerSummaries['mobile-eas-or-device-run'],
-        },
+        mobileEASProbe(),
         {
           name: 'mobile-native-crypto-smoke',
           passed: true,
@@ -1598,13 +1621,7 @@ test('recordEvidence records production-grade mobile evidence', () => {
           status_code: 200,
           result_summary: mobileProbeMarkerSummaries['mobile-native-crypto-smoke'],
         },
-        {
-          name: 'mobile-staging-config',
-          passed: true,
-          target: 'https://artifacts.staging.scriptureforge.ai/mobile/staging-config.txt',
-          status_code: 200,
-          result_summary: mobileProbeMarkerSummaries['mobile-staging-config'],
-        },
+        mobileConfigProbe(),
       ],
     },
     'artifacts/mobileprobe.json',
@@ -1625,13 +1642,7 @@ test('recordEvidence rejects mobile evidence without staging artifact provenance
         service_version: 'scriptureforge-mobile:abc123',
         evidence_items: ['CLIENT-MOBILE-001'],
         probes: [
-          {
-            name: 'mobile-eas-or-device-run',
-            passed: true,
-            target: 'https://artifacts.staging.scriptureforge.ai/mobile/eas-build.txt',
-            status_code: 200,
-            result_summary: mobileProbeMarkerSummaries['mobile-eas-or-device-run'].replace('staging artifact, ', ''),
-          },
+          mobileEASProbe({ result_summary: mobileProbeMarkerSummaries['mobile-eas-or-device-run'].replace('staging artifact, ', '') }),
           {
             name: 'mobile-native-crypto-smoke',
             passed: true,
@@ -1639,13 +1650,7 @@ test('recordEvidence rejects mobile evidence without staging artifact provenance
             status_code: 200,
             result_summary: mobileProbeMarkerSummaries['mobile-native-crypto-smoke'],
           },
-          {
-            name: 'mobile-staging-config',
-            passed: true,
-            target: 'https://artifacts.staging.scriptureforge.ai/mobile/staging-config.txt',
-            status_code: 200,
-            result_summary: mobileProbeMarkerSummaries['mobile-staging-config'],
-          },
+          mobileConfigProbe(),
         ],
       },
       'artifacts/mobileprobe.json',
@@ -1666,9 +1671,9 @@ test('recordEvidence rejects mobile evidence without native HTTPS artifacts', ()
         service_version: 'scriptureforge-mobile:abc123',
         evidence_items: ['CLIENT-MOBILE-001'],
         probes: [
-          { name: 'mobile-eas-or-device-run', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/mobile/eas-build.txt', status_code: 200, result_summary: mobileProbeMarkerSummaries['mobile-eas-or-device-run'] },
+          mobileEASProbe(),
           { name: 'mobile-native-crypto-smoke', passed: true, target: 'http://localhost/native-crypto.txt', status_code: 200, result_summary: mobileProbeMarkerSummaries['mobile-native-crypto-smoke'] },
-          { name: 'mobile-staging-config', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/mobile/staging-config.txt', status_code: 200, result_summary: mobileProbeMarkerSummaries['mobile-staging-config'] },
+          mobileConfigProbe(),
         ],
       },
       'artifacts/mobileprobe.json',
@@ -1689,9 +1694,9 @@ test('recordEvidence rejects mobile evidence without distinct artifact proof', (
         service_version: 'scriptureforge-mobile:abc123',
         evidence_items: ['CLIENT-MOBILE-001'],
         probes: [
-          { name: 'mobile-eas-or-device-run', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/mobile/eas-build.txt', status_code: 200, result_summary: mobileProbeMarkerSummaries['mobile-eas-or-device-run'].replaceAll(', distinct_mobile_artifacts=true', '') },
+          mobileEASProbe({ result_summary: mobileProbeMarkerSummaries['mobile-eas-or-device-run'].replaceAll(', distinct_mobile_artifacts=true', '') }),
           { name: 'mobile-native-crypto-smoke', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/mobile/native-crypto-smoke.txt', status_code: 200, result_summary: mobileProbeMarkerSummaries['mobile-native-crypto-smoke'].replaceAll(', distinct_mobile_artifacts=true', '') },
-          { name: 'mobile-staging-config', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/mobile/staging-config.txt', status_code: 200, result_summary: mobileProbeMarkerSummaries['mobile-staging-config'].replaceAll(', distinct_mobile_artifacts=true', '') },
+          mobileConfigProbe({ result_summary: mobileProbeMarkerSummaries['mobile-staging-config'].replaceAll(', distinct_mobile_artifacts=true', '') }),
         ],
       },
       'artifacts/mobileprobe.json',
@@ -1712,9 +1717,9 @@ test('recordEvidence rejects mobile evidence with canonical duplicate artifact t
         service_version: 'scriptureforge-mobile:abc123',
         evidence_items: ['CLIENT-MOBILE-001'],
         probes: [
-          { name: 'mobile-eas-or-device-run', passed: true, target: 'https://ARTIFACTS.staging.scriptureforge.ai:443/mobile/shared-proof.txt?b=2&a=1', status_code: 200, result_summary: mobileProbeMarkerSummaries['mobile-eas-or-device-run'] },
+          mobileEASProbe({ target: 'https://ARTIFACTS.staging.scriptureforge.ai:443/mobile/shared-proof.txt?b=2&a=1' }),
           { name: 'mobile-native-crypto-smoke', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/mobile/shared-proof.txt?a=1&b=2#crypto', status_code: 200, result_summary: mobileProbeMarkerSummaries['mobile-native-crypto-smoke'] },
-          { name: 'mobile-staging-config', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/mobile/staging-config.txt', status_code: 200, result_summary: mobileProbeMarkerSummaries['mobile-staging-config'] },
+          mobileConfigProbe(),
         ],
       },
       'artifacts/mobileprobe.json',
@@ -1739,9 +1744,9 @@ test('recordEvidence rejects mobile native crypto evidence without exact provide
           service_version: 'scriptureforge-mobile:abc123',
           evidence_items: ['CLIENT-MOBILE-001'],
           probes: [
-            { name: 'mobile-eas-or-device-run', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/mobile/eas-build.txt', status_code: 200, result_summary: mobileProbeMarkerSummaries['mobile-eas-or-device-run'] },
+            mobileEASProbe(),
             { name: 'mobile-native-crypto-smoke', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/mobile/native-crypto-smoke.txt', status_code: 200, result_summary: mobileProbeMarkerSummaries['mobile-native-crypto-smoke'].replace(`, ${marker}`, '') },
-            { name: 'mobile-staging-config', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/mobile/staging-config.txt', status_code: 200, result_summary: mobileProbeMarkerSummaries['mobile-staging-config'] },
+            mobileConfigProbe(),
           ],
         },
         'artifacts/mobileprobe.json',
@@ -1763,13 +1768,7 @@ test('recordEvidence rejects mobile evidence without verified marker summaries',
         service_version: 'scriptureforge-mobile:abc123',
         evidence_items: ['CLIENT-MOBILE-001'],
         probes: [
-          {
-            name: 'mobile-eas-or-device-run',
-            passed: true,
-            target: 'https://artifacts.staging.scriptureforge.ai/mobile/eas-build.txt',
-            status_code: 200,
-            result_summary: mobileProbeMarkerSummaries['mobile-eas-or-device-run'],
-          },
+          mobileEASProbe(),
           {
             name: 'mobile-native-crypto-smoke',
             passed: true,
@@ -1777,13 +1776,7 @@ test('recordEvidence rejects mobile evidence without verified marker summaries',
             status_code: 200,
             result_summary: 'got HTTP 200; verified markers: staging artifact, runJournalCryptoSelfTest, react-native-quick-crypto, native provider, native module loaded, provider status react-native-quick-crypto, provider=react-native-quick-crypto, native-required true, native_required=true, AES-GCM, round-trip, unique_iv=true, unique IV, tamper rejected, associated data, wrong associated data rejected, non-extractable, provider-bound key, fallback-derived key rejected, key disposed, disposed handle rejected, passphrase wiped, plaintext cleared',
           },
-          {
-            name: 'mobile-staging-config',
-            passed: true,
-            target: 'https://artifacts.staging.scriptureforge.ai/mobile/staging-config.txt',
-            status_code: 200,
-            result_summary: mobileProbeMarkerSummaries['mobile-staging-config'],
-          },
+          mobileConfigProbe(),
         ],
       },
       'artifacts/mobileprobe.json',
@@ -1804,13 +1797,9 @@ test('recordEvidence rejects mobile evidence without installed staging app proof
         service_version: 'scriptureforge-mobile:abc123',
         evidence_items: ['CLIENT-MOBILE-001'],
         probes: [
-          {
-            name: 'mobile-eas-or-device-run',
-            passed: true,
-            target: 'https://artifacts.staging.scriptureforge.ai/mobile/eas-build.txt',
-            status_code: 200,
-            result_summary: 'got HTTP 200; verified markers: staging artifact, eas, build, finished, android, ios, native device',
-          },
+          mobileEASProbe({
+            result_summary: 'got HTTP 200; verified markers: staging artifact, eas, build, finished, android, ios, native device, release channel staging, expo profile staging, platforms=android,ios, release_channel=staging, expo_profile=staging, release_candidate=abc123, service_version=scriptureforge-mobile:abc123, distinct_mobile_artifacts=true',
+          }),
           {
             name: 'mobile-native-crypto-smoke',
             passed: true,
@@ -1818,13 +1807,7 @@ test('recordEvidence rejects mobile evidence without installed staging app proof
             status_code: 200,
             result_summary: mobileProbeMarkerSummaries['mobile-native-crypto-smoke'],
           },
-          {
-            name: 'mobile-staging-config',
-            passed: true,
-            target: 'https://artifacts.staging.scriptureforge.ai/mobile/staging-config.txt',
-            status_code: 200,
-            result_summary: mobileProbeMarkerSummaries['mobile-staging-config'],
-          },
+          mobileConfigProbe(),
         ],
       },
       'artifacts/mobileprobe.json',
@@ -1845,13 +1828,7 @@ test('recordEvidence rejects mobile evidence without staging deployment environm
         service_version: 'scriptureforge-mobile:abc123',
         evidence_items: ['CLIENT-MOBILE-001'],
         probes: [
-          {
-            name: 'mobile-eas-or-device-run',
-            passed: true,
-            target: 'https://artifacts.staging.scriptureforge.ai/mobile/eas-build.txt',
-            status_code: 200,
-            result_summary: mobileProbeMarkerSummaries['mobile-eas-or-device-run'],
-          },
+          mobileEASProbe(),
           {
             name: 'mobile-native-crypto-smoke',
             passed: true,
@@ -1859,13 +1836,9 @@ test('recordEvidence rejects mobile evidence without staging deployment environm
             status_code: 200,
             result_summary: mobileProbeMarkerSummaries['mobile-native-crypto-smoke'],
           },
-          {
-            name: 'mobile-staging-config',
-            passed: true,
-            target: 'https://artifacts.staging.scriptureforge.ai/mobile/staging-config.txt',
-            status_code: 200,
-            result_summary: 'got HTTP 200; verified markers: staging artifact, EXPO_PUBLIC_API_BASE_URL, EXPO_PUBLIC_WS_BASE_URL, EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true, https://, wss://, staging',
-          },
+          mobileConfigProbe({
+            result_summary: 'got HTTP 200; verified markers: staging artifact, EXPO_PUBLIC_API_BASE_URL, EXPO_PUBLIC_WS_BASE_URL, EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true, https://, wss://, staging, EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai, EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai, release_candidate=abc123, service_version=scriptureforge-mobile:abc123, distinct_mobile_artifacts=true',
+          }),
         ],
       },
       'artifacts/mobileprobe.json',
@@ -1886,13 +1859,7 @@ test('recordEvidence rejects mobile evidence with emulator or debug-client proof
         service_version: 'scriptureforge-mobile:abc123',
         evidence_items: ['CLIENT-MOBILE-001'],
         probes: [
-          {
-            name: 'mobile-eas-or-device-run',
-            passed: true,
-            target: 'https://artifacts.staging.scriptureforge.ai/mobile/eas-build.txt',
-            status_code: 200,
-            result_summary: `${mobileProbeMarkerSummaries['mobile-eas-or-device-run']}, Android emulator`,
-          },
+          mobileEASProbe({ result_summary: `${mobileProbeMarkerSummaries['mobile-eas-or-device-run']}, Android emulator` }),
           {
             name: 'mobile-native-crypto-smoke',
             passed: true,
@@ -1900,13 +1867,7 @@ test('recordEvidence rejects mobile evidence with emulator or debug-client proof
             status_code: 200,
             result_summary: mobileProbeMarkerSummaries['mobile-native-crypto-smoke'],
           },
-          {
-            name: 'mobile-staging-config',
-            passed: true,
-            target: 'https://artifacts.staging.scriptureforge.ai/mobile/staging-config.txt',
-            status_code: 200,
-            result_summary: mobileProbeMarkerSummaries['mobile-staging-config'],
-          },
+          mobileConfigProbe(),
         ],
       },
       'artifacts/mobileprobe.json',
@@ -1933,13 +1894,7 @@ test('recordEvidence rejects mobile native crypto shim and JavaScript fallback m
           service_version: 'scriptureforge-mobile:abc123',
           evidence_items: ['CLIENT-MOBILE-001'],
           probes: [
-            {
-              name: 'mobile-eas-or-device-run',
-              passed: true,
-              target: 'https://artifacts.staging.scriptureforge.ai/mobile/eas-build.txt',
-              status_code: 200,
-              result_summary: mobileProbeMarkerSummaries['mobile-eas-or-device-run'],
-            },
+            mobileEASProbe(),
             {
               name: 'mobile-native-crypto-smoke',
               passed: true,
@@ -1947,13 +1902,7 @@ test('recordEvidence rejects mobile native crypto shim and JavaScript fallback m
               status_code: 200,
               result_summary: `${mobileProbeMarkerSummaries['mobile-native-crypto-smoke']}, ${forbiddenMarker}`,
             },
-            {
-              name: 'mobile-staging-config',
-              passed: true,
-              target: 'https://artifacts.staging.scriptureforge.ai/mobile/staging-config.txt',
-              status_code: 200,
-              result_summary: mobileProbeMarkerSummaries['mobile-staging-config'],
-            },
+            mobileConfigProbe(),
           ],
         },
         'artifacts/mobileprobe.json',
@@ -1975,13 +1924,7 @@ test('recordEvidence rejects mobile staging config with contradictory native cry
         service_version: 'scriptureforge-mobile:abc123',
         evidence_items: ['CLIENT-MOBILE-001'],
         probes: [
-          {
-            name: 'mobile-eas-or-device-run',
-            passed: true,
-            target: 'https://artifacts.staging.scriptureforge.ai/mobile/eas-build.txt',
-            status_code: 200,
-            result_summary: mobileProbeMarkerSummaries['mobile-eas-or-device-run'],
-          },
+          mobileEASProbe(),
           {
             name: 'mobile-native-crypto-smoke',
             passed: true,
@@ -1989,13 +1932,7 @@ test('recordEvidence rejects mobile staging config with contradictory native cry
             status_code: 200,
             result_summary: mobileProbeMarkerSummaries['mobile-native-crypto-smoke'],
           },
-          {
-            name: 'mobile-staging-config',
-            passed: true,
-            target: 'https://artifacts.staging.scriptureforge.ai/mobile/staging-config.txt',
-            status_code: 200,
-            result_summary: `${mobileProbeMarkerSummaries['mobile-staging-config']}, EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO = false`,
-          },
+          mobileConfigProbe({ result_summary: `${mobileProbeMarkerSummaries['mobile-staging-config']}, EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO = false` }),
         ],
       },
       'artifacts/mobileprobe.json',
@@ -2016,13 +1953,7 @@ test('recordEvidence rejects mobile staging config with hardcoded production API
         service_version: 'scriptureforge-mobile:abc123',
         evidence_items: ['CLIENT-MOBILE-001'],
         probes: [
-          {
-            name: 'mobile-eas-or-device-run',
-            passed: true,
-            target: 'https://artifacts.staging.scriptureforge.ai/mobile/eas-build.txt',
-            status_code: 200,
-            result_summary: mobileProbeMarkerSummaries['mobile-eas-or-device-run'],
-          },
+          mobileEASProbe(),
           {
             name: 'mobile-native-crypto-smoke',
             passed: true,
@@ -2030,13 +1961,7 @@ test('recordEvidence rejects mobile staging config with hardcoded production API
             status_code: 200,
             result_summary: mobileProbeMarkerSummaries['mobile-native-crypto-smoke'],
           },
-          {
-            name: 'mobile-staging-config',
-            passed: true,
-            target: 'https://artifacts.staging.scriptureforge.ai/mobile/staging-config.txt',
-            status_code: 200,
-            result_summary: `${mobileProbeMarkerSummaries['mobile-staging-config']}, EXPO_PUBLIC_API_BASE_URL=https://api.scriptureforge.com`,
-          },
+          mobileConfigProbe({ result_summary: `${mobileProbeMarkerSummaries['mobile-staging-config']}, EXPO_PUBLIC_API_BASE_URL=https://api.scriptureforge.com` }),
         ],
       },
       'artifacts/mobileprobe.json',
@@ -2057,15 +1982,11 @@ test('recordEvidence rejects mobile evidence for a different release candidate',
         service_version: 'scriptureforge-mobile:def456',
         evidence_items: ['CLIENT-MOBILE-001'],
         probes: [
-          {
-            name: 'mobile-eas-or-device-run',
-            passed: true,
-            target: 'https://artifacts.staging.scriptureforge.ai/mobile/eas-build.txt',
-            status_code: 200,
+          mobileEASProbe({
             result_summary: mobileProbeMarkerSummaries['mobile-eas-or-device-run']
               .replaceAll('release_candidate=abc123', 'release_candidate=def456')
               .replaceAll('service_version=scriptureforge-mobile:abc123', 'service_version=scriptureforge-mobile:def456'),
-          },
+          }),
           {
             name: 'mobile-native-crypto-smoke',
             passed: true,
@@ -2075,15 +1996,11 @@ test('recordEvidence rejects mobile evidence for a different release candidate',
               .replaceAll('release_candidate=abc123', 'release_candidate=def456')
               .replaceAll('service_version=scriptureforge-mobile:abc123', 'service_version=scriptureforge-mobile:def456'),
           },
-          {
-            name: 'mobile-staging-config',
-            passed: true,
-            target: 'https://artifacts.staging.scriptureforge.ai/mobile/staging-config.txt',
-            status_code: 200,
+          mobileConfigProbe({
             result_summary: mobileProbeMarkerSummaries['mobile-staging-config']
               .replaceAll('release_candidate=abc123', 'release_candidate=def456')
               .replaceAll('service_version=scriptureforge-mobile:abc123', 'service_version=scriptureforge-mobile:def456'),
-          },
+          }),
         ],
       },
       'artifacts/mobileprobe.json',
@@ -2104,13 +2021,7 @@ test('recordEvidence rejects probe reports whose service_version is not release-
         service_version: 'scriptureforge-mobile:oldsha',
         evidence_items: ['CLIENT-MOBILE-001'],
         probes: [
-          {
-            name: 'mobile-eas-or-device-run',
-            passed: true,
-            target: 'https://artifacts.staging.scriptureforge.ai/mobile/eas-build.txt',
-            status_code: 200,
-            result_summary: mobileProbeMarkerSummaries['mobile-eas-or-device-run'].replaceAll('service_version=scriptureforge-mobile:abc123', 'service_version=scriptureforge-mobile:oldsha'),
-          },
+          mobileEASProbe({ result_summary: mobileProbeMarkerSummaries['mobile-eas-or-device-run'].replaceAll('service_version=scriptureforge-mobile:abc123', 'service_version=scriptureforge-mobile:oldsha') }),
           {
             name: 'mobile-native-crypto-smoke',
             passed: true,
@@ -2118,13 +2029,7 @@ test('recordEvidence rejects probe reports whose service_version is not release-
             status_code: 200,
             result_summary: mobileProbeMarkerSummaries['mobile-native-crypto-smoke'].replaceAll('service_version=scriptureforge-mobile:abc123', 'service_version=scriptureforge-mobile:oldsha'),
           },
-          {
-            name: 'mobile-staging-config',
-            passed: true,
-            target: 'https://artifacts.staging.scriptureforge.ai/mobile/staging-config.txt',
-            status_code: 200,
-            result_summary: mobileProbeMarkerSummaries['mobile-staging-config'].replaceAll('service_version=scriptureforge-mobile:abc123', 'service_version=scriptureforge-mobile:oldsha'),
-          },
+          mobileConfigProbe({ result_summary: mobileProbeMarkerSummaries['mobile-staging-config'].replaceAll('service_version=scriptureforge-mobile:abc123', 'service_version=scriptureforge-mobile:oldsha') }),
         ],
       },
       'artifacts/mobileprobe.json',
