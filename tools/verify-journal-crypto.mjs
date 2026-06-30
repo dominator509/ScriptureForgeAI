@@ -325,6 +325,8 @@ for (const requiredSelfTestSnippet of [
   'key_disposal=true',
   'key disposed',
   'disposed handle rejected',
+  'revoked_key_rejected=true',
+  'stale raw key rejected',
   'passphrase buffer zeroized',
   'salt buffer zeroized',
   'plaintext buffer zeroized',

@@ -187,6 +187,8 @@ test('journal crypto self-test emits native-device evidence markers', async () =
     'key_disposal=true',
     'key disposed',
     'disposed handle rejected',
+    'revoked_key_rejected=true',
+    'stale raw key rejected',
   ]);
 });
 

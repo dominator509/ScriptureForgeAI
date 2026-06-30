@@ -306,7 +306,7 @@ const rustSegmentMarkerRequirements = new Map([
 ]);
 const mobileSegmentMarkerRequirements = new Map([
   ['mobile-eas-or-device-run', ['staging artifact', 'eas', 'build', 'finished', 'android', 'ios', 'native device', 'installed app', 'release channel staging', 'expo profile staging', 'distinct_mobile_artifacts=true', 'release_candidate=', 'service_version=']],
-  ['mobile-native-crypto-smoke', ['staging artifact', 'runJournalCryptoSelfTest', 'react-native-quick-crypto', 'native provider', 'native module loaded', 'provider status react-native-quick-crypto', 'provider=react-native-quick-crypto', 'native-required true', 'native_required=true', 'AES-GCM', 'round-trip', 'unique_iv=true', 'unique IV', 'tamper rejected', 'associated data', 'wrong associated data rejected', 'associated_data_salt_id=', 'associated_data_salt_version=', 'non-extractable', 'provider-bound key', 'fallback-derived key rejected', 'key disposed', 'disposed handle rejected', 'passphrase wiped', 'passphrase buffer zeroized', 'salt wiped', 'salt buffer zeroized', 'plaintext cleared', 'plaintext buffer zeroized', 'distinct_mobile_artifacts=true', 'release_candidate=', 'service_version=']],
+  ['mobile-native-crypto-smoke', ['staging artifact', 'runJournalCryptoSelfTest', 'react-native-quick-crypto', 'native provider', 'native module loaded', 'provider status react-native-quick-crypto', 'provider=react-native-quick-crypto', 'native-required true', 'native_required=true', 'AES-GCM', 'round-trip', 'unique_iv=true', 'unique IV', 'tamper rejected', 'associated data', 'wrong associated data rejected', 'associated_data_salt_id=', 'associated_data_salt_version=', 'non-extractable', 'provider-bound key', 'fallback-derived key rejected', 'key disposed', 'disposed handle rejected', 'revoked_key_rejected=true', 'stale raw key rejected', 'passphrase wiped', 'passphrase buffer zeroized', 'salt wiped', 'salt buffer zeroized', 'plaintext cleared', 'plaintext buffer zeroized', 'distinct_mobile_artifacts=true', 'release_candidate=', 'service_version=']],
   ['mobile-staging-config', ['staging artifact', 'EXPO_PUBLIC_API_BASE_URL', 'EXPO_PUBLIC_WS_BASE_URL', 'EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true', 'EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging', 'https://', 'wss://', 'staging', 'distinct_mobile_artifacts=true', 'release_candidate=', 'service_version=']],
 ]);
 
@@ -895,6 +895,8 @@ export const strictProbeFamilies = {
       'fallback-derived key rejected',
       'key disposed',
       'disposed handle rejected',
+      'revoked_key_rejected=true',
+      'stale raw key rejected',
       'passphrase wiped',
       'passphrase buffer zeroized',
       'salt wiped',
