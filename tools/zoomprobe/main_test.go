@@ -14,7 +14,7 @@ import (
 var requiredZoomProbeSummaryMarkers = map[string][]string{
 	"zoom-oauth-readiness":               {"staging artifact", "oauth", "account_credentials", "status", "ok", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom"},
 	"zoom-meeting-create-or-fallback":    {"staging artifact", "meeting", "join_url", "zoom.us", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom"},
-	"zoom-timeout-circuit-fallback":      {"staging artifact", "timeout", "provider timeout", "circuit", "open", "circuit_open_fallback", "fallback", "offline://in-person", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom"},
+	"zoom-timeout-circuit-fallback":      {"staging artifact", "timeout", "provider timeout", "circuit", "open", "circuit_open_fallback", "fallback", "offline://in-person", "provider_timeout=true", "circuit_open=true", "offline_fallback=true", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom"},
 	"zoom-webhook-signature-delivery":    {"staging artifact", "webhook", "signature", "x-zm-signature=v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "x-zm-request-timestamp=1710000000", "stale", "replay", "401", "invalid", "signed", "200", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom"},
 	"zoom-webhook-url-validation":        {"staging artifact", "endpoint.url_validation", "plain_token=zoom-plain-123", "encrypted_token=zoom-encrypted-456", "validation_response=200", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom"},
 	"zoom-duplicate-webhook-idempotency": {"staging artifact", "duplicate", "x-zm-trackingid", "delivery_id=", "delivery id", "same Zoom event", "idempotent", "200", "single state mutation", "no duplicate side effects", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom"},
@@ -121,6 +121,7 @@ func TestRunEmitsZoomEvidenceWhenArtifactsPass(t *testing.T) {
 		t.Fatalf("unexpected release identity: %+v", result)
 	}
 	assertProbeSummariesIncludeMarkers(t, result.Probes, requiredZoomProbeSummaryMarkers)
+	assertTimeoutCircuitFallbackProof(t, result.Probes)
 	assertWebhookSignatureProof(t, result.Probes, "v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "1710000000")
 	assertURLValidationProof(t, result.Probes, "zoom-plain-123", "zoom-encrypted-456", "200")
 	assertDuplicateWebhookDeliveryID(t, result.Probes, "zm-delivery-123")
@@ -205,6 +206,25 @@ func assertDuplicateWebhookDeliveryID(t *testing.T, probes []probeResult, want s
 		}
 	}
 	t.Fatal("missing zoom-duplicate-webhook-idempotency probe")
+}
+
+func assertTimeoutCircuitFallbackProof(t *testing.T, probes []probeResult) {
+	t.Helper()
+	for _, probe := range probes {
+		if probe.Name == "zoom-timeout-circuit-fallback" {
+			if !probe.ProviderTimeout {
+				t.Fatal("zoom-timeout-circuit-fallback missing provider_timeout=true")
+			}
+			if !probe.CircuitOpen {
+				t.Fatal("zoom-timeout-circuit-fallback missing circuit_open=true")
+			}
+			if !probe.OfflineFallback {
+				t.Fatal("zoom-timeout-circuit-fallback missing offline_fallback=true")
+			}
+			return
+		}
+	}
+	t.Fatal("missing zoom-timeout-circuit-fallback probe")
 }
 
 func assertWebhookSignatureProof(t *testing.T, probes []probeResult, wantSignature, wantTimestamp string) {

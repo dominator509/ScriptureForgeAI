@@ -68,6 +68,9 @@ type probeResult struct {
 	PlainToken         string `json:"plain_token,omitempty"`
 	EncryptedToken     string `json:"encrypted_token,omitempty"`
 	ValidationResponse string `json:"validation_response,omitempty"`
+	ProviderTimeout    bool   `json:"provider_timeout,omitempty"`
+	CircuitOpen        bool   `json:"circuit_open,omitempty"`
+	OfflineFallback    bool   `json:"offline_fallback,omitempty"`
 	ResultSummary      string `json:"result_summary"`
 }
 
@@ -293,7 +296,18 @@ func probeArtifactAny(client *http.Client, name, target string, acceptableRequir
 		meetingID = extractMeetingExternalID(text)
 		roomID = extractInternalRoomID(text)
 	}
+	providerTimeout := false
+	circuitOpen := false
+	offlineFallback := false
+	if name == "zoom-timeout-circuit-fallback" {
+		providerTimeout = containsAllFold(text, []string{"provider timeout"})
+		circuitOpen = containsAllFold(text, []string{"circuit", "open", "circuit_open_fallback"})
+		offlineFallback = containsAllFold(text, []string{"offline://in-person", "fallback"})
+	}
 	passed := resp.StatusCode >= 200 && resp.StatusCode < 300 && matchedRequiredSet != nil && containsNoneFold(text, forbidden)
+	if name == "zoom-timeout-circuit-fallback" && (!providerTimeout || !circuitOpen || !offlineFallback) {
+		passed = false
+	}
 	if name == "zoom-duplicate-webhook-idempotency" && deliveryID == "" {
 		passed = false
 	}
@@ -320,11 +334,14 @@ func probeArtifactAny(client *http.Client, name, target string, acceptableRequir
 		if plainToken != "" || encryptedToken != "" || validationResponse != "" {
 			summary += fmt.Sprintf("; plain_token=%s; encrypted_token=%s; validation_response=%s", plainToken, encryptedToken, validationResponse)
 		}
+		if name == "zoom-timeout-circuit-fallback" {
+			summary += fmt.Sprintf("; provider_timeout=%t; circuit_open=%t; offline_fallback=%t", providerTimeout, circuitOpen, offlineFallback)
+		}
 		if meetingID != "" || roomID != "" {
 			summary += fmt.Sprintf("; meeting_external_id=%s; internal_room_id=%s", meetingID, roomID)
 		}
 	}
-	return probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, DeliveryID: deliveryID, MeetingID: meetingID, RoomID: roomID, WebhookSig: webhookSignature, WebhookTS: webhookTimestamp, PlainToken: plainToken, EncryptedToken: encryptedToken, ValidationResponse: validationResponse, ResultSummary: summary}
+	return probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, DeliveryID: deliveryID, MeetingID: meetingID, RoomID: roomID, WebhookSig: webhookSignature, WebhookTS: webhookTimestamp, PlainToken: plainToken, EncryptedToken: encryptedToken, ValidationResponse: validationResponse, ProviderTimeout: providerTimeout, CircuitOpen: circuitOpen, OfflineFallback: offlineFallback, ResultSummary: summary}
 }
 
 func extractDeliveryID(text string) string {

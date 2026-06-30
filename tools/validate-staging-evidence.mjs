@@ -84,6 +84,9 @@ const zoomEncryptedTokenPattern = /\bencrypted_token=([A-Za-z0-9][A-Za-z0-9._:-]
 const zoomValidationResponsePattern = /\bvalidation_response=200\b/i;
 const zoomMeetingExternalIDPattern = /\bmeeting_external_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const zoomInternalRoomIDPattern = /\binternal_room_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const zoomProviderTimeoutPattern = /\bprovider_timeout=true\b/i;
+const zoomCircuitOpenPattern = /\bcircuit_open=true\b/i;
+const zoomOfflineFallbackPattern = /\boffline_fallback=true\b/i;
 const webSmokeUserIDPattern = /\buser_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const webSmokeOrganizationIDPattern = /\borganization_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const webSmokeJournalIDPattern = /\bjournal_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
@@ -1622,6 +1625,22 @@ function validateStrictReleaseItemEvidence(item, manifest) {
       webhookSignatureSegment,
       zoomWebhookTimestampPattern,
       'EXT-ZOOM-001 zoom-webhook-signature-delivery must include concrete x-zm-request-timestamp=<epoch>',
+    );
+    const timeoutCircuitSegment = findEvidenceSegment(evidence, 'zoom-timeout-circuit-fallback');
+    assert.match(
+      timeoutCircuitSegment,
+      zoomProviderTimeoutPattern,
+      'EXT-ZOOM-001 zoom-timeout-circuit-fallback must include provider_timeout=true',
+    );
+    assert.match(
+      timeoutCircuitSegment,
+      zoomCircuitOpenPattern,
+      'EXT-ZOOM-001 zoom-timeout-circuit-fallback must include circuit_open=true',
+    );
+    assert.match(
+      timeoutCircuitSegment,
+      zoomOfflineFallbackPattern,
+      'EXT-ZOOM-001 zoom-timeout-circuit-fallback must include offline_fallback=true',
     );
     const webhookValidationSegment = findEvidenceSegment(evidence, 'zoom-webhook-url-validation');
     assert.match(

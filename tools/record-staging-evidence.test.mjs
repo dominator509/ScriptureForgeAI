@@ -262,7 +262,7 @@ function resilienceProbeReportProbes(names, overridesForName = () => ({})) {
 const zoomProbeMarkerSummaries = {
   'zoom-oauth-readiness': 'got HTTP 200; staging artifact; verified markers: oauth, account_credentials, status, ok, release_candidate=abc123, service_version=scriptureforge-api:abc123',
   'zoom-meeting-create-or-fallback': 'got HTTP 200; staging artifact; verified markers: meeting, join_url, zoom.us, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'zoom-timeout-circuit-fallback': 'got HTTP 200; staging artifact; verified markers: timeout, provider timeout, circuit, open, circuit_open_fallback, fallback, offline://in-person, release_candidate=abc123, service_version=scriptureforge-api:abc123',
+  'zoom-timeout-circuit-fallback': 'got HTTP 200; staging artifact; verified markers: timeout, provider timeout, circuit, open, circuit_open_fallback, fallback, offline://in-person, release_candidate=abc123, service_version=scriptureforge-api:abc123; provider_timeout=true; circuit_open=true; offline_fallback=true',
   'zoom-webhook-signature-delivery': 'got HTTP 200; staging artifact; verified markers: webhook, signature, x-zm-signature=v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, x-zm-request-timestamp=1710000000, stale, replay, 401, invalid, signed, 200, release_candidate=abc123, service_version=scriptureforge-api:abc123',
   'zoom-webhook-url-validation': 'got HTTP 200; staging artifact; verified markers: endpoint.url_validation, plain_token=zoom-plain-123, encrypted_token=zoom-encrypted-456, validation_response=200, release_candidate=abc123, service_version=scriptureforge-api:abc123',
   'zoom-duplicate-webhook-idempotency': 'got HTTP 200; staging artifact; verified markers: duplicate, x-zm-trackingid, delivery_id=zm-delivery-123, delivery id, same Zoom event, idempotent, 200, single state mutation, no duplicate side effects, release_candidate=abc123, service_version=scriptureforge-api:abc123',
@@ -283,6 +283,15 @@ function zoomProbeReportProbe(name, overrides = {}) {
   }
   if (name === 'zoom-webhook-signature-delivery' && !Object.hasOwn(overrides, 'webhook_signature')) {
     probe.webhook_signature = 'v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  }
+  if (name === 'zoom-timeout-circuit-fallback' && !Object.hasOwn(overrides, 'provider_timeout')) {
+    probe.provider_timeout = true;
+  }
+  if (name === 'zoom-timeout-circuit-fallback' && !Object.hasOwn(overrides, 'circuit_open')) {
+    probe.circuit_open = true;
+  }
+  if (name === 'zoom-timeout-circuit-fallback' && !Object.hasOwn(overrides, 'offline_fallback')) {
+    probe.offline_fallback = true;
   }
   if (name === 'zoom-webhook-signature-delivery' && !Object.hasOwn(overrides, 'webhook_timestamp')) {
     probe.webhook_timestamp = '1710000000';
@@ -2740,6 +2749,33 @@ test('recordEvidence records production-grade Zoom evidence', () => {
   );
 
   assert.equal(updated.items[0].status, 'passed');
+});
+
+test('recordEvidence rejects Zoom resilience evidence without structured fallback proof', () => {
+  const probeNames = Object.keys(zoomProbeMarkerSummaries);
+  assert.throws(
+    () => recordEvidence(
+      {
+        release_candidate: 'abc123',
+        items: [{ id: 'EXT-ZOOM-001', status: 'pending_external' }],
+      },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['EXT-ZOOM-001'],
+        probes: zoomProbeReportProbes(probeNames, (name) => (
+          name === 'zoom-timeout-circuit-fallback'
+            ? { provider_timeout: undefined }
+            : {}
+        )),
+      },
+      'artifacts/zoomprobe.json',
+      'go run ./tools/zoomprobe',
+    ),
+    /zoom-timeout-circuit-fallback probe must include structured provider_timeout=true/,
+  );
 });
 
 test('recordEvidence rejects Zoom evidence for a different release candidate', () => {

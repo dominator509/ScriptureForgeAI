@@ -1416,6 +1416,16 @@ function validateZoomEvidence(report, manifest) {
         `x-zm-request-timestamp=${webhookTimestamp}`,
       ]);
     }
+    if (probe.name === 'zoom-timeout-circuit-fallback') {
+      assert.equal(probe.provider_timeout, true, 'zoom-timeout-circuit-fallback probe must include structured provider_timeout=true');
+      assert.equal(probe.circuit_open, true, 'zoom-timeout-circuit-fallback probe must include structured circuit_open=true');
+      assert.equal(probe.offline_fallback, true, 'zoom-timeout-circuit-fallback probe must include structured offline_fallback=true');
+      assertSummaryIncludesMarkers(probe.name, summary, [
+        'provider_timeout=true',
+        'circuit_open=true',
+        'offline_fallback=true',
+      ]);
+    }
     if (probe.name === 'zoom-webhook-url-validation') {
       const plainToken = String(probe.plain_token ?? '').trim();
       const encryptedToken = String(probe.encrypted_token ?? '').trim();
