@@ -258,6 +258,18 @@ func TestRunEmitsOTELEvidenceWhenAllObservabilityProofsPass(t *testing.T) {
 	if result.TenantID != "org-staging" || result.UserID != "user-staging" || result.Role != "admin" {
 		t.Fatalf("expected report log principal to be persisted, got tenant=%q user=%q role=%q", result.TenantID, result.UserID, result.Role)
 	}
+	for _, probe := range result.Probes {
+		if probe.Name == "trace-backend-search" {
+			if probe.TraceID != result.TraceID || probe.ObservedRoute != result.ObservedRoute || probe.HTTPMethod != result.HTTPMethod {
+				t.Fatalf("trace probe structured binding mismatch: %+v report=%+v", probe, result)
+			}
+		}
+		if probe.Name == "log-backend-trace-correlation" {
+			if probe.TraceID != result.TraceID || probe.ObservedRoute != result.ObservedRoute || probe.HTTPMethod != result.HTTPMethod || probe.TenantID != result.TenantID || probe.UserID != result.UserID || probe.Role != result.Role {
+				t.Fatalf("log probe structured binding mismatch: %+v report=%+v", probe, result)
+			}
+		}
+	}
 	if !containsItem(result.EvidenceItems, "OBS-OTEL-001") {
 		t.Fatalf("report missing OBS-OTEL-001: %+v", result.EvidenceItems)
 	}

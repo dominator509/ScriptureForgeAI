@@ -514,6 +514,24 @@ function observabilityProbeReportProbe(name, overrides = {}) {
   if (name === 'alert-delivery-status' && !Object.hasOwn(overrides, 'delivery_id')) {
     probe.delivery_id = 'am-delivery-123';
   }
+  if ((name === 'trace-backend-search' || name === 'log-backend-trace-correlation') && !Object.hasOwn(overrides, 'trace_id')) {
+    probe.trace_id = observabilityTraceID;
+  }
+  if ((name === 'trace-backend-search' || name === 'log-backend-trace-correlation') && !Object.hasOwn(overrides, 'observed_route')) {
+    probe.observed_route = '/api/v1/ai/generate/study';
+  }
+  if ((name === 'trace-backend-search' || name === 'log-backend-trace-correlation') && !Object.hasOwn(overrides, 'http_method')) {
+    probe.http_method = 'POST';
+  }
+  if (name === 'log-backend-trace-correlation' && !Object.hasOwn(overrides, 'tenant_id')) {
+    probe.tenant_id = 'org-staging';
+  }
+  if (name === 'log-backend-trace-correlation' && !Object.hasOwn(overrides, 'user_id')) {
+    probe.user_id = 'user-staging';
+  }
+  if (name === 'log-backend-trace-correlation' && !Object.hasOwn(overrides, 'role')) {
+    probe.role = 'admin';
+  }
   return probe;
 }
 
@@ -4682,15 +4700,9 @@ test('recordEvidence rejects observability log evidence without exact structured
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
         evidence_items: ['OBS-OTEL-001'],
-        probes: probeNames.map((name) => ({
-          name,
-          passed: true,
-          target: observabilityProbeTarget(name),
-          status_code: 200,
-          result_summary: name === 'log-backend-trace-correlation'
-            ? observabilityProbeMarkerSummaries[name].replace('tenant_id=org-staging', 'tenant_id=org-other')
-            : observabilityProbeMarkerSummaries[name],
-        })),
+        probes: observabilityProbeReportProbes(probeNames, (name) => (name === 'log-backend-trace-correlation' ? {
+          result_summary: observabilityProbeMarkerSummaries[name].replace('tenant_id=org-staging', 'tenant_id=org-other'),
+        } : {})),
       },
       'artifacts/observabilityprobe.json',
       'go run ./tools/observabilityprobe -probe-otel',
@@ -4791,14 +4803,10 @@ test('recordEvidence rejects observability evidence with duplicate OTEL artifact
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
         evidence_items: ['OBS-OTEL-001'],
-        probes: probeNames.map((name) => ({
-          name,
-          passed: true,
+        probes: observabilityProbeReportProbes(probeNames, (name) => ({
           target: name === 'log-backend-trace-correlation'
             ? `https://traces.staging.scriptureforge.ai/search?trace_id=${observabilityTraceID}`
             : observabilityProbeTarget(name),
-          status_code: 200,
-          result_summary: observabilityProbeMarkerSummaries[name],
         })),
       },
       'artifacts/observabilityprobe.json',
@@ -4859,14 +4867,10 @@ test('recordEvidence rejects observability evidence without tenant-aware log mar
           { name: 'collector-otlp-config', passed: true, target: 'https://observability.staging.scriptureforge.ai/collector', status_code: 200, result_summary: observabilityProbeMarkerSummaries['collector-otlp-config'] },
           { name: 'api-prometheus-metrics', passed: true, target: 'https://api.staging.scriptureforge.ai/metrics', status_code: 200, result_summary: observabilityProbeMarkerSummaries['api-prometheus-metrics'] },
           { name: 'rust-prometheus-metrics', passed: true, target: 'https://rust.staging.scriptureforge.ai/metrics', status_code: 200, result_summary: observabilityProbeMarkerSummaries['rust-prometheus-metrics'] },
-          { name: 'trace-backend-search', passed: true, target: 'https://traces.staging.scriptureforge.ai/search?trace_id=11112222333344445555666677778888', status_code: 200, result_summary: observabilityProbeMarkerSummaries['trace-backend-search'] },
-          {
-            name: 'log-backend-trace-correlation',
-            passed: true,
-            target: 'https://logs.staging.scriptureforge.ai/search?trace_id=11112222333344445555666677778888',
-            status_code: 200,
+          observabilityProbeReportProbe('trace-backend-search', { target: 'https://traces.staging.scriptureforge.ai/search?trace_id=11112222333344445555666677778888' }),
+          observabilityProbeReportProbe('log-backend-trace-correlation', {
             result_summary: 'got HTTP 200; verified markers: staging artifact, 11112222333344445555666677778888, trace_id, service_version, deployment_environment, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-          },
+          }),
         ],
       },
       'artifacts/observabilityprobe.json',
@@ -4896,20 +4900,78 @@ test('recordEvidence rejects observability evidence with mismatched trace ID sum
           { name: 'collector-otlp-config', passed: true, target: 'https://observability.staging.scriptureforge.ai/collector', status_code: 200, result_summary: observabilityProbeMarkerSummaries['collector-otlp-config'] },
           { name: 'api-prometheus-metrics', passed: true, target: 'https://api.staging.scriptureforge.ai/metrics', status_code: 200, result_summary: observabilityProbeMarkerSummaries['api-prometheus-metrics'] },
           { name: 'rust-prometheus-metrics', passed: true, target: 'https://rust.staging.scriptureforge.ai/metrics', status_code: 200, result_summary: observabilityProbeMarkerSummaries['rust-prometheus-metrics'] },
-          {
-            name: 'trace-backend-search',
-            passed: true,
-            target: `https://traces.staging.scriptureforge.ai/search?trace_id=${observabilityTraceID}`,
-            status_code: 200,
+          observabilityProbeReportProbe('trace-backend-search', {
             result_summary: observabilityProbeMarkerSummaries['trace-backend-search'].replace(observabilityTraceID, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
-          },
-          { name: 'log-backend-trace-correlation', passed: true, target: `https://logs.staging.scriptureforge.ai/search?trace_id=${observabilityTraceID}`, status_code: 200, result_summary: observabilityProbeMarkerSummaries['log-backend-trace-correlation'] },
+          }),
+          observabilityProbeReportProbe('log-backend-trace-correlation'),
         ],
       },
       'artifacts/observabilityprobe.json',
       'go run ./tools/observabilityprobe -probe-otel',
     ),
     /trace-backend-search result_summary must include verified marker 11112222333344445555666677778888/,
+  );
+});
+
+test('recordEvidence rejects observability trace evidence without structured probe binding', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'OBS-OTEL-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        trace_id: observabilityTraceID,
+        observed_route: '/api/v1/ai/generate/study',
+        http_method: 'POST',
+        tenant_id: 'org-staging',
+        user_id: 'user-staging',
+        role: 'admin',
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['OBS-OTEL-001'],
+        probes: observabilityProbeReportProbes([
+          'collector-otlp-config',
+          'api-prometheus-metrics',
+          'rust-prometheus-metrics',
+          'trace-backend-search',
+          'log-backend-trace-correlation',
+        ], (name) => (name === 'trace-backend-search' ? { trace_id: undefined } : {})),
+      },
+      'artifacts/observabilityprobe.json',
+      'go run ./tools/observabilityprobe -probe-otel',
+    ),
+    /trace-backend-search structured trace_id must be a 32-character lowercase hex OpenTelemetry trace ID/,
+  );
+});
+
+test('recordEvidence rejects observability log evidence with mismatched structured tenant principal', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'OBS-OTEL-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        trace_id: observabilityTraceID,
+        observed_route: '/api/v1/ai/generate/study',
+        http_method: 'POST',
+        tenant_id: 'org-staging',
+        user_id: 'user-staging',
+        role: 'admin',
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['OBS-OTEL-001'],
+        probes: observabilityProbeReportProbes([
+          'collector-otlp-config',
+          'api-prometheus-metrics',
+          'rust-prometheus-metrics',
+          'trace-backend-search',
+          'log-backend-trace-correlation',
+        ], (name) => (name === 'log-backend-trace-correlation' ? { tenant_id: 'org-other' } : {})),
+      },
+      'artifacts/observabilityprobe.json',
+      'go run ./tools/observabilityprobe -probe-otel',
+    ),
+    /log-backend-trace-correlation structured tenant_id must match report tenant_id/,
   );
 });
 
@@ -5022,8 +5084,8 @@ test('recordEvidence rejects observability evidence without trace route and meth
           { name: 'collector-otlp-config', passed: true, target: 'https://observability.staging.scriptureforge.ai/collector', status_code: 200, result_summary: observabilityProbeMarkerSummaries['collector-otlp-config'] },
           { name: 'api-prometheus-metrics', passed: true, target: 'https://api.staging.scriptureforge.ai/metrics', status_code: 200, result_summary: observabilityProbeMarkerSummaries['api-prometheus-metrics'] },
           { name: 'rust-prometheus-metrics', passed: true, target: 'https://rust.staging.scriptureforge.ai/metrics', status_code: 200, result_summary: observabilityProbeMarkerSummaries['rust-prometheus-metrics'] },
-          { name: 'trace-backend-search', passed: true, target: `https://traces.staging.scriptureforge.ai/search?trace_id=${observabilityTraceID}`, status_code: 200, result_summary: observabilityProbeMarkerSummaries['trace-backend-search'].replace('route=/api/v1/ai/generate/study, ', '') },
-          { name: 'log-backend-trace-correlation', passed: true, target: `https://logs.staging.scriptureforge.ai/search?trace_id=${observabilityTraceID}`, status_code: 200, result_summary: observabilityProbeMarkerSummaries['log-backend-trace-correlation'] },
+          observabilityProbeReportProbe('trace-backend-search', { result_summary: observabilityProbeMarkerSummaries['trace-backend-search'].replace('route=/api/v1/ai/generate/study, ', '') }),
+          observabilityProbeReportProbe('log-backend-trace-correlation'),
         ],
       },
       'artifacts/observabilityprobe.json',
@@ -5059,8 +5121,8 @@ test('recordEvidence rejects observability evidence without Rust failure counter
             status_code: 200,
             result_summary: 'got HTTP 200; verified markers: staging artifact, scriptureforge_rust_engine_embedding_requests_total, scriptureforge_rust_engine_vector_search_requests_total, release_candidate=abc123, service_version=scriptureforge-api:abc123',
           },
-          { name: 'trace-backend-search', passed: true, target: 'https://traces.staging.scriptureforge.ai/search?trace_id=11112222333344445555666677778888', status_code: 200, result_summary: observabilityProbeMarkerSummaries['trace-backend-search'] },
-          { name: 'log-backend-trace-correlation', passed: true, target: 'https://logs.staging.scriptureforge.ai/search?trace_id=11112222333344445555666677778888', status_code: 200, result_summary: observabilityProbeMarkerSummaries['log-backend-trace-correlation'] },
+          observabilityProbeReportProbe('trace-backend-search'),
+          observabilityProbeReportProbe('log-backend-trace-correlation'),
         ],
       },
       'artifacts/observabilityprobe.json',
@@ -5096,8 +5158,8 @@ test('recordEvidence rejects observability evidence without API Rust dependency 
             result_summary: 'got HTTP 200; verified markers: staging artifact, scriptureforge_http_requests_total, scriptureforge_http_request_duration_seconds_sum, scriptureforge_http_requests_total{, status=, websocket_active_connections_count, ai_inference_duration_seconds_sum, ai_inference_duration_seconds_count, release_candidate=abc123, service_version=scriptureforge-api:abc123',
           },
           { name: 'rust-prometheus-metrics', passed: true, target: 'https://rust.staging.scriptureforge.ai/metrics', status_code: 200, result_summary: observabilityProbeMarkerSummaries['rust-prometheus-metrics'] },
-          { name: 'trace-backend-search', passed: true, target: 'https://traces.staging.scriptureforge.ai/search?trace_id=11112222333344445555666677778888', status_code: 200, result_summary: observabilityProbeMarkerSummaries['trace-backend-search'] },
-          { name: 'log-backend-trace-correlation', passed: true, target: 'https://logs.staging.scriptureforge.ai/search?trace_id=11112222333344445555666677778888', status_code: 200, result_summary: observabilityProbeMarkerSummaries['log-backend-trace-correlation'] },
+          observabilityProbeReportProbe('trace-backend-search'),
+          observabilityProbeReportProbe('log-backend-trace-correlation'),
         ],
       },
       'artifacts/observabilityprobe.json',
@@ -5133,8 +5195,8 @@ test('recordEvidence rejects observability evidence without architecture metric 
             result_summary: 'got HTTP 200; verified markers: staging artifact, scriptureforge_http_requests_total, scriptureforge_http_request_duration_seconds_sum, scriptureforge_http_requests_total{, status=, scriptureforge_dependency_operations_total{dependency="rust_engine",operation="vector_search",status="success", scriptureforge_dependency_operation_duration_seconds_sum{dependency="rust_engine",operation="vector_search",status="success", release_candidate=abc123, service_version=scriptureforge-api:abc123',
           },
           { name: 'rust-prometheus-metrics', passed: true, target: 'https://rust.staging.scriptureforge.ai/metrics', status_code: 200, result_summary: observabilityProbeMarkerSummaries['rust-prometheus-metrics'] },
-          { name: 'trace-backend-search', passed: true, target: 'https://traces.staging.scriptureforge.ai/search?trace_id=11112222333344445555666677778888', status_code: 200, result_summary: observabilityProbeMarkerSummaries['trace-backend-search'] },
-          { name: 'log-backend-trace-correlation', passed: true, target: 'https://logs.staging.scriptureforge.ai/search?trace_id=11112222333344445555666677778888', status_code: 200, result_summary: observabilityProbeMarkerSummaries['log-backend-trace-correlation'] },
+          observabilityProbeReportProbe('trace-backend-search'),
+          observabilityProbeReportProbe('log-backend-trace-correlation'),
         ],
       },
       'artifacts/observabilityprobe.json',
@@ -5190,8 +5252,8 @@ test('recordEvidence rejects observability evidence without trace-scoped backend
           { name: 'collector-otlp-config', passed: true, target: 'https://observability.staging.scriptureforge.ai/collector', status_code: 200, result_summary: observabilityProbeMarkerSummaries['collector-otlp-config'] },
           { name: 'api-prometheus-metrics', passed: true, target: 'https://api.staging.scriptureforge.ai/metrics', status_code: 200, result_summary: observabilityProbeMarkerSummaries['api-prometheus-metrics'] },
           { name: 'rust-prometheus-metrics', passed: true, target: 'https://rust.staging.scriptureforge.ai/metrics', status_code: 200, result_summary: observabilityProbeMarkerSummaries['rust-prometheus-metrics'] },
-          { name: 'trace-backend-search', passed: true, target: 'https://traces.staging.scriptureforge.ai/search?service=scriptureforge-api', status_code: 200, result_summary: observabilityProbeMarkerSummaries['trace-backend-search'] },
-          { name: 'log-backend-trace-correlation', passed: true, target: 'https://logs.staging.scriptureforge.ai/search?trace_id=11112222333344445555666677778888', status_code: 200, result_summary: observabilityProbeMarkerSummaries['log-backend-trace-correlation'] },
+          observabilityProbeReportProbe('trace-backend-search', { target: 'https://traces.staging.scriptureforge.ai/search?service=scriptureforge-api' }),
+          observabilityProbeReportProbe('log-backend-trace-correlation'),
         ],
       },
       'artifacts/observabilityprobe.json',
@@ -5221,8 +5283,8 @@ test('recordEvidence rejects observability evidence from local telemetry surface
           { name: 'collector-otlp-config', passed: true, target: 'https://observability.staging.scriptureforge.ai/collector', status_code: 200, result_summary: observabilityProbeMarkerSummaries['collector-otlp-config'] },
           { name: 'api-prometheus-metrics', passed: true, target: 'https://api.staging.scriptureforge.ai/metrics', status_code: 200, result_summary: observabilityProbeMarkerSummaries['api-prometheus-metrics'] },
           { name: 'rust-prometheus-metrics', passed: true, target: 'http://127.0.0.1:9102/metrics', status_code: 200, result_summary: observabilityProbeMarkerSummaries['rust-prometheus-metrics'] },
-          { name: 'trace-backend-search', passed: true, target: 'https://traces.staging.scriptureforge.ai/search?trace_id=11112222333344445555666677778888', status_code: 200, result_summary: observabilityProbeMarkerSummaries['trace-backend-search'] },
-          { name: 'log-backend-trace-correlation', passed: true, target: 'https://logs.staging.scriptureforge.ai/search?trace_id=11112222333344445555666677778888', status_code: 200, result_summary: observabilityProbeMarkerSummaries['log-backend-trace-correlation'] },
+          observabilityProbeReportProbe('trace-backend-search'),
+          observabilityProbeReportProbe('log-backend-trace-correlation'),
         ],
       },
       'artifacts/observabilityprobe.json',

@@ -217,6 +217,8 @@ const aiModelPattern = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
 const aiEndpointPattern = /^https:\/\/\S+$/;
 const aiPositiveIntegerPattern = /^[1-9][0-9]*$/;
 const aiNonNegativeIntegerPattern = /^[0-9]+$/;
+const observabilityMethodPattern = /^[A-Z]+$/;
+const observabilityPrincipalPattern = /^\S+$/;
 const observabilityDeliveryIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const mobilePlatformsPattern = /^(?=.*\bandroid\b)(?=.*\bios\b)[A-Za-z0-9_,.-]+$/i;
 const mobileReleaseChannelPattern = /^staging$/i;
@@ -1707,6 +1709,14 @@ function validateObservabilityEvidence(report, manifest) {
     assert.match(role, /^\S+$/, 'OBS-OTEL-001 report must include role as a concrete token');
     for (const probeName of ['trace-backend-search', 'log-backend-trace-correlation']) {
       const probe = observedProbes.get(probeName);
+      const probeTraceID = String(probe?.trace_id ?? '').trim();
+      const probeObservedRoute = String(probe?.observed_route ?? '').trim();
+      const probeHTTPMethod = String(probe?.http_method ?? '').trim().toUpperCase();
+      assertValidTraceID(probeTraceID, `${probeName} structured trace_id`);
+      assert.equal(probeTraceID, traceID, `${probeName} structured trace_id must match report trace_id`);
+      assert.equal(probeObservedRoute, observedRoute, `${probeName} structured observed_route must match report observed_route`);
+      assert.match(probeHTTPMethod, observabilityMethodPattern, `${probeName} structured http_method must be an uppercase method token`);
+      assert.equal(probeHTTPMethod, httpMethod, `${probeName} structured http_method must match report http_method`);
       assert.ok(targetIncludesTraceID(probe?.target, traceID), `${probeName} target must include report trace_id`);
       assertSummaryIncludesMarkers(probeName, String(probe?.result_summary ?? ''), [
         traceID,
@@ -1715,6 +1725,15 @@ function validateObservabilityEvidence(report, manifest) {
       ]);
     }
     const logProbe = observedProbes.get('log-backend-trace-correlation');
+    const logTenantID = String(logProbe?.tenant_id ?? '').trim();
+    const logUserID = String(logProbe?.user_id ?? '').trim();
+    const logRole = String(logProbe?.role ?? '').trim();
+    assert.match(logTenantID, observabilityPrincipalPattern, 'log-backend-trace-correlation structured tenant_id must be a concrete token');
+    assert.match(logUserID, observabilityPrincipalPattern, 'log-backend-trace-correlation structured user_id must be a concrete token');
+    assert.match(logRole, observabilityPrincipalPattern, 'log-backend-trace-correlation structured role must be a concrete token');
+    assert.equal(logTenantID, tenantID, 'log-backend-trace-correlation structured tenant_id must match report tenant_id');
+    assert.equal(logUserID, userID, 'log-backend-trace-correlation structured user_id must match report user_id');
+    assert.equal(logRole, role, 'log-backend-trace-correlation structured role must match report role');
     assertSummaryIncludesMarkers('log-backend-trace-correlation', String(logProbe?.result_summary ?? ''), [
       `tenant_id=${tenantID}`,
       `user_id=${userID}`,

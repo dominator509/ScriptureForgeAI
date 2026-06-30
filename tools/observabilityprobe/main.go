@@ -16,7 +16,15 @@ import (
 	"time"
 )
 
-var alertDeliveryIDPattern = regexp.MustCompile(`(?i)\bdelivery_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
+var (
+	alertDeliveryIDPattern = regexp.MustCompile(`(?i)\bdelivery_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
+	traceIDPattern         = regexp.MustCompile(`\b([0-9a-f]{32})\b`)
+	routePattern           = regexp.MustCompile(`(?i)\broute=([^\s,;]+)`)
+	methodPattern          = regexp.MustCompile(`(?i)\bmethod=([A-Z]+)\b`)
+	tenantIDPattern        = regexp.MustCompile(`(?i)\btenant_id=([^\s,;]+)`)
+	userIDPattern          = regexp.MustCompile(`(?i)\buser_id=([^\s,;]+)`)
+	rolePattern            = regexp.MustCompile(`(?i)\brole=([^\s,;]+)`)
+)
 
 type config struct {
 	ProbeOTEL          bool
@@ -71,6 +79,12 @@ type probeResult struct {
 	Passed        bool   `json:"passed"`
 	StatusCode    int    `json:"status_code,omitempty"`
 	LatencyMS     int64  `json:"latency_ms,omitempty"`
+	TraceID       string `json:"trace_id,omitempty"`
+	ObservedRoute string `json:"observed_route,omitempty"`
+	HTTPMethod    string `json:"http_method,omitempty"`
+	TenantID      string `json:"tenant_id,omitempty"`
+	UserID        string `json:"user_id,omitempty"`
+	Role          string `json:"role,omitempty"`
 	DeliveryID    string `json:"delivery_id,omitempty"`
 	ResultSummary string `json:"result_summary"`
 }
@@ -537,6 +551,28 @@ func probeContains(client *http.Client, name, target string, required []string, 
 		passed = passed && containsAnyFold(text, required)
 	}
 	deliveryID := ""
+	traceID := ""
+	observedRoute := ""
+	httpMethod := ""
+	tenantID := ""
+	userID := ""
+	role := ""
+	if name == "trace-backend-search" || name == "log-backend-trace-correlation" {
+		traceID = extractMatch(text, traceIDPattern)
+		observedRoute = extractMatch(text, routePattern)
+		httpMethod = strings.ToUpper(extractMatch(text, methodPattern))
+		if !isValidTraceID(traceID) || observedRoute == "" || httpMethod == "" {
+			passed = false
+		}
+	}
+	if name == "log-backend-trace-correlation" {
+		tenantID = extractMatch(text, tenantIDPattern)
+		userID = extractMatch(text, userIDPattern)
+		role = extractMatch(text, rolePattern)
+		if tenantID == "" || userID == "" || role == "" {
+			passed = false
+		}
+	}
 	if name == "alert-delivery-status" {
 		deliveryID = extractMatch(text, alertDeliveryIDPattern)
 		if deliveryID == "" {
@@ -559,6 +595,12 @@ func probeContains(client *http.Client, name, target string, required []string, 
 		Passed:        passed,
 		StatusCode:    resp.StatusCode,
 		LatencyMS:     latency,
+		TraceID:       traceID,
+		ObservedRoute: observedRoute,
+		HTTPMethod:    httpMethod,
+		TenantID:      tenantID,
+		UserID:        userID,
+		Role:          role,
 		DeliveryID:    deliveryID,
 		ResultSummary: summary,
 	}
