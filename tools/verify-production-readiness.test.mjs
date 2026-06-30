@@ -170,6 +170,40 @@ test('verifyProductionReadiness accepts strict manifest on clean synced HEAD', a
   }
 });
 
+test('verifyProductionReadiness rejects accepted-risk waivers for final claims', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'scriptureforge-readiness-'));
+  try {
+    const manifest = strictManifest(sha);
+    const signoff = manifest.items.find((item) => item.id === 'SEC-SIGNOFF-001');
+    signoff.status = 'accepted_risk';
+    delete signoff.evidence;
+    signoff.decision_ref = 'security/dependency_risk_register.md#DRR-001';
+    signoff.owner = 'security';
+    signoff.accepted_by = 'release-owner';
+    signoff.review_due_at = '2026-07-25';
+    signoff.expires_at = '2026-08-25';
+    const { manifestPath, localGateReportPath, contractManifestPath, obsidianNotePath } = await writeReadinessInputs(dir, { manifest });
+
+    await assert.rejects(
+      () => verifyProductionReadiness({
+        manifestPath,
+        localGateReportPath,
+        contractManifestPath,
+        obsidianNotePath,
+        cwd: dir,
+        git: fakeGit({
+          status: '## main...origin/main\n',
+          head: sha,
+        }),
+        pathReportBuilder: readyPathReportBuilder,
+      }),
+      /production readiness claim requires zero accepted-risk items; found 1/,
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('verifyProductionReadiness rejects dirty worktree', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'scriptureforge-readiness-'));
   try {
@@ -817,21 +851,11 @@ function strictManifest(releaseCandidate) {
     items: requiredIds.map((id) => ({
       id,
       category: 'test',
-      status: id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+      status: 'passed',
       description: `${id} proof`,
-      ...(id === 'SEC-SIGNOFF-001'
-        ? {
-            decision_ref: 'security/dependency_risk_register.md#DRR-001',
-            owner: 'security',
-            accepted_by: 'release-owner',
-            review_due_at: '2026-07-25',
-            expires_at: '2026-08-25',
-          }
-        : {
-            evidence: [
-              passedEvidenceFor(id, releaseCandidate),
-            ],
-          }),
+      evidence: [
+        passedEvidenceFor(id, releaseCandidate),
+      ],
     })),
   };
 }

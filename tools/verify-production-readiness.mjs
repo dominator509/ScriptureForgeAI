@@ -20,6 +20,7 @@ export const productionReadinessProofMarkers = [
   'local_gate_freshness_checked=true',
   'obsidian_snapshot_current=true',
   'staging_gap_report_clear=true',
+  'accepted_risk_zero_required=true',
   'staging_gap_report_footer_contract_validated=true',
 ];
 
@@ -81,6 +82,11 @@ export async function verifyProductionReadiness({ manifestPath, localGateReportP
     gapSummary.strict_release_ready,
     true,
     `staging evidence gap report must be clear before production readiness claim: ${formatGapBlockers(gapSummary.blocking_items)}`,
+  );
+  assert.equal(
+    gapSummary.accepted_risk,
+    0,
+    `production readiness claim requires zero accepted-risk items; found ${gapSummary.accepted_risk}`,
   );
   validateManifest(manifest, { strictRelease: true });
   const gitState = readGitState(cwd, git);
