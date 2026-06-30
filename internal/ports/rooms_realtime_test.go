@@ -126,6 +126,66 @@ func TestLiveRoomRejectsInvalidEventAndBroadcastsAcceptedEvent(t *testing.T) {
 	}
 }
 
+func TestLiveRoomRejectsInvalidEventTypesWithoutPersisting(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		eventType string
+	}{
+		{name: "whitespace", eventType: " cursor"},
+		{name: "uppercase", eventType: "Cursor"},
+		{name: "punctuation", eventType: "cursor!"},
+		{name: "overlong", eventType: strings.Repeat("a", maxRoomEventTypeBytes+1)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := &fakeRoomEventStore{}
+			socket := &SocketConnection{
+				StateManager: store,
+				Hub:          NewRoomHub(),
+				MembershipValidator: func(r *http.Request, claims *auth.TokenClaims, roomID string) bool {
+					return roomID == "room-1" && claims.UserID != ""
+				},
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				claims := &auth.TokenClaims{UserID: "user-invalid-type", OrganizationID: "org-1", Role: "member"}
+				socket.HandleLiveRoom(w, r.WithContext(context.WithValue(r.Context(), auth.ContextKeyUser, claims)))
+			}))
+			defer server.Close()
+
+			conn := dialRoom(t, server.URL, "room-1", "invalid-type")
+			defer conn.Close()
+			if err := conn.WriteJSON(RoomEvent{Type: test.eventType, RoomID: "room-1", Payload: json.RawMessage(`{"x":1}`)}); err != nil {
+				t.Fatalf("write invalid event type: %v", err)
+			}
+			if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+				t.Fatalf("set invalid type read deadline: %v", err)
+			}
+			_, _, err := conn.ReadMessage()
+			if err == nil {
+				t.Fatal("invalid event type read returned nil error, want policy-violation close")
+			}
+			if !websocket.IsCloseError(err, websocket.ClosePolicyViolation) {
+				t.Fatalf("invalid event type close error = %v, want policy violation", err)
+			}
+			if got := store.appendCount(); got != 0 {
+				t.Fatalf("invalid event type append count = %d, want 0", got)
+			}
+		})
+	}
+}
+
+func TestValidRoomEventTypeKeepsLowCardinalityEnvelopeTypes(t *testing.T) {
+	for _, eventType := range []string{"cursor", "focus.changed", "verse_1", "room-event"} {
+		if !validRoomEventType(eventType) {
+			t.Fatalf("validRoomEventType(%q) = false, want true", eventType)
+		}
+	}
+	for _, eventType := range []string{"", " cursor", "Cursor", "room:event", strings.Repeat("a", maxRoomEventTypeBytes+1)} {
+		if validRoomEventType(eventType) {
+			t.Fatalf("validRoomEventType(%q) = true, want false", eventType)
+		}
+	}
+}
+
 func TestLiveRoomClosesOversizedEventWithoutPersisting(t *testing.T) {
 	store := &fakeRoomEventStore{}
 	socket := &SocketConnection{

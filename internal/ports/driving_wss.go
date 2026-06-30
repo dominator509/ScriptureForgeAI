@@ -27,10 +27,11 @@ type RoomEvent struct {
 }
 
 const (
-	maxWSMessageBytes = 64 * 1024
-	wsPongWait        = 60 * time.Second
-	wsPingInterval    = 30 * time.Second
-	wsWriteWait       = 10 * time.Second
+	maxWSMessageBytes     = 64 * 1024
+	maxRoomEventTypeBytes = 64
+	wsPongWait            = 60 * time.Second
+	wsPingInterval        = 30 * time.Second
+	wsWriteWait           = 10 * time.Second
 )
 
 type SocketConnection struct {
@@ -119,6 +120,22 @@ func requiresConfiguredWSOrigins() bool {
 
 func roomIDFromPath(path string) string {
 	return strings.TrimPrefix(path, "/api/v1/rooms/stream/")
+}
+
+func validRoomEventType(eventType string) bool {
+	if eventType == "" || eventType != strings.TrimSpace(eventType) || len(eventType) > maxRoomEventTypeBytes {
+		return false
+	}
+	for _, char := range eventType {
+		switch {
+		case char >= 'a' && char <= 'z':
+		case char >= '0' && char <= '9':
+		case char == '_' || char == '-' || char == '.':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func (s *SocketConnection) roomHub() *RoomHub {
@@ -262,7 +279,7 @@ func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request
 			break
 		}
 		var event RoomEvent
-		if err := json.Unmarshal(message, &event); err != nil || event.Type == "" || event.RoomID != roomID {
+		if err := json.Unmarshal(message, &event); err != nil || !validRoomEventType(event.Type) || event.RoomID != roomID {
 			closePolicyViolation("invalid room event")
 			break
 		}

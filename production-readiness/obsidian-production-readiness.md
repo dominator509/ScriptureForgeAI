@@ -200,6 +200,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **WebSocket Polling Artifact Minimum Sequence Guard**: `tools/loadtest` now parses the deployed HTTP polling fallback artifact's `latest_sequence=<n>` marker and rejects values below the 30,000-event production minimum, so a stale state endpoint artifact cannot satisfy `PERF-WS-001`/`DATA-REDIS-001` while the structured report claims full sequence coverage.
 - [x] **WebSocket Polling Artifact Sequence Marker Guard**: `tools/loadtest` emits `ws_polling_artifact_latest_sequence_validated=true`, and both the staging evidence recorder and strict manifest validator require it, so recorded `PERF-WS-001`/`DATA-REDIS-001` evidence must preserve proof that the polling artifact body passed the 30,000-sequence validation.
 - [x] **Redis Polling Sequence Field Guard**: `tools/loadtest` now emits the structured JSON field `ws_polling_latest_sequence`, and the staging evidence recorder requires it to equal `ws_max_sequence`, so a summary string cannot claim polling caught up while the structured report shows stale room state.
+- [x] **Local WebSocket Event Type Guard**: room stream events now reject whitespace, uppercase, punctuation, and overlong `type` values before Redis append or broadcast; local Go gate proof requires `TestLiveRoomRejectsInvalidEventTypesWithoutPersisting` to pass before emitting WebSocket production-behavior markers.
 - [x] **Current Local WebSocket Evidence Refresh**: focused 2026-06-29 local checks passed for room stream behavior, Redis Lua sequencing, and the WebSocket load harness (`internal/ports`, `internal/domain/room`, and `tools/loadtest`); the room stream slice now includes 8 `TestLiveRoom*` tests, including all-subscriber fan-out delivery. Deployed multi-replica WSS/Redis evidence remains tracked under `PERF-WS-001` and `DATA-REDIS-001`.
 - [x] **Local Zoom Webhook Validation And Mapping Guard**: Zoom webhooks support signed `endpoint.url_validation`, acknowledge unknown meetings without mutating Redis state, and mapped webhooks update only the resolved internal `live_rooms.id`, not the external meeting ID.
 - [x] **Current Local Zoom Evidence Refresh**: focused 2026-06-29 local checks passed for bounded Zoom client resilience, webhook signature/idempotency/mapping behavior, retryable state-mutation failure handling, and `tools/zoomprobe` artifact validation. Webhook delivery IDs are marked processed only after successful mapped-room state mutation and released on Redis/state-manager failure for retry. Live staging Zoom OAuth/webhook/fallback/mapping proof remains tracked under `EXT-ZOOM-001`.
@@ -327,11 +328,11 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 2
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: 9c10e0015b0e5d559b06d59643d50f6c7a221c0b
+- expected_release_candidate: bc7019b17247b4dea82260e2225174a9fafacf81
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: 9c10e0015b0e5d559b06d59643d50f6c7a221c0b
+    - expected_release_candidate: bc7019b17247b4dea82260e2225174a9fafacf81
     - actual_release_candidate: ce96c283410756444a63b1345646fc69cf274d22
   - STAGING-EVIDENCE-CONTRACT [failed]: Environment-specific pending evidence requirements are stale relative to production-readiness/staging-evidence.example.json.
     - required: PERF-HTTP-001 required_evidence must be refreshed from the checked-in example contract (5 current entries, 5 expected entries)

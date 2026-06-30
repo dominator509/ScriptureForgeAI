@@ -8,6 +8,7 @@ export const goTestProofMarkers = [
   'go_verbose_test_names=true',
   'websocket_realtime_tests_passed=true',
   'websocket_invalid_event_guard_test=true',
+  'websocket_event_type_guard_test=true',
   'websocket_reconnect_polling_test=true',
   'websocket_concurrent_sequence_test=true',
   'websocket_fanout_broadcast_test=true',
@@ -19,6 +20,7 @@ export const goTestProofMarkers = [
 
 export const goTestRequiredWebSocketTests = [
   'TestLiveRoomRejectsInvalidEventAndBroadcastsAcceptedEvent',
+  'TestLiveRoomRejectsInvalidEventTypesWithoutPersisting',
   'TestLiveRoomClosesOversizedEventWithoutPersisting',
   'TestLiveRoomReconnectReceivesFutureEventsAndPollingState',
   'TestLiveRoomFailsClosedWhenStateManagerMissing',
