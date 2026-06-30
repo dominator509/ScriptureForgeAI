@@ -187,6 +187,37 @@ func TestLimiterScopesProtectedRequestsByTenantAndUser(t *testing.T) {
 	}
 }
 
+func TestLimiterFallsBackToClientIdentityWhenClaimsAreIncomplete(t *testing.T) {
+	limiter := testLimiter(ProfileJournal, 1, time.Minute)
+	handler := limiter.Middleware(ProfileJournal, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	first := requestWithClaims("", "org-a")
+	first.RemoteAddr = "203.0.113.70:49152"
+	firstRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(firstRecorder, first)
+	if firstRecorder.Code != http.StatusNoContent {
+		t.Fatalf("first incomplete-claims request status = %d, want 204", firstRecorder.Code)
+	}
+
+	otherClient := requestWithClaims("", "org-a")
+	otherClient.RemoteAddr = "203.0.113.71:49152"
+	otherClientRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(otherClientRecorder, otherClient)
+	if otherClientRecorder.Code != http.StatusNoContent {
+		t.Fatalf("different client with incomplete claims status = %d, want independent 204", otherClientRecorder.Code)
+	}
+
+	repeat := requestWithClaims("", "org-a")
+	repeat.RemoteAddr = "203.0.113.70:49152"
+	repeatRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(repeatRecorder, repeat)
+	if repeatRecorder.Code != http.StatusTooManyRequests {
+		t.Fatalf("repeat incomplete-claims client status = %d, want 429", repeatRecorder.Code)
+	}
+}
+
 func TestLimiterIgnoresForwardedHeadersUnlessTrusted(t *testing.T) {
 	t.Setenv("TRUST_PROXY_HEADERS", "false")
 	limiter := testLimiter(ProfileAuth, 1, time.Minute)

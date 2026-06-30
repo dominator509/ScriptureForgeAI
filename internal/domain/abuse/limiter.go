@@ -198,7 +198,11 @@ func (l *Limiter) pruneExpired(now time.Time) {
 
 func identityForRequest(r *http.Request, profileName string) string {
 	if claims, ok := r.Context().Value(auth.ContextKeyUser).(*auth.TokenClaims); ok && claims != nil {
-		return "tenant:" + claims.OrganizationID + ":user:" + claims.UserID + ":profile:" + profileName
+		orgID := strings.TrimSpace(claims.OrganizationID)
+		userID := strings.TrimSpace(claims.UserID)
+		if orgID != "" && userID != "" {
+			return "tenant:" + orgID + ":user:" + userID + ":profile:" + profileName
+		}
 	}
 
 	if trustProxyHeaders() {
