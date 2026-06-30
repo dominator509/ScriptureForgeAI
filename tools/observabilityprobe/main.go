@@ -93,6 +93,17 @@ type probeResult struct {
 	ResultSummary string `json:"result_summary"`
 }
 
+type probeExpectations struct {
+	TraceID       string
+	ObservedRoute string
+	HTTPMethod    string
+	TenantID      string
+	UserID        string
+	Role          string
+	AlertName     string
+	AlertReceiver string
+}
+
 func main() {
 	cfg := parseFlags()
 	if err := run(cfg, os.Stdout); err != nil {
@@ -263,8 +274,8 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 			probeContainsAll(client, "collector-otlp-config", cfg.CollectorConfigURL, append([]string{"receivers", "otlp", "4317", "4318", "exporters", "service"}, releaseMarkers...)),
 			probeContainsAll(client, "api-prometheus-metrics", cfg.APIMetricsURL, append([]string{"scriptureforge_http_requests_total", "scriptureforge_http_request_duration_seconds_sum", "scriptureforge_http_requests_total{", "status=", "websocket_active_connections_count", `scriptureforge_dependency_operations_total{dependency="websocket",operation="room_broadcast",status="dropped"`, "ai_inference_duration_seconds_sum", "ai_inference_duration_seconds_count", `scriptureforge_dependency_operations_total{dependency="rust_engine",operation="vector_search",status="success"`, `scriptureforge_dependency_operation_duration_seconds_sum{dependency="rust_engine",operation="vector_search",status="success"`}, releaseMarkers...)),
 			probeContainsAll(client, "rust-prometheus-metrics", cfg.RustMetricsURL, append([]string{"scriptureforge_rust_engine_embedding_requests_total", "scriptureforge_rust_engine_embedding_failures_total", "scriptureforge_rust_engine_vector_search_requests_total", "scriptureforge_rust_engine_vector_search_failures_total"}, releaseMarkers...)),
-			probeContainsAll(client, "trace-backend-search", cfg.TraceQueryURL, append([]string{cfg.TraceID, "scriptureforge-api", "scriptureforge-rust-engine", "route=" + cfg.ObservedRoute, "method=" + cfg.HTTPMethod}, releaseMarkers...)),
-			probeContainsAll(client, "log-backend-trace-correlation", cfg.LogQueryURL, append([]string{cfg.TraceID, "trace_id", "scriptureforge-api", "scriptureforge-rust-engine", "route=" + cfg.ObservedRoute, "method=" + cfg.HTTPMethod, "service_version", "deployment_environment", "tenant_id=" + cfg.TenantID, "user_id=" + cfg.UserID, "role=" + cfg.Role, "distinct_otel_artifacts=true"}, releaseMarkers...)),
+			probeContainsAllWithExpectations(client, "trace-backend-search", cfg.TraceQueryURL, append([]string{cfg.TraceID, "scriptureforge-api", "scriptureforge-rust-engine", "route=" + cfg.ObservedRoute, "method=" + cfg.HTTPMethod}, releaseMarkers...), probeExpectations{TraceID: cfg.TraceID, ObservedRoute: cfg.ObservedRoute, HTTPMethod: cfg.HTTPMethod}),
+			probeContainsAllWithExpectations(client, "log-backend-trace-correlation", cfg.LogQueryURL, append([]string{cfg.TraceID, "trace_id", "scriptureforge-api", "scriptureforge-rust-engine", "route=" + cfg.ObservedRoute, "method=" + cfg.HTTPMethod, "service_version", "deployment_environment", "tenant_id=" + cfg.TenantID, "user_id=" + cfg.UserID, "role=" + cfg.Role, "distinct_otel_artifacts=true"}, releaseMarkers...), probeExpectations{TraceID: cfg.TraceID, ObservedRoute: cfg.ObservedRoute, HTTPMethod: cfg.HTTPMethod, TenantID: cfg.TenantID, UserID: cfg.UserID, Role: cfg.Role}),
 		)
 		evidenceItems = append(evidenceItems, "OBS-OTEL-001")
 	}
@@ -272,7 +283,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 		probes = append(probes,
 			probeContainsAll(client, "dashboard-import", cfg.DashboardURL, append([]string{"ScriptureForge", "scriptureforge_http_requests_total", "scriptureforge_http_request_duration_seconds_sum", "websocket_active_connections_count", "room_broadcast", "ai_inference_duration_seconds", "scriptureforge_rust_engine_", "trace_id"}, releaseMarkers...)),
 			probeContainsAll(client, "alert-rules-loaded", cfg.AlertRulesURL, append([]string{"ScriptureForgeHighErrorRate", "ScriptureForgeTrafficAbsent", "ScriptureForgeAuthFailureSpike", "ScriptureForgeAbuseLimitSpike", "ScriptureForgeRouteLatencyElevated", "ScriptureForgeDependencyFailures", "ScriptureForgeAIInferenceLatencyElevated", "ScriptureForgeJournalWriteFailures", "ScriptureForgeRoomStreamFailures", "ScriptureForgeRoomBroadcastDrops", "ScriptureForgeRustEngineFailures", "scriptureforge_http_requests_total", "scriptureforge_dependency_operations_total", "ai_inference_duration_seconds"}, releaseMarkers...)),
-			probeContainsAll(client, "alert-delivery-status", cfg.AlertmanagerURL, append([]string{"success", "delivered", "test alert", "alertmanager", "delivery_id=", "alertname=" + cfg.AlertName, "receiver=" + cfg.AlertReceiver}, releaseMarkers...)),
+			probeContainsAllWithExpectations(client, "alert-delivery-status", cfg.AlertmanagerURL, append([]string{"success", "delivered", "test alert", "alertmanager", "delivery_id=", "alertname=" + cfg.AlertName, "receiver=" + cfg.AlertReceiver}, releaseMarkers...), probeExpectations{AlertName: cfg.AlertName, AlertReceiver: cfg.AlertReceiver}),
 			probeContainsAll(client, "telemetry-retention-policy", cfg.RetentionURL, append([]string{"retention", "30 days", "trace", "logs", "metrics", "distinct_alert_artifacts=true"}, releaseMarkers...)),
 		)
 		evidenceItems = append(evidenceItems, "OBS-ALERT-001")
@@ -524,14 +535,18 @@ func isPrivateNetworkHost(host string) bool {
 }
 
 func probeContainsAny(client *http.Client, name, target string, requiredAny []string) probeResult {
-	return probeContains(client, name, target, requiredAny, false)
+	return probeContains(client, name, target, requiredAny, false, probeExpectations{})
 }
 
 func probeContainsAll(client *http.Client, name, target string, requiredAll []string) probeResult {
-	return probeContains(client, name, target, requiredAll, true)
+	return probeContainsAllWithExpectations(client, name, target, requiredAll, probeExpectations{})
 }
 
-func probeContains(client *http.Client, name, target string, required []string, requireAll bool) probeResult {
+func probeContainsAllWithExpectations(client *http.Client, name, target string, requiredAll []string, expected probeExpectations) probeResult {
+	return probeContains(client, name, target, requiredAll, true, expected)
+}
+
+func probeContains(client *http.Client, name, target string, required []string, requireAll bool, expected probeExpectations) probeResult {
 	start := time.Now()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -570,12 +585,30 @@ func probeContains(client *http.Client, name, target string, required []string, 
 		if !isValidTraceID(traceID) || observedRoute == "" || httpMethod == "" {
 			passed = false
 		}
+		if strings.TrimSpace(expected.TraceID) != "" && traceID != strings.TrimSpace(expected.TraceID) {
+			passed = false
+		}
+		if strings.TrimSpace(expected.ObservedRoute) != "" && observedRoute != strings.TrimSpace(expected.ObservedRoute) {
+			passed = false
+		}
+		if strings.TrimSpace(expected.HTTPMethod) != "" && httpMethod != strings.ToUpper(strings.TrimSpace(expected.HTTPMethod)) {
+			passed = false
+		}
 	}
 	if name == "log-backend-trace-correlation" {
 		tenantID = extractMatch(text, tenantIDPattern)
 		userID = extractMatch(text, userIDPattern)
 		role = extractMatch(text, rolePattern)
 		if tenantID == "" || userID == "" || role == "" {
+			passed = false
+		}
+		if strings.TrimSpace(expected.TenantID) != "" && tenantID != strings.TrimSpace(expected.TenantID) {
+			passed = false
+		}
+		if strings.TrimSpace(expected.UserID) != "" && userID != strings.TrimSpace(expected.UserID) {
+			passed = false
+		}
+		if strings.TrimSpace(expected.Role) != "" && role != strings.TrimSpace(expected.Role) {
 			passed = false
 		}
 	}
@@ -586,13 +619,25 @@ func probeContains(client *http.Client, name, target string, required []string, 
 		if alertName == "" || alertReceiver == "" || deliveryID == "" {
 			passed = false
 		}
+		if strings.TrimSpace(expected.AlertName) != "" && alertName != strings.TrimSpace(expected.AlertName) {
+			passed = false
+		}
+		if strings.TrimSpace(expected.AlertReceiver) != "" && alertReceiver != strings.TrimSpace(expected.AlertReceiver) {
+			passed = false
+		}
 	}
 	passed = passed && containsNoneFold(text, forbiddenObservabilityMarkers())
 	summary := fmt.Sprintf("got HTTP %d in %dms", resp.StatusCode, latency)
 	if passed {
 		summary = fmt.Sprintf("%s; verified markers: %s", summary, strings.Join(required, ", "))
+		if name == "trace-backend-search" || name == "log-backend-trace-correlation" {
+			summary += fmt.Sprintf("; trace_id=%s, route=%s, method=%s", traceID, observedRoute, httpMethod)
+		}
+		if name == "log-backend-trace-correlation" {
+			summary += fmt.Sprintf(", tenant_id=%s, user_id=%s, role=%s", tenantID, userID, role)
+		}
 		if name == "alert-delivery-status" {
-			summary += fmt.Sprintf("; delivery_id=%s", deliveryID)
+			summary += fmt.Sprintf("; alertname=%s, receiver=%s, delivery_id=%s", alertName, alertReceiver, deliveryID)
 		}
 	} else {
 		summary = fmt.Sprintf("%s; missing required marker or contains forbidden mock/local-only marker", summary)

@@ -279,6 +279,64 @@ func TestRunEmitsOTELEvidenceWhenAllObservabilityProofsPass(t *testing.T) {
 	assertProbeSummariesIncludeMarkers(t, result.Probes, requiredOTELSummaryMarkers("11112222333344445555666677778888"))
 }
 
+func TestRunFailsWhenTraceBackendBindsWrongTraceEvent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/collector":
+			_, _ = w.Write([]byte("receivers otlp 4317 4318 exporters service" + observabilityReleaseMarkers))
+		case "/api-metrics":
+			_, _ = w.Write([]byte(completeAPIMetricsArtifact + observabilityReleaseMarkers))
+		case "/rust-metrics":
+			_, _ = w.Write([]byte(completeRustMetricsArtifact + observabilityReleaseMarkers))
+		case "/traces":
+			_, _ = w.Write([]byte("trace 99992222333344445555666677778888 scriptureforge-api scriptureforge-rust-engine route=/api/v1/other method=GET trace 11112222333344445555666677778888 route=/api/v1/ai/generate/study method=POST" + observabilityReleaseMarkers))
+		case "/logs":
+			_, _ = w.Write([]byte(`{"trace_id":"11112222333344445555666677778888","service":"scriptureforge-api","downstream":"scriptureforge-rust-engine","route":"/api/v1/ai/generate/study","method":"POST","service_version":"staging-1","deployment_environment":"staging"} route=/api/v1/ai/generate/study method=POST tenant_id=org-staging user_id=user-staging role=admin distinct_otel_artifacts=true ` + observabilityReleaseMarkers))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := runWithClient(otelConfig(), &output, clientForHTTPServer(t, server))
+	if err == nil {
+		t.Fatalf("expected mismatched trace backend event to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "trace-backend-search") {
+		t.Fatalf("report missing trace backend probe:\n%s", output.String())
+	}
+}
+
+func TestRunFailsWhenLogBackendBindsWrongPrincipalEvent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/collector":
+			_, _ = w.Write([]byte("receivers otlp 4317 4318 exporters service" + observabilityReleaseMarkers))
+		case "/api-metrics":
+			_, _ = w.Write([]byte(completeAPIMetricsArtifact + observabilityReleaseMarkers))
+		case "/rust-metrics":
+			_, _ = w.Write([]byte(completeRustMetricsArtifact + observabilityReleaseMarkers))
+		case "/traces":
+			_, _ = w.Write([]byte("trace 11112222333344445555666677778888 scriptureforge-api scriptureforge-rust-engine found route=/api/v1/ai/generate/study method=POST" + observabilityReleaseMarkers))
+		case "/logs":
+			_, _ = w.Write([]byte(`{"trace_id":"11112222333344445555666677778888","service":"scriptureforge-api","downstream":"scriptureforge-rust-engine","service_version":"staging-1","deployment_environment":"staging"} route=/api/v1/ai/generate/study method=POST tenant_id=org-other user_id=user-other role=member tenant_id=org-staging user_id=user-staging role=admin distinct_otel_artifacts=true ` + observabilityReleaseMarkers))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := runWithClient(otelConfig(), &output, clientForHTTPServer(t, server))
+	if err == nil {
+		t.Fatalf("expected mismatched log principal event to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "log-backend-trace-correlation") {
+		t.Fatalf("report missing log correlation probe:\n%s", output.String())
+	}
+}
+
 func TestRunRejectsBroadTraceAndLogQueries(t *testing.T) {
 	var output bytes.Buffer
 	err := run(config{
@@ -367,6 +425,33 @@ func TestRunEmitsAlertEvidenceWhenAlertProofsPass(t *testing.T) {
 		}
 	}
 	assertProbeSummariesIncludeMarkers(t, result.Probes, requiredAlertSummaryMarkers)
+}
+
+func TestRunFailsWhenAlertDeliveryBindsWrongAlertIdentity(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/dashboard":
+			_, _ = w.Write([]byte("ScriptureForge production overview dashboard scriptureforge_http_requests_total scriptureforge_http_request_duration_seconds_sum websocket_active_connections_count room_broadcast ai_inference_duration_seconds scriptureforge_rust_engine_ trace_id" + observabilityReleaseMarkers))
+		case "/rules":
+			_, _ = w.Write([]byte(completeAlertRulesArtifact + observabilityReleaseMarkers))
+		case "/alertmanager":
+			_, _ = w.Write([]byte("success delivered test alert alertmanager alertname=OtherAlert receiver=other-team delivery_id=am-delivery-123 alertname=ScriptureForgeHighErrorRate receiver=staging-release " + observabilityReleaseMarkers))
+		case "/retention":
+			_, _ = w.Write([]byte("retention: trace logs metrics 30 days distinct_alert_artifacts=true" + observabilityReleaseMarkers))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := runWithClient(alertConfig(), &output, clientForHTTPServer(t, server))
+	if err == nil {
+		t.Fatalf("expected mismatched alert identity to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "alert-delivery-status") {
+		t.Fatalf("report missing alert delivery probe:\n%s", output.String())
+	}
 }
 
 func TestRunRejectsContradictoryAlertDeliveryEvidence(t *testing.T) {

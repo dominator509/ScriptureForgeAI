@@ -122,6 +122,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **OBS Regression Test Guard**: `tools/validate-observability.test.mjs` proves the current dashboard/alert/runbook/source artifacts pass and rejects drift that drops AI inference dashboard metrics, room broadcast drop alerts, API trace ID guards, Rust traceparent observability, or external Rust metrics staging proof; the local tooling-test gate, GitHub Actions tooling-test command, and `tools/validate-ci-workflow.mjs` all require this test.
 - [x] **OBS Dashboard/Alert Segment Guard**: strict-release validation now requires `dashboard-import`, `alert-rules-loaded`, `alert-delivery-status`, and `telemetry-retention-policy` to each carry their own dashboard, rule, delivery, and retention markers before `OBS-ALERT-001` can support final readiness.
 - [x] **OBS Alert Delivery Identity Guard**: `tools/observabilityprobe`, the staging evidence recorder, and strict-release validation require `OBS-ALERT-001` alert-delivery proof to carry concrete `alertname=<alert_name>`, `receiver=<alert_receiver>`, and `delivery_id=<id>` markers, with `alert_name` and `alert_receiver` persisted in the probe JSON report, so generic Alertmanager success text cannot satisfy production alert-delivery evidence.
+- [x] **OBS Extracted Identity Binding Guard**: `tools/observabilityprobe` rejects trace/log/alert artifacts when extracted `trace_id`, `route`, `method`, `tenant_id`, `user_id`, `role`, `alertname`, or `receiver` values do not match the configured probe inputs, so later matching marker text cannot mask a different first telemetry or Alertmanager event.
 - [x] **Resilience Structured Recovery Marker Guard**: `tools/resilienceprobe` now emits exact `snapshot_id=<id>`, `rpo_minutes=<n>`, `restore_job_id=<id>`, `source snapshot_id=<id>`, `rto_minutes=<n>`, and `restore_duration_minutes=<n>` summary markers matching its structured JSON fields, so `DR-BACKUP-001` probe output is directly recordable by the stricter staging evidence recorder.
 - [x] **OBS Distinct Artifact Guard**: `tools/observabilityprobe`, the staging evidence recorder, and strict staging validation require collector/API metrics/Rust metrics/trace/log proof to use distinct artifact URLs with `distinct_otel_artifacts=true`, and dashboard/rules/delivery/retention proof to use distinct artifact URLs with `distinct_alert_artifacts=true`.
 - [x] **OBS Artifact Alias Guard**: `tools/observabilityprobe` canonicalizes OTEL and alert evidence artifact URLs before distinctness checks, so default-port, host-case, query-order, or fragment aliases cannot satisfy separate collector, metrics, trace, log, dashboard, rule, delivery, or retention proof roles.
@@ -321,11 +322,11 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 1
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: b05fbb804e306d4a3cac46ad4d086f24d96ce522
+- expected_release_candidate: 2529efb450807c3403ce34e71e2b83e164cc4c5f
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: b05fbb804e306d4a3cac46ad4d086f24d96ce522
+    - expected_release_candidate: 2529efb450807c3403ce34e71e2b83e164cc4c5f
     - actual_release_candidate: ce96c283410756444a63b1345646fc69cf274d22
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
     - required: tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted
