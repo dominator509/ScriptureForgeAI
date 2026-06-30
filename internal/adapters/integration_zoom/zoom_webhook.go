@@ -221,15 +221,16 @@ func (h *WebhookHandler) HandleZoomWebhook(w http.ResponseWriter, r *http.Reques
 		_ = json.NewEncoder(w).Encode(response)
 		return
 	}
+	deliveryID, ok := h.beginDelivery(r, payload, bodyBytes)
+	if !ok {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	meetingID := payload.Payload.Object.Id
 	roomID, ok := h.resolveRoomID(r.Context(), meetingID)
 	if !ok {
 		log.Printf("Webhook: No live room mapping for Zoom meeting %s", meetingID)
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	deliveryID, ok := h.beginDelivery(r, payload, bodyBytes)
-	if !ok {
+		h.finishDelivery(deliveryID, false)
 		w.WriteHeader(http.StatusOK)
 		return
 	}

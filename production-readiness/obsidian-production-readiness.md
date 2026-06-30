@@ -327,11 +327,11 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 2
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: bf691731af0e7cd0e537c0bc1410a51b02254c64
+- expected_release_candidate: b9a715c2adf4ab29d9ed5bc6fde7fd5d4bc92f95
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: bf691731af0e7cd0e537c0bc1410a51b02254c64
+    - expected_release_candidate: b9a715c2adf4ab29d9ed5bc6fde7fd5d4bc92f95
     - actual_release_candidate: ce96c283410756444a63b1345646fc69cf274d22
   - STAGING-EVIDENCE-CONTRACT [failed]: Environment-specific pending evidence requirements are stale relative to production-readiness/staging-evidence.example.json.
     - required: PERF-HTTP-001 required_evidence must be refreshed from the checked-in example contract (5 current entries, 5 expected entries)

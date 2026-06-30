@@ -118,6 +118,54 @@ func TestZoomWebhookMapsMeetingToRoomAndIsDuplicateSafe(t *testing.T) {
 	}
 }
 
+func TestZoomWebhookConcurrentDuplicateDoesNotRepeatRoomLookup(t *testing.T) {
+	t.Setenv("ZOOM_WEBHOOK_SECRET_TOKEN", "secret")
+	stateManager := &fakeRoomStateManager{}
+	handler := NewWebhookHandler(stateManager)
+	lookupStarted := make(chan struct{})
+	releaseLookup := make(chan struct{})
+	var once sync.Once
+	var lookupCount int
+	handler.ResolveRoomID = func(ctx context.Context, meetingID string) (string, error) {
+		once.Do(func() { close(lookupStarted) })
+		lookupCount++
+		<-releaseLookup
+		return "room-abc", nil
+	}
+
+	body := `{"event":"meeting.started","payload":{"object":{"id":"zoom-meeting-123","topic":"Study"}}}`
+	first := signedZoomRequest(t, body, "secret")
+	first.Header.Set("x-zm-trackingid", "concurrent-delivery")
+	firstRecorder := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		handler.HandleZoomWebhook(firstRecorder, first)
+	}()
+	<-lookupStarted
+
+	duplicate := signedZoomRequest(t, body, "secret")
+	duplicate.Header.Set("x-zm-trackingid", "concurrent-delivery")
+	duplicateRecorder := httptest.NewRecorder()
+	handler.HandleZoomWebhook(duplicateRecorder, duplicate)
+	close(releaseLookup)
+	<-done
+
+	if duplicateRecorder.Code != http.StatusOK {
+		t.Fatalf("concurrent duplicate status = %d, want 200", duplicateRecorder.Code)
+	}
+	if firstRecorder.Code != http.StatusOK {
+		t.Fatalf("first delivery status = %d, want 200", firstRecorder.Code)
+	}
+	if lookupCount != 1 {
+		t.Fatalf("room lookup count = %d, want one lookup for concurrent duplicate delivery", lookupCount)
+	}
+	changes := stateManager.snapshot()
+	if len(changes) != 1 || changes[0].roomID != "room-abc" || !changes[0].active {
+		t.Fatalf("state changes = %#v, want one active mapped update", changes)
+	}
+}
+
 func TestZoomWebhookDoesNotMutateStateWhenMeetingMappingIsMissing(t *testing.T) {
 	t.Setenv("ZOOM_WEBHOOK_SECRET_TOKEN", "secret")
 	stateManager := &fakeRoomStateManager{}
