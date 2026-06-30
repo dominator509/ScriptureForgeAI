@@ -291,16 +291,16 @@ const resilienceSegmentMarkerRequirements = new Map([
   ['restored-database-smoke', ['staging artifact', 'smoke passed', 'restored database', 'tenant', 'journal', 'auth', 'RLS', 'migration version', 'no plaintext journal', 'distinct_backup_artifacts=true', 'release_candidate=', 'service_version=', 'load_run_id=']],
 ]);
 const terraformSegmentMarkerRequirements = new Map([
-  ['terraform-remote-backend-init', ['staging artifact', 'terraform', 's3', 'backend', 'bucket', 'key', 'encrypt=true', 'dynamodb_table', 'successfully initialized', 'release_candidate=', 'service_version=']],
-  ['terraform-staging-plan', ['staging artifact', 'Terraform', 'Plan:', 'aws_eks_cluster', 'aws_eks_node_group', 'aws_rds_cluster', 'aws_elasticache_replication_group', 'aws_ecr_repository', 'kubernetes_deployment', 'kubernetes_ingress_v1', 'kubernetes_horizontal_pod_autoscaler_v2', 'kubernetes_pod_disruption_budget_v1', 'kubernetes_manifest', 'aws_iam_role', 'release_candidate=', 'service_version=']],
+  ['terraform-remote-backend-init', ['staging artifact', 'terraform', 's3', 'backend', 'bucket', 'key', 'encrypt=true', 'dynamodb_table', 'successfully initialized', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['terraform-staging-plan', ['staging artifact', 'Terraform', 'Plan:', 'aws_eks_cluster', 'aws_eks_node_group', 'aws_rds_cluster', 'aws_elasticache_replication_group', 'aws_ecr_repository', 'kubernetes_deployment', 'kubernetes_ingress_v1', 'kubernetes_horizontal_pod_autoscaler_v2', 'kubernetes_pod_disruption_budget_v1', 'kubernetes_manifest', 'aws_iam_role', 'release_candidate=', 'service_version=', 'load_run_id=']],
 ]);
 const terraformApplyOrApprovalSegmentMarkerSets = [
-  ['staging artifact', 'Apply complete', 'Resources:', '0 destroyed', 'release_candidate=', 'service_version=', 'distinct_terraform_artifacts=true'],
-  ['staging artifact', 'deployment approval', 'approved', 'DEPLOY-TF-001', 'change_ticket=', 'release_candidate=', 'service_version=', 'distinct_terraform_artifacts=true'],
+  ['staging artifact', 'Apply complete', 'Resources:', '0 destroyed', 'release_candidate=', 'service_version=', 'load_run_id=', 'distinct_terraform_artifacts=true'],
+  ['staging artifact', 'deployment approval', 'approved', 'DEPLOY-TF-001', 'change_ticket=', 'release_candidate=', 'service_version=', 'load_run_id=', 'distinct_terraform_artifacts=true'],
 ];
 const kubernetesSegmentMarkerRequirements = new Map([
-  ['kubernetes-rollout-status', ['staging artifact', 'namespace', 'staging', 'deployment', 'scriptureforge-api', 'scriptureforge-web', 'scriptureforge-rust-engine', 'successfully rolled out', 'ready', 'available', 'release_candidate=', 'service_version=']],
-  ['kubernetes-workload-resources', ['staging artifact', 'namespace', 'staging', 'deployment', 'service', 'ingress', 'hpa', 'pdb', 'ready', 'available', 'targets', 'minavailable', 'readinessProbe', 'livenessProbe', 'rollingUpdate', 'maxUnavailable=0', 'minReplicas', 'maxReplicas', 'tls', 'SecretProviderClass', 'image', 'sha256:', 'release_candidate=', 'service_version=', 'scriptureforge-api', 'scriptureforge-web', 'scriptureforge-rust-engine', 'distinct_kubernetes_artifacts=true']],
+  ['kubernetes-rollout-status', ['staging artifact', 'namespace', 'staging', 'deployment', 'scriptureforge-api', 'scriptureforge-web', 'scriptureforge-rust-engine', 'successfully rolled out', 'ready', 'available', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['kubernetes-workload-resources', ['staging artifact', 'namespace', 'staging', 'deployment', 'service', 'ingress', 'hpa', 'pdb', 'ready', 'available', 'targets', 'minavailable', 'readinessProbe', 'livenessProbe', 'rollingUpdate', 'maxUnavailable=0', 'minReplicas', 'maxReplicas', 'tls', 'SecretProviderClass', 'image', 'sha256:', 'release_candidate=', 'service_version=', 'load_run_id=', 'scriptureforge-api', 'scriptureforge-web', 'scriptureforge-rust-engine', 'distinct_kubernetes_artifacts=true']],
 ]);
 const rustSegmentMarkerRequirements = new Map([
   ['rust-grpc-health', ['staging artifact', 'grpc health', 'scriptureforge.engine.ScriptureEngine', 'SERVING', 'release_candidate=', 'service_version=', 'deployment_environment=']],

@@ -714,6 +714,24 @@ test('validateManifest strict release rejects Terraform init and plan segments w
   );
 });
 
+test('validateManifest strict release rejects Terraform deployment segments without load run binding', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'DEPLOY-TF-001');
+  item.evidence[0].result_summary = item.evidence[0].result_summary
+    .replace(
+      'terraform-remote-backend-init staging artifact terraform s3 backend bucket key encrypt=true dynamodb_table successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123',
+      'terraform-remote-backend-init staging artifact terraform s3 backend bucket key encrypt=true dynamodb_table successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567',
+    );
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /DEPLOY-TF-001 strict release evidence must include Terraform markers on terraform-remote-backend-init/,
+  );
+});
+
 test('validateManifest strict release rejects Terraform plan proof borrowed from backend segment', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
@@ -832,6 +850,24 @@ test('validateManifest strict release rejects Kubernetes rollout without release
     .replace(
       ' successfully rolled out ready available release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123;',
       ' successfully rolled out ready available;',
+    );
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /DEPLOY-K8S-001 strict release evidence must include Kubernetes markers on kubernetes-rollout-status/,
+  );
+});
+
+test('validateManifest strict release rejects Kubernetes rollout without load run binding', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'DEPLOY-K8S-001');
+  item.evidence[0].result_summary = item.evidence[0].result_summary
+    .replace(
+      ' successfully rolled out ready available release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123;',
+      ' successfully rolled out ready available release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567;',
     );
 
   assert.throws(

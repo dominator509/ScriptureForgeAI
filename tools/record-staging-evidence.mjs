@@ -920,6 +920,8 @@ function validateKubernetesEvidence(report, manifest) {
     return;
   }
   assertReportReleaseMatchesManifest(report, manifest, 'DEPLOY-K8S-001');
+  const reportLoadRunID = String(report.load_run_id ?? '').trim();
+  const probeLoadRunIDs = new Set();
   const probes = Array.isArray(report.probes) ? report.probes : [];
   const probesByName = new Map(probes.map((probe) => [probe.name, probe]));
   const artifactTargets = [];
@@ -932,7 +934,8 @@ function validateKubernetesEvidence(report, manifest) {
     assertNonLocalOrPrivateTarget(target, `${name} target must not be local/self-test: ${target}`);
     artifactTargets.push([name, target]);
     const summary = String(probe.result_summary ?? '');
-    assertSummaryIncludesMarkers(name, summary, requiredKubernetesProbeSummaryMarkers.get(name) ?? []);
+    const probeLoadRunMarker = assertProbeLoadRunBinding(name, summary, reportLoadRunID, probeLoadRunIDs);
+    assertSummaryIncludesMarkers(name, summary, [...(requiredKubernetesProbeSummaryMarkers.get(name) ?? []), probeLoadRunMarker]);
     assertSummaryExcludesMarkers(name, summary, forbiddenDeploymentSummaryMarkers);
     if (name === 'kubernetes-workload-resources') {
       const digestCount = countImmutableImageDigests(summary);
@@ -944,6 +947,7 @@ function validateKubernetesEvidence(report, manifest) {
     }
   }
   assertDistinctReportURLs('DEPLOY-K8S-001', artifactTargets);
+  assertSingleProbeLoadRun('DEPLOY-K8S-001', probeLoadRunIDs);
 }
 
 function countImmutableImageDigests(summary) {
@@ -1080,6 +1084,8 @@ function validateTerraformEvidence(report, manifest) {
     return;
   }
   assertReportReleaseMatchesManifest(report, manifest, 'DEPLOY-TF-001');
+  const reportLoadRunID = String(report.load_run_id ?? '').trim();
+  const probeLoadRunIDs = new Set();
   const requiredProbes = new Set([
     'terraform-remote-backend-init',
     'terraform-staging-plan',
@@ -1097,10 +1103,12 @@ function validateTerraformEvidence(report, manifest) {
     assertNonLocalOrPrivateTarget(target, `${probe.name} target must not be local/self-test: ${target}`);
     terraformArtifactTargets.push([`${probe.name} target`, target]);
     const summary = String(probe.result_summary ?? '');
+    const probeLoadRunMarker = assertProbeLoadRunBinding(probe.name, summary, reportLoadRunID, probeLoadRunIDs);
     assertSummaryExcludesMarkers(probe.name, summary, forbiddenDeploymentSummaryMarkers);
     if (probe.name === 'terraform-staging-apply-or-approval') {
       const matchedSet = terraformApplyOrApprovalSummaryMarkerSets.find((markers) => summaryIncludesAll(summary, markers));
       assert.ok(matchedSet, 'terraform-staging-apply-or-approval result_summary must include apply-complete or deployment-approval markers');
+      assertSummaryIncludesMarkers(probe.name, summary, [probeLoadRunMarker]);
       if (summaryIncludesAll(summary, ['deployment approval', 'approved', 'DEPLOY-TF-001'])) {
         assert.match(summary, terraformApprovalChangeTicketPattern, 'terraform-staging-apply-or-approval deployment approval summary must include change_ticket=<ticket-id>');
         const changeTicket = String(probe.change_ticket ?? '').trim();
@@ -1111,10 +1119,11 @@ function validateTerraformEvidence(report, manifest) {
         );
       }
     } else {
-      assertSummaryIncludesMarkers(probe.name, summary, requiredTerraformProbeSummaryMarkers.get(probe.name) ?? []);
+      assertSummaryIncludesMarkers(probe.name, summary, [...(requiredTerraformProbeSummaryMarkers.get(probe.name) ?? []), probeLoadRunMarker]);
     }
   }
   assertDistinctReportURLs('DEPLOY-TF-001', terraformArtifactTargets);
+  assertSingleProbeLoadRun('DEPLOY-TF-001', probeLoadRunIDs);
   assert.equal(requiredProbes.size, 0, `DEPLOY-TF-001 report missing probes: ${[...requiredProbes].join(', ')}`);
 }
 
