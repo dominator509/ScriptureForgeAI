@@ -360,8 +360,10 @@ func TestRunEmitsAlertEvidenceWhenAlertProofsPass(t *testing.T) {
 		t.Fatalf("unexpected alert identity: %+v", result)
 	}
 	for _, probe := range result.Probes {
-		if probe.Name == "alert-delivery-status" && probe.DeliveryID != "am-delivery-123" {
-			t.Fatalf("alert delivery_id = %q, want %q", probe.DeliveryID, "am-delivery-123")
+		if probe.Name == "alert-delivery-status" {
+			if probe.AlertName != result.AlertName || probe.AlertReceiver != result.AlertReceiver || probe.DeliveryID != "am-delivery-123" {
+				t.Fatalf("alert delivery structured fields mismatch: %+v report=%+v", probe, result)
+			}
 		}
 	}
 	assertProbeSummariesIncludeMarkers(t, result.Probes, requiredAlertSummaryMarkers)

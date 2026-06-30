@@ -1747,7 +1747,13 @@ function validateObservabilityEvidence(report, manifest) {
     assert.match(alertName, /^\S+$/, 'OBS-ALERT-001 report must include alert_name as a concrete token');
     assert.match(alertReceiver, /^\S+$/, 'OBS-ALERT-001 report must include alert_receiver as a concrete token');
     const deliveryProbe = observedProbes.get('alert-delivery-status');
+    const deliveryAlertName = String(deliveryProbe?.alert_name ?? '').trim();
+    const deliveryAlertReceiver = String(deliveryProbe?.alert_receiver ?? '').trim();
     const deliveryID = String(deliveryProbe?.delivery_id ?? '').trim();
+    assert.match(deliveryAlertName, observabilityPrincipalPattern, 'OBS-ALERT-001 alert-delivery-status probe must include structured alert_name');
+    assert.match(deliveryAlertReceiver, observabilityPrincipalPattern, 'OBS-ALERT-001 alert-delivery-status probe must include structured alert_receiver');
+    assert.equal(deliveryAlertName, alertName, 'OBS-ALERT-001 alert-delivery-status structured alert_name must match report alert_name');
+    assert.equal(deliveryAlertReceiver, alertReceiver, 'OBS-ALERT-001 alert-delivery-status structured alert_receiver must match report alert_receiver');
     assert.match(deliveryID, observabilityDeliveryIDPattern, 'OBS-ALERT-001 alert-delivery-status probe must include structured delivery_id');
     assertSummaryIncludesMarkers('alert-delivery-status', String(deliveryProbe?.result_summary ?? ''), [
       `alertname=${alertName}`,

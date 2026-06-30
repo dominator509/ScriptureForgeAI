@@ -514,6 +514,12 @@ function observabilityProbeReportProbe(name, overrides = {}) {
   if (name === 'alert-delivery-status' && !Object.hasOwn(overrides, 'delivery_id')) {
     probe.delivery_id = 'am-delivery-123';
   }
+  if (name === 'alert-delivery-status' && !Object.hasOwn(overrides, 'alert_name')) {
+    probe.alert_name = 'ScriptureForgeHighErrorRate';
+  }
+  if (name === 'alert-delivery-status' && !Object.hasOwn(overrides, 'alert_receiver')) {
+    probe.alert_receiver = 'staging-release';
+  }
   if ((name === 'trace-backend-search' || name === 'log-backend-trace-correlation') && !Object.hasOwn(overrides, 'trace_id')) {
     probe.trace_id = observabilityTraceID;
   }
@@ -5035,6 +5041,58 @@ test('recordEvidence rejects observability alert delivery evidence without struc
       'go run ./tools/observabilityprobe -probe-alerts',
     ),
     /OBS-ALERT-001 alert-delivery-status probe must include structured delivery_id/,
+  );
+});
+
+test('recordEvidence rejects observability alert delivery evidence without structured alert identity', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'OBS-ALERT-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        alert_name: 'ScriptureForgeHighErrorRate',
+        alert_receiver: 'staging-release',
+        evidence_items: ['OBS-ALERT-001'],
+        probes: observabilityProbeReportProbes([
+          'dashboard-import',
+          'alert-rules-loaded',
+          'alert-delivery-status',
+          'telemetry-retention-policy',
+        ], (name) => (name === 'alert-delivery-status' ? { alert_name: undefined } : {})),
+      },
+      'artifacts/observabilityprobe.json',
+      'go run ./tools/observabilityprobe -probe-alerts',
+    ),
+    /OBS-ALERT-001 alert-delivery-status probe must include structured alert_name/,
+  );
+});
+
+test('recordEvidence rejects observability alert delivery evidence with mismatched structured receiver', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'OBS-ALERT-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        alert_name: 'ScriptureForgeHighErrorRate',
+        alert_receiver: 'staging-release',
+        evidence_items: ['OBS-ALERT-001'],
+        probes: observabilityProbeReportProbes([
+          'dashboard-import',
+          'alert-rules-loaded',
+          'alert-delivery-status',
+          'telemetry-retention-policy',
+        ], (name) => (name === 'alert-delivery-status' ? { alert_receiver: 'other-receiver' } : {})),
+      },
+      'artifacts/observabilityprobe.json',
+      'go run ./tools/observabilityprobe -probe-alerts',
+    ),
+    /OBS-ALERT-001 alert-delivery-status structured alert_receiver must match report alert_receiver/,
   );
 });
 

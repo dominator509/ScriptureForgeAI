@@ -18,6 +18,8 @@ import (
 
 var (
 	alertDeliveryIDPattern = regexp.MustCompile(`(?i)\bdelivery_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
+	alertNamePattern       = regexp.MustCompile(`(?i)\balertname=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
+	alertReceiverPattern   = regexp.MustCompile(`(?i)\breceiver=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
 	traceIDPattern         = regexp.MustCompile(`\b([0-9a-f]{32})\b`)
 	routePattern           = regexp.MustCompile(`(?i)\broute=([^\s,;]+)`)
 	methodPattern          = regexp.MustCompile(`(?i)\bmethod=([A-Z]+)\b`)
@@ -85,6 +87,8 @@ type probeResult struct {
 	TenantID      string `json:"tenant_id,omitempty"`
 	UserID        string `json:"user_id,omitempty"`
 	Role          string `json:"role,omitempty"`
+	AlertName     string `json:"alert_name,omitempty"`
+	AlertReceiver string `json:"alert_receiver,omitempty"`
 	DeliveryID    string `json:"delivery_id,omitempty"`
 	ResultSummary string `json:"result_summary"`
 }
@@ -557,6 +561,8 @@ func probeContains(client *http.Client, name, target string, required []string, 
 	tenantID := ""
 	userID := ""
 	role := ""
+	alertName := ""
+	alertReceiver := ""
 	if name == "trace-backend-search" || name == "log-backend-trace-correlation" {
 		traceID = extractMatch(text, traceIDPattern)
 		observedRoute = extractMatch(text, routePattern)
@@ -574,8 +580,10 @@ func probeContains(client *http.Client, name, target string, required []string, 
 		}
 	}
 	if name == "alert-delivery-status" {
+		alertName = extractMatch(text, alertNamePattern)
+		alertReceiver = extractMatch(text, alertReceiverPattern)
 		deliveryID = extractMatch(text, alertDeliveryIDPattern)
-		if deliveryID == "" {
+		if alertName == "" || alertReceiver == "" || deliveryID == "" {
 			passed = false
 		}
 	}
@@ -601,6 +609,8 @@ func probeContains(client *http.Client, name, target string, required []string, 
 		TenantID:      tenantID,
 		UserID:        userID,
 		Role:          role,
+		AlertName:     alertName,
+		AlertReceiver: alertReceiver,
 		DeliveryID:    deliveryID,
 		ResultSummary: summary,
 	}
