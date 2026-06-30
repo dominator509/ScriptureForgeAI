@@ -1829,6 +1829,48 @@ test('recordEvidence rejects mobile evidence without verified marker summaries',
   );
 });
 
+test('recordEvidence rejects mobile native crypto evidence without concrete associated-data salt values', () => {
+  for (const [summary, expected] of [
+    [
+      mobileProbeMarkerSummaries['mobile-native-crypto-smoke']
+        .replace('associated_data_salt_id=journal:self-test:server-derived-salt', 'associated_data_salt_id='),
+      /mobile-native-crypto-smoke probe must include structured associated_data_salt_id/,
+    ],
+    [
+      mobileProbeMarkerSummaries['mobile-native-crypto-smoke']
+        .replace('associated_data_salt_version=1', 'associated_data_salt_version=0'),
+      /mobile-native-crypto-smoke probe must include positive structured associated_data_salt_version/,
+    ],
+  ]) {
+    assert.throws(
+      () => recordEvidence(
+        { release_candidate: 'abc123', items: [{ id: 'CLIENT-MOBILE-001' }] },
+        {
+          observed_at: '2026-06-25T12:00:00Z',
+          threshold_pass: true,
+          release_candidate: 'abc123',
+          service_version: 'scriptureforge-mobile:abc123',
+          evidence_items: ['CLIENT-MOBILE-001'],
+          probes: [
+            mobileEASProbe(),
+            {
+              name: 'mobile-native-crypto-smoke',
+              passed: true,
+              target: 'https://artifacts.staging.scriptureforge.ai/mobile/native-crypto-smoke.txt',
+              status_code: 200,
+              result_summary: summary,
+            },
+            mobileConfigProbe(),
+          ],
+        },
+        'artifacts/mobileprobe.json',
+        'go run ./tools/mobileprobe',
+      ),
+      expected,
+    );
+  }
+});
+
 test('recordEvidence rejects mobile evidence without installed staging app proof', () => {
   assert.throws(
     () => recordEvidence(

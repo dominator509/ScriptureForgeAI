@@ -102,6 +102,8 @@ const mobileAPIBaseURLPattern = /\bEXPO_PUBLIC_API_BASE_URL=(https:\/\/\S+)\b/i;
 const mobileWSBaseURLPattern = /\bEXPO_PUBLIC_WS_BASE_URL=(wss:\/\/\S+)\b/i;
 const mobileRequireNativeCryptoPattern = /\bEXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true\b/i;
 const mobileDeploymentEnvironmentPattern = /\bEXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging\b/i;
+const mobileAssociatedDataSaltIDPattern = /\bassociated_data_salt_id=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b/i;
+const mobileAssociatedDataVersionPattern = /\bassociated_data_salt_version=([1-9][0-9]*)\b/i;
 const webSmokeUserIDPattern = /\buser_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const webSmokeOrganizationIDPattern = /\borganization_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const webSmokeJournalIDPattern = /\bjournal_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
@@ -1552,6 +1554,17 @@ function validateStrictReleaseItemEvidence(item, manifest) {
       easSegment,
       mobileExpoProfilePattern,
       'CLIENT-MOBILE-001 mobile-eas-or-device-run must include expo_profile=staging',
+    );
+    const cryptoSegment = findEvidenceSegment(evidence, 'mobile-native-crypto-smoke');
+    assert.match(
+      cryptoSegment,
+      mobileAssociatedDataSaltIDPattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include concrete associated_data_salt_id',
+    );
+    assert.match(
+      cryptoSegment,
+      mobileAssociatedDataVersionPattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include positive associated_data_salt_version',
     );
     const configSegment = findEvidenceSegment(evidence, 'mobile-staging-config');
     assert.match(

@@ -24,6 +24,8 @@ var (
 	mobileWSBaseURLPattern             = regexp.MustCompile(`(?i)\bEXPO_PUBLIC_WS_BASE_URL=(wss://[^\s;,]+)\b`)
 	mobileRequireNativeCryptoPattern   = regexp.MustCompile(`(?i)\bEXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=(true|false)\b`)
 	mobileDeploymentEnvironmentPattern = regexp.MustCompile(`(?i)\bEXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=([A-Za-z0-9_.:-]+)\b`)
+	mobileAssociatedDataSaltIDPattern  = regexp.MustCompile(`(?i)\bassociated_data_salt_id=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b`)
+	mobileAssociatedDataVersionPattern = regexp.MustCompile(`(?i)\bassociated_data_salt_version=([1-9][0-9]*)\b`)
 )
 
 type config struct {
@@ -59,6 +61,8 @@ type probeResult struct {
 	WSBaseURL             string `json:"ws_base_url,omitempty"`
 	RequireNativeCrypto   string `json:"require_native_crypto,omitempty"`
 	DeploymentEnvironment string `json:"deployment_environment,omitempty"`
+	AssociatedDataSaltID  string `json:"associated_data_salt_id,omitempty"`
+	AssociatedDataVersion string `json:"associated_data_salt_version,omitempty"`
 	ResultSummary         string `json:"result_summary"`
 }
 
@@ -186,11 +190,20 @@ func probeArtifact(client *http.Client, name, target string, required []string, 
 	wsBaseURL := ""
 	requireNativeCrypto := ""
 	deploymentEnvironment := ""
+	associatedDataSaltID := ""
+	associatedDataVersion := ""
 	if name == "mobile-eas-or-device-run" {
 		platforms = extractMatch(text, mobilePlatformsPattern)
 		releaseChannel = extractMatch(text, mobileReleaseChannelPattern)
 		expoProfile = extractMatch(text, mobileExpoProfilePattern)
 		if platforms == "" || !containsAllFold(platforms, []string{"android", "ios"}) || releaseChannel != "staging" || expoProfile != "staging" {
+			passed = false
+		}
+	}
+	if name == "mobile-native-crypto-smoke" {
+		associatedDataSaltID = extractMatch(text, mobileAssociatedDataSaltIDPattern)
+		associatedDataVersion = extractMatch(text, mobileAssociatedDataVersionPattern)
+		if associatedDataSaltID == "" || associatedDataVersion == "" {
 			passed = false
 		}
 	}
@@ -211,11 +224,14 @@ func probeArtifact(client *http.Client, name, target string, required []string, 
 		if name == "mobile-eas-or-device-run" {
 			summary += fmt.Sprintf(", platforms=%s, release_channel=%s, expo_profile=%s", platforms, releaseChannel, expoProfile)
 		}
+		if name == "mobile-native-crypto-smoke" {
+			summary += fmt.Sprintf(", associated_data_salt_id=%s, associated_data_salt_version=%s", associatedDataSaltID, associatedDataVersion)
+		}
 		if name == "mobile-staging-config" {
 			summary += fmt.Sprintf(", EXPO_PUBLIC_API_BASE_URL=%s, EXPO_PUBLIC_WS_BASE_URL=%s, EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=%s, EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=%s", apiBaseURL, wsBaseURL, requireNativeCrypto, deploymentEnvironment)
 		}
 	}
-	return probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, Platforms: platforms, ReleaseChannel: releaseChannel, ExpoProfile: expoProfile, APIBaseURL: apiBaseURL, WSBaseURL: wsBaseURL, RequireNativeCrypto: requireNativeCrypto, DeploymentEnvironment: deploymentEnvironment, ResultSummary: summary}
+	return probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, Platforms: platforms, ReleaseChannel: releaseChannel, ExpoProfile: expoProfile, APIBaseURL: apiBaseURL, WSBaseURL: wsBaseURL, RequireNativeCrypto: requireNativeCrypto, DeploymentEnvironment: deploymentEnvironment, AssociatedDataSaltID: associatedDataSaltID, AssociatedDataVersion: associatedDataVersion, ResultSummary: summary}
 }
 
 func enrichNativeCryptoProbe(probe probeResult) probeResult {

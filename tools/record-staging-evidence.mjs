@@ -227,6 +227,10 @@ const mobileAPIBaseURLPattern = /^https:\/\/\S+$/;
 const mobileWSBaseURLPattern = /^wss:\/\/\S+$/;
 const mobileRequireNativeCryptoPattern = /^true$/i;
 const mobileDeploymentEnvironmentPattern = /^staging$/i;
+const mobileAssociatedDataSaltIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
+const mobileAssociatedDataVersionPattern = /^[1-9][0-9]*$/;
+const mobileAssociatedDataSaltIDSummaryPattern = /\bassociated_data_salt_id=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b/i;
+const mobileAssociatedDataVersionSummaryPattern = /\bassociated_data_salt_version=([1-9][0-9]*)\b/i;
 const tenantResourceIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const tenantOrgIDPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -999,6 +1003,11 @@ function canonicalReportHost(value) {
     .replace(/\.+$/g, '');
 }
 
+function extractFirstMatch(value, pattern) {
+  const match = String(value ?? '').match(pattern);
+  return match?.[1] ?? '';
+}
+
 function targetIncludesTraceID(target, traceID) {
   const expected = String(traceID ?? '').trim().toLowerCase();
   if (!expected) {
@@ -1301,6 +1310,16 @@ function validateMobileEvidence(report, manifest) {
         `platforms=${platforms}`,
         `release_channel=${releaseChannel}`,
         `expo_profile=${expoProfile}`,
+      ]);
+    }
+    if (probe.name === 'mobile-native-crypto-smoke') {
+      const associatedDataSaltID = String(probe.associated_data_salt_id ?? extractFirstMatch(summary, mobileAssociatedDataSaltIDSummaryPattern)).trim();
+      const associatedDataVersion = String(probe.associated_data_salt_version ?? extractFirstMatch(summary, mobileAssociatedDataVersionSummaryPattern)).trim();
+      assert.match(associatedDataSaltID, mobileAssociatedDataSaltIDPattern, 'mobile-native-crypto-smoke probe must include structured associated_data_salt_id');
+      assert.match(associatedDataVersion, mobileAssociatedDataVersionPattern, 'mobile-native-crypto-smoke probe must include positive structured associated_data_salt_version');
+      assertSummaryIncludesMarkers(probe.name, summary, [
+        `associated_data_salt_id=${associatedDataSaltID}`,
+        `associated_data_salt_version=${associatedDataVersion}`,
       ]);
     }
     if (probe.name === 'mobile-staging-config') {

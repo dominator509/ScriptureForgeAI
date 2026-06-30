@@ -2147,6 +2147,34 @@ test('validateManifest strict release rejects mobile crypto proof without associ
   );
 });
 
+test('validateManifest strict release rejects mobile crypto proof without concrete associated-data salt values', () => {
+  for (const { find, replacement, expected } of [
+    {
+      find: 'associated_data_salt_id=journal:self-test:server-derived-salt',
+      replacement: 'associated_data_salt_id=',
+      expected: /CLIENT-MOBILE-001 mobile-native-crypto-smoke must include concrete associated_data_salt_id/,
+    },
+    {
+      find: 'associated_data_salt_version=1',
+      replacement: 'associated_data_salt_version=0',
+      expected: /CLIENT-MOBILE-001 mobile-native-crypto-smoke must include positive associated_data_salt_version/,
+    },
+  ]) {
+    const manifest = baseManifest({
+      releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+      statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+    });
+    const item = manifest.items.find((candidate) => candidate.id === 'CLIENT-MOBILE-001');
+    item.evidence[0].result_summary = item.evidence[0].result_summary
+      .replace(find, replacement);
+
+    assert.throws(
+      () => validateManifest(manifest, { strictRelease: true }),
+      expected,
+    );
+  }
+});
+
 test('validateManifest strict release rejects contradictory mobile staging config markers', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
