@@ -2752,6 +2752,21 @@ test('validateManifest strict release rejects rollback degradation evidence with
   );
 });
 
+test('validateManifest strict release rejects resilience evidence without segment load run marker', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'DR-ROLLBACK-001');
+  item.evidence[0].result_summary = item.evidence[0].result_summary
+    .replace('api-ready-before-rollback staging artifact ready service_version deployment_environment pre_rollback_version release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123', 'api-ready-before-rollback staging artifact ready service_version deployment_environment pre_rollback_version release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567');
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /DR-ROLLBACK-001 strict release evidence must include resilience markers on api-ready-before-rollback/,
+  );
+});
+
 test('validateManifest strict release rejects rollback evidence with admitted failed drill marker', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',

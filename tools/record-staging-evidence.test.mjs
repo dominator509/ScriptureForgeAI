@@ -6705,6 +6705,64 @@ test('recordEvidence rejects rollback degradation evidence without structured fa
   );
 });
 
+test('recordEvidence rejects resilience evidence without probe load run markers', () => {
+  const probeNames = [
+    'api-ready-before-rollback',
+    'rollback-rollout-artifact',
+    'api-ready-after-rollback',
+    'degradation-drill-artifact',
+  ];
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DR-ROLLBACK-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['DR-ROLLBACK-001'],
+        probes: resilienceProbeReportProbes(probeNames, (name) => (
+          name === 'api-ready-before-rollback'
+            ? { result_summary: resilienceProbeMarkerSummaries[name].replace(' load_run_id=load-run-123', '') }
+            : {}
+        )),
+      },
+      'artifacts/resilienceprobe.json',
+      'go run ./tools/resilienceprobe -probe-rollback',
+    ),
+    /api-ready-before-rollback result_summary must include verified marker load_run_id=/,
+  );
+});
+
+test('recordEvidence rejects resilience evidence with mixed probe load run markers', () => {
+  const probeNames = [
+    'api-ready-before-rollback',
+    'rollback-rollout-artifact',
+    'api-ready-after-rollback',
+    'degradation-drill-artifact',
+  ];
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DR-ROLLBACK-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['DR-ROLLBACK-001'],
+        probes: resilienceProbeReportProbes(probeNames, (name) => (
+          name === 'degradation-drill-artifact'
+            ? { result_summary: resilienceProbeMarkerSummaries[name].replaceAll('load_run_id=load-run-123', 'load_run_id=other-run') }
+            : {}
+        )),
+      },
+      'artifacts/resilienceprobe.json',
+      'go run ./tools/resilienceprobe -probe-rollback',
+    ),
+    /resilience report probe result_summary load_run_id values must all match/,
+  );
+});
+
 test('recordEvidence rejects backup evidence without distinct artifact marker', () => {
   const probeNames = [
     'backup-snapshot-artifact',
@@ -6776,7 +6834,7 @@ test('recordEvidence rejects rollback evidence without version linkage markers',
             passed: true,
             target: 'https://artifacts.staging.scriptureforge.ai/rollback/ready-before.json',
             status_code: 200,
-            result_summary: 'got HTTP 200; staging artifact; verified markers: ready, service_version, deployment_environment',
+            result_summary: 'got HTTP 200; staging artifact; verified markers: ready, service_version, deployment_environment, load_run_id=load-run-123',
           },
           {
             name: 'rollback-rollout-artifact',
@@ -6828,7 +6886,7 @@ test('recordEvidence rejects backup evidence without restored RLS and no-plainte
             passed: true,
             target: 'https://artifacts.staging.scriptureforge.ai/backup/restored-smoke.txt',
             status_code: 200,
-            result_summary: 'got HTTP 200; staging artifact; verified markers: smoke passed, restored database, tenant, journal',
+            result_summary: 'got HTTP 200; staging artifact; verified markers: smoke passed, restored database, tenant, journal, load_run_id=load-run-123',
           },
         ],
       },

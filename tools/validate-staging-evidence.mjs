@@ -282,13 +282,13 @@ const dbUserSegmentMarkerRequirements = new Map([
 ]);
 const dbUserPrincipalBindingPattern = /database-scoped-user(?=[^;]*connected as "?scriptureforge_app"?)(?=[^;]*current_user=scriptureforge_app)/i;
 const resilienceSegmentMarkerRequirements = new Map([
-  ['api-ready-before-rollback', ['staging artifact', 'ready', 'service_version', 'deployment_environment', 'pre_rollback_version', 'release_candidate=']],
-  ['rollback-rollout-artifact', ['staging artifact', 'rollout', 'undo', 'revision', 'previous_revision', 'target_revision', 'scriptureforge-api', 'successfully rolled out', 'release_candidate=', 'service_version=']],
-  ['api-ready-after-rollback', ['staging artifact', 'ready', 'service_version', 'deployment_environment', 'post_rollback_version', 'rolled_back_from', 'rolled_back_to', 'release_candidate=']],
-  ['degradation-drill-artifact', ['staging artifact', 'AI', 'Zoom', 'degradation', 'fallback', 'AI_ORCHESTRATION_ENGINE_FAULT', 'offline://in-person', 'non-AI routes healthy', 'zoom circuit open', 'ai_fault=true', 'zoom_offline_fallback=true', 'non_ai_routes_healthy=true', 'zoom_circuit_open=true', 'distinct_rollback_artifacts=true', 'release_candidate=', 'service_version=']],
-  ['backup-snapshot-artifact', ['staging artifact', 'snapshot', 'snapshot_id', 'available', 'encrypted', 'kms', 'retention', 'automated backup', 'source cluster', 'rpo_minutes', 'release_candidate=', 'service_version=']],
-  ['restore-drill-artifact', ['staging artifact', 'restore', 'restore_job_id', 'available', 'staging', 'restored endpoint', 'source snapshot_id', 'checksum', 'isolated restore', 'rto_minutes', 'restore_duration_minutes', 'release_candidate=', 'service_version=']],
-  ['restored-database-smoke', ['staging artifact', 'smoke passed', 'restored database', 'tenant', 'journal', 'auth', 'RLS', 'migration version', 'no plaintext journal', 'distinct_backup_artifacts=true', 'release_candidate=', 'service_version=']],
+  ['api-ready-before-rollback', ['staging artifact', 'ready', 'service_version', 'deployment_environment', 'pre_rollback_version', 'release_candidate=', 'load_run_id=']],
+  ['rollback-rollout-artifact', ['staging artifact', 'rollout', 'undo', 'revision', 'previous_revision', 'target_revision', 'scriptureforge-api', 'successfully rolled out', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['api-ready-after-rollback', ['staging artifact', 'ready', 'service_version', 'deployment_environment', 'post_rollback_version', 'rolled_back_from', 'rolled_back_to', 'release_candidate=', 'load_run_id=']],
+  ['degradation-drill-artifact', ['staging artifact', 'AI', 'Zoom', 'degradation', 'fallback', 'AI_ORCHESTRATION_ENGINE_FAULT', 'offline://in-person', 'non-AI routes healthy', 'zoom circuit open', 'ai_fault=true', 'zoom_offline_fallback=true', 'non_ai_routes_healthy=true', 'zoom_circuit_open=true', 'distinct_rollback_artifacts=true', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['backup-snapshot-artifact', ['staging artifact', 'snapshot', 'snapshot_id', 'available', 'encrypted', 'kms', 'retention', 'automated backup', 'source cluster', 'rpo_minutes', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['restore-drill-artifact', ['staging artifact', 'restore', 'restore_job_id', 'available', 'staging', 'restored endpoint', 'source snapshot_id', 'checksum', 'isolated restore', 'rto_minutes', 'restore_duration_minutes', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['restored-database-smoke', ['staging artifact', 'smoke passed', 'restored database', 'tenant', 'journal', 'auth', 'RLS', 'migration version', 'no plaintext journal', 'distinct_backup_artifacts=true', 'release_candidate=', 'service_version=', 'load_run_id=']],
 ]);
 const terraformSegmentMarkerRequirements = new Map([
   ['terraform-remote-backend-init', ['staging artifact', 'terraform', 's3', 'backend', 'bucket', 'key', 'encrypt=true', 'dynamodb_table', 'successfully initialized', 'release_candidate=', 'service_version=']],

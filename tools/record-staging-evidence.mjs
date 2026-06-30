@@ -2013,6 +2013,8 @@ function validateResilienceEvidence(report, manifest) {
       `service_version=${String(report.service_version ?? '').trim()}`,
     );
   }
+  const reportLoadRunID = String(report.load_run_id ?? '').trim();
+  const probeLoadRunIDs = new Set();
   for (const probe of probes) {
     assert.ok(requiredProbes.delete(probe.name), `resilience report includes unexpected or duplicate probe ${probe.name}`);
     assert.equal(probe.passed, true, `${probe.name} must pass`);
@@ -2026,9 +2028,21 @@ function validateResilienceEvidence(report, manifest) {
     if (backupProbeNames.has(probe.name)) {
       backupArtifactTargets.push([probe.name, target]);
     }
+    const probeSummary = String(probe.result_summary ?? '');
+    const probeLoadRunID = summaryMarkerValue(probeSummary, 'load_run_id');
+    assert.ok(probeLoadRunID, `${probe.name} result_summary must include verified marker load_run_id=`);
+    if (reportLoadRunID) {
+      assert.equal(
+        probeLoadRunID,
+        reportLoadRunID,
+        `${probe.name} result_summary load_run_id must match report load_run_id`,
+      );
+    }
+    probeLoadRunIDs.add(probeLoadRunID);
     assertSummaryIncludesMarkers(probe.name, String(probe.result_summary ?? ''), [
       ...(requiredResilienceProbeSummaryMarkers.get(probe.name) ?? []),
       ...reportReleaseMarkers,
+      `load_run_id=${probeLoadRunID}`,
     ]);
     assertSummaryExcludesMarkers(probe.name, String(probe.result_summary ?? ''), forbiddenResilienceSummaryMarkers);
     if (probe.name === 'backup-snapshot-artifact') {
@@ -2085,6 +2099,11 @@ function validateResilienceEvidence(report, manifest) {
     );
     assertDistinctReportURLs('DR-BACKUP-001', backupArtifactTargets);
   }
+  assert.equal(
+    probeLoadRunIDs.size,
+    1,
+    'resilience report probe result_summary load_run_id values must all match',
+  );
   assert.equal(requiredProbes.size, 0, `resilience report missing probes: ${[...requiredProbes].join(', ')}`);
 }
 
