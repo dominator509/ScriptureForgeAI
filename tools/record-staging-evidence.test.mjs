@@ -2836,6 +2836,60 @@ test('recordEvidence records production-grade Zoom evidence', () => {
   assert.equal(updated.items[0].status, 'passed');
 });
 
+test('recordEvidence rejects Zoom evidence without probe load run markers', () => {
+  const probeNames = Object.keys(zoomProbeMarkerSummaries);
+  assert.throws(
+    () => recordEvidence(
+      {
+        release_candidate: 'abc123',
+        items: [{ id: 'EXT-ZOOM-001', status: 'pending_external' }],
+      },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['EXT-ZOOM-001'],
+        probes: zoomProbeReportProbes(probeNames, (name) => (
+          name === 'zoom-oauth-readiness'
+            ? { result_summary: zoomProbeMarkerSummaries[name].replace(' load_run_id=load-run-123', '') }
+            : {}
+        )),
+      },
+      'artifacts/zoomprobe.json',
+      'go run ./tools/zoomprobe',
+    ),
+    /zoom-oauth-readiness result_summary must include verified marker load_run_id=/,
+  );
+});
+
+test('recordEvidence rejects Zoom evidence with mixed probe load run markers', () => {
+  const probeNames = Object.keys(zoomProbeMarkerSummaries);
+  assert.throws(
+    () => recordEvidence(
+      {
+        release_candidate: 'abc123',
+        items: [{ id: 'EXT-ZOOM-001', status: 'pending_external' }],
+      },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['EXT-ZOOM-001'],
+        probes: zoomProbeReportProbes(probeNames, (name) => (
+          name === 'zoom-meeting-room-mapping'
+            ? { result_summary: zoomProbeMarkerSummaries[name].replace('load_run_id=load-run-123', 'load_run_id=other-run') }
+            : {}
+        )),
+      },
+      'artifacts/zoomprobe.json',
+      'go run ./tools/zoomprobe',
+    ),
+    /EXT-ZOOM-001 probe result_summary load_run_id values must all match/,
+  );
+});
+
 test('recordEvidence rejects Zoom resilience evidence without structured fallback proof', () => {
   const probeNames = Object.keys(zoomProbeMarkerSummaries);
   assert.throws(
@@ -3007,7 +3061,7 @@ test('recordEvidence rejects Zoom evidence without verified marker summaries', (
         evidence_items: ['EXT-ZOOM-001'],
         probes: zoomProbeReportProbes(probeNames, (name) => ({
           result_summary: name === 'zoom-webhook-url-validation'
-            ? 'got HTTP 200; staging artifact; verified markers: endpoint.url_validation, plain_token=zoom-plain-123, validation_response=200'
+            ? 'got HTTP 200; staging artifact; verified markers: endpoint.url_validation, plain_token=zoom-plain-123, validation_response=200, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123'
             : zoomProbeMarkerSummaries[name],
         })),
       },
@@ -3053,7 +3107,7 @@ test('recordEvidence rejects Zoom evidence without signature header markers', ()
         evidence_items: ['EXT-ZOOM-001'],
         probes: zoomProbeReportProbes(probeNames, (name) => ({
           result_summary: name === 'zoom-webhook-signature-delivery'
-            ? 'got HTTP 200; staging artifact; verified markers: webhook, signature, invalid, 401, signed, 200'
+            ? 'got HTTP 200; staging artifact; verified markers: webhook, signature, invalid, 401, signed, 200, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123'
             : zoomProbeMarkerSummaries[name],
         })),
       },
@@ -3378,7 +3432,7 @@ test('recordEvidence rejects Zoom evidence without internal room mapping safegua
         evidence_items: ['EXT-ZOOM-001'],
         probes: zoomProbeReportProbes(probeNames, (name) => ({
           result_summary: name === 'zoom-meeting-room-mapping'
-            ? 'got HTTP 200; staging artifact; verified markers: meeting_external_id, live_rooms, room, mapped'
+            ? 'got HTTP 200; staging artifact; verified markers: meeting_external_id, live_rooms, room, mapped, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123'
             : zoomProbeMarkerSummaries[name],
         })),
       },
@@ -3462,6 +3516,60 @@ test('recordEvidence records production-grade AI evidence', () => {
   );
 
   assert.equal(updated.items[0].status, 'passed');
+});
+
+test('recordEvidence rejects AI evidence without probe load run markers', () => {
+  const probeNames = Object.keys(aiProbeMarkerSummaries);
+  assert.throws(
+    () => recordEvidence(
+      {
+        release_candidate: 'abc123',
+        items: [{ id: 'EXT-AI-001', status: 'pending_external' }],
+      },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['EXT-AI-001'],
+        probes: aiProbeReportProbes(probeNames, (name) => (
+          name === 'ai-provider-config'
+            ? { result_summary: aiProbeMarkerSummaries[name].replace(' load_run_id=load-run-123', '') }
+            : {}
+        )),
+      },
+      'artifacts/aiprobe.json',
+      'go run ./tools/aiprobe',
+    ),
+    /ai-provider-config result_summary must include verified marker load_run_id=/,
+  );
+});
+
+test('recordEvidence rejects AI evidence with mixed probe load run markers', () => {
+  const probeNames = Object.keys(aiProbeMarkerSummaries);
+  assert.throws(
+    () => recordEvidence(
+      {
+        release_candidate: 'abc123',
+        items: [{ id: 'EXT-AI-001', status: 'pending_external' }],
+      },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['EXT-AI-001'],
+        probes: aiProbeReportProbes(probeNames, (name) => (
+          name === 'ai-audit-persistence'
+            ? { result_summary: aiProbeMarkerSummaries[name].replace('load_run_id=load-run-123', 'load_run_id=other-run') }
+            : {}
+        )),
+      },
+      'artifacts/aiprobe.json',
+      'go run ./tools/aiprobe',
+    ),
+    /EXT-AI-001 probe result_summary load_run_id values must all match/,
+  );
 });
 
 test('recordEvidence rejects AI provider evidence without structured config values', () => {
@@ -3576,7 +3684,7 @@ test('recordEvidence rejects AI evidence without verified marker summaries', () 
         evidence_items: ['EXT-AI-001'],
         probes: aiProbeReportProbes(probeNames, (name) => ({
           result_summary: name === 'ai-audit-persistence'
-            ? 'got HTTP 200; staging artifact; verified markers: ai_request_logs, organization_id=org-123, user_id=user-123, request_id=req-123, succeeded, failed, verified'
+            ? 'got HTTP 200; staging artifact; verified markers: ai_request_logs, organization_id=org-123, user_id=user-123, request_id=req-123, succeeded, failed, verified, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123'
             : aiProbeMarkerSummaries[name],
         })),
       },
@@ -3622,7 +3730,7 @@ test('recordEvidence rejects AI evidence without provider redaction proof', () =
         evidence_items: ['EXT-AI-001'],
         probes: aiProbeReportProbes(probeNames, (name) => ({
           result_summary: name === 'ai-provider-config'
-            ? 'got HTTP 200; staging artifact; verified markers: AI_PROVIDER, AI_CHAT_MODEL, AI_CHAT_ENDPOINT, AI_HTTP_TIMEOUT_MS, AI_MAX_RETRIES, configured'
+            ? 'got HTTP 200; staging artifact; verified markers: AI_PROVIDER, AI_CHAT_MODEL, AI_CHAT_ENDPOINT, AI_HTTP_TIMEOUT_MS, AI_MAX_RETRIES, configured, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123'
             : aiProbeMarkerSummaries[name],
         })),
       },
@@ -3644,7 +3752,7 @@ test('recordEvidence rejects AI evidence without JWT claim generation proof', ()
         evidence_items: ['EXT-AI-001'],
         probes: aiProbeReportProbes(probeNames, (name) => ({
           result_summary: name === 'ai-generation-route'
-            ? 'got HTTP 200; staging artifact; verified markers: /api/v1/ai/generate/study, authenticated, tenant, 200, generated_curriculum, [Genesis 1:1]'
+            ? 'got HTTP 200; staging artifact; verified markers: /api/v1/ai/generate/study, authenticated, tenant, 200, generated_curriculum, [Genesis 1:1], release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123'
             : aiProbeMarkerSummaries[name],
         })),
       },
@@ -3666,7 +3774,7 @@ test('recordEvidence rejects AI evidence without tenant RLS audit proof', () => 
         evidence_items: ['EXT-AI-001'],
         probes: aiProbeReportProbes(probeNames, (name) => ({
           result_summary: name === 'ai-audit-persistence'
-            ? 'got HTTP 200; staging artifact; verified markers: ai_request_logs, citation_trails, organization_id=org-123, user_id=user-123, request_id=req-123, citation_id=cite-123, succeeded, failed, verified'
+            ? 'got HTTP 200; staging artifact; verified markers: ai_request_logs, citation_trails, organization_id=org-123, user_id=user-123, request_id=req-123, citation_id=cite-123, succeeded, failed, verified, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123'
             : aiProbeMarkerSummaries[name],
         })),
       },
@@ -4897,6 +5005,80 @@ test('recordEvidence records production-grade observability evidence', () => {
 
   assert.equal(updated.items[0].status, 'passed');
   assert.equal(updated.items[1].status, 'passed');
+});
+
+test('recordEvidence rejects observability evidence without probe load run markers', () => {
+  const probeNames = [
+    'collector-otlp-config',
+    'api-prometheus-metrics',
+    'rust-prometheus-metrics',
+    'trace-backend-search',
+    'log-backend-trace-correlation',
+  ];
+
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'OBS-OTEL-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        trace_id: observabilityTraceID,
+        observed_route: '/api/v1/ai/generate/study',
+        http_method: 'POST',
+        tenant_id: 'org-staging',
+        user_id: 'user-staging',
+        role: 'admin',
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['OBS-OTEL-001'],
+        probes: observabilityProbeReportProbes(probeNames, (name) => (
+          name === 'collector-otlp-config'
+            ? { result_summary: observabilityProbeMarkerSummaries[name].replace(' load_run_id=load-run-123', '') }
+            : {}
+        )),
+      },
+      'artifacts/observabilityprobe.json',
+      'go run ./tools/observabilityprobe -probe-otel',
+    ),
+    /collector-otlp-config result_summary must include verified marker load_run_id=/,
+  );
+});
+
+test('recordEvidence rejects observability evidence with mixed probe load run markers', () => {
+  const probeNames = [
+    'collector-otlp-config',
+    'api-prometheus-metrics',
+    'rust-prometheus-metrics',
+    'trace-backend-search',
+    'log-backend-trace-correlation',
+  ];
+
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'OBS-OTEL-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        trace_id: observabilityTraceID,
+        observed_route: '/api/v1/ai/generate/study',
+        http_method: 'POST',
+        tenant_id: 'org-staging',
+        user_id: 'user-staging',
+        role: 'admin',
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['OBS-OTEL-001'],
+        probes: observabilityProbeReportProbes(probeNames, (name) => (
+          name === 'log-backend-trace-correlation'
+            ? { result_summary: observabilityProbeMarkerSummaries[name].replace('load_run_id=load-run-123', 'load_run_id=other-run') }
+            : {}
+        )),
+      },
+      'artifacts/observabilityprobe.json',
+      'go run ./tools/observabilityprobe -probe-otel',
+    ),
+    /observability report probe result_summary load_run_id values must all match/,
+  );
 });
 
 test('recordEvidence rejects observability evidence without staging artifact provenance', () => {

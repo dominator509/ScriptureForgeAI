@@ -747,6 +747,28 @@ function summaryMarkerValue(summary, key) {
   return pattern.exec(String(summary ?? ''))?.[1] ?? '';
 }
 
+function assertProbeLoadRunBinding(probeName, summary, reportLoadRunID, probeLoadRunIDs) {
+  const probeLoadRunID = summaryMarkerValue(summary, 'load_run_id');
+  assert.ok(probeLoadRunID, `${probeName} result_summary must include verified marker load_run_id=`);
+  if (reportLoadRunID) {
+    assert.equal(
+      probeLoadRunID,
+      reportLoadRunID,
+      `${probeName} result_summary load_run_id must match report load_run_id`,
+    );
+  }
+  probeLoadRunIDs.add(probeLoadRunID);
+  return `load_run_id=${probeLoadRunID}`;
+}
+
+function assertSingleProbeLoadRun(evidenceID, probeLoadRunIDs) {
+  assert.equal(
+    probeLoadRunIDs.size,
+    1,
+    `${evidenceID} probe result_summary load_run_id values must all match`,
+  );
+}
+
 function validateTLSEvidence(report, manifest) {
   const evidenceItems = report.evidence_items ?? [];
   if (!evidenceItems.includes('DEPLOY-TLS-001')) {
@@ -1474,6 +1496,8 @@ function validateZoomEvidence(report, manifest) {
   const probes = Array.isArray(report.probes) ? report.probes : [];
   assert.equal(probes.length, requiredProbes.size, 'EXT-ZOOM-001 report must include exactly the required Zoom probes');
   const zoomArtifactTargets = [];
+  const reportLoadRunID = String(report.load_run_id ?? '').trim();
+  const probeLoadRunIDs = new Set();
   for (const probe of probes) {
     assert.ok(requiredProbes.delete(probe.name), `EXT-ZOOM-001 report includes unexpected or duplicate probe ${probe.name}`);
     assert.equal(probe.passed, true, `${probe.name} must pass`);
@@ -1483,15 +1507,17 @@ function validateZoomEvidence(report, manifest) {
     assertNonLocalOrPrivateTarget(target, `${probe.name} target must not be local/self-test: ${target}`);
     zoomArtifactTargets.push([`${probe.name} target`, target]);
     const summary = String(probe.result_summary ?? '');
+    const probeLoadRunMarker = assertProbeLoadRunBinding(probe.name, summary, reportLoadRunID, probeLoadRunIDs);
     if (probe.name === 'zoom-meeting-create-or-fallback') {
       assert.ok(
-        zoomMeetingCreateOrFallbackSummaryMarkerSets.some((markers) => summaryIncludesAll(summary, [...markers, ...reportReleaseMarkers])),
+        zoomMeetingCreateOrFallbackSummaryMarkerSets.some((markers) => summaryIncludesAll(summary, [...markers, ...reportReleaseMarkers, probeLoadRunMarker])),
         'zoom-meeting-create-or-fallback result_summary must include meeting or offline fallback markers',
       );
     } else {
       assertSummaryIncludesMarkers(probe.name, summary, [
         ...(requiredZoomProbeSummaryMarkers.get(probe.name) ?? []),
         ...reportReleaseMarkers,
+        probeLoadRunMarker,
       ]);
     }
     assertSummaryExcludesMarkers(probe.name, summary, forbiddenZoomProbeSummaryMarkers);
@@ -1551,6 +1577,7 @@ function validateZoomEvidence(report, manifest) {
     }
   }
   assertDistinctReportURLs('EXT-ZOOM-001', zoomArtifactTargets);
+  assertSingleProbeLoadRun('EXT-ZOOM-001', probeLoadRunIDs);
   assert.equal(requiredProbes.size, 0, `EXT-ZOOM-001 report missing probes: ${[...requiredProbes].join(', ')}`);
 }
 
@@ -1582,6 +1609,8 @@ function validateAIEvidence(report, manifest) {
   let auditUserID = '';
   let citationVerificationID = '';
   let auditCitationID = '';
+  const reportLoadRunID = String(report.load_run_id ?? '').trim();
+  const probeLoadRunIDs = new Set();
   for (const probe of probes) {
     assert.ok(requiredProbes.delete(probe.name), `EXT-AI-001 report includes unexpected or duplicate probe ${probe.name}`);
     assert.equal(probe.passed, true, `${probe.name} must pass`);
@@ -1590,11 +1619,14 @@ function validateAIEvidence(report, manifest) {
     assert.match(target, /^https:\/\//, `${probe.name} target must be an HTTPS artifact URL`);
     assertNonLocalOrPrivateTarget(target, `${probe.name} target must not be local/self-test: ${target}`);
     aiArtifactTargets.push([`${probe.name} target`, target]);
-    assertSummaryIncludesMarkers(probe.name, String(probe.result_summary ?? ''), [
+    const summary = String(probe.result_summary ?? '');
+    const probeLoadRunMarker = assertProbeLoadRunBinding(probe.name, summary, reportLoadRunID, probeLoadRunIDs);
+    assertSummaryIncludesMarkers(probe.name, summary, [
       ...(requiredAIProbeSummaryMarkers.get(probe.name) ?? []),
       ...reportReleaseMarkers,
+      probeLoadRunMarker,
     ]);
-    assertSummaryExcludesMarkers(probe.name, String(probe.result_summary ?? ''), forbiddenAIProbeSummaryMarkers);
+    assertSummaryExcludesMarkers(probe.name, summary, forbiddenAIProbeSummaryMarkers);
     if (probe.name === 'ai-provider-config') {
       const provider = String(probe.ai_provider ?? '').trim();
       const model = String(probe.ai_chat_model ?? '').trim();
@@ -1680,6 +1712,7 @@ function validateAIEvidence(report, manifest) {
     'EXT-AI-001 ai-audit-persistence citation_id must match ai-citation-verification citation_id',
   );
   assertDistinctReportURLs('EXT-AI-001', aiArtifactTargets);
+  assertSingleProbeLoadRun('EXT-AI-001', probeLoadRunIDs);
   assert.equal(requiredProbes.size, 0, `EXT-AI-001 report missing probes: ${[...requiredProbes].join(', ')}`);
 }
 
@@ -1725,6 +1758,8 @@ function validateObservabilityEvidence(report, manifest) {
   const alertArtifactTargets = [];
   const otelProbeNames = new Set(['collector-otlp-config', 'api-prometheus-metrics', 'rust-prometheus-metrics', 'trace-backend-search', 'log-backend-trace-correlation']);
   const alertProbeNames = new Set(['dashboard-import', 'alert-rules-loaded', 'alert-delivery-status', 'telemetry-retention-policy']);
+  const reportLoadRunID = String(report.load_run_id ?? '').trim();
+  const probeLoadRunIDs = new Set();
   for (const probe of probes) {
     assert.ok(requiredProbes.delete(probe.name), `observability report includes unexpected or duplicate probe ${probe.name}`);
     observedProbes.set(probe.name, probe);
@@ -1739,13 +1774,17 @@ function validateObservabilityEvidence(report, manifest) {
     if (alertProbeNames.has(probe.name)) {
       alertArtifactTargets.push([`${probe.name} target`, target]);
     }
-    assertSummaryIncludesMarkers(probe.name, String(probe.result_summary ?? ''), [
+    const summary = String(probe.result_summary ?? '');
+    const probeLoadRunMarker = assertProbeLoadRunBinding(probe.name, summary, reportLoadRunID, probeLoadRunIDs);
+    assertSummaryIncludesMarkers(probe.name, summary, [
       ...(requiredObservabilityProbeSummaryMarkers.get(probe.name) ?? []),
       ...reportReleaseMarkers,
+      probeLoadRunMarker,
     ]);
-    assertSummaryExcludesMarkers(probe.name, String(probe.result_summary ?? ''), forbiddenObservabilityProbeSummaryMarkers);
+    assertSummaryExcludesMarkers(probe.name, summary, forbiddenObservabilityProbeSummaryMarkers);
   }
   assert.equal(requiredProbes.size, 0, `observability report missing probes: ${[...requiredProbes].join(', ')}`);
+  assertSingleProbeLoadRun('observability report', probeLoadRunIDs);
   if (evidenceItems.includes('OBS-OTEL-001')) {
     assertDistinctReportURLs('OBS-OTEL-001', otelArtifactTargets);
     const traceID = String(report.trace_id ?? '').trim();

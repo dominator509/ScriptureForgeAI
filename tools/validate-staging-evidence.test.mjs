@@ -1372,6 +1372,21 @@ test('validateManifest strict release rejects Zoom evidence for a different rele
   );
 });
 
+test('validateManifest strict release rejects Zoom evidence without segment load run marker', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'EXT-ZOOM-001');
+  item.evidence[0].result_summary = item.evidence[0].result_summary
+    .replace('zoom-oauth-readiness staging artifact oauth account_credentials status ok release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123', 'zoom-oauth-readiness staging artifact oauth account_credentials status ok release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567');
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /EXT-ZOOM-001 strict release evidence must include Zoom markers on zoom-oauth-readiness/,
+  );
+});
+
 test('validateManifest strict release rejects AI evidence without citation and audit markers', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
@@ -1582,6 +1597,21 @@ test('validateManifest strict release rejects AI evidence for a different releas
   );
 });
 
+test('validateManifest strict release rejects AI evidence without segment load run marker', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'EXT-AI-001');
+  item.evidence[0].result_summary = item.evidence[0].result_summary
+    .replace('ai-provider-config staging artifact AI_PROVIDER AI_CHAT_MODEL AI_CHAT_ENDPOINT AI_HTTP_TIMEOUT_MS AI_MAX_RETRIES OPENAI_API_KEY redacted configured AI_PROVIDER=openai AI_CHAT_MODEL=gpt-staging AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions AI_HTTP_TIMEOUT_MS=3500 AI_MAX_RETRIES=1 release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123', 'ai-provider-config staging artifact AI_PROVIDER AI_CHAT_MODEL AI_CHAT_ENDPOINT AI_HTTP_TIMEOUT_MS AI_MAX_RETRIES OPENAI_API_KEY redacted configured AI_PROVIDER=openai AI_CHAT_MODEL=gpt-staging AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions AI_HTTP_TIMEOUT_MS=3500 AI_MAX_RETRIES=1 release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567');
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /EXT-AI-001 strict release evidence must include AI markers on ai-provider-config/,
+  );
+});
+
 test('validateManifest strict release rejects OTEL evidence without metrics and trace correlation markers', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
@@ -1705,6 +1735,21 @@ test('validateManifest strict release rejects OTEL evidence for a different rele
   assert.throws(
     () => validateManifest(manifest, { strictRelease: true }),
     /OBS-OTEL-001 strict release evidence must include a tools\/observabilityprobe JSON report/,
+  );
+});
+
+test('validateManifest strict release rejects OTEL evidence without segment load run marker', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'OBS-OTEL-001');
+  item.evidence[0].result_summary = item.evidence[0].result_summary
+    .replace('collector-otlp-config staging artifact receivers otlp 4317 4318 exporters service release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123', 'collector-otlp-config staging artifact receivers otlp 4317 4318 exporters service release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567');
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /OBS-OTEL-001 strict release evidence must include staging OTLP markers on collector-otlp-config/,
   );
 });
 
@@ -1852,6 +1897,21 @@ test('validateManifest strict release rejects alert evidence for a different rel
   assert.throws(
     () => validateManifest(manifest, { strictRelease: true }),
     /OBS-ALERT-001 strict release evidence must include a tools\/observabilityprobe JSON report/,
+  );
+});
+
+test('validateManifest strict release rejects alert evidence without segment load run marker', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'OBS-ALERT-001');
+  item.evidence[0].result_summary = item.evidence[0].result_summary
+    .replace('dashboard-import staging artifact ScriptureForge scriptureforge_http_requests_total scriptureforge_http_request_duration_seconds_sum websocket_active_connections_count room_broadcast ai_inference_duration_seconds scriptureforge_rust_engine_ trace_id release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123', 'dashboard-import staging artifact ScriptureForge scriptureforge_http_requests_total scriptureforge_http_request_duration_seconds_sum websocket_active_connections_count room_broadcast ai_inference_duration_seconds scriptureforge_rust_engine_ trace_id release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567');
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /OBS-ALERT-001 strict release evidence must include dashboard metric markers on dashboard-import/,
   );
 });
 
