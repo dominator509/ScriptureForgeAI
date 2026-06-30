@@ -203,6 +203,7 @@ const kubernetesWorkloadImageDigestPatterns = new Map([
   ['scriptureforge-rust-engine', /(?:scriptureforge-rust-engine|scriptureforge\/rust-engine)[^\s,;]*@sha256:[a-fA-F0-9]{64}\b/],
 ]);
 const zoomDeliveryIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
+const zoomTrackingIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const zoomMappingIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const zoomWebhookSignaturePattern = /^v0[:=][0-9a-f]{64}$/i;
 const zoomWebhookTimestampPattern = /^[0-9]{10,}$/;
@@ -304,7 +305,7 @@ const requiredZoomProbeSummaryMarkers = new Map([
   ['zoom-timeout-circuit-fallback', ['staging artifact', 'timeout', 'provider timeout', 'circuit', 'open', 'circuit_open_fallback', 'fallback', 'offline://in-person']],
   ['zoom-webhook-signature-delivery', ['staging artifact', 'webhook', 'signature', 'x-zm-signature=', 'x-zm-request-timestamp=', 'stale', 'replay', '401', 'invalid', 'signed', '200']],
   ['zoom-webhook-url-validation', ['staging artifact', 'endpoint.url_validation', 'plain_token=', 'encrypted_token=', 'validation_response=200']],
-  ['zoom-duplicate-webhook-idempotency', ['staging artifact', 'duplicate', 'x-zm-trackingid', 'delivery_id=', 'delivery id', 'same Zoom event', 'idempotent', '200', 'single state mutation', 'no duplicate side effects']],
+  ['zoom-duplicate-webhook-idempotency', ['staging artifact', 'duplicate', 'x-zm-trackingid=', 'delivery_id=', 'delivery id', 'same Zoom event', 'idempotent', '200', 'single state mutation', 'no duplicate side effects']],
   ['zoom-meeting-room-mapping', ['staging artifact', 'meeting_external_id=', 'live_rooms', 'internal_room_id=', 'redis room state', 'mapped', 'unknown meeting ignored', 'no external meeting id fallback', 'distinct_zoom_artifacts=true']],
 ]);
 
@@ -1514,8 +1515,10 @@ function validateZoomEvidence(report, manifest) {
     }
     if (probe.name === 'zoom-duplicate-webhook-idempotency') {
       const deliveryID = String(probe.delivery_id ?? '').trim();
+      const trackingID = String(probe.tracking_id ?? '').trim();
       assert.match(deliveryID, zoomDeliveryIDPattern, 'zoom-duplicate-webhook-idempotency probe must include structured delivery_id');
-      assertSummaryIncludesMarkers(probe.name, summary, [`delivery_id=${deliveryID}`]);
+      assert.match(trackingID, zoomTrackingIDPattern, 'zoom-duplicate-webhook-idempotency probe must include structured tracking_id');
+      assertSummaryIncludesMarkers(probe.name, summary, [`delivery_id=${deliveryID}`, `x-zm-trackingid=${trackingID}`]);
     }
     if (probe.name === 'zoom-meeting-room-mapping') {
       const meetingID = String(probe.meeting_external_id ?? '').trim();

@@ -18,6 +18,7 @@ import (
 
 var (
 	deliveryIDPattern         = regexp.MustCompile(`(?i)\bdelivery_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
+	trackingIDPattern         = regexp.MustCompile(`(?i)\bx-zm-trackingid=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
 	meetingExternalIDPattern  = regexp.MustCompile(`(?i)\bmeeting_external_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
 	internalRoomIDPattern     = regexp.MustCompile(`(?i)\binternal_room_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
 	webhookSignaturePattern   = regexp.MustCompile(`(?i)\bx-zm-signature=(v0[:=][0-9a-f]{64})\b`)
@@ -61,6 +62,7 @@ type probeResult struct {
 	StatusCode         int    `json:"status_code,omitempty"`
 	LatencyMS          int64  `json:"latency_ms,omitempty"`
 	DeliveryID         string `json:"delivery_id,omitempty"`
+	TrackingID         string `json:"tracking_id,omitempty"`
 	MeetingID          string `json:"meeting_external_id,omitempty"`
 	RoomID             string `json:"internal_room_id,omitempty"`
 	WebhookSig         string `json:"webhook_signature,omitempty"`
@@ -173,7 +175,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 		probeArtifact(client, "zoom-timeout-circuit-fallback", cfg.ResilienceArtifactURL, append([]string{"timeout", "provider timeout", "circuit", "open", "circuit_open_fallback", "fallback", "offline://in-person"}, releaseMarkers...), forbiddenWithSecrets),
 		probeArtifact(client, "zoom-webhook-signature-delivery", cfg.WebhookArtifactURL, append([]string{"webhook", "signature", "x-zm-signature=", "x-zm-request-timestamp=", "stale", "replay", "401", "invalid", "signed", "200"}, releaseMarkers...), forbiddenWithSecrets),
 		probeArtifact(client, "zoom-webhook-url-validation", cfg.WebhookValidationURL, append([]string{"endpoint.url_validation", "plain_token=", "encrypted_token=", "validation_response=200"}, releaseMarkers...), forbiddenWithSecrets),
-		probeArtifact(client, "zoom-duplicate-webhook-idempotency", cfg.DuplicateArtifactURL, append([]string{"duplicate", "x-zm-trackingid", "delivery_id=", "delivery id", "same Zoom event", "idempotent", "200", "single state mutation", "no duplicate side effects"}, releaseMarkers...), forbiddenEvidenceOnly),
+		probeArtifact(client, "zoom-duplicate-webhook-idempotency", cfg.DuplicateArtifactURL, append([]string{"duplicate", "x-zm-trackingid=", "delivery_id=", "delivery id", "same Zoom event", "idempotent", "200", "single state mutation", "no duplicate side effects"}, releaseMarkers...), forbiddenEvidenceOnly),
 		probeArtifact(client, "zoom-meeting-room-mapping", cfg.RoomMappingArtifactURL, append([]string{"meeting_external_id=", "live_rooms", "internal_room_id=", "redis room state", "mapped", "unknown meeting ignored", "no external meeting id fallback", "distinct_zoom_artifacts=true"}, releaseMarkers...), forbiddenEvidenceOnly),
 	}
 
@@ -273,8 +275,10 @@ func probeArtifactAny(client *http.Client, name, target string, acceptableRequir
 	text := string(body)
 	matchedRequiredSet := matchingRequiredSet(text, acceptableRequiredSets)
 	deliveryID := ""
+	trackingID := ""
 	if name == "zoom-duplicate-webhook-idempotency" {
 		deliveryID = extractDeliveryID(text)
+		trackingID = extractTrackingID(text)
 	}
 	webhookSignature := ""
 	webhookTimestamp := ""
@@ -308,7 +312,7 @@ func probeArtifactAny(client *http.Client, name, target string, acceptableRequir
 	if name == "zoom-timeout-circuit-fallback" && (!providerTimeout || !circuitOpen || !offlineFallback) {
 		passed = false
 	}
-	if name == "zoom-duplicate-webhook-idempotency" && deliveryID == "" {
+	if name == "zoom-duplicate-webhook-idempotency" && (deliveryID == "" || trackingID == "") {
 		passed = false
 	}
 	if name == "zoom-webhook-signature-delivery" && (webhookSignature == "" || webhookTimestamp == "") {
@@ -328,6 +332,9 @@ func probeArtifactAny(client *http.Client, name, target string, acceptableRequir
 		if deliveryID != "" {
 			summary += fmt.Sprintf("; delivery_id=%s", deliveryID)
 		}
+		if trackingID != "" {
+			summary += fmt.Sprintf("; x-zm-trackingid=%s", trackingID)
+		}
 		if webhookSignature != "" || webhookTimestamp != "" {
 			summary += fmt.Sprintf("; x-zm-signature=%s; x-zm-request-timestamp=%s", webhookSignature, webhookTimestamp)
 		}
@@ -341,11 +348,19 @@ func probeArtifactAny(client *http.Client, name, target string, acceptableRequir
 			summary += fmt.Sprintf("; meeting_external_id=%s; internal_room_id=%s", meetingID, roomID)
 		}
 	}
-	return probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, DeliveryID: deliveryID, MeetingID: meetingID, RoomID: roomID, WebhookSig: webhookSignature, WebhookTS: webhookTimestamp, PlainToken: plainToken, EncryptedToken: encryptedToken, ValidationResponse: validationResponse, ProviderTimeout: providerTimeout, CircuitOpen: circuitOpen, OfflineFallback: offlineFallback, ResultSummary: summary}
+	return probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, DeliveryID: deliveryID, TrackingID: trackingID, MeetingID: meetingID, RoomID: roomID, WebhookSig: webhookSignature, WebhookTS: webhookTimestamp, PlainToken: plainToken, EncryptedToken: encryptedToken, ValidationResponse: validationResponse, ProviderTimeout: providerTimeout, CircuitOpen: circuitOpen, OfflineFallback: offlineFallback, ResultSummary: summary}
 }
 
 func extractDeliveryID(text string) string {
 	match := deliveryIDPattern.FindStringSubmatch(text)
+	if len(match) < 2 {
+		return ""
+	}
+	return match[1]
+}
+
+func extractTrackingID(text string) string {
+	match := trackingIDPattern.FindStringSubmatch(text)
 	if len(match) < 2 {
 		return ""
 	}

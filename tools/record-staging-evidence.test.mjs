@@ -265,7 +265,7 @@ const zoomProbeMarkerSummaries = {
   'zoom-timeout-circuit-fallback': 'got HTTP 200; staging artifact; verified markers: timeout, provider timeout, circuit, open, circuit_open_fallback, fallback, offline://in-person, release_candidate=abc123, service_version=scriptureforge-api:abc123; provider_timeout=true; circuit_open=true; offline_fallback=true',
   'zoom-webhook-signature-delivery': 'got HTTP 200; staging artifact; verified markers: webhook, signature, x-zm-signature=v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, x-zm-request-timestamp=1710000000, stale, replay, 401, invalid, signed, 200, release_candidate=abc123, service_version=scriptureforge-api:abc123',
   'zoom-webhook-url-validation': 'got HTTP 200; staging artifact; verified markers: endpoint.url_validation, plain_token=zoom-plain-123, encrypted_token=zoom-encrypted-456, validation_response=200, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'zoom-duplicate-webhook-idempotency': 'got HTTP 200; staging artifact; verified markers: duplicate, x-zm-trackingid, delivery_id=zm-delivery-123, delivery id, same Zoom event, idempotent, 200, single state mutation, no duplicate side effects, release_candidate=abc123, service_version=scriptureforge-api:abc123',
+  'zoom-duplicate-webhook-idempotency': 'got HTTP 200; staging artifact; verified markers: duplicate, x-zm-trackingid=zm-track-123, delivery_id=zm-delivery-123, delivery id, same Zoom event, idempotent, 200, single state mutation, no duplicate side effects, release_candidate=abc123, service_version=scriptureforge-api:abc123',
   'zoom-meeting-room-mapping': 'got HTTP 200; staging artifact; verified markers: meeting_external_id=zoom-123, live_rooms, internal_room_id=room-abc, redis room state, mapped, unknown meeting ignored, no external meeting id fallback, distinct_zoom_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123',
 };
 
@@ -280,6 +280,9 @@ function zoomProbeReportProbe(name, overrides = {}) {
   };
   if (name === 'zoom-duplicate-webhook-idempotency' && !Object.hasOwn(overrides, 'delivery_id')) {
     probe.delivery_id = 'zm-delivery-123';
+  }
+  if (name === 'zoom-duplicate-webhook-idempotency' && !Object.hasOwn(overrides, 'tracking_id')) {
+    probe.tracking_id = 'zm-track-123';
   }
   if (name === 'zoom-webhook-signature-delivery' && !Object.hasOwn(overrides, 'webhook_signature')) {
     probe.webhook_signature = 'v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
@@ -2838,6 +2841,33 @@ test('recordEvidence rejects Zoom resilience evidence without structured fallbac
   );
 });
 
+test('recordEvidence rejects Zoom duplicate evidence without structured tracking ID proof', () => {
+  const probeNames = Object.keys(zoomProbeMarkerSummaries);
+  assert.throws(
+    () => recordEvidence(
+      {
+        release_candidate: 'abc123',
+        items: [{ id: 'EXT-ZOOM-001', status: 'pending_external' }],
+      },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['EXT-ZOOM-001'],
+        probes: zoomProbeReportProbes(probeNames, (name) => (
+          name === 'zoom-duplicate-webhook-idempotency'
+            ? { tracking_id: undefined }
+            : {}
+        )),
+      },
+      'artifacts/zoomprobe.json',
+      'go run ./tools/zoomprobe',
+    ),
+    /zoom-duplicate-webhook-idempotency probe must include structured tracking_id/,
+  );
+});
+
 test('recordEvidence rejects Zoom evidence for a different release candidate', () => {
   const probeNames = Object.keys(zoomProbeMarkerSummaries);
   assert.throws(
@@ -2881,7 +2911,7 @@ test('recordEvidence rejects Zoom evidence without HTTPS artifact proof', () => 
           { name: 'zoom-timeout-circuit-fallback', passed: true, target: 'http://localhost/zoom/resilience.txt', status_code: 200, result_summary: zoomProbeMarkerSummaries['zoom-timeout-circuit-fallback'] },
           { name: 'zoom-webhook-signature-delivery', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/zoom/webhook.txt', status_code: 200, result_summary: zoomProbeMarkerSummaries['zoom-webhook-signature-delivery'] },
           { name: 'zoom-webhook-url-validation', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/zoom/url-validation.txt', status_code: 200, plain_token: 'zoom-plain-123', encrypted_token: 'zoom-encrypted-456', validation_response: '200', result_summary: zoomProbeMarkerSummaries['zoom-webhook-url-validation'] },
-          { name: 'zoom-duplicate-webhook-idempotency', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/zoom/duplicate.txt', status_code: 200, delivery_id: 'zm-delivery-123', result_summary: zoomProbeMarkerSummaries['zoom-duplicate-webhook-idempotency'] },
+          { name: 'zoom-duplicate-webhook-idempotency', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/zoom/duplicate.txt', status_code: 200, delivery_id: 'zm-delivery-123', tracking_id: 'zm-track-123', result_summary: zoomProbeMarkerSummaries['zoom-duplicate-webhook-idempotency'] },
           { name: 'zoom-meeting-room-mapping', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/zoom/mapping.txt', status_code: 200, result_summary: zoomProbeMarkerSummaries['zoom-meeting-room-mapping'] },
         ],
       },
@@ -3238,14 +3268,14 @@ test('recordEvidence rejects Zoom duplicate evidence without tracking header pro
         evidence_items: ['EXT-ZOOM-001'],
         probes: zoomProbeReportProbes(probeNames, (name) => ({
           result_summary: name === 'zoom-duplicate-webhook-idempotency'
-            ? zoomProbeMarkerSummaries[name].replace('x-zm-trackingid, ', '')
+            ? zoomProbeMarkerSummaries[name].replace('x-zm-trackingid=zm-track-123, ', '')
             : zoomProbeMarkerSummaries[name],
         })),
       },
       'artifacts/zoomprobe.json',
       'go run ./tools/zoomprobe',
     ),
-    /zoom-duplicate-webhook-idempotency result_summary must include verified marker x-zm-trackingid/,
+    /zoom-duplicate-webhook-idempotency result_summary must include verified marker x-zm-trackingid=/,
   );
 });
 
