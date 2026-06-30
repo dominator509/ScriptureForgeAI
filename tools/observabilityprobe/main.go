@@ -50,6 +50,7 @@ type config struct {
 	RetentionURL       string
 	ReleaseCandidate   string
 	ServiceVersion     string
+	LoadRunID          string
 	Timeout            time.Duration
 }
 
@@ -63,6 +64,7 @@ type report struct {
 	ThresholdPass    bool          `json:"threshold_pass"`
 	ReleaseCandidate string        `json:"release_candidate"`
 	ServiceVersion   string        `json:"service_version"`
+	LoadRunID        string        `json:"load_run_id"`
 	TraceID          string        `json:"trace_id,omitempty"`
 	ObservedRoute    string        `json:"observed_route,omitempty"`
 	HTTPMethod       string        `json:"http_method,omitempty"`
@@ -135,6 +137,7 @@ func parseFlags() config {
 	flag.StringVar(&cfg.RetentionURL, "retention-url", os.Getenv("STAGING_RETENTION_URL"), "telemetry retention policy proof URL")
 	flag.StringVar(&cfg.ReleaseCandidate, "release-candidate", os.Getenv("RELEASE_CANDIDATE"), "release candidate Git SHA or tag expected in observability evidence")
 	flag.StringVar(&cfg.ServiceVersion, "service-version", os.Getenv("SERVICE_VERSION"), "service version expected in observability evidence")
+	flag.StringVar(&cfg.LoadRunID, "load-run-id", os.Getenv("STAGING_LOAD_RUN_ID"), "exact staging observability run identifier that every observability artifact must name")
 	flag.DurationVar(&cfg.Timeout, "timeout", 5*time.Second, "per-probe timeout")
 	flag.Parse()
 	return cfg
@@ -153,8 +156,9 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 	}
 	cfg.ReleaseCandidate = strings.TrimSpace(cfg.ReleaseCandidate)
 	cfg.ServiceVersion = strings.TrimSpace(cfg.ServiceVersion)
-	if cfg.ReleaseCandidate == "" || cfg.ServiceVersion == "" {
-		return errors.New("observability proof requires -release-candidate and -service-version")
+	cfg.LoadRunID = strings.TrimSpace(cfg.LoadRunID)
+	if cfg.ReleaseCandidate == "" || cfg.ServiceVersion == "" || cfg.LoadRunID == "" {
+		return errors.New("observability proof requires -release-candidate, -service-version, and -load-run-id")
 	}
 	if cfg.ProbeOTEL {
 		if cfg.CollectorConfigURL == "" || cfg.APIMetricsURL == "" || cfg.RustMetricsURL == "" || cfg.TraceQueryURL == "" || cfg.LogQueryURL == "" || cfg.TraceID == "" {
@@ -266,6 +270,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 		"staging artifact",
 		fmt.Sprintf("release_candidate=%s", cfg.ReleaseCandidate),
 		fmt.Sprintf("service_version=%s", cfg.ServiceVersion),
+		fmt.Sprintf("load_run_id=%s", cfg.LoadRunID),
 	}
 	probes := []probeResult{}
 	evidenceItems := []string{}
@@ -294,6 +299,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 		ThresholdPass:    true,
 		ReleaseCandidate: cfg.ReleaseCandidate,
 		ServiceVersion:   cfg.ServiceVersion,
+		LoadRunID:        cfg.LoadRunID,
 		TraceID:          traceIDForReport(cfg),
 		ObservedRoute:    routeForReport(cfg),
 		HTTPMethod:       methodForReport(cfg),

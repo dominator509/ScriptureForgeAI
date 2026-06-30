@@ -13,24 +13,24 @@ import (
 
 func requiredOTELSummaryMarkers(traceID string) map[string][]string {
 	return map[string][]string{
-		"collector-otlp-config":         {"staging artifact", "receivers", "otlp", "4317", "4318", "exporters", "service", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs"},
-		"api-prometheus-metrics":        {"staging artifact", "scriptureforge_http_requests_total", "scriptureforge_http_request_duration_seconds_sum", "scriptureforge_http_requests_total{", "status=", "websocket_active_connections_count", `scriptureforge_dependency_operations_total{dependency="websocket",operation="room_broadcast",status="dropped"`, "ai_inference_duration_seconds_sum", "ai_inference_duration_seconds_count", `scriptureforge_dependency_operations_total{dependency="rust_engine",operation="vector_search",status="success"`, `scriptureforge_dependency_operation_duration_seconds_sum{dependency="rust_engine",operation="vector_search",status="success"`, "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs"},
-		"rust-prometheus-metrics":       {"staging artifact", "scriptureforge_rust_engine_embedding_requests_total", "scriptureforge_rust_engine_embedding_failures_total", "scriptureforge_rust_engine_vector_search_requests_total", "scriptureforge_rust_engine_vector_search_failures_total", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs"},
-		"trace-backend-search":          {"staging artifact", traceID, "scriptureforge-api", "scriptureforge-rust-engine", "route=/api/v1/ai/generate/study", "method=POST", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs"},
-		"log-backend-trace-correlation": {"staging artifact", traceID, "trace_id", "scriptureforge-api", "scriptureforge-rust-engine", "route=/api/v1/ai/generate/study", "method=POST", "service_version", "deployment_environment", "tenant_id=org-staging", "user_id=user-staging", "role=admin", "distinct_otel_artifacts=true", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs"},
+		"collector-otlp-config":         {"staging artifact", "receivers", "otlp", "4317", "4318", "exporters", "service", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs", "load_run_id=obs-run-123"},
+		"api-prometheus-metrics":        {"staging artifact", "scriptureforge_http_requests_total", "scriptureforge_http_request_duration_seconds_sum", "scriptureforge_http_requests_total{", "status=", "websocket_active_connections_count", `scriptureforge_dependency_operations_total{dependency="websocket",operation="room_broadcast",status="dropped"`, "ai_inference_duration_seconds_sum", "ai_inference_duration_seconds_count", `scriptureforge_dependency_operations_total{dependency="rust_engine",operation="vector_search",status="success"`, `scriptureforge_dependency_operation_duration_seconds_sum{dependency="rust_engine",operation="vector_search",status="success"`, "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs", "load_run_id=obs-run-123"},
+		"rust-prometheus-metrics":       {"staging artifact", "scriptureforge_rust_engine_embedding_requests_total", "scriptureforge_rust_engine_embedding_failures_total", "scriptureforge_rust_engine_vector_search_requests_total", "scriptureforge_rust_engine_vector_search_failures_total", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs", "load_run_id=obs-run-123"},
+		"trace-backend-search":          {"staging artifact", traceID, "scriptureforge-api", "scriptureforge-rust-engine", "route=/api/v1/ai/generate/study", "method=POST", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs", "load_run_id=obs-run-123"},
+		"log-backend-trace-correlation": {"staging artifact", traceID, "trace_id", "scriptureforge-api", "scriptureforge-rust-engine", "route=/api/v1/ai/generate/study", "method=POST", "service_version", "deployment_environment", "tenant_id=org-staging", "user_id=user-staging", "role=admin", "distinct_otel_artifacts=true", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs", "load_run_id=obs-run-123"},
 	}
 }
 
 var requiredAlertSummaryMarkers = map[string][]string{
-	"dashboard-import":           {"staging artifact", "ScriptureForge", "scriptureforge_http_requests_total", "scriptureforge_http_request_duration_seconds_sum", "websocket_active_connections_count", "room_broadcast", "ai_inference_duration_seconds", "scriptureforge_rust_engine_", "trace_id", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs"},
-	"alert-rules-loaded":         {"staging artifact", "ScriptureForgeHighErrorRate", "ScriptureForgeTrafficAbsent", "ScriptureForgeAuthFailureSpike", "ScriptureForgeAbuseLimitSpike", "ScriptureForgeRouteLatencyElevated", "ScriptureForgeDependencyFailures", "ScriptureForgeAIInferenceLatencyElevated", "ScriptureForgeJournalWriteFailures", "ScriptureForgeRoomStreamFailures", "ScriptureForgeRoomBroadcastDrops", "ScriptureForgeRustEngineFailures", "scriptureforge_http_requests_total", "scriptureforge_dependency_operations_total", "ai_inference_duration_seconds", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs"},
-	"alert-delivery-status":      {"staging artifact", "success", "delivered", "test alert", "alertmanager", "delivery_id=am-delivery-123", "alertname=ScriptureForgeHighErrorRate", "receiver=staging-release", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs"},
-	"telemetry-retention-policy": {"staging artifact", "retention", "30 days", "trace", "logs", "metrics", "distinct_alert_artifacts=true", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs"},
+	"dashboard-import":           {"staging artifact", "ScriptureForge", "scriptureforge_http_requests_total", "scriptureforge_http_request_duration_seconds_sum", "websocket_active_connections_count", "room_broadcast", "ai_inference_duration_seconds", "scriptureforge_rust_engine_", "trace_id", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs", "load_run_id=obs-run-123"},
+	"alert-rules-loaded":         {"staging artifact", "ScriptureForgeHighErrorRate", "ScriptureForgeTrafficAbsent", "ScriptureForgeAuthFailureSpike", "ScriptureForgeAbuseLimitSpike", "ScriptureForgeRouteLatencyElevated", "ScriptureForgeDependencyFailures", "ScriptureForgeAIInferenceLatencyElevated", "ScriptureForgeJournalWriteFailures", "ScriptureForgeRoomStreamFailures", "ScriptureForgeRoomBroadcastDrops", "ScriptureForgeRustEngineFailures", "scriptureforge_http_requests_total", "scriptureforge_dependency_operations_total", "ai_inference_duration_seconds", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs", "load_run_id=obs-run-123"},
+	"alert-delivery-status":      {"staging artifact", "success", "delivered", "test alert", "alertmanager", "delivery_id=am-delivery-123", "alertname=ScriptureForgeHighErrorRate", "receiver=staging-release", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs", "load_run_id=obs-run-123"},
+	"telemetry-retention-policy": {"staging artifact", "retention", "30 days", "trace", "logs", "metrics", "distinct_alert_artifacts=true", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs", "load_run_id=obs-run-123"},
 }
 
 const completeAlertRulesArtifact = "alert: ScriptureForgeHighErrorRate alert: ScriptureForgeTrafficAbsent alert: ScriptureForgeAuthFailureSpike alert: ScriptureForgeAbuseLimitSpike alert: ScriptureForgeRouteLatencyElevated alert: ScriptureForgeDependencyFailures alert: ScriptureForgeAIInferenceLatencyElevated alert: ScriptureForgeJournalWriteFailures alert: ScriptureForgeRoomStreamFailures alert: ScriptureForgeRoomBroadcastDrops alert: ScriptureForgeRustEngineFailures expr scriptureforge_http_requests_total expr scriptureforge_dependency_operations_total expr ai_inference_duration_seconds"
 
-const observabilityReleaseMarkers = " staging artifact release_candidate=sha-obs service_version=scriptureforge-api:sha-obs"
+const observabilityReleaseMarkers = " staging artifact release_candidate=sha-obs service_version=scriptureforge-api:sha-obs load_run_id=obs-run-123"
 
 const completeRustMetricsArtifact = `scriptureforge_rust_engine_embedding_requests_total 1
 scriptureforge_rust_engine_embedding_failures_total 0
@@ -50,6 +50,7 @@ func observabilityReleaseConfig() config {
 	return config{
 		ReleaseCandidate: "sha-obs",
 		ServiceVersion:   "scriptureforge-api:sha-obs",
+		LoadRunID:        "obs-run-123",
 		Timeout:          time.Second,
 	}
 }
@@ -98,6 +99,16 @@ func TestRunRequiresReleaseIdentity(t *testing.T) {
 	err := runWithClient(cfg, &output, http.DefaultClient)
 	if err == nil || !strings.Contains(err.Error(), "release-candidate") {
 		t.Fatalf("expected release identity requirement error, got %v", err)
+	}
+}
+
+func TestRunRequiresLoadRunIdentity(t *testing.T) {
+	cfg := otelConfig()
+	cfg.LoadRunID = ""
+	var output bytes.Buffer
+	err := runWithClient(cfg, &output, http.DefaultClient)
+	if err == nil || !strings.Contains(err.Error(), "load-run-id") {
+		t.Fatalf("expected load run identity requirement error, got %v", err)
 	}
 }
 
@@ -276,7 +287,39 @@ func TestRunEmitsOTELEvidenceWhenAllObservabilityProofsPass(t *testing.T) {
 	if result.ReleaseCandidate != "sha-obs" || result.ServiceVersion != "scriptureforge-api:sha-obs" {
 		t.Fatalf("unexpected release identity: %+v", result)
 	}
+	if result.LoadRunID != "obs-run-123" {
+		t.Fatalf("unexpected load run identity: %+v", result)
+	}
 	assertProbeSummariesIncludeMarkers(t, result.Probes, requiredOTELSummaryMarkers("11112222333344445555666677778888"))
+}
+
+func TestRunFailsWhenOTELArtifactUsesDifferentLoadRun(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/collector":
+			_, _ = w.Write([]byte("receivers: otlp protocols: grpc endpoint 0.0.0.0:4317 http endpoint 0.0.0.0:4318 exporters: otlp service pipelines traces staging artifact release_candidate=sha-obs service_version=scriptureforge-api:sha-obs load_run_id=obs-run-999"))
+		case "/api-metrics":
+			_, _ = w.Write([]byte(completeAPIMetricsArtifact + "\n" + observabilityReleaseMarkers))
+		case "/rust-metrics":
+			_, _ = w.Write([]byte(completeRustMetricsArtifact + "\n" + observabilityReleaseMarkers))
+		case "/traces":
+			_, _ = w.Write([]byte("trace 11112222333344445555666677778888 found service scriptureforge-api downstream scriptureforge-rust-engine route=/api/v1/ai/generate/study method=POST" + observabilityReleaseMarkers))
+		case "/logs":
+			_, _ = w.Write([]byte(`{"trace_id":"11112222333344445555666677778888","service":"scriptureforge-api","downstream":"scriptureforge-rust-engine","route":"/api/v1/ai/generate/study","method":"POST","service_version":"staging-1","deployment_environment":"staging","tenant_id":"org-staging","user_id":"user-staging","role":"admin","message":"http_request","distinct_otel_artifacts":true} tenant_id=org-staging user_id=user-staging role=admin distinct_otel_artifacts=true route=/api/v1/ai/generate/study method=POST ` + observabilityReleaseMarkers))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := runWithClient(otelConfig(), &output, clientForHTTPServer(t, server))
+	if err == nil {
+		t.Fatalf("expected mismatched observability load run to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "collector-otlp-config") {
+		t.Fatalf("report missing load-run-mismatched collector probe:\n%s", output.String())
+	}
 }
 
 func TestRunFailsWhenTraceBackendBindsWrongTraceEvent(t *testing.T) {
@@ -354,6 +397,7 @@ func TestRunRejectsBroadTraceAndLogQueries(t *testing.T) {
 		Role:               "admin",
 		ReleaseCandidate:   "sha-obs",
 		ServiceVersion:     "scriptureforge-api:sha-obs",
+		LoadRunID:          "obs-run-123",
 		Timeout:            time.Second,
 	}, &output)
 	if err == nil || !strings.Contains(err.Error(), "trace-query-url") {
@@ -375,6 +419,7 @@ func TestRunRejectsBroadTraceAndLogQueries(t *testing.T) {
 		Role:               "admin",
 		ReleaseCandidate:   "sha-obs",
 		ServiceVersion:     "scriptureforge-api:sha-obs",
+		LoadRunID:          "obs-run-123",
 		Timeout:            time.Second,
 	}, &output)
 	if err == nil || !strings.Contains(err.Error(), "log-query-url") {
@@ -413,6 +458,9 @@ func TestRunEmitsAlertEvidenceWhenAlertProofsPass(t *testing.T) {
 	}
 	if result.ReleaseCandidate != "sha-obs" || result.ServiceVersion != "scriptureforge-api:sha-obs" {
 		t.Fatalf("unexpected release identity: %+v", result)
+	}
+	if result.LoadRunID != "obs-run-123" {
+		t.Fatalf("unexpected load run identity: %+v", result)
 	}
 	if result.AlertName != "ScriptureForgeHighErrorRate" || result.AlertReceiver != "staging-release" {
 		t.Fatalf("unexpected alert identity: %+v", result)
@@ -539,6 +587,7 @@ func TestRunFailsWhenTraceIDIsNotFoundInLogs(t *testing.T) {
 		Role:               "admin",
 		ReleaseCandidate:   "sha-obs",
 		ServiceVersion:     "scriptureforge-api:sha-obs",
+		LoadRunID:          "obs-run-123",
 		Timeout:            time.Second,
 	}, &output, clientForHTTPServer(t, server))
 	if err == nil {
@@ -584,6 +633,7 @@ func TestRunFailsWhenRustMetricsMissFailureCounters(t *testing.T) {
 		Role:               "admin",
 		ReleaseCandidate:   "sha-obs",
 		ServiceVersion:     "scriptureforge-api:sha-obs",
+		LoadRunID:          "obs-run-123",
 		Timeout:            time.Second,
 	}, &output, clientForHTTPServer(t, server))
 	if err == nil {
@@ -630,6 +680,7 @@ scriptureforge_http_request_duration_seconds_sum 0.01` + observabilityReleaseMar
 		Role:               "admin",
 		ReleaseCandidate:   "sha-obs",
 		ServiceVersion:     "scriptureforge-api:sha-obs",
+		LoadRunID:          "obs-run-123",
 		Timeout:            time.Second,
 	}, &output, clientForHTTPServer(t, server))
 	if err == nil {
@@ -678,6 +729,7 @@ scriptureforge_dependency_operation_duration_seconds_sum{dependency="rust_engine
 		Role:               "admin",
 		ReleaseCandidate:   "sha-obs",
 		ServiceVersion:     "scriptureforge-api:sha-obs",
+		LoadRunID:          "obs-run-123",
 		Timeout:            time.Second,
 	}, &output, clientForHTTPServer(t, server))
 	if err == nil {
@@ -723,6 +775,7 @@ func TestRunFailsWhenLogsMissTenantPrincipalFields(t *testing.T) {
 		Role:               "admin",
 		ReleaseCandidate:   "sha-obs",
 		ServiceVersion:     "scriptureforge-api:sha-obs",
+		LoadRunID:          "obs-run-123",
 		Timeout:            time.Second,
 	}, &output, clientForHTTPServer(t, server))
 	if err == nil {
@@ -792,6 +845,7 @@ func TestRunFailsWhenDashboardMissingTraceCorrelationPanel(t *testing.T) {
 		RetentionURL:     "https://observability-artifacts.staging.scriptureforge.ai/retention",
 		ReleaseCandidate: "sha-obs",
 		ServiceVersion:   "scriptureforge-api:sha-obs",
+		LoadRunID:        "obs-run-123",
 		Timeout:          time.Second,
 	}, &output, clientForHTTPServer(t, server))
 	if err == nil {
@@ -828,6 +882,7 @@ func TestRunFailsWhenAlertRulesMissOperationalCoverage(t *testing.T) {
 		RetentionURL:     "https://observability-artifacts.staging.scriptureforge.ai/retention",
 		ReleaseCandidate: "sha-obs",
 		ServiceVersion:   "scriptureforge-api:sha-obs",
+		LoadRunID:        "obs-run-123",
 		Timeout:          time.Second,
 	}, &output, clientForHTTPServer(t, server))
 	if err == nil {
@@ -864,6 +919,7 @@ func TestRunFailsWhenAlertDeliveryOnlyReportsReady(t *testing.T) {
 		RetentionURL:     "https://observability-artifacts.staging.scriptureforge.ai/retention",
 		ReleaseCandidate: "sha-obs",
 		ServiceVersion:   "scriptureforge-api:sha-obs",
+		LoadRunID:        "obs-run-123",
 		Timeout:          time.Second,
 	}, &output, clientForHTTPServer(t, server))
 	if err == nil {
@@ -934,6 +990,7 @@ func TestRunRejectsMockMarkedObservabilityArtifacts(t *testing.T) {
 		Role:               "admin",
 		ReleaseCandidate:   "sha-obs",
 		ServiceVersion:     "scriptureforge-api:sha-obs",
+		LoadRunID:          "obs-run-123",
 		Timeout:            time.Second,
 	}, &output, clientForHTTPServer(t, server))
 	if err == nil {
@@ -970,6 +1027,7 @@ func TestRunRejectsDryRunAlertArtifacts(t *testing.T) {
 		RetentionURL:     "https://observability-artifacts.staging.scriptureforge.ai/retention",
 		ReleaseCandidate: "sha-obs",
 		ServiceVersion:   "scriptureforge-api:sha-obs",
+		LoadRunID:        "obs-run-123",
 		Timeout:          time.Second,
 	}, &output, clientForHTTPServer(t, server))
 	if err == nil {
@@ -1013,6 +1071,7 @@ func TestRunRejectsLocalTelemetryTargets(t *testing.T) {
 				Role:               "admin",
 				ReleaseCandidate:   "sha-obs",
 				ServiceVersion:     "scriptureforge-api:sha-obs",
+				LoadRunID:          "obs-run-123",
 				Timeout:            time.Second,
 			},
 			want:        "collector-config-url",
@@ -1035,6 +1094,7 @@ func TestRunRejectsLocalTelemetryTargets(t *testing.T) {
 				Role:               "admin",
 				ReleaseCandidate:   "sha-obs",
 				ServiceVersion:     "scriptureforge-api:sha-obs",
+				LoadRunID:          "obs-run-123",
 				Timeout:            time.Second,
 			},
 			want:        "api-metrics-url",
@@ -1057,6 +1117,7 @@ func TestRunRejectsLocalTelemetryTargets(t *testing.T) {
 				Role:               "admin",
 				ReleaseCandidate:   "sha-obs",
 				ServiceVersion:     "scriptureforge-api:sha-obs",
+				LoadRunID:          "obs-run-123",
 				Timeout:            time.Second,
 			},
 			want:        "api-metrics-url",
@@ -1079,6 +1140,7 @@ func TestRunRejectsLocalTelemetryTargets(t *testing.T) {
 				Role:               "admin",
 				ReleaseCandidate:   "sha-obs",
 				ServiceVersion:     "scriptureforge-api:sha-obs",
+				LoadRunID:          "obs-run-123",
 				Timeout:            time.Second,
 			},
 			want:        "api-metrics-url",
@@ -1101,6 +1163,7 @@ func TestRunRejectsLocalTelemetryTargets(t *testing.T) {
 				Role:               "admin",
 				ReleaseCandidate:   "sha-obs",
 				ServiceVersion:     "scriptureforge-api:sha-obs",
+				LoadRunID:          "obs-run-123",
 				Timeout:            time.Second,
 			},
 			want:        "rust-metrics-url",
@@ -1123,6 +1186,7 @@ func TestRunRejectsLocalTelemetryTargets(t *testing.T) {
 				Role:               "admin",
 				ReleaseCandidate:   "sha-obs",
 				ServiceVersion:     "scriptureforge-api:sha-obs",
+				LoadRunID:          "obs-run-123",
 				Timeout:            time.Second,
 			},
 			want:        "log-query-url",
@@ -1145,6 +1209,7 @@ func TestRunRejectsLocalTelemetryTargets(t *testing.T) {
 				Role:               "admin",
 				ReleaseCandidate:   "sha-obs",
 				ServiceVersion:     "scriptureforge-api:sha-obs",
+				LoadRunID:          "obs-run-123",
 				Timeout:            time.Second,
 			},
 			want:        "collector-config-url",
@@ -1167,6 +1232,7 @@ func TestRunRejectsLocalTelemetryTargets(t *testing.T) {
 				Role:               "admin",
 				ReleaseCandidate:   "sha-obs",
 				ServiceVersion:     "scriptureforge-api:sha-obs",
+				LoadRunID:          "obs-run-123",
 				Timeout:            time.Second,
 			},
 			want:        "api-metrics-url",
@@ -1189,6 +1255,7 @@ func TestRunRejectsLocalTelemetryTargets(t *testing.T) {
 				Role:               "admin",
 				ReleaseCandidate:   "sha-obs",
 				ServiceVersion:     "scriptureforge-api:sha-obs",
+				LoadRunID:          "obs-run-123",
 				Timeout:            time.Second,
 			},
 			want:        "trace-query-url",
@@ -1206,6 +1273,7 @@ func TestRunRejectsLocalTelemetryTargets(t *testing.T) {
 				RetentionURL:     "https://observability-artifacts.staging.scriptureforge.ai/retention",
 				ReleaseCandidate: "sha-obs",
 				ServiceVersion:   "scriptureforge-api:sha-obs",
+				LoadRunID:        "obs-run-123",
 				Timeout:          time.Second,
 			},
 			want:        "dashboard-url",
@@ -1223,6 +1291,7 @@ func TestRunRejectsLocalTelemetryTargets(t *testing.T) {
 				RetentionURL:     "https://observability-artifacts.staging.scriptureforge.ai/retention",
 				ReleaseCandidate: "sha-obs",
 				ServiceVersion:   "scriptureforge-api:sha-obs",
+				LoadRunID:        "obs-run-123",
 				Timeout:          time.Second,
 			},
 			want:        "alert-rules-url",
@@ -1240,6 +1309,7 @@ func TestRunRejectsLocalTelemetryTargets(t *testing.T) {
 				RetentionURL:     "https://observability.invalid/retention",
 				ReleaseCandidate: "sha-obs",
 				ServiceVersion:   "scriptureforge-api:sha-obs",
+				LoadRunID:        "obs-run-123",
 				Timeout:          time.Second,
 			},
 			want:        "retention-url",
