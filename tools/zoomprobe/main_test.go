@@ -12,16 +12,16 @@ import (
 )
 
 var requiredZoomProbeSummaryMarkers = map[string][]string{
-	"zoom-oauth-readiness":               {"staging artifact", "oauth", "account_credentials", "status", "ok", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom"},
-	"zoom-meeting-create-or-fallback":    {"staging artifact", "meeting", "join_url", "zoom.us", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom"},
-	"zoom-timeout-circuit-fallback":      {"staging artifact", "timeout", "provider timeout", "circuit", "open", "circuit_open_fallback", "fallback", "offline://in-person", "provider_timeout=true", "circuit_open=true", "offline_fallback=true", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom"},
-	"zoom-webhook-signature-delivery":    {"staging artifact", "webhook", "signature", "x-zm-signature=v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "x-zm-request-timestamp=1710000000", "stale", "replay", "401", "invalid", "signed", "200", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom"},
-	"zoom-webhook-url-validation":        {"staging artifact", "endpoint.url_validation", "plain_token=zoom-plain-123", "encrypted_token=zoom-encrypted-456", "validation_response=200", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom"},
-	"zoom-duplicate-webhook-idempotency": {"staging artifact", "duplicate", "x-zm-trackingid=zm-track-123", "delivery_id=", "delivery id", "same Zoom event", "idempotent", "200", "single state mutation", "no duplicate side effects", "single_state_mutation=true", "no_duplicate_side_effects=true", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom"},
-	"zoom-meeting-room-mapping":          {"staging artifact", "meeting_external_id=", "live_rooms", "internal_room_id=", "redis room state", "mapped", "unknown meeting ignored", "no external meeting id fallback", "distinct_zoom_artifacts=true", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom"},
+	"zoom-oauth-readiness":               {"staging artifact", "oauth", "account_credentials", "status", "ok", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom", "load_run_id=zoom-run-123"},
+	"zoom-meeting-create-or-fallback":    {"staging artifact", "meeting", "join_url", "zoom.us", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom", "load_run_id=zoom-run-123"},
+	"zoom-timeout-circuit-fallback":      {"staging artifact", "timeout", "provider timeout", "circuit", "open", "circuit_open_fallback", "fallback", "offline://in-person", "provider_timeout=true", "circuit_open=true", "offline_fallback=true", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom", "load_run_id=zoom-run-123"},
+	"zoom-webhook-signature-delivery":    {"staging artifact", "webhook", "signature", "x-zm-signature=v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "x-zm-request-timestamp=1710000000", "stale", "replay", "401", "invalid", "signed", "200", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom", "load_run_id=zoom-run-123"},
+	"zoom-webhook-url-validation":        {"staging artifact", "endpoint.url_validation", "plain_token=zoom-plain-123", "encrypted_token=zoom-encrypted-456", "validation_response=200", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom", "load_run_id=zoom-run-123"},
+	"zoom-duplicate-webhook-idempotency": {"staging artifact", "duplicate", "x-zm-trackingid=zm-track-123", "delivery_id=", "delivery id", "same Zoom event", "idempotent", "200", "single state mutation", "no duplicate side effects", "single_state_mutation=true", "no_duplicate_side_effects=true", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom", "load_run_id=zoom-run-123"},
+	"zoom-meeting-room-mapping":          {"staging artifact", "meeting_external_id=", "live_rooms", "internal_room_id=", "redis room state", "mapped", "unknown meeting ignored", "no external meeting id fallback", "distinct_zoom_artifacts=true", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom", "load_run_id=zoom-run-123"},
 }
 
-const zoomReleaseEvidence = " release_candidate=sha-zoom service_version=scriptureforge-api:sha-zoom"
+const zoomReleaseEvidence = " release_candidate=sha-zoom service_version=scriptureforge-api:sha-zoom load_run_id=zoom-run-123"
 const zoomWebhookEvidence = "webhook signature x-zm-signature=v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa x-zm-request-timestamp=1710000000 stale replay 401 invalid 401 signed 200"
 const zoomURLValidationEvidence = "endpoint.url_validation plain_token=zoom-plain-123 encrypted_token=zoom-encrypted-456 validation_response=200"
 
@@ -36,6 +36,7 @@ func stagingZoomConfig(timeout time.Duration) config {
 		RoomMappingArtifactURL: "https://zoom-artifacts.staging.scriptureforge.ai/zoom/mapping",
 		ReleaseCandidate:       "sha-zoom",
 		ServiceVersion:         "scriptureforge-api:sha-zoom",
+		LoadRunID:              "zoom-run-123",
 		Timeout:                timeout,
 	}
 }
@@ -55,6 +56,16 @@ func TestRunRequiresReleaseIdentity(t *testing.T) {
 	err := runWithClient(cfg, &output, http.DefaultClient)
 	if err == nil || !strings.Contains(err.Error(), "release-candidate") {
 		t.Fatalf("expected release identity requirement error, got %v", err)
+	}
+}
+
+func TestRunRequiresLoadRunIdentity(t *testing.T) {
+	cfg := stagingZoomConfig(time.Second)
+	cfg.LoadRunID = ""
+	var output bytes.Buffer
+	err := runWithClient(cfg, &output, http.DefaultClient)
+	if err == nil || !strings.Contains(err.Error(), "load-run-id") {
+		t.Fatalf("expected load run identity requirement error, got %v", err)
 	}
 }
 
@@ -120,6 +131,9 @@ func TestRunEmitsZoomEvidenceWhenArtifactsPass(t *testing.T) {
 	if result.ReleaseCandidate != "sha-zoom" || result.ServiceVersion != "scriptureforge-api:sha-zoom" {
 		t.Fatalf("unexpected release identity: %+v", result)
 	}
+	if result.LoadRunID != "zoom-run-123" {
+		t.Fatalf("unexpected load run identity: %+v", result)
+	}
 	assertProbeSummariesIncludeMarkers(t, result.Probes, requiredZoomProbeSummaryMarkers)
 	assertTimeoutCircuitFallbackProof(t, result.Probes)
 	assertWebhookSignatureProof(t, result.Probes, "v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "1710000000")
@@ -161,11 +175,42 @@ func TestRunAcceptsOfflineMeetingFallbackEvidence(t *testing.T) {
 	}
 	for _, probe := range result.Probes {
 		if probe.Name == "zoom-meeting-create-or-fallback" {
-			assertSummaryIncludesMarkers(t, probe, []string{"staging artifact", "offline://in-person", "fallback", "Zoom", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom"})
+			assertSummaryIncludesMarkers(t, probe, []string{"staging artifact", "offline://in-person", "fallback", "Zoom", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom", "load_run_id=zoom-run-123"})
 			return
 		}
 	}
 	t.Fatal("offline fallback report missing zoom-meeting-create-or-fallback probe")
+}
+
+func TestRunFailsWhenArtifactUsesDifferentLoadRun(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth":
+			_, _ = w.Write([]byte("Zoom oauth account_credentials status ok token redacted" + zoomReleaseEvidence))
+		case "/meeting":
+			_, _ = w.Write([]byte("meeting created join_url=https://zoom.us/j/123456789" + zoomReleaseEvidence))
+		case "/resilience":
+			_, _ = w.Write([]byte("provider timeout drill opened circuit; circuit open circuit_open_fallback returned offline://in-person fallback release_candidate=sha-zoom service_version=scriptureforge-api:sha-zoom load_run_id=zoom-run-999"))
+		case "/webhook":
+			_, _ = w.Write([]byte(zoomWebhookEvidence + zoomReleaseEvidence))
+		case "/validation":
+			_, _ = w.Write([]byte(zoomURLValidationEvidence + zoomReleaseEvidence))
+		case "/duplicate":
+			_, _ = w.Write([]byte("duplicate webhook x-zm-trackingid=zm-track-123 delivery_id=zm-delivery-123 delivery id same Zoom event idempotent 200 single state mutation no duplicate side effects single_state_mutation=true no_duplicate_side_effects=true" + zoomReleaseEvidence))
+		case "/mapping":
+			_, _ = w.Write([]byte("meeting_external_id=zoom-123 mapped to live_rooms internal_room_id=room-abc redis room state updated; unknown meeting ignored; no external meeting id fallback distinct_zoom_artifacts=true" + zoomReleaseEvidence))
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := runWithClient(stagingZoomConfig(time.Second), &output, clientForHTTPServer(t, server))
+	if err == nil {
+		t.Fatalf("expected mismatched load run evidence to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "zoom-timeout-circuit-fallback") {
+		t.Fatalf("report missing load-run-mismatched resilience probe:\n%s", output.String())
+	}
 }
 
 func assertProbeSummariesIncludeMarkers(t *testing.T, probes []probeResult, required map[string][]string) {

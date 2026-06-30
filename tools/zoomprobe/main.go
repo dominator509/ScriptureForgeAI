@@ -40,6 +40,7 @@ type config struct {
 	RoomMappingArtifactURL string
 	ReleaseCandidate       string
 	ServiceVersion         string
+	LoadRunID              string
 	Timeout                time.Duration
 }
 
@@ -53,6 +54,7 @@ type report struct {
 	ThresholdPass    bool          `json:"threshold_pass"`
 	ReleaseCandidate string        `json:"release_candidate"`
 	ServiceVersion   string        `json:"service_version"`
+	LoadRunID        string        `json:"load_run_id"`
 	Probes           []probeResult `json:"probes"`
 	EvidenceItems    []string      `json:"evidence_items"`
 }
@@ -99,6 +101,7 @@ func parseFlags() config {
 	flag.StringVar(&cfg.RoomMappingArtifactURL, "room-mapping-artifact-url", os.Getenv("STAGING_ZOOM_ROOM_MAPPING_ARTIFACT_URL"), "meeting-to-room mapping artifact URL")
 	flag.StringVar(&cfg.ReleaseCandidate, "release-candidate", os.Getenv("RELEASE_CANDIDATE"), "release candidate Git SHA or tag expected in Zoom evidence artifacts")
 	flag.StringVar(&cfg.ServiceVersion, "service-version", os.Getenv("SERVICE_VERSION"), "service version expected in Zoom evidence artifacts")
+	flag.StringVar(&cfg.LoadRunID, "load-run-id", os.Getenv("STAGING_LOAD_RUN_ID"), "exact staging Zoom run identifier that every Zoom artifact must name")
 	flag.DurationVar(&cfg.Timeout, "timeout", 5*time.Second, "per-probe timeout")
 	flag.Parse()
 	return cfg
@@ -117,8 +120,9 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 	}
 	cfg.ReleaseCandidate = strings.TrimSpace(cfg.ReleaseCandidate)
 	cfg.ServiceVersion = strings.TrimSpace(cfg.ServiceVersion)
-	if cfg.ReleaseCandidate == "" || cfg.ServiceVersion == "" {
-		return errors.New("Zoom proof requires -release-candidate and -service-version")
+	cfg.LoadRunID = strings.TrimSpace(cfg.LoadRunID)
+	if cfg.ReleaseCandidate == "" || cfg.ServiceVersion == "" || cfg.LoadRunID == "" {
+		return errors.New("Zoom proof requires -release-candidate, -service-version, and -load-run-id")
 	}
 	var err error
 	cfg.OAuthArtifactURL, err = normalizeArtifactURL(cfg.OAuthArtifactURL, "oauth-artifact-url")
@@ -169,6 +173,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 	releaseMarkers := []string{
 		fmt.Sprintf("release_candidate=%s", cfg.ReleaseCandidate),
 		fmt.Sprintf("service_version=%s", cfg.ServiceVersion),
+		fmt.Sprintf("load_run_id=%s", cfg.LoadRunID),
 	}
 	probes := []probeResult{
 		probeArtifact(client, "zoom-oauth-readiness", cfg.OAuthArtifactURL, append([]string{"oauth", "account_credentials", "status", "ok"}, releaseMarkers...), forbiddenWithSecrets),
@@ -188,6 +193,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 		ThresholdPass:    true,
 		ReleaseCandidate: cfg.ReleaseCandidate,
 		ServiceVersion:   cfg.ServiceVersion,
+		LoadRunID:        cfg.LoadRunID,
 		Probes:           probes,
 		EvidenceItems:    []string{"EXT-ZOOM-001"},
 	}
