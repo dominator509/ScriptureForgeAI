@@ -14,7 +14,9 @@ import (
 const apiImageDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 const webImageDigest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 const rustImageDigest = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
-const rolloutReleaseMarkers = " release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1"
+const deploymentLoadRunID = "staging-deploy-run-123"
+const deploymentLoadRunMarker = "load_run_id=" + deploymentLoadRunID
+const rolloutReleaseMarkers = " release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 " + deploymentLoadRunMarker
 
 func stagingDeploymentConfig(timeout time.Duration) config {
 	return config{
@@ -27,6 +29,7 @@ func stagingDeploymentConfig(timeout time.Duration) config {
 		K8SResourcesURL:   "https://deployment-artifacts.staging.scriptureforge.ai/deploy/resources",
 		ReleaseCandidate:  "0123456789abcdef0123456789abcdef01234567",
 		ServiceVersion:    "2026.06.27.1",
+		LoadRunID:         deploymentLoadRunID,
 		Timeout:           timeout,
 	}
 }
@@ -43,15 +46,15 @@ func TestRunEmitsTerraformAndKubernetesEvidenceWhenArtifactsPass(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/tf-init":
-			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true dynamodb_table scriptureforge-locks successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1"))
+			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true dynamodb_table scriptureforge-locks successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 " + deploymentLoadRunMarker))
 		case "/tf-plan":
-			_, _ = w.Write([]byte("Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1"))
+			_, _ = w.Write([]byte("Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 " + deploymentLoadRunMarker))
 		case "/tf-apply":
-			_, _ = w.Write([]byte("Apply complete! Resources: 42 added, 0 changed, 0 destroyed. release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1"))
+			_, _ = w.Write([]byte("Apply complete! Resources: 42 added, 0 changed, 0 destroyed. release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 " + deploymentLoadRunMarker))
 		case "/rollout":
 			_, _ = w.Write([]byte("namespace staging deployment scriptureforge-api successfully rolled out ready available; deployment scriptureforge-web successfully rolled out ready available; deployment scriptureforge-rust-engine successfully rolled out ready available" + rolloutReleaseMarkers))
 		case "/resources":
-			_, _ = w.Write([]byte("namespace staging deployment service ingress hpa pdb ready available targets minAvailable readinessProbe livenessProbe rollingUpdate maxUnavailable=0 minReplicas maxReplicas tls SecretProviderClass image ghcr.io/scriptureforge/api@" + apiImageDigest + " ghcr.io/scriptureforge/web@" + webImageDigest + " ghcr.io/scriptureforge/rust-engine@" + rustImageDigest + " release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 scriptureforge-api scriptureforge-web scriptureforge-rust-engine"))
+			_, _ = w.Write([]byte("namespace staging deployment service ingress hpa pdb ready available targets minAvailable readinessProbe livenessProbe rollingUpdate maxUnavailable=0 minReplicas maxReplicas tls SecretProviderClass image ghcr.io/scriptureforge/api@" + apiImageDigest + " ghcr.io/scriptureforge/web@" + webImageDigest + " ghcr.io/scriptureforge/rust-engine@" + rustImageDigest + " release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 " + deploymentLoadRunMarker + " scriptureforge-api scriptureforge-web scriptureforge-rust-engine"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -70,18 +73,18 @@ func TestRunEmitsTerraformAndKubernetesEvidenceWhenArtifactsPass(t *testing.T) {
 	if !result.ThresholdPass {
 		t.Fatalf("expected threshold pass: %+v", result)
 	}
-	if result.ReleaseCandidate != "0123456789abcdef0123456789abcdef01234567" || result.ServiceVersion != "2026.06.27.1" {
+	if result.ReleaseCandidate != "0123456789abcdef0123456789abcdef01234567" || result.ServiceVersion != "2026.06.27.1" || result.LoadRunID != deploymentLoadRunID {
 		t.Fatalf("report missing exact release linkage: %+v", result)
 	}
 	if !containsItem(result.EvidenceItems, "DEPLOY-TF-001") || !containsItem(result.EvidenceItems, "DEPLOY-K8S-001") {
 		t.Fatalf("missing deployment evidence items: %+v", result.EvidenceItems)
 	}
 	expectedMarkers := map[string][]string{
-		"terraform-remote-backend-init":       {"staging artifact", "terraform", "s3", "backend", "bucket", "key", "encrypt=true", "dynamodb_table", "successfully initialized", "release_candidate=0123456789abcdef0123456789abcdef01234567", "service_version=2026.06.27.1"},
-		"terraform-staging-plan":              {"staging artifact", "Terraform", "Plan:", "aws_eks_cluster", "aws_eks_node_group", "aws_rds_cluster", "aws_elasticache_replication_group", "aws_ecr_repository", "kubernetes_deployment", "kubernetes_ingress_v1", "kubernetes_horizontal_pod_autoscaler_v2", "kubernetes_pod_disruption_budget_v1", "kubernetes_manifest", "aws_iam_role", "release_candidate=0123456789abcdef0123456789abcdef01234567", "service_version=2026.06.27.1"},
-		"terraform-staging-apply-or-approval": {"staging artifact", "Apply complete", "Resources:", "0 destroyed", "release_candidate=0123456789abcdef0123456789abcdef01234567", "service_version=2026.06.27.1", "distinct_terraform_artifacts=true"},
-		"kubernetes-rollout-status":           {"staging artifact", "namespace", "staging", "deployment", "scriptureforge-api", "scriptureforge-web", "scriptureforge-rust-engine", "successfully rolled out", "ready", "available", "release_candidate=0123456789abcdef0123456789abcdef01234567", "service_version=2026.06.27.1"},
-		"kubernetes-workload-resources":       {"staging artifact", "namespace", "staging", "deployment", "service", "ingress", "hpa", "pdb", "ready", "available", "targets", "minavailable", "readinessProbe", "livenessProbe", "rollingUpdate", "maxUnavailable=0", "minReplicas", "maxReplicas", "tls", "SecretProviderClass", "image", "sha256:", "scriptureforge-api@" + apiImageDigest, "scriptureforge-web@" + webImageDigest, "scriptureforge-rust-engine@" + rustImageDigest, "concrete_image_digests=3", "workload_image_digests=3", "distinct_kubernetes_artifacts=true", "release_candidate=0123456789abcdef0123456789abcdef01234567", "service_version=2026.06.27.1", "scriptureforge-api", "scriptureforge-web", "scriptureforge-rust-engine"},
+		"terraform-remote-backend-init":       {"staging artifact", "terraform", "s3", "backend", "bucket", "key", "encrypt=true", "dynamodb_table", "successfully initialized", "release_candidate=0123456789abcdef0123456789abcdef01234567", "service_version=2026.06.27.1", deploymentLoadRunMarker},
+		"terraform-staging-plan":              {"staging artifact", "Terraform", "Plan:", "aws_eks_cluster", "aws_eks_node_group", "aws_rds_cluster", "aws_elasticache_replication_group", "aws_ecr_repository", "kubernetes_deployment", "kubernetes_ingress_v1", "kubernetes_horizontal_pod_autoscaler_v2", "kubernetes_pod_disruption_budget_v1", "kubernetes_manifest", "aws_iam_role", "release_candidate=0123456789abcdef0123456789abcdef01234567", "service_version=2026.06.27.1", deploymentLoadRunMarker},
+		"terraform-staging-apply-or-approval": {"staging artifact", "Apply complete", "Resources:", "0 destroyed", "release_candidate=0123456789abcdef0123456789abcdef01234567", "service_version=2026.06.27.1", deploymentLoadRunMarker, "distinct_terraform_artifacts=true"},
+		"kubernetes-rollout-status":           {"staging artifact", "namespace", "staging", "deployment", "scriptureforge-api", "scriptureforge-web", "scriptureforge-rust-engine", "successfully rolled out", "ready", "available", "release_candidate=0123456789abcdef0123456789abcdef01234567", "service_version=2026.06.27.1", deploymentLoadRunMarker},
+		"kubernetes-workload-resources":       {"staging artifact", "namespace", "staging", "deployment", "service", "ingress", "hpa", "pdb", "ready", "available", "targets", "minavailable", "readinessProbe", "livenessProbe", "rollingUpdate", "maxUnavailable=0", "minReplicas", "maxReplicas", "tls", "SecretProviderClass", "image", "sha256:", "scriptureforge-api@" + apiImageDigest, "scriptureforge-web@" + webImageDigest, "scriptureforge-rust-engine@" + rustImageDigest, "concrete_image_digests=3", "workload_image_digests=3", "distinct_kubernetes_artifacts=true", "release_candidate=0123456789abcdef0123456789abcdef01234567", "service_version=2026.06.27.1", deploymentLoadRunMarker, "scriptureforge-api", "scriptureforge-web", "scriptureforge-rust-engine"},
 	}
 	for _, probe := range result.Probes {
 		for _, marker := range expectedMarkers[probe.Name] {
@@ -147,8 +150,43 @@ func TestRunRequiresReleaseCandidateAndServiceVersion(t *testing.T) {
 	cfg.ReleaseCandidate = ""
 	var output bytes.Buffer
 	err := runWithClient(cfg, &output, http.DefaultClient)
-	if err == nil || !strings.Contains(err.Error(), "release-candidate and service-version") {
+	if err == nil || !strings.Contains(err.Error(), "release-candidate, service-version, and load-run-id") {
 		t.Fatalf("expected release metadata requirement, got %v", err)
+	}
+}
+
+func TestRunRequiresLoadRunID(t *testing.T) {
+	cfg := stagingDeploymentConfig(time.Second)
+	cfg.LoadRunID = ""
+	var output bytes.Buffer
+	err := runWithClient(cfg, &output, http.DefaultClient)
+	if err == nil || !strings.Contains(err.Error(), "release-candidate, service-version, and load-run-id") {
+		t.Fatalf("expected load run metadata requirement, got %v", err)
+	}
+}
+
+func TestRunFailsWhenDeploymentArtifactsUseDifferentLoadRunID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/tf-init":
+			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true dynamodb_table scriptureforge-locks successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 " + deploymentLoadRunMarker))
+		case "/tf-plan":
+			_, _ = w.Write([]byte("Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 " + deploymentLoadRunMarker))
+		case "/tf-apply":
+			_, _ = w.Write([]byte("Apply complete! Resources: 42 added, 0 changed, 0 destroyed. release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 load_run_id=staging-deploy-run-999"))
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	cfg := stagingDeploymentConfig(time.Second)
+	cfg.ProbeKubernetes = false
+	err := runWithClient(cfg, &output, clientForHTTPServer(t, server))
+	if err == nil {
+		t.Fatalf("expected mismatched deployment load run artifacts to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "terraform-staging-apply-or-approval") {
+		t.Fatalf("report did not identify load-run-bound probe:\n%s", output.String())
 	}
 }
 
@@ -394,11 +432,11 @@ func TestRunAcceptsTerraformDeploymentApprovalInsteadOfApply(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/tf-init":
-			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true dynamodb_table scriptureforge-locks successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1"))
+			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true dynamodb_table scriptureforge-locks successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 " + deploymentLoadRunMarker))
 		case "/tf-plan":
-			_, _ = w.Write([]byte("Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1"))
+			_, _ = w.Write([]byte("Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 " + deploymentLoadRunMarker))
 		case "/tf-approval":
-			_, _ = w.Write([]byte("deployment approval approved DEPLOY-TF-001 change_ticket=PLATFORM-123 release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1"))
+			_, _ = w.Write([]byte("deployment approval approved DEPLOY-TF-001 change_ticket=PLATFORM-123 release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 " + deploymentLoadRunMarker))
 		}
 	}))
 	defer server.Close()

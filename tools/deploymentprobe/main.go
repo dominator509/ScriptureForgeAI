@@ -26,6 +26,7 @@ type config struct {
 	K8SResourcesURL   string
 	ReleaseCandidate  string
 	ServiceVersion    string
+	LoadRunID         string
 	Timeout           time.Duration
 }
 
@@ -34,6 +35,7 @@ type report struct {
 	ThresholdPass    bool          `json:"threshold_pass"`
 	ReleaseCandidate string        `json:"release_candidate"`
 	ServiceVersion   string        `json:"service_version"`
+	LoadRunID        string        `json:"load_run_id"`
 	Probes           []probeResult `json:"probes"`
 	EvidenceItems    []string      `json:"evidence_items"`
 }
@@ -75,6 +77,7 @@ func parseFlags() config {
 	flag.StringVar(&cfg.K8SResourcesURL, "k8s-resources-url", os.Getenv("STAGING_K8S_RESOURCES_URL"), "kubectl get deploy,svc,ingress,hpa,pdb artifact URL")
 	flag.StringVar(&cfg.ReleaseCandidate, "release-candidate", os.Getenv("STAGING_RELEASE_CANDIDATE"), "exact release candidate SHA that deployment artifacts must name")
 	flag.StringVar(&cfg.ServiceVersion, "service-version", os.Getenv("STAGING_SERVICE_VERSION"), "exact deployed service version that deployment artifacts must name")
+	flag.StringVar(&cfg.LoadRunID, "load-run-id", os.Getenv("STAGING_LOAD_RUN_ID"), "exact staging deployment/load run identifier that every deployment artifact must name")
 	flag.DurationVar(&cfg.Timeout, "timeout", 5*time.Second, "per-probe timeout")
 	flag.Parse()
 	return cfg
@@ -93,8 +96,9 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 	}
 	cfg.ReleaseCandidate = strings.TrimSpace(cfg.ReleaseCandidate)
 	cfg.ServiceVersion = strings.TrimSpace(cfg.ServiceVersion)
-	if cfg.ReleaseCandidate == "" || cfg.ServiceVersion == "" {
-		return errors.New("release-candidate and service-version are required for deployment evidence")
+	cfg.LoadRunID = strings.TrimSpace(cfg.LoadRunID)
+	if cfg.ReleaseCandidate == "" || cfg.ServiceVersion == "" || cfg.LoadRunID == "" {
+		return errors.New("release-candidate, service-version, and load-run-id are required for deployment evidence")
 	}
 	if cfg.ProbeTerraform {
 		if cfg.TerraformInitURL == "" || cfg.TerraformPlanURL == "" || cfg.TerraformApplyURL == "" {
@@ -153,6 +157,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 	releaseMarkers := []string{
 		"release_candidate=" + cfg.ReleaseCandidate,
 		"service_version=" + cfg.ServiceVersion,
+		"load_run_id=" + cfg.LoadRunID,
 	}
 	if cfg.ProbeTerraform {
 		probes = append(probes,
@@ -178,6 +183,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 		ThresholdPass:    true,
 		ReleaseCandidate: cfg.ReleaseCandidate,
 		ServiceVersion:   cfg.ServiceVersion,
+		LoadRunID:        cfg.LoadRunID,
 		Probes:           probes,
 		EvidenceItems:    evidenceItems,
 	}
