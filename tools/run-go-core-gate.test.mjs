@@ -4,9 +4,11 @@ import {
   defaultGoBin,
   goArgsForMode,
   goTestProofMarkers,
+  goTestRequiredWebSocketTests,
   goVetProofMarkers,
   parseArgs,
   runGoCoreGate,
+  validateGoTestOutput,
 } from './run-go-core-gate.mjs';
 
 test('parseArgs supports mode, bin, and cwd', () => {
@@ -23,7 +25,7 @@ test('defaultGoBin resolves repo-local Go by platform', () => {
 
 test('goArgsForMode defines all-package test and vet gates', () => {
   assert.deepEqual(goArgsForMode('test'), {
-    args: ['test', './...', '-count=1', '-timeout=90s'],
+    args: ['test', './...', '-count=1', '-timeout=90s', '-v'],
     proofName: 'go-test-gate',
     markers: goTestProofMarkers,
   });
@@ -43,7 +45,7 @@ test('runGoCoreGate runs go test with release proof markers', () => {
     cwd: 'repo',
     spawnSyncImpl(command, args, options) {
       calls.push({ command, args, options });
-      return { status: 0, stdout: 'ok scriptureforge/internal/ports\n', stderr: '' };
+      return { status: 0, stdout: requiredWebSocketPassOutput(), stderr: '' };
     },
     env: { GOCACHE: '.gocache', GO_ENV: 'testing' },
   });
@@ -52,8 +54,33 @@ test('runGoCoreGate runs go test with release proof markers', () => {
   assert.equal(result.proofName, 'go-test-gate');
   assert.deepEqual(result.markers, goTestProofMarkers);
   assert.equal(calls[0].command, 'go');
-  assert.deepEqual(calls[0].args, ['test', './...', '-count=1', '-timeout=90s']);
+  assert.deepEqual(calls[0].args, ['test', './...', '-count=1', '-timeout=90s', '-v']);
   assert.equal(calls[0].options.env.GO_ENV, 'testing');
+});
+
+test('validateGoTestOutput requires WebSocket production-behavior PASS lines', () => {
+  assert.doesNotThrow(() => validateGoTestOutput(requiredWebSocketPassOutput()));
+  assert.throws(
+    () => validateGoTestOutput(requiredWebSocketPassOutput().replace('--- PASS: TestLiveRoomRejectsDisallowedOrigin', '--- SKIP: TestLiveRoomRejectsDisallowedOrigin')),
+    /skipped: TestLiveRoomRejectsDisallowedOrigin/,
+  );
+  assert.throws(
+    () => validateGoTestOutput(requiredWebSocketPassOutput().replace('--- PASS: TestRoomStateHandlerFailsClosedWhenStateManagerMissing', '--- RUN: TestRoomStateHandlerFailsClosedWhenStateManagerMissing')),
+    /missing PASS lines: TestRoomStateHandlerFailsClosedWhenStateManagerMissing/,
+  );
+});
+
+test('runGoCoreGate rejects successful go test output without required WebSocket proof', () => {
+  const result = runGoCoreGate({
+    mode: 'test',
+    bin: 'go',
+    spawnSyncImpl() {
+      return { status: 0, stdout: 'ok scriptureforge/internal/ports\n', stderr: '' };
+    },
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /go-test-gate missing required WebSocket production-behavior proof/);
 });
 
 test('runGoCoreGate runs go vet with static-analysis proof markers', () => {
@@ -83,3 +110,7 @@ test('runGoCoreGate propagates failing Go output', () => {
   assert.equal(result.exitCode, 1);
   assert.match(result.output, /FAIL scriptureforge\/internal\/ports/);
 });
+
+function requiredWebSocketPassOutput() {
+  return `${goTestRequiredWebSocketTests.map((testName) => `--- PASS: ${testName} (0.00s)`).join('\n')}\nok scriptureforge/internal/ports\n`;
+}

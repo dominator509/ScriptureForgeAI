@@ -81,6 +81,14 @@ test('validateLocalGateReport rejects Go core gates without wrapper proof marker
     /go-test output must include go_timeout_90s=true/,
   );
 
+  const missingWebSocketMarker = completeReport();
+  findGate(missingWebSocketMarker, 'go-test').stdout_tail = goTestProofOutput()
+    .replace('websocket_realtime_tests_passed=true', 'websocket_realtime_tests_passed=false');
+  assert.throws(
+    () => validateLocalGateReport(missingWebSocketMarker),
+    /go-test output must include websocket_realtime_tests_passed=true/,
+  );
+
   const missingVetSummary = completeReport();
   findGate(missingVetSummary, 'go-vet').stdout_tail = '';
   assert.throws(

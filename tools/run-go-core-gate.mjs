@@ -5,7 +5,30 @@ export const goTestProofMarkers = [
   'go_test_all_packages=true',
   'go_count_one=true',
   'go_timeout_90s=true',
+  'go_verbose_test_names=true',
+  'websocket_realtime_tests_passed=true',
+  'websocket_invalid_event_guard_test=true',
+  'websocket_reconnect_polling_test=true',
+  'websocket_concurrent_sequence_test=true',
+  'websocket_fanout_broadcast_test=true',
+  'websocket_drop_metric_test=true',
+  'websocket_origin_guard_test=true',
+  'websocket_polling_fallback_test=true',
   'repo_go_toolchain=true',
+];
+
+export const goTestRequiredWebSocketTests = [
+  'TestLiveRoomRejectsInvalidEventAndBroadcastsAcceptedEvent',
+  'TestLiveRoomClosesOversizedEventWithoutPersisting',
+  'TestLiveRoomReconnectReceivesFutureEventsAndPollingState',
+  'TestLiveRoomFailsClosedWhenStateManagerMissing',
+  'TestLiveRoomConcurrentSendersReceiveContiguousAcceptedBroadcasts',
+  'TestLiveRoomFanOutDeliversEveryAcceptedEventToEverySubscriber',
+  'TestLiveRoomReportsDroppedBroadcastForLaggingSubscriber',
+  'TestLiveRoomRejectsDisallowedOrigin',
+  'TestRoomStateHandlerReturnsLatestEventForPollingFallback',
+  'TestRoomStateHandlerRejectsNonMemberBeforePollingState',
+  'TestRoomStateHandlerFailsClosedWhenStateManagerMissing',
 ];
 
 export const goVetProofMarkers = [
@@ -21,7 +44,7 @@ export function defaultGoBin(platformName = platform()) {
 export function goArgsForMode(mode) {
   if (mode === 'test') {
     return {
-      args: ['test', './...', '-count=1', '-timeout=90s'],
+      args: ['test', './...', '-count=1', '-timeout=90s', '-v'],
       proofName: 'go-test-gate',
       markers: goTestProofMarkers,
     };
@@ -53,6 +76,21 @@ export function runGoCoreGate({
     env,
   });
   const output = `${child.stdout || ''}${child.stderr || ''}${child.error ? child.error.message : ''}`;
+  if ((child.status ?? 1) === 0 && mode === 'test') {
+    try {
+      validateGoTestOutput(output);
+    } catch (error) {
+      const suffix = output.endsWith('\n') || output.length === 0 ? '' : '\n';
+      return {
+        exitCode: 1,
+        output: `${output}${suffix}${error.message}\n`,
+        command,
+        args: plan.args,
+        proofName: plan.proofName,
+        markers: plan.markers,
+      };
+    }
+  }
   return {
     exitCode: child.status ?? 1,
     output,
@@ -61,6 +99,32 @@ export function runGoCoreGate({
     proofName: plan.proofName,
     markers: plan.markers,
   };
+}
+
+export function validateGoTestOutput(output) {
+  const missing = [];
+  const skipped = [];
+  for (const testName of goTestRequiredWebSocketTests) {
+    const escaped = escapeRegExp(testName);
+    if (new RegExp(`--- SKIP: ${escaped}\\b`).test(output)) {
+      skipped.push(testName);
+      continue;
+    }
+    if (!new RegExp(`--- PASS: ${escaped}\\b`).test(output)) {
+      missing.push(testName);
+    }
+  }
+  if (skipped.length > 0 || missing.length > 0) {
+    const details = [
+      skipped.length > 0 ? `skipped: ${skipped.join(', ')}` : '',
+      missing.length > 0 ? `missing PASS lines: ${missing.join(', ')}` : '',
+    ].filter(Boolean).join('; ');
+    throw new Error(`go-test-gate missing required WebSocket production-behavior proof (${details})`);
+  }
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export function parseArgs(rawArgs) {
