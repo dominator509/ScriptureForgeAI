@@ -248,6 +248,7 @@ func probeMetrics(client *http.Client, metricsURL string, timeout time.Duration,
 	summary := fmt.Sprintf("metrics HTTP %d in %dms", resp.StatusCode, latency)
 	if passed {
 		summary += "; verified markers: " + strings.Join(append([]string{"staging artifact"}, append(requiredMarkers, "Prometheus metrics", "rust_metrics_samples_verified=true", "rust_embedding_requests_positive=true", "rust_vector_search_requests_positive=true")...), ", ")
+		summary += fmt.Sprintf("; embedding_requests=%g; vector_search_requests=%g", embeddingRequestCount, vectorSearchRequestCount)
 	}
 	return probeResult{
 		Name:                 "rust-metrics",
@@ -297,6 +298,7 @@ func probeAPIRustIntegrationMetrics(client *http.Client, metricsURL string, time
 	summary := fmt.Sprintf("API metrics HTTP %d in %dms", resp.StatusCode, latency)
 	if passed {
 		summary += "; verified markers: " + strings.Join(append([]string{"staging artifact", "Go API rust_engine vector_search success", "scriptureforge_dependency_operations_total", "scriptureforge_dependency_operation_duration_seconds_sum", "api_rust_metrics_samples_verified=true"}, releaseMarkers...), ", ")
+		summary += fmt.Sprintf("; api_rust_vector_search_ops=%g; api_rust_vector_search_seconds=%g", operationCount, durationSum)
 	}
 	return probeResult{
 		Name:                       "api-rust-integration-metrics",

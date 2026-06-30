@@ -102,6 +102,10 @@ const aiSegmentMarkerRequirements = new Map([
 const obsCollectorConfigPattern = /collector-otlp-config(?=[^;]*staging artifact)(?=[^;]*receivers)(?=[^;]*otlp)(?=[^;]*4317)(?=[^;]*4318)(?=[^;]*exporters)(?=[^;]*service)(?=[^;]*release_candidate=)/i;
 const obsAPIMetricsPattern = /api-prometheus-metrics(?=[^;]*staging artifact)(?=[^;]*scriptureforge_http_requests_total)(?=[^;]*scriptureforge_http_request_duration_seconds_sum)(?=[^;]*scriptureforge_http_requests_total\{)(?=[^;]*status=)(?=[^;]*websocket_active_connections_count)(?=[^;]*scriptureforge_dependency_operations_total\{dependency="websocket",operation="room_broadcast",status="dropped")(?=[^;]*ai_inference_duration_seconds_sum)(?=[^;]*ai_inference_duration_seconds_count)(?=[^;]*scriptureforge_dependency_operations_total\{dependency="rust_engine",operation="vector_search",status="success")(?=[^;]*scriptureforge_dependency_operation_duration_seconds_sum\{dependency="rust_engine",operation="vector_search",status="success")(?=[^;]*release_candidate=)/i;
 const obsRustMetricsPattern = /rust-prometheus-metrics(?=[^;]*staging artifact)(?=[^;]*scriptureforge_rust_engine_embedding_requests_total)(?=[^;]*scriptureforge_rust_engine_embedding_failures_total)(?=[^;]*scriptureforge_rust_engine_vector_search_requests_total)(?=[^;]*scriptureforge_rust_engine_vector_search_failures_total)(?=[^;]*release_candidate=)/i;
+const rustEmbeddingRequestsPattern = /\bembedding_requests=([1-9][0-9]*(?:\.[0-9]+)?)\b/i;
+const rustVectorSearchRequestsPattern = /\bvector_search_requests=([1-9][0-9]*(?:\.[0-9]+)?)\b/i;
+const apiRustVectorSearchOpsPattern = /\bapi_rust_vector_search_ops=([1-9][0-9]*(?:\.[0-9]+)?)\b/i;
+const apiRustVectorSearchSecondsPattern = /\bapi_rust_vector_search_seconds=(?:0\.[0-9]*[1-9][0-9]*|[1-9][0-9]*(?:\.[0-9]+)?)\b/i;
 const obsTraceSearchPattern = /trace-backend-search(?=[^;]*staging artifact)(?=[^;]*scriptureforge-api)(?=[^;]*scriptureforge-rust-engine)(?=[^;]*route=\/)(?=[^;]*method=[A-Z]+)(?=[^;]*release_candidate=)/i;
 const obsLogCorrelationPattern = /log-backend-trace-correlation(?=[^;]*staging artifact)(?=[^;]*trace_id)(?=[^;]*scriptureforge-api)(?=[^;]*scriptureforge-rust-engine)(?=[^;]*route=\/)(?=[^;]*method=[A-Z]+)(?=[^;]*service_version)(?=[^;]*deployment_environment)(?=[^;]*tenant_id=[A-Za-z0-9_.:-]+)(?=[^;]*user_id=[A-Za-z0-9_.:-]+)(?=[^;]*role=[A-Za-z0-9_.:-]+)(?=[^;]*distinct_otel_artifacts=true)(?=[^;]*release_candidate=)/i;
 const obsDashboardImportPattern = /dashboard-import(?=[^;]*staging artifact)(?=[^;]*ScriptureForge)(?=[^;]*scriptureforge_http_requests_total)(?=[^;]*scriptureforge_http_request_duration_seconds_sum)(?=[^;]*websocket_active_connections_count)(?=[^;]*room_broadcast)(?=[^;]*ai_inference_duration_seconds)(?=[^;]*scriptureforge_rust_engine_)(?=[^;]*trace_id)(?=[^;]*release_candidate=)/i;
@@ -1479,6 +1483,28 @@ function validateStrictReleaseItemEvidence(item, manifest) {
         `RUST-GRPC-001 strict release evidence must include Rust markers on ${segment}`,
       );
     }
+    const rustMetricsSegment = findEvidenceSegment(evidence, 'rust-metrics');
+    assert.match(
+      rustMetricsSegment,
+      rustEmbeddingRequestsPattern,
+      'RUST-GRPC-001 rust-metrics must include positive embedding_requests=<count>',
+    );
+    assert.match(
+      rustMetricsSegment,
+      rustVectorSearchRequestsPattern,
+      'RUST-GRPC-001 rust-metrics must include positive vector_search_requests=<count>',
+    );
+    const apiRustMetricsSegment = findEvidenceSegment(evidence, 'api-rust-integration-metrics');
+    assert.match(
+      apiRustMetricsSegment,
+      apiRustVectorSearchOpsPattern,
+      'RUST-GRPC-001 api-rust-integration-metrics must include positive api_rust_vector_search_ops=<count>',
+    );
+    assert.match(
+      apiRustMetricsSegment,
+      apiRustVectorSearchSecondsPattern,
+      'RUST-GRPC-001 api-rust-integration-metrics must include positive api_rust_vector_search_seconds=<seconds>',
+    );
   }
   if (item.id === 'CLIENT-MOBILE-001') {
     for (const [segment, markers] of mobileSegmentMarkerRequirements) {

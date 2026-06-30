@@ -1339,6 +1339,10 @@ function validateRustEvidence(report, manifest) {
   ]);
   assert.ok(Number(metrics.embedding_requests) > 0, 'rust-metrics must include positive structured embedding_requests');
   assert.ok(Number(metrics.vector_search_requests) > 0, 'rust-metrics must include positive structured vector_search_requests');
+  assertSummaryIncludesMarkers('rust-metrics', String(metrics.result_summary ?? ''), [
+    `embedding_requests=${Number(metrics.embedding_requests)}`,
+    `vector_search_requests=${Number(metrics.vector_search_requests)}`,
+  ]);
 
   const apiMetrics = probesByName.get('api-rust-integration-metrics');
   assert.ok(apiMetrics, 'RUST-GRPC-001 report must include api-rust-integration-metrics probe');
@@ -1351,6 +1355,10 @@ function validateRustEvidence(report, manifest) {
   ]);
   assert.ok(Number(apiMetrics.api_rust_vector_search_ops) > 0, 'api-rust-integration-metrics must include positive structured api_rust_vector_search_ops');
   assert.ok(Number(apiMetrics.api_rust_vector_search_seconds) > 0, 'api-rust-integration-metrics must include positive structured api_rust_vector_search_seconds');
+  assertSummaryIncludesMarkers('api-rust-integration-metrics', String(apiMetrics.result_summary ?? ''), [
+    `api_rust_vector_search_ops=${Number(apiMetrics.api_rust_vector_search_ops)}`,
+    `api_rust_vector_search_seconds=${Number(apiMetrics.api_rust_vector_search_seconds)}`,
+  ]);
 }
 
 function validateZoomEvidence(report, manifest) {
