@@ -101,6 +101,7 @@ for (const requiredWebLifecycleSnippet of [
 for (const requiredMobileLifecycleSnippet of [
   "setPlaintext('');",
   "setPassphrase('');",
+  'preserveDerivedHandleOnPassphraseClear',
   'disposeJournalCryptoKey(previous);',
   'disposeJournalCryptoKey(derivedHandle);',
 ]) {

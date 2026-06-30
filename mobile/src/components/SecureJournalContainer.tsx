@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import {
   createJournalCryptoKeyHandle,
@@ -19,6 +19,7 @@ export const SecureJournalContainer: React.FC = () => {
   const [status, setStatus] = useState('Awaiting passphrase');
   const [keyHandle, setKeyHandle] = useState<JournalCryptoKeyHandle | null>(null);
   const [journalBootstrap, setJournalBootstrap] = useState<JournalBootstrap | null>(null);
+  const preserveDerivedHandleOnPassphraseClear = useRef(false);
   const session = useAppStore((state) => state.session);
 
   useEffect(() => {
@@ -41,6 +42,7 @@ export const SecureJournalContainer: React.FC = () => {
     let isMounted = true;
     let activeHandle: JournalCryptoKeyHandle | null = null;
     if (passphrase.length >= 8 && journalBootstrap?.salt_id) {
+      preserveDerivedHandleOnPassphraseClear.current = false;
       deriveIsolationKey(passphrase, journalBootstrap.salt_id)
         .then(k => {
           const derivedHandle = createJournalCryptoKeyHandle(k);
@@ -50,6 +52,8 @@ export const SecureJournalContainer: React.FC = () => {
               disposeJournalCryptoKey(previous);
               return activeHandle;
             });
+            preserveDerivedHandleOnPassphraseClear.current = true;
+            setPassphrase('');
             setStatus("Isolation Key Derived Successfully");
           } else {
             disposeJournalCryptoKey(derivedHandle);
@@ -64,7 +68,7 @@ export const SecureJournalContainer: React.FC = () => {
             setStatus(error.message);
           }
         });
-    } else {
+    } else if (passphrase.length > 0) {
       setStatus("Awaiting valid passphrase (min 8 chars)");
       setKeyHandle(previous => {
         disposeJournalCryptoKey(previous);
@@ -74,6 +78,10 @@ export const SecureJournalContainer: React.FC = () => {
     return () => {
       isMounted = false;
       setKeyHandle(previous => {
+        if (previous === activeHandle && preserveDerivedHandleOnPassphraseClear.current) {
+          preserveDerivedHandleOnPassphraseClear.current = false;
+          return previous;
+        }
         if (previous === activeHandle) {
           disposeJournalCryptoKey(previous);
           return null;
