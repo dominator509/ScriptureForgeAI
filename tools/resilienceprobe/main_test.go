@@ -24,6 +24,7 @@ func stagingResilienceConfig(timeout time.Duration) config {
 		RestoredSmokeURL:    "https://resilience-artifacts.staging.scriptureforge.ai/resilience/restored-smoke",
 		ReleaseCandidate:    "sha-new",
 		ServiceVersion:      "release-1",
+		LoadRunID:           "resilience-run-123",
 		Timeout:             timeout,
 	}
 }
@@ -46,23 +47,33 @@ func TestRunRequiresReleaseIdentity(t *testing.T) {
 	}
 }
 
+func TestRunRequiresLoadRunIdentity(t *testing.T) {
+	var output bytes.Buffer
+	cfg := stagingResilienceConfig(time.Second)
+	cfg.LoadRunID = ""
+	err := runWithClient(cfg, &output, http.DefaultClient)
+	if err == nil || !strings.Contains(err.Error(), "load-run-id") {
+		t.Fatalf("expected load run identity error, got %v", err)
+	}
+}
+
 func TestRunEmitsRollbackAndBackupEvidenceWhenDrillsPass(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/ready-before":
-			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-1","deployment_environment":"staging","pre_rollback_version":"release-1","release_candidate":"sha-new","markers":"release_candidate=sha-new service_version=release-1"}`))
+			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-1","deployment_environment":"staging","pre_rollback_version":"release-1","release_candidate":"sha-new","markers":"release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"}`))
 		case "/rollout":
-			_, _ = w.Write([]byte("kubectl rollout undo deployment/scriptureforge-api previous_revision=42 target_revision=41; scriptureforge-api deployment successfully rolled out release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("kubectl rollout undo deployment/scriptureforge-api previous_revision=42 target_revision=41; scriptureforge-api deployment successfully rolled out release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/ready-after":
-			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-0","deployment_environment":"staging","post_rollback_version":"release-0","rolled_back_from":"release-1","rolled_back_to":"release-0","markers":"release_candidate=sha-new service_version=release-1"}`))
+			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-0","deployment_environment":"staging","post_rollback_version":"release-0","rolled_back_from":"release-1","rolled_back_to":"release-0","markers":"release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"}`))
 		case "/degradation":
-			_, _ = w.Write([]byte("AI degradation fallback exercised with AI_ORCHESTRATION_ENGINE_FAULT ai_fault=true; Zoom degradation fallback exercised with offline://in-person zoom_offline_fallback=true; non-AI routes healthy non_ai_routes_healthy=true; zoom circuit open zoom_circuit_open=true distinct_rollback_artifacts=true release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("AI degradation fallback exercised with AI_ORCHESTRATION_ENGINE_FAULT ai_fault=true; Zoom degradation fallback exercised with offline://in-person zoom_offline_fallback=true; non-AI routes healthy non_ai_routes_healthy=true; zoom circuit open zoom_circuit_open=true distinct_rollback_artifacts=true release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/backup":
-			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restore":
-			_, _ = w.Write([]byte("restore restore_job_id=restore-456 cluster scriptureforge-restore staging available restored endpoint scriptureforge-restore.cluster source snapshot_id=snap-123 checksum verified isolated restore rto_minutes=30 restore_duration_minutes=18 release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("restore restore_job_id=restore-456 cluster scriptureforge-restore staging available restored endpoint scriptureforge-restore.cluster source snapshot_id=snap-123 checksum verified isolated restore rto_minutes=30 restore_duration_minutes=18 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restored-smoke":
-			_, _ = w.Write([]byte("smoke passed against restored database tenant auth RLS migration version journal read/write verified with no plaintext journal distinct_backup_artifacts=true release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("smoke passed against restored database tenant auth RLS migration version journal read/write verified with no plaintext journal distinct_backup_artifacts=true release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -84,17 +95,20 @@ func TestRunEmitsRollbackAndBackupEvidenceWhenDrillsPass(t *testing.T) {
 	if result.ReleaseCandidate != "sha-new" || result.ServiceVersion != "release-1" {
 		t.Fatalf("report missing release identity: %+v", result)
 	}
+	if result.LoadRunID != "resilience-run-123" {
+		t.Fatalf("report missing load run identity: %+v", result)
+	}
 	if !containsItem(result.EvidenceItems, "DR-ROLLBACK-001") || !containsItem(result.EvidenceItems, "DR-BACKUP-001") {
 		t.Fatalf("report missing resilience evidence items: %+v", result.EvidenceItems)
 	}
 	expectedMarkers := map[string][]string{
-		"api-ready-before-rollback":  {"staging artifact", "ready", "service_version", "deployment_environment", "pre_rollback_version", "release_candidate", "sha-new", "release-1"},
-		"rollback-rollout-artifact":  {"staging artifact", "rollout", "undo", "revision", "previous_revision", "target_revision", "scriptureforge-api", "successfully rolled out", "release_candidate", "sha-new", "release-1"},
-		"api-ready-after-rollback":   {"staging artifact", "ready", "service_version", "deployment_environment", "post_rollback_version", "rolled_back_from", "rolled_back_to", "release_candidate", "sha-new", "release-1"},
-		"degradation-drill-artifact": {"staging artifact", "AI", "Zoom", "degradation", "fallback", "AI_ORCHESTRATION_ENGINE_FAULT", "offline://in-person", "non-AI routes healthy", "zoom circuit open", "ai_fault=true", "zoom_offline_fallback=true", "non_ai_routes_healthy=true", "zoom_circuit_open=true", "distinct_rollback_artifacts=true", "release_candidate", "sha-new", "release-1"},
-		"backup-snapshot-artifact":   {"staging artifact", "snapshot", "snapshot_id", "snapshot_id=snap-123", "available", "encrypted", "kms", "retention", "automated backup", "source cluster", "rpo_minutes", "rpo_minutes=15", "release_candidate", "sha-new", "release-1"},
-		"restore-drill-artifact":     {"staging artifact", "restore", "restore_job_id", "restore_job_id=restore-456", "available", "staging", "restored endpoint", "source snapshot_id", "source snapshot_id=snap-123", "checksum", "isolated restore", "rto_minutes", "rto_minutes=30", "restore_duration_minutes", "restore_duration_minutes=18", "release_candidate", "sha-new", "release-1"},
-		"restored-database-smoke":    {"staging artifact", "smoke passed", "restored database", "tenant", "journal", "auth", "RLS", "migration version", "no plaintext journal", "distinct_backup_artifacts=true", "release_candidate", "sha-new", "release-1"},
+		"api-ready-before-rollback":  {"staging artifact", "ready", "service_version", "deployment_environment", "pre_rollback_version", "release_candidate", "sha-new", "release-1", "load_run_id=resilience-run-123"},
+		"rollback-rollout-artifact":  {"staging artifact", "rollout", "undo", "revision", "previous_revision", "target_revision", "scriptureforge-api", "successfully rolled out", "release_candidate", "sha-new", "release-1", "load_run_id=resilience-run-123"},
+		"api-ready-after-rollback":   {"staging artifact", "ready", "service_version", "deployment_environment", "post_rollback_version", "rolled_back_from", "rolled_back_to", "release_candidate", "sha-new", "release-1", "load_run_id=resilience-run-123"},
+		"degradation-drill-artifact": {"staging artifact", "AI", "Zoom", "degradation", "fallback", "AI_ORCHESTRATION_ENGINE_FAULT", "offline://in-person", "non-AI routes healthy", "zoom circuit open", "ai_fault=true", "zoom_offline_fallback=true", "non_ai_routes_healthy=true", "zoom_circuit_open=true", "distinct_rollback_artifacts=true", "release_candidate", "sha-new", "release-1", "load_run_id=resilience-run-123"},
+		"backup-snapshot-artifact":   {"staging artifact", "snapshot", "snapshot_id", "snapshot_id=snap-123", "available", "encrypted", "kms", "retention", "automated backup", "source cluster", "rpo_minutes", "rpo_minutes=15", "release_candidate", "sha-new", "release-1", "load_run_id=resilience-run-123"},
+		"restore-drill-artifact":     {"staging artifact", "restore", "restore_job_id", "restore_job_id=restore-456", "available", "staging", "restored endpoint", "source snapshot_id", "source snapshot_id=snap-123", "checksum", "isolated restore", "rto_minutes", "rto_minutes=30", "restore_duration_minutes", "restore_duration_minutes=18", "release_candidate", "sha-new", "release-1", "load_run_id=resilience-run-123"},
+		"restored-database-smoke":    {"staging artifact", "smoke passed", "restored database", "tenant", "journal", "auth", "RLS", "migration version", "no plaintext journal", "distinct_backup_artifacts=true", "release_candidate", "sha-new", "release-1", "load_run_id=resilience-run-123"},
 	}
 	for _, probe := range result.Probes {
 		for _, marker := range expectedMarkers[probe.Name] {
@@ -104,6 +118,35 @@ func TestRunEmitsRollbackAndBackupEvidenceWhenDrillsPass(t *testing.T) {
 		}
 	}
 	assertBackupRestoreStructuredFields(t, result.Probes)
+}
+
+func TestRunFailsWhenRollbackArtifactUsesDifferentLoadRun(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/ready-before":
+			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-1","deployment_environment":"staging","pre_rollback_version":"release-1","release_candidate":"sha-new","markers":"release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"}`))
+		case "/rollout":
+			_, _ = w.Write([]byte("kubectl rollout undo deployment/scriptureforge-api previous_revision=42 target_revision=41; scriptureforge-api deployment successfully rolled out release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-999"))
+		case "/ready-after":
+			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-0","deployment_environment":"staging","post_rollback_version":"release-0","rolled_back_from":"release-1","rolled_back_to":"release-0","markers":"release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"}`))
+		case "/degradation":
+			_, _ = w.Write([]byte("AI degradation fallback exercised with AI_ORCHESTRATION_ENGINE_FAULT ai_fault=true; Zoom degradation fallback exercised with offline://in-person zoom_offline_fallback=true; non-AI routes healthy non_ai_routes_healthy=true; zoom circuit open zoom_circuit_open=true distinct_rollback_artifacts=true release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	cfg := stagingResilienceConfig(time.Second)
+	cfg.ProbeBackup = false
+	err := runWithClient(cfg, &output, clientForHTTPServer(t, server))
+	if err == nil {
+		t.Fatalf("expected mismatched load run evidence to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "rollback-rollout-artifact") {
+		t.Fatalf("report missing load-run-mismatched rollout probe:\n%s", output.String())
+	}
 }
 
 func assertBackupRestoreStructuredFields(t *testing.T, probes []probeResult) {
@@ -137,11 +180,11 @@ func TestRunFailsWhenArtifactsAreMarkedMockOnly(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/backup":
-			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restore":
-			_, _ = w.Write([]byte("mock restore restore_job_id=restore-456 cluster scriptureforge-restore staging available restored endpoint scriptureforge-restore.cluster source snapshot_id=snap-123 checksum verified isolated restore rto_minutes=30 restore_duration_minutes=18 release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("mock restore restore_job_id=restore-456 cluster scriptureforge-restore staging available restored endpoint scriptureforge-restore.cluster source snapshot_id=snap-123 checksum verified isolated restore rto_minutes=30 restore_duration_minutes=18 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restored-smoke":
-			_, _ = w.Write([]byte("smoke passed against restored database tenant auth RLS migration version journal read/write verified with no plaintext journal release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("smoke passed against restored database tenant auth RLS migration version journal read/write verified with no plaintext journal release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		}
 	}))
 	defer server.Close()
@@ -162,13 +205,13 @@ func TestRunFailsWhenArtifactsAdmitFailedDrill(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/ready-before":
-			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-1","deployment_environment":"staging","pre_rollback_version":"release-1","release_candidate":"sha-new","markers":"release_candidate=sha-new service_version=release-1"}`))
+			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-1","deployment_environment":"staging","pre_rollback_version":"release-1","release_candidate":"sha-new","markers":"release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"}`))
 		case "/rollout":
-			_, _ = w.Write([]byte("kubectl rollout undo deployment/scriptureforge-api previous_revision=42 target_revision=41; scriptureforge-api deployment successfully rolled out release_candidate=sha-new service_version=release-1; rollback failed"))
+			_, _ = w.Write([]byte("kubectl rollout undo deployment/scriptureforge-api previous_revision=42 target_revision=41; scriptureforge-api deployment successfully rolled out release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123; rollback failed"))
 		case "/ready-after":
-			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-0","deployment_environment":"staging","post_rollback_version":"release-0","rolled_back_from":"release-1","rolled_back_to":"release-0","markers":"release_candidate=sha-new service_version=release-1"}`))
+			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-0","deployment_environment":"staging","post_rollback_version":"release-0","rolled_back_from":"release-1","rolled_back_to":"release-0","markers":"release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"}`))
 		case "/degradation":
-			_, _ = w.Write([]byte("AI degradation fallback exercised with AI_ORCHESTRATION_ENGINE_FAULT ai_fault=true; Zoom degradation fallback exercised with offline://in-person zoom_offline_fallback=true; non-AI routes healthy non_ai_routes_healthy=true; zoom circuit open zoom_circuit_open=true distinct_rollback_artifacts=true release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("AI degradation fallback exercised with AI_ORCHESTRATION_ENGINE_FAULT ai_fault=true; Zoom degradation fallback exercised with offline://in-person zoom_offline_fallback=true; non-AI routes healthy non_ai_routes_healthy=true; zoom circuit open zoom_circuit_open=true distinct_rollback_artifacts=true release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		}
 	}))
 	defer server.Close()
@@ -189,14 +232,14 @@ func TestRunFailsWhenRollbackReadinessDoesNotRecover(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/ready-before":
-			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-1","deployment_environment":"staging","pre_rollback_version":"release-1","release_candidate":"sha-new","markers":"release_candidate=sha-new service_version=release-1"}`))
+			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-1","deployment_environment":"staging","pre_rollback_version":"release-1","release_candidate":"sha-new","markers":"release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"}`))
 		case "/rollout":
-			_, _ = w.Write([]byte("kubectl rollout undo deployment/scriptureforge-api previous_revision=42 target_revision=41; scriptureforge-api deployment successfully rolled out release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("kubectl rollout undo deployment/scriptureforge-api previous_revision=42 target_revision=41; scriptureforge-api deployment successfully rolled out release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/ready-after":
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte("not ready"))
 		case "/degradation":
-			_, _ = w.Write([]byte("AI degradation fallback exercised with AI_ORCHESTRATION_ENGINE_FAULT; Zoom degradation fallback exercised with offline://in-person; non-AI routes healthy; zoom circuit open release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("AI degradation fallback exercised with AI_ORCHESTRATION_ENGINE_FAULT; Zoom degradation fallback exercised with offline://in-person; non-AI routes healthy; zoom circuit open release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		}
 	}))
 	defer server.Close()
@@ -219,11 +262,11 @@ func TestRunFailsWhenRollbackArtifactsOmitVersionLinkage(t *testing.T) {
 		case "/ready-before":
 			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-1","deployment_environment":"staging"}`))
 		case "/rollout":
-			_, _ = w.Write([]byte("kubectl rollout undo deployment/scriptureforge-api previous_revision=42 target_revision=41; scriptureforge-api deployment successfully rolled out release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("kubectl rollout undo deployment/scriptureforge-api previous_revision=42 target_revision=41; scriptureforge-api deployment successfully rolled out release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/ready-after":
-			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-0","deployment_environment":"staging","post_rollback_version":"release-0","rolled_back_from":"release-1","rolled_back_to":"release-0","markers":"release_candidate=sha-new service_version=release-1"}`))
+			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-0","deployment_environment":"staging","post_rollback_version":"release-0","rolled_back_from":"release-1","rolled_back_to":"release-0","markers":"release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"}`))
 		case "/degradation":
-			_, _ = w.Write([]byte("AI degradation fallback exercised with AI_ORCHESTRATION_ENGINE_FAULT; Zoom degradation fallback exercised with offline://in-person; non-AI routes healthy; zoom circuit open release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("AI degradation fallback exercised with AI_ORCHESTRATION_ENGINE_FAULT; Zoom degradation fallback exercised with offline://in-person; non-AI routes healthy; zoom circuit open release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		}
 	}))
 	defer server.Close()
@@ -244,11 +287,11 @@ func TestRunFailsWhenRestoreArtifactIsIncomplete(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/backup":
-			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restore":
 			_, _ = w.Write([]byte("restore started but not complete"))
 		case "/restored-smoke":
-			_, _ = w.Write([]byte("smoke passed against restored database tenant auth RLS migration version journal with no plaintext journal release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("smoke passed against restored database tenant auth RLS migration version journal with no plaintext journal release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		}
 	}))
 	defer server.Close()
@@ -269,11 +312,11 @@ func TestRunFailsWhenRestoreSourceSnapshotDoesNotMatchBackupSnapshot(t *testing.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/backup":
-			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restore":
-			_, _ = w.Write([]byte("restore restore_job_id=restore-456 cluster scriptureforge-restore staging available restored endpoint scriptureforge-restore.cluster source snapshot_id=snap-other checksum verified isolated restore rto_minutes=30 restore_duration_minutes=18 release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("restore restore_job_id=restore-456 cluster scriptureforge-restore staging available restored endpoint scriptureforge-restore.cluster source snapshot_id=snap-other checksum verified isolated restore rto_minutes=30 restore_duration_minutes=18 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restored-smoke":
-			_, _ = w.Write([]byte("smoke passed against restored database tenant auth RLS migration version journal read/write verified with no plaintext journal distinct_backup_artifacts=true release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("smoke passed against restored database tenant auth RLS migration version journal read/write verified with no plaintext journal distinct_backup_artifacts=true release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		}
 	}))
 	defer server.Close()
@@ -298,7 +341,7 @@ func TestRunFailsWhenBackupRestoreArtifactsOmitRecoveryObjectives(t *testing.T) 
 		case "/restore":
 			_, _ = w.Write([]byte("restore restore_job_id=restore-456 cluster scriptureforge-restore staging available restored endpoint scriptureforge-restore.cluster source snapshot_id=snap-123 checksum verified isolated restore"))
 		case "/restored-smoke":
-			_, _ = w.Write([]byte("smoke passed against restored database tenant auth RLS migration version journal read/write verified with no plaintext journal release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("smoke passed against restored database tenant auth RLS migration version journal read/write verified with no plaintext journal release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		}
 	}))
 	defer server.Close()
@@ -319,11 +362,11 @@ func TestRunFailsWhenRestoreDurationExceedsRTO(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/backup":
-			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restore":
-			_, _ = w.Write([]byte("restore restore_job_id=restore-456 cluster scriptureforge-restore staging available restored endpoint scriptureforge-restore.cluster source snapshot_id=snap-123 checksum verified isolated restore rto_minutes=30 restore_duration_minutes=45 release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("restore restore_job_id=restore-456 cluster scriptureforge-restore staging available restored endpoint scriptureforge-restore.cluster source snapshot_id=snap-123 checksum verified isolated restore rto_minutes=30 restore_duration_minutes=45 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restored-smoke":
-			_, _ = w.Write([]byte("smoke passed against restored database tenant auth RLS migration version journal read/write verified with no plaintext journal distinct_backup_artifacts=true release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("smoke passed against restored database tenant auth RLS migration version journal read/write verified with no plaintext journal distinct_backup_artifacts=true release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		}
 	}))
 	defer server.Close()
@@ -344,11 +387,11 @@ func TestRunFailsWhenDegradationDrillMissingTypedFallbacks(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/ready-before":
-			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-1","deployment_environment":"staging","pre_rollback_version":"release-1","release_candidate":"sha-new","markers":"release_candidate=sha-new service_version=release-1"}`))
+			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-1","deployment_environment":"staging","pre_rollback_version":"release-1","release_candidate":"sha-new","markers":"release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"}`))
 		case "/rollout":
-			_, _ = w.Write([]byte("kubectl rollout undo deployment/scriptureforge-api previous_revision=42 target_revision=41; scriptureforge-api deployment successfully rolled out release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("kubectl rollout undo deployment/scriptureforge-api previous_revision=42 target_revision=41; scriptureforge-api deployment successfully rolled out release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/ready-after":
-			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-0","deployment_environment":"staging","post_rollback_version":"release-0","rolled_back_from":"release-1","rolled_back_to":"release-0","markers":"release_candidate=sha-new service_version=release-1"}`))
+			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-0","deployment_environment":"staging","post_rollback_version":"release-0","rolled_back_from":"release-1","rolled_back_to":"release-0","markers":"release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"}`))
 		case "/degradation":
 			_, _ = w.Write([]byte("AI degradation fallback exercised; Zoom degradation fallback exercised"))
 		}
@@ -371,11 +414,11 @@ func TestRunFailsWhenRestoredSmokeOmitsTenantJournalChecks(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/backup":
-			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restore":
-			_, _ = w.Write([]byte("restore restore_job_id=restore-456 cluster scriptureforge-restore staging available restored endpoint scriptureforge-restore.cluster source snapshot_id=snap-123 checksum verified isolated restore rto_minutes=30 restore_duration_minutes=18 release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("restore restore_job_id=restore-456 cluster scriptureforge-restore staging available restored endpoint scriptureforge-restore.cluster source snapshot_id=snap-123 checksum verified isolated restore rto_minutes=30 restore_duration_minutes=18 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restored-smoke":
-			_, _ = w.Write([]byte("smoke passed against restored database release_candidate=sha-new service_version=release-1"))
+			_, _ = w.Write([]byte("smoke passed against restored database release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		}
 	}))
 	defer server.Close()
