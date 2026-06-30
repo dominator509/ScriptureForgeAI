@@ -14,6 +14,7 @@ import { npmAuditProofMarkers } from './run-npm-audit.mjs';
 import { terraformFmtProofMarkers, terraformValidateProofMarkers } from './run-terraform-command.mjs';
 import { terraformInitProofMarkers } from './run-terraform-init.mjs';
 import { rlsDBProofMarkers } from './run-rls-db-integration.mjs';
+import { rustCargoProofMarkers } from './run-rust-cargo-gate.mjs';
 import { rustProtobufProofMarkers } from './verify-rust-protobuf.mjs';
 import { securityArtifactsProofMarkers } from './validate-security-artifacts.mjs';
 import { secretHygieneProofMarkers } from './validate-secret-hygiene.mjs';
@@ -23,20 +24,10 @@ import { obsidianReadinessProofMarkers } from './sync-obsidian-readiness.mjs';
 import { stagingEvidenceGapReportProofMarkers } from './report-staging-evidence-gaps.mjs';
 import { projectPathProofMarkers, strictStagingPathProofMarkers } from './verify-project-path.mjs';
 
+export { rustCargoProofMarkers } from './run-rust-cargo-gate.mjs';
+
 const requiredGateIds = new Set(gateDefinitions.map((gate) => gate.id));
 const expectedGateCommands = new Map(gateDefinitions.map((gate) => [gate.id, commandDisplay(gate)]));
-export const rustCargoProofMarkers = [
-  'test result: ok.',
-  '12 passed',
-  'generated_protobuf_types_compile_and_round_trip',
-  'generated_vector_search_response_holds_results',
-  'generated_grpc_client_and_server_types_compile',
-  'vector_search_request_rejects_unbounded_or_invalid_inputs',
-  'scripture_engine_health_service_name_matches_grpc_service',
-  'default_bind_address_is_reachable_outside_localhost',
-  'default_metrics_address_is_reachable_outside_localhost',
-  'rust_engine_metrics_render_prometheus_counters',
-];
 export const webSmokeProofMarkers = [
   'web_api_auth_routes=true',
   'web_api_encrypted_journal=true',
@@ -253,7 +244,7 @@ export function validateLocalGateReport(report, {
     }
     if (result.id === 'rust-cargo-test') {
       const output = `${result.stdout_tail}\n${result.stderr_tail}`;
-      assert.match(result.command, /cargo(?:\.exe)? test --locked/, 'rust-cargo-test command must run cargo test --locked');
+      assert.match(result.command, /tools[\\/]run-rust-cargo-gate\.mjs --bin/, 'rust-cargo-test command must use the Rust cargo proof wrapper');
       for (const marker of rustCargoProofMarkers) {
         assert.match(output, new RegExp(marker), `rust-cargo-test output must include ${marker}`);
       }

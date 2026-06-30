@@ -27,8 +27,9 @@ test('buildGatePlan rejects unknown gates', () => {
 
 test('buildGatePlan runs Rust tests against the committed lockfile', () => {
   const [rustGate] = buildGatePlan({ only: ['rust-cargo-test'] });
-  assert.equal(rustGate.command.includes('--locked'), true);
-  assert.match(rustGate.display, /cargo(?:\.exe)? test --locked/);
+  assert.ok(rustGate.command.includes('tools/run-rust-cargo-gate.mjs'));
+  assert.match(rustGate.display, /tools\/run-rust-cargo-gate\.mjs --bin/);
+  assert.match(rustGate.display, /CARGO_HOME=\.tools\/cargo/);
 });
 
 test('buildGatePlan wraps Go test and vet gates with proof markers', () => {
@@ -82,6 +83,10 @@ test('buildGatePlan includes readiness sync unit tests in the tooling gate', () 
     'tooling-tests must cover Go core gate wrapper behavior',
   );
   assert.ok(
+    toolingGate.command.includes('tools/run-rust-cargo-gate.test.mjs'),
+    'tooling-tests must cover Rust cargo gate wrapper behavior',
+  );
+  assert.ok(
     toolingGate.command.includes('tools/run-go-probe-tests.test.mjs'),
     'tooling-tests must cover production evidence probe wrapper behavior',
   );
@@ -97,6 +102,7 @@ test('buildGatePlan includes readiness sync unit tests in the tooling gate', () 
   assert.match(toolingGate.display, /tools\/sync-staging-evidence-contract\.test\.mjs/);
   assert.match(toolingGate.display, /tools\/run-client-command\.test\.mjs/);
   assert.match(toolingGate.display, /tools\/run-go-core-gate\.test\.mjs/);
+  assert.match(toolingGate.display, /tools\/run-rust-cargo-gate\.test\.mjs/);
   assert.match(toolingGate.display, /tools\/run-go-probe-tests\.test\.mjs/);
   assert.match(toolingGate.display, /tools\/run-terraform-command\.test\.mjs/);
   assert.match(toolingGate.display, /tools\/verify-journal-crypto\.test\.mjs/);

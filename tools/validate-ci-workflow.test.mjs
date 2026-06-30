@@ -318,7 +318,7 @@ test('validateCIWorkflow rejects missing staging evidence gap report gate', asyn
 
 test('validateCIWorkflow rejects unlocked Rust cargo tests', async () => {
   const text = await readFile('.github/workflows/security.yml', 'utf8');
-  const broken = text.replace('cargo test --locked', 'cargo test');
+  const broken = text.replace('node tools/run-rust-cargo-gate.mjs --bin cargo', 'cargo test');
   assert.throws(
     () => validateCIWorkflow(broken),
     /rust-cargo-test/,

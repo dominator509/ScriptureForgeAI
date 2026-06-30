@@ -11,6 +11,7 @@ import { journalCryptoProofMarkers } from './verify-journal-crypto.mjs';
 import { observabilityProofMarkers } from './validate-observability.mjs';
 import { gateDefinitions } from './run-local-gates.mjs';
 import { npmAuditProofMarkers } from './run-npm-audit.mjs';
+import { rustCargoProofMarkers } from './run-rust-cargo-gate.mjs';
 import { terraformFmtProofMarkers, terraformValidateProofMarkers } from './run-terraform-command.mjs';
 import { terraformInitProofMarkers } from './run-terraform-init.mjs';
 import { rlsDBProofMarkers } from './run-rls-db-integration.mjs';
@@ -784,18 +785,7 @@ function rustProtobufProofOutput() {
 }
 
 function rustCargoProofOutput() {
-  return [
-    'running 12 tests',
-    'test tests::default_metrics_address_is_reachable_outside_localhost ... ok',
-    'test tests::default_bind_address_is_reachable_outside_localhost ... ok',
-    'test tests::generated_grpc_client_and_server_types_compile ... ok',
-    'test tests::generated_protobuf_types_compile_and_round_trip ... ok',
-    'test tests::generated_vector_search_response_holds_results ... ok',
-    'test tests::vector_search_request_rejects_unbounded_or_invalid_inputs ... ok',
-    'test tests::rust_engine_metrics_render_prometheus_counters ... ok',
-    'test tests::scripture_engine_health_service_name_matches_grpc_service ... ok',
-    'test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out',
-  ].join('\n');
+  return `rust-cargo-test validated: ${rustCargoProofMarkers.join(', ')}`;
 }
 
 function deploymentSkeletonProofOutput() {
