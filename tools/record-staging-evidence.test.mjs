@@ -174,19 +174,19 @@ function webSmokeProbes(releaseCandidate = '', serviceVersion = '', overridesByP
 }
 
 const securityProbeMarkerSummaries = {
-  'irsa-service-account': 'got HTTP 200; verified markers: staging artifact, namespace=staging, service_account=scriptureforge-api, role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets, eks.amazonaws.com/role-arn, scriptureforge, trust policy, sts:AssumeRoleWithWebIdentity, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'secret-provider-class': 'got HTTP 200; verified markers: staging artifact, namespace=staging, service_account=scriptureforge-api, role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets, SecretProviderClass, secrets-store.csi.k8s.io, provider, aws, objects, objectName, objectType, secretsmanager, objectAlias, jmesPath, secretObjects, type, Opaque, DATABASE_URL, JWT_SECRET_KEY, OPENAI_API_KEY, ZOOM_WEBHOOK_SECRET_TOKEN, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'synced-secret-metadata-redacted': 'got HTTP 200; verified markers: staging artifact, namespace=staging, scriptureforge-runtime-secrets, type, Opaque, DATABASE_URL, JWT_SECRET_KEY, OPENAI_API_KEY, ZOOM_WEBHOOK_SECRET_TOKEN, redacted, stringData absent, managed by secrets-store.csi.k8s.io, ownerReferences, secrets-store.csi.k8s.io/managed=true, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'iam-secrets-policy': 'got HTTP 200; verified markers: staging artifact, role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets, secretsmanager:GetSecretValue, secretsmanager:DescribeSecret, arn:aws:secretsmanager:, scoped resource, no wildcard resources, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'scoped-secrets-access-test': 'got HTTP 200; verified markers: staging artifact, namespace=staging, service_account=scriptureforge-api, role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets, allowed, configured secret, denied, unscoped secret, AccessDenied, distinct_secret_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123',
+  'irsa-service-account': 'got HTTP 200; verified markers: staging artifact, namespace=staging, service_account=scriptureforge-api, role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets, eks.amazonaws.com/role-arn, scriptureforge, trust policy, sts:AssumeRoleWithWebIdentity, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'secret-provider-class': 'got HTTP 200; verified markers: staging artifact, namespace=staging, service_account=scriptureforge-api, role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets, SecretProviderClass, secrets-store.csi.k8s.io, provider, aws, objects, objectName, objectType, secretsmanager, objectAlias, jmesPath, secretObjects, type, Opaque, DATABASE_URL, JWT_SECRET_KEY, OPENAI_API_KEY, ZOOM_WEBHOOK_SECRET_TOKEN, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'synced-secret-metadata-redacted': 'got HTTP 200; verified markers: staging artifact, namespace=staging, scriptureforge-runtime-secrets, type, Opaque, DATABASE_URL, JWT_SECRET_KEY, OPENAI_API_KEY, ZOOM_WEBHOOK_SECRET_TOKEN, redacted, stringData absent, managed by secrets-store.csi.k8s.io, ownerReferences, secrets-store.csi.k8s.io/managed=true, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'iam-secrets-policy': 'got HTTP 200; verified markers: staging artifact, role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets, secretsmanager:GetSecretValue, secretsmanager:DescribeSecret, arn:aws:secretsmanager:, scoped resource, no wildcard resources, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'scoped-secrets-access-test': 'got HTTP 200; verified markers: staging artifact, namespace=staging, service_account=scriptureforge-api, role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets, allowed, configured secret, denied, unscoped secret, AccessDenied, distinct_secret_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
 };
 
 const deploymentProbeMarkerSummaries = {
-  'terraform-remote-backend-init': 'got HTTP 200; staging artifact; verified markers: terraform, s3, backend, bucket, key, encrypt=true, dynamodb_table, successfully initialized, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'terraform-staging-plan': 'got HTTP 200; staging artifact; verified markers: Terraform, Plan:, aws_eks_cluster, aws_eks_node_group, aws_rds_cluster, aws_elasticache_replication_group, aws_ecr_repository, kubernetes_deployment, kubernetes_ingress_v1, kubernetes_horizontal_pod_autoscaler_v2, kubernetes_pod_disruption_budget_v1, kubernetes_manifest, aws_iam_role, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'terraform-staging-apply-or-approval': 'got HTTP 200; staging artifact; verified markers: deployment approval, approved, DEPLOY-TF-001, change_ticket=PLATFORM-123, release_candidate=abc123, service_version=scriptureforge-api:abc123, distinct_terraform_artifacts=true',
-  'kubernetes-rollout-status': 'got HTTP 200; staging artifact; verified markers: namespace, staging, deployment, scriptureforge-api, scriptureforge-web, scriptureforge-rust-engine, successfully rolled out, ready, available, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'kubernetes-workload-resources': 'got HTTP 200; staging artifact; verified markers: namespace, staging, deployment, service, ingress, hpa, pdb, ready, available, targets, minavailable, readinessProbe, livenessProbe, rollingUpdate, maxUnavailable=0, minReplicas, maxReplicas, tls, SecretProviderClass, image, scriptureforge-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, scriptureforge-web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb, scriptureforge-rust-engine@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc, release_candidate=abc123, service_version=scriptureforge-api:abc123, scriptureforge-api, scriptureforge-web, scriptureforge-rust-engine, distinct_kubernetes_artifacts=true',
+  'terraform-remote-backend-init': 'got HTTP 200; staging artifact; verified markers: terraform, s3, backend, bucket, key, encrypt=true, dynamodb_table, successfully initialized, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'terraform-staging-plan': 'got HTTP 200; staging artifact; verified markers: Terraform, Plan:, aws_eks_cluster, aws_eks_node_group, aws_rds_cluster, aws_elasticache_replication_group, aws_ecr_repository, kubernetes_deployment, kubernetes_ingress_v1, kubernetes_horizontal_pod_autoscaler_v2, kubernetes_pod_disruption_budget_v1, kubernetes_manifest, aws_iam_role, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'terraform-staging-apply-or-approval': 'got HTTP 200; staging artifact; verified markers: deployment approval, approved, DEPLOY-TF-001, change_ticket=PLATFORM-123, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123, distinct_terraform_artifacts=true',
+  'kubernetes-rollout-status': 'got HTTP 200; staging artifact; verified markers: namespace, staging, deployment, scriptureforge-api, scriptureforge-web, scriptureforge-rust-engine, successfully rolled out, ready, available, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'kubernetes-workload-resources': 'got HTTP 200; staging artifact; verified markers: namespace, staging, deployment, service, ingress, hpa, pdb, ready, available, targets, minavailable, readinessProbe, livenessProbe, rollingUpdate, maxUnavailable=0, minReplicas, maxReplicas, tls, SecretProviderClass, image, scriptureforge-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, scriptureforge-web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb, scriptureforge-rust-engine@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123, scriptureforge-api, scriptureforge-web, scriptureforge-rust-engine, distinct_kubernetes_artifacts=true',
 };
 
 function terraformApplyProbe(resultSummary = deploymentProbeMarkerSummaries['terraform-staging-apply-or-approval'], overrides = {}) {
@@ -212,13 +212,13 @@ const stagingProbeMarkerSummaries = {
 };
 
 const resilienceProbeMarkerSummaries = {
-  'api-ready-before-rollback': 'got HTTP 200; staging artifact; verified markers: ready, service_version, deployment_environment, pre_rollback_version, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'rollback-rollout-artifact': 'got HTTP 200; staging artifact; verified markers: rollout, undo, revision, previous_revision, target_revision, scriptureforge-api, successfully rolled out, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'api-ready-after-rollback': 'got HTTP 200; staging artifact; verified markers: ready, service_version, deployment_environment, post_rollback_version, rolled_back_from, rolled_back_to, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'degradation-drill-artifact': 'got HTTP 200; staging artifact; verified markers: AI, Zoom, degradation, fallback, AI_ORCHESTRATION_ENGINE_FAULT, offline://in-person, non-AI routes healthy, zoom circuit open, ai_fault=true, zoom_offline_fallback=true, non_ai_routes_healthy=true, zoom_circuit_open=true, distinct_rollback_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123; ai_fault=true zoom_offline_fallback=true non_ai_routes_healthy=true zoom_circuit_open=true',
-  'backup-snapshot-artifact': 'got HTTP 200; staging artifact; verified markers: snapshot, snapshot_id=snap-123, available, encrypted, kms, retention, automated backup, source cluster, rpo_minutes=15, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'restore-drill-artifact': 'got HTTP 200; staging artifact; verified markers: restore, restore_job_id=restore-456, available, staging, restored endpoint, source snapshot_id=snap-123, checksum, isolated restore, rto_minutes=30, restore_duration_minutes=18, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'restored-database-smoke': 'got HTTP 200; staging artifact; verified markers: smoke passed, restored database, tenant, journal, auth, RLS, migration version, no plaintext journal, distinct_backup_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123',
+  'api-ready-before-rollback': 'got HTTP 200; staging artifact; verified markers: ready, service_version, deployment_environment, pre_rollback_version, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'rollback-rollout-artifact': 'got HTTP 200; staging artifact; verified markers: rollout, undo, revision, previous_revision, target_revision, scriptureforge-api, successfully rolled out, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'api-ready-after-rollback': 'got HTTP 200; staging artifact; verified markers: ready, service_version, deployment_environment, post_rollback_version, rolled_back_from, rolled_back_to, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'degradation-drill-artifact': 'got HTTP 200; staging artifact; verified markers: AI, Zoom, degradation, fallback, AI_ORCHESTRATION_ENGINE_FAULT, offline://in-person, non-AI routes healthy, zoom circuit open, ai_fault=true, zoom_offline_fallback=true, non_ai_routes_healthy=true, zoom_circuit_open=true, distinct_rollback_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123; ai_fault=true zoom_offline_fallback=true non_ai_routes_healthy=true zoom_circuit_open=true',
+  'backup-snapshot-artifact': 'got HTTP 200; staging artifact; verified markers: snapshot, snapshot_id=snap-123, available, encrypted, kms, retention, automated backup, source cluster, rpo_minutes=15, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'restore-drill-artifact': 'got HTTP 200; staging artifact; verified markers: restore, restore_job_id=restore-456, available, staging, restored endpoint, source snapshot_id=snap-123, checksum, isolated restore, rto_minutes=30, restore_duration_minutes=18, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'restored-database-smoke': 'got HTTP 200; staging artifact; verified markers: smoke passed, restored database, tenant, journal, auth, RLS, migration version, no plaintext journal, distinct_backup_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
 };
 
 function resilienceProbeReportProbe(name, overrides = {}) {
@@ -274,13 +274,13 @@ function resilienceProbeReportProbes(names, overridesForName = () => ({})) {
 }
 
 const zoomProbeMarkerSummaries = {
-  'zoom-oauth-readiness': 'got HTTP 200; staging artifact; verified markers: oauth, account_credentials, status, ok, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'zoom-meeting-create-or-fallback': 'got HTTP 200; staging artifact; verified markers: meeting, join_url, zoom.us, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'zoom-timeout-circuit-fallback': 'got HTTP 200; staging artifact; verified markers: timeout, provider timeout, circuit, open, circuit_open_fallback, fallback, offline://in-person, release_candidate=abc123, service_version=scriptureforge-api:abc123; provider_timeout=true; circuit_open=true; offline_fallback=true',
-  'zoom-webhook-signature-delivery': 'got HTTP 200; staging artifact; verified markers: webhook, signature, x-zm-signature=v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, x-zm-request-timestamp=1710000000, stale, replay, 401, invalid, signed, 200, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'zoom-webhook-url-validation': 'got HTTP 200; staging artifact; verified markers: endpoint.url_validation, plain_token=zoom-plain-123, encrypted_token=zoom-encrypted-456, validation_response=200, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'zoom-duplicate-webhook-idempotency': 'got HTTP 200; staging artifact; verified markers: duplicate, x-zm-trackingid=zm-track-123, delivery_id=zm-delivery-123, delivery id, same Zoom event, idempotent, 200, single state mutation, no duplicate side effects, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'zoom-meeting-room-mapping': 'got HTTP 200; staging artifact; verified markers: meeting_external_id=zoom-123, live_rooms, internal_room_id=room-abc, redis room state, mapped, unknown meeting ignored, no external meeting id fallback, distinct_zoom_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123',
+  'zoom-oauth-readiness': 'got HTTP 200; staging artifact; verified markers: oauth, account_credentials, status, ok, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'zoom-meeting-create-or-fallback': 'got HTTP 200; staging artifact; verified markers: meeting, join_url, zoom.us, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'zoom-timeout-circuit-fallback': 'got HTTP 200; staging artifact; verified markers: timeout, provider timeout, circuit, open, circuit_open_fallback, fallback, offline://in-person, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123; provider_timeout=true; circuit_open=true; offline_fallback=true',
+  'zoom-webhook-signature-delivery': 'got HTTP 200; staging artifact; verified markers: webhook, signature, x-zm-signature=v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, x-zm-request-timestamp=1710000000, stale, replay, 401, invalid, signed, 200, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'zoom-webhook-url-validation': 'got HTTP 200; staging artifact; verified markers: endpoint.url_validation, plain_token=zoom-plain-123, encrypted_token=zoom-encrypted-456, validation_response=200, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'zoom-duplicate-webhook-idempotency': 'got HTTP 200; staging artifact; verified markers: duplicate, x-zm-trackingid=zm-track-123, delivery_id=zm-delivery-123, delivery id, same Zoom event, idempotent, 200, single state mutation, no duplicate side effects, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'zoom-meeting-room-mapping': 'got HTTP 200; staging artifact; verified markers: meeting_external_id=zoom-123, live_rooms, internal_room_id=room-abc, redis room state, mapped, unknown meeting ignored, no external meeting id fallback, distinct_zoom_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
 };
 
 function zoomProbeReportProbe(name, overrides = {}) {
@@ -336,11 +336,11 @@ function zoomProbeReportProbes(names = Object.keys(zoomProbeMarkerSummaries), ov
 }
 
 const aiProbeMarkerSummaries = {
-  'ai-provider-config': 'got HTTP 200; staging artifact; verified markers: AI_PROVIDER, AI_CHAT_MODEL, AI_CHAT_ENDPOINT, AI_HTTP_TIMEOUT_MS, AI_MAX_RETRIES, OPENAI_API_KEY redacted, configured, release_candidate=abc123, service_version=scriptureforge-api:abc123; AI_PROVIDER=openai; AI_CHAT_MODEL=gpt-staging; AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions; AI_HTTP_TIMEOUT_MS=3500; AI_MAX_RETRIES=1',
-  'ai-generation-route': 'got HTTP 200; staging artifact; verified markers: /api/v1/ai/generate/study, authenticated, JWT claims, organization_id=org-123, user_id=user-123, request_id=req-123, 200, generated_curriculum, [Genesis 1:1], release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'ai-timeout-degradation': 'got HTTP 200; staging artifact; verified markers: provider timeout, degradation, retry exhausted, 503, fail closed, AI_ORCHESTRATION_ENGINE_FAULT, release_candidate=abc123, service_version=scriptureforge-api:abc123; provider_timeout=true; retry_exhausted=true; fail_closed=true',
-  'ai-citation-verification': 'got HTTP 200; staging artifact; verified markers: no-citation rejected, hallucinated citation rejected, verified citation accepted, citation_trails, citation_id=cite-123, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'ai-audit-persistence': 'got HTTP 200; staging artifact; verified markers: ai_request_logs, citation_trails, organization_id=org-123, user_id=user-123, request_id=req-123, citation_id=cite-123, succeeded, failed, verified, tenant rls, cross-tenant hidden, distinct_ai_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123',
+  'ai-provider-config': 'got HTTP 200; staging artifact; verified markers: AI_PROVIDER, AI_CHAT_MODEL, AI_CHAT_ENDPOINT, AI_HTTP_TIMEOUT_MS, AI_MAX_RETRIES, OPENAI_API_KEY redacted, configured, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123; AI_PROVIDER=openai; AI_CHAT_MODEL=gpt-staging; AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions; AI_HTTP_TIMEOUT_MS=3500; AI_MAX_RETRIES=1',
+  'ai-generation-route': 'got HTTP 200; staging artifact; verified markers: /api/v1/ai/generate/study, authenticated, JWT claims, organization_id=org-123, user_id=user-123, request_id=req-123, 200, generated_curriculum, [Genesis 1:1], release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'ai-timeout-degradation': 'got HTTP 200; staging artifact; verified markers: provider timeout, degradation, retry exhausted, 503, fail closed, AI_ORCHESTRATION_ENGINE_FAULT, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123; provider_timeout=true; retry_exhausted=true; fail_closed=true',
+  'ai-citation-verification': 'got HTTP 200; staging artifact; verified markers: no-citation rejected, hallucinated citation rejected, verified citation accepted, citation_trails, citation_id=cite-123, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'ai-audit-persistence': 'got HTTP 200; staging artifact; verified markers: ai_request_logs, citation_trails, organization_id=org-123, user_id=user-123, request_id=req-123, citation_id=cite-123, succeeded, failed, verified, tenant rls, cross-tenant hidden, distinct_ai_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
 };
 
 function aiProbeReportProbe(name, overrides = {}) {
@@ -396,18 +396,18 @@ function aiProbeReportProbes(names = Object.keys(aiProbeMarkerSummaries), overri
 }
 
 const abuseProbeMarkerSummaries = {
-  'auth-rate-limit': 'got 429 with headers after 2 attempts; verified markers: staging artifact, auth-rate-limit, 429, after, attempts, repeated_attempts_verified=true, Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'auth-account-rate-limit': 'got 429 with headers after 2 attempts; verified markers: staging artifact, auth-account-rate-limit, 429, after, attempts, repeated_attempts_verified=true, Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, account-scoped login, account_scoped=true, rotating forwarded client IP, forwarded_client_ip_rotated=true, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'auth-refresh-rate-limit': 'got 429 with headers after 2 attempts; verified markers: staging artifact, auth-refresh-rate-limit, 429, after, attempts, repeated_attempts_verified=true, Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, refresh token, refresh_token_scoped=true, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'ai-rate-limit': 'got 429 with headers after 2 attempts; verified markers: staging artifact, ai-rate-limit, 429, after, attempts, repeated_attempts_verified=true, Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'journal-rate-limit': 'got 429 with headers after 2 attempts; verified markers: staging artifact, journal-rate-limit, 429, after, attempts, repeated_attempts_verified=true, Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'rooms-rate-limit': 'got 429 with headers after 2 attempts; verified markers: staging artifact, rooms-rate-limit, 429, after, attempts, repeated_attempts_verified=true, Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'websocket-rate-limit': 'got 429 with headers after 2 attempts; verified markers: staging artifact, websocket-rate-limit, 429, after, attempts, repeated_attempts_verified=true, Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, websocket upgrade, websocket_upgrade=true, release_candidate=abc123, service_version=scriptureforge-api:abc123',
+  'auth-rate-limit': 'got 429 with headers after 2 attempts; verified markers: staging artifact, auth-rate-limit, 429, after, attempts, repeated_attempts_verified=true, Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'auth-account-rate-limit': 'got 429 with headers after 2 attempts; verified markers: staging artifact, auth-account-rate-limit, 429, after, attempts, repeated_attempts_verified=true, Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, account-scoped login, account_scoped=true, rotating forwarded client IP, forwarded_client_ip_rotated=true, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'auth-refresh-rate-limit': 'got 429 with headers after 2 attempts; verified markers: staging artifact, auth-refresh-rate-limit, 429, after, attempts, repeated_attempts_verified=true, Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, refresh token, refresh_token_scoped=true, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'ai-rate-limit': 'got 429 with headers after 2 attempts; verified markers: staging artifact, ai-rate-limit, 429, after, attempts, repeated_attempts_verified=true, Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'journal-rate-limit': 'got 429 with headers after 2 attempts; verified markers: staging artifact, journal-rate-limit, 429, after, attempts, repeated_attempts_verified=true, Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'rooms-rate-limit': 'got 429 with headers after 2 attempts; verified markers: staging artifact, rooms-rate-limit, 429, after, attempts, repeated_attempts_verified=true, Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'websocket-rate-limit': 'got 429 with headers after 2 attempts; verified markers: staging artifact, websocket-rate-limit, 429, after, attempts, repeated_attempts_verified=true, Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, websocket upgrade, websocket_upgrade=true, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
 };
 
 const abuseProbeNames = ['auth-rate-limit', 'auth-account-rate-limit', 'auth-refresh-rate-limit', 'ai-rate-limit', 'journal-rate-limit', 'rooms-rate-limit', 'websocket-rate-limit'];
 
-const abuseConfigSummary = 'config artifact verified markers: staging artifact, ABUSE_LIMIT_AUTH_REQUESTS=2, ABUSE_LIMIT_AUTH_WINDOW_SECONDS=60, ABUSE_LIMIT_AUTH_ACCOUNT_REQUESTS=2, ABUSE_LIMIT_AUTH_ACCOUNT_WINDOW_SECONDS=60, ABUSE_LIMIT_AI_REQUESTS=2, ABUSE_LIMIT_JOURNAL_REQUESTS=2, ABUSE_LIMIT_ROOMS_REQUESTS=2, ABUSE_LIMIT_WEBSOCKET_REQUESTS=2, ABUSE_LIMIT_MAX_BUCKETS=1000, TRUST_PROXY_HEADERS=true, X-Forwarded-For, X-Real-IP, redacted, release_candidate=abc123, service_version=scriptureforge-api:abc123, distinct_abuse_artifacts=true';
+const abuseConfigSummary = 'config artifact verified markers: staging artifact, ABUSE_LIMIT_AUTH_REQUESTS=2, ABUSE_LIMIT_AUTH_WINDOW_SECONDS=60, ABUSE_LIMIT_AUTH_ACCOUNT_REQUESTS=2, ABUSE_LIMIT_AUTH_ACCOUNT_WINDOW_SECONDS=60, ABUSE_LIMIT_AI_REQUESTS=2, ABUSE_LIMIT_JOURNAL_REQUESTS=2, ABUSE_LIMIT_ROOMS_REQUESTS=2, ABUSE_LIMIT_WEBSOCKET_REQUESTS=2, ABUSE_LIMIT_MAX_BUCKETS=1000, TRUST_PROXY_HEADERS=true, X-Forwarded-For, X-Real-IP, redacted, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123, distinct_abuse_artifacts=true';
 
 function abuseProbeStructuredFields(name) {
   return {
@@ -497,15 +497,15 @@ function rustProbe(name, overrides = {}) {
 }
 
 const observabilityProbeMarkerSummaries = {
-  'collector-otlp-config': 'got HTTP 200; verified markers: staging artifact, receivers, otlp, 4317, 4318, exporters, service, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'api-prometheus-metrics': 'got HTTP 200; verified markers: staging artifact, scriptureforge_http_requests_total, scriptureforge_http_request_duration_seconds_sum, scriptureforge_http_requests_total{, status=, websocket_active_connections_count, scriptureforge_dependency_operations_total{dependency="websocket",operation="room_broadcast",status="dropped", ai_inference_duration_seconds_sum, ai_inference_duration_seconds_count, scriptureforge_dependency_operations_total{dependency="rust_engine",operation="vector_search",status="success", scriptureforge_dependency_operation_duration_seconds_sum{dependency="rust_engine",operation="vector_search",status="success", release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'rust-prometheus-metrics': 'got HTTP 200; verified markers: staging artifact, scriptureforge_rust_engine_embedding_requests_total, scriptureforge_rust_engine_embedding_failures_total, scriptureforge_rust_engine_vector_search_requests_total, scriptureforge_rust_engine_vector_search_failures_total, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'trace-backend-search': 'got HTTP 200; verified markers: staging artifact, 11112222333344445555666677778888, scriptureforge-api, scriptureforge-rust-engine, route=/api/v1/ai/generate/study, method=POST, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'log-backend-trace-correlation': 'got HTTP 200; verified markers: staging artifact, 11112222333344445555666677778888, trace_id, scriptureforge-api, scriptureforge-rust-engine, route=/api/v1/ai/generate/study, method=POST, service_version, deployment_environment, tenant_id=org-staging, user_id=user-staging, role=admin, distinct_otel_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'dashboard-import': 'got HTTP 200; verified markers: staging artifact, ScriptureForge, scriptureforge_http_requests_total, scriptureforge_http_request_duration_seconds_sum, websocket_active_connections_count, room_broadcast, ai_inference_duration_seconds, scriptureforge_rust_engine_, trace_id, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'alert-rules-loaded': 'got HTTP 200; verified markers: staging artifact, ScriptureForgeHighErrorRate, ScriptureForgeTrafficAbsent, ScriptureForgeAuthFailureSpike, ScriptureForgeAbuseLimitSpike, ScriptureForgeRouteLatencyElevated, ScriptureForgeDependencyFailures, ScriptureForgeAIInferenceLatencyElevated, ScriptureForgeJournalWriteFailures, ScriptureForgeRoomStreamFailures, ScriptureForgeRoomBroadcastDrops, ScriptureForgeRustEngineFailures, scriptureforge_http_requests_total, scriptureforge_dependency_operations_total, ai_inference_duration_seconds, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'alert-delivery-status': 'got HTTP 200; verified markers: staging artifact, success, delivered, test alert, alertmanager, delivery_id=am-delivery-123, alertname=ScriptureForgeHighErrorRate, receiver=staging-release, release_candidate=abc123, service_version=scriptureforge-api:abc123',
-  'telemetry-retention-policy': 'got HTTP 200; verified markers: staging artifact, retention, 30 days, trace, logs, metrics, distinct_alert_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123',
+  'collector-otlp-config': 'got HTTP 200; verified markers: staging artifact, receivers, otlp, 4317, 4318, exporters, service, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'api-prometheus-metrics': 'got HTTP 200; verified markers: staging artifact, scriptureforge_http_requests_total, scriptureforge_http_request_duration_seconds_sum, scriptureforge_http_requests_total{, status=, websocket_active_connections_count, scriptureforge_dependency_operations_total{dependency="websocket",operation="room_broadcast",status="dropped", ai_inference_duration_seconds_sum, ai_inference_duration_seconds_count, scriptureforge_dependency_operations_total{dependency="rust_engine",operation="vector_search",status="success", scriptureforge_dependency_operation_duration_seconds_sum{dependency="rust_engine",operation="vector_search",status="success", release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'rust-prometheus-metrics': 'got HTTP 200; verified markers: staging artifact, scriptureforge_rust_engine_embedding_requests_total, scriptureforge_rust_engine_embedding_failures_total, scriptureforge_rust_engine_vector_search_requests_total, scriptureforge_rust_engine_vector_search_failures_total, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'trace-backend-search': 'got HTTP 200; verified markers: staging artifact, 11112222333344445555666677778888, scriptureforge-api, scriptureforge-rust-engine, route=/api/v1/ai/generate/study, method=POST, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'log-backend-trace-correlation': 'got HTTP 200; verified markers: staging artifact, 11112222333344445555666677778888, trace_id, scriptureforge-api, scriptureforge-rust-engine, route=/api/v1/ai/generate/study, method=POST, service_version, deployment_environment, tenant_id=org-staging, user_id=user-staging, role=admin, distinct_otel_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'dashboard-import': 'got HTTP 200; verified markers: staging artifact, ScriptureForge, scriptureforge_http_requests_total, scriptureforge_http_request_duration_seconds_sum, websocket_active_connections_count, room_broadcast, ai_inference_duration_seconds, scriptureforge_rust_engine_, trace_id, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'alert-rules-loaded': 'got HTTP 200; verified markers: staging artifact, ScriptureForgeHighErrorRate, ScriptureForgeTrafficAbsent, ScriptureForgeAuthFailureSpike, ScriptureForgeAbuseLimitSpike, ScriptureForgeRouteLatencyElevated, ScriptureForgeDependencyFailures, ScriptureForgeAIInferenceLatencyElevated, ScriptureForgeJournalWriteFailures, ScriptureForgeRoomStreamFailures, ScriptureForgeRoomBroadcastDrops, ScriptureForgeRustEngineFailures, scriptureforge_http_requests_total, scriptureforge_dependency_operations_total, ai_inference_duration_seconds, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'alert-delivery-status': 'got HTTP 200; verified markers: staging artifact, success, delivered, test alert, alertmanager, delivery_id=am-delivery-123, alertname=ScriptureForgeHighErrorRate, receiver=staging-release, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'telemetry-retention-policy': 'got HTTP 200; verified markers: staging artifact, retention, 30 days, trace, logs, metrics, distinct_alert_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
 };
 
 const observabilityTraceID = '11112222333344445555666677778888';
@@ -563,8 +563,8 @@ function observabilityProbeReportProbes(names = Object.keys(observabilityProbeMa
 }
 
 const performanceReportSummaries = {
-  http: 'profile=staging_http target=https://api.staging.scriptureforge.ai/health concurrency=500 duration_ms=60000 duration_ms>=60000 min_rps=5000 max_p99_ms=200 production_target_rps=5000 production_target_p99_ms=200 production_min_duration_ms=60000 observed_rps=5200 observed_p99_ms=180 threshold_pass=true http_replica_count=2 dependency_postgres_p99_ms=32 dependency_redis_p99_ms=18 release_candidate=abc123 service_version=scriptureforge-api:abc123; verified markers: staging_http, https://, min_rps, 5000, max_p99_ms, 200, observed_rps, observed_p99_ms, release_candidate, service_version, http_replica_artifact_url, http_replica_artifact_verified, http_replica_count=2, dependency_telemetry_artifact_url, dependency_telemetry_artifact_verified, dependency_latency_artifact_verified=true, dependency_postgres_p99_ms=32, dependency_redis_p99_ms=18, http_distinct_artifacts=true',
-  websocket: 'staging artifact profile=staging_websocket target=wss://api.staging.scriptureforge.ai/api/v1/rooms/stream/room-1 concurrency=500 duration_ms=60000 duration_ms>=60000 min_rps=500 max_p99_ms=200 production_target_rps=500 production_target_p99_ms=200 production_min_duration_ms=60000 observed_rps=620 observed_p99_ms=140 threshold_pass=true release_candidate=abc123 service_version=scriptureforge-api:abc123 production_min_ws_events=30000 ws_origin=https://web.staging.scriptureforge.ai ws_room_id=room-1 ws_authenticated=true ws_expected_events=30000 ws_unique_sequences=30000 ws_min_sequence=1 ws_max_sequence=30000 ws_polling_latest_sequence=30000 ws_sequence_contiguous=true ws_replica_artifact_url=https://artifacts.staging.scriptureforge.ai/load/ws-replicas.txt ws_reconnect_artifact_url=https://artifacts.staging.scriptureforge.ai/load/ws-reconnect.txt ws_polling_artifact_url=https://artifacts.staging.scriptureforge.ai/load/ws-polling.txt redis_telemetry_artifact_url=https://artifacts.staging.scriptureforge.ai/load/redis-telemetry.txt ws_replica_count=2 room_broadcast_drops=0; verified markers: staging artifact, staging_websocket, wss://, min_rps, 500, max_p99_ms, 200, observed_rps, observed_p99_ms, release_candidate, service_version, ws_sequence_contiguous=true, ws_origin=https://, ws_room_id, ws_authenticated=true, ws_expected_events, ws_unique_sequences, ws_min_sequence, ws_max_sequence, ws_polling_latest_sequence, redis_telemetry_artifact_url=https://, ws_replica_artifact_url=https://, ws_replica_artifact_verified, ws_replica_count=2, ws_reconnect_artifact_url=https://, ws_reconnect_artifact_verified, ws_reconnect_sequence_continues=true, ws_polling_artifact_url=https://, ws_polling_artifact_verified, ws_polling_artifact_latest_sequence_validated=true, ws_polling_artifact_latest_sequence_matches_run=true, redis_telemetry_artifact_verified, ws_distinct_artifacts=true, room_broadcast_drops=0',
+  http: 'profile=staging_http target=https://api.staging.scriptureforge.ai/health concurrency=500 duration_ms=60000 duration_ms>=60000 min_rps=5000 max_p99_ms=200 production_target_rps=5000 production_target_p99_ms=200 production_min_duration_ms=60000 observed_rps=5200 observed_p99_ms=180 threshold_pass=true http_replica_count=2 dependency_postgres_p99_ms=32 dependency_redis_p99_ms=18 release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123; verified markers: staging_http, https://, min_rps, 5000, max_p99_ms, 200, observed_rps, observed_p99_ms, release_candidate, service_version, http_replica_artifact_url, http_replica_artifact_verified, http_replica_count=2, dependency_telemetry_artifact_url, dependency_telemetry_artifact_verified, dependency_latency_artifact_verified=true, dependency_postgres_p99_ms=32, dependency_redis_p99_ms=18, http_distinct_artifacts=true',
+  websocket: 'staging artifact profile=staging_websocket target=wss://api.staging.scriptureforge.ai/api/v1/rooms/stream/room-1 concurrency=500 duration_ms=60000 duration_ms>=60000 min_rps=500 max_p99_ms=200 production_target_rps=500 production_target_p99_ms=200 production_min_duration_ms=60000 observed_rps=620 observed_p99_ms=140 threshold_pass=true release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 production_min_ws_events=30000 ws_origin=https://web.staging.scriptureforge.ai ws_room_id=room-1 ws_authenticated=true ws_expected_events=30000 ws_unique_sequences=30000 ws_min_sequence=1 ws_max_sequence=30000 ws_polling_latest_sequence=30000 ws_sequence_contiguous=true ws_replica_artifact_url=https://artifacts.staging.scriptureforge.ai/load/ws-replicas.txt ws_reconnect_artifact_url=https://artifacts.staging.scriptureforge.ai/load/ws-reconnect.txt ws_polling_artifact_url=https://artifacts.staging.scriptureforge.ai/load/ws-polling.txt redis_telemetry_artifact_url=https://artifacts.staging.scriptureforge.ai/load/redis-telemetry.txt ws_replica_count=2 room_broadcast_drops=0; verified markers: staging artifact, staging_websocket, wss://, min_rps, 500, max_p99_ms, 200, observed_rps, observed_p99_ms, release_candidate, service_version, ws_sequence_contiguous=true, ws_origin=https://, ws_room_id, ws_authenticated=true, ws_expected_events, ws_unique_sequences, ws_min_sequence, ws_max_sequence, ws_polling_latest_sequence, redis_telemetry_artifact_url=https://, ws_replica_artifact_url=https://, ws_replica_artifact_verified, ws_replica_count=2, ws_reconnect_artifact_url=https://, ws_reconnect_artifact_verified, ws_reconnect_sequence_continues=true, ws_polling_artifact_url=https://, ws_polling_artifact_verified, ws_polling_artifact_latest_sequence_validated=true, ws_polling_artifact_latest_sequence_matches_run=true, redis_telemetry_artifact_verified, ws_distinct_artifacts=true, room_broadcast_drops=0',
 };
 
 function httpPerformanceReport(overrides = {}) {
@@ -581,6 +581,7 @@ function httpPerformanceReport(overrides = {}) {
     production_min_duration_ms: 60000,
     release_candidate: 'abc123',
     service_version: 'scriptureforge-api:abc123',
+    load_run_id: 'load-run-123',
     threshold_failures: [],
     duration_ms: 60000,
     rps: 5200,
@@ -610,6 +611,7 @@ function websocketPerformanceReport(overrides = {}) {
     production_min_ws_events: 30000,
     release_candidate: 'abc123',
     service_version: 'scriptureforge-api:abc123',
+    load_run_id: 'load-run-123',
     threshold_failures: [],
     duration_ms: 60000,
     rps: 620,
@@ -2899,7 +2901,7 @@ test('recordEvidence rejects Zoom evidence for a different release candidate', (
         probes: zoomProbeReportProbes(probeNames, (name) => ({
           result_summary: zoomProbeMarkerSummaries[name]
             .replaceAll('release_candidate=abc123', 'release_candidate=def456')
-            .replaceAll('service_version=scriptureforge-api:abc123', 'service_version=scriptureforge-api:def456'),
+            .replaceAll('service_version=scriptureforge-api:abc123 load_run_id=load-run-123', 'service_version=scriptureforge-api:def456'),
         })),
       },
       'artifacts/zoomprobe.json',
@@ -3436,7 +3438,7 @@ test('recordEvidence rejects AI evidence for a different release candidate', () 
         probes: aiProbeReportProbes(probeNames, (name) => ({
           result_summary: aiProbeMarkerSummaries[name]
             .replaceAll('release_candidate=abc123', 'release_candidate=def456')
-            .replaceAll('service_version=scriptureforge-api:abc123', 'service_version=scriptureforge-api:def456'),
+            .replaceAll('service_version=scriptureforge-api:abc123 load_run_id=load-run-123', 'service_version=scriptureforge-api:def456'),
         })),
       },
       'artifacts/aiprobe.json',
@@ -4274,7 +4276,7 @@ test('recordEvidence rejects Terraform init and plan evidence without release li
             target: 'https://artifacts.staging.scriptureforge.ai/deploy/terraform-init.txt',
             status_code: 200,
             result_summary: deploymentProbeMarkerSummaries['terraform-remote-backend-init']
-              .replace(', release_candidate=abc123, service_version=scriptureforge-api:abc123', ''),
+              .replace(', release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123', ''),
           },
           {
             name: 'terraform-staging-plan',
@@ -4282,7 +4284,7 @@ test('recordEvidence rejects Terraform init and plan evidence without release li
             target: 'https://artifacts.staging.scriptureforge.ai/deploy/terraform-plan.txt',
             status_code: 200,
             result_summary: deploymentProbeMarkerSummaries['terraform-staging-plan']
-              .replace(', release_candidate=abc123, service_version=scriptureforge-api:abc123', ''),
+              .replace(', release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123', ''),
           },
           terraformApplyProbe(),
         ],
@@ -4325,7 +4327,7 @@ test('recordEvidence rejects Terraform apply evidence without zero-destroy proof
         probes: [
           { name: 'terraform-remote-backend-init', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/deploy/terraform-init.txt', status_code: 200, result_summary: deploymentProbeMarkerSummaries['terraform-remote-backend-init'] },
           { name: 'terraform-staging-plan', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/deploy/terraform-plan.txt', status_code: 200, result_summary: deploymentProbeMarkerSummaries['terraform-staging-plan'] },
-          terraformApplyProbe('got HTTP 200; staging artifact; verified markers: Apply complete, Resources:, release_candidate=abc123, service_version=scriptureforge-api:abc123, distinct_terraform_artifacts=true'),
+          terraformApplyProbe('got HTTP 200; staging artifact; verified markers: Apply complete, Resources:, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123, distinct_terraform_artifacts=true'),
         ],
       },
       'artifacts/deploymentprobe-terraform.json',
@@ -4527,7 +4529,7 @@ test('recordEvidence rejects Kubernetes rollout evidence without release linkage
             target: 'https://artifacts.staging.scriptureforge.ai/deploy/kubectl-rollout-status.txt',
             result_summary: deploymentProbeMarkerSummaries['kubernetes-rollout-status']
               .replace(', release_candidate=abc123', '')
-              .replace(', service_version=scriptureforge-api:abc123', ''),
+              .replace(', service_version=scriptureforge-api:abc123 load_run_id=load-run-123', ''),
           },
           {
             name: 'kubernetes-workload-resources',
@@ -4962,7 +4964,7 @@ test('recordEvidence rejects observability evidence for a different release cand
         probes: observabilityProbeReportProbes(probeNames, (name) => ({
           result_summary: observabilityProbeMarkerSummaries[name]
             .replaceAll('release_candidate=abc123', 'release_candidate=def456')
-            .replaceAll('service_version=scriptureforge-api:abc123', 'service_version=scriptureforge-api:def456'),
+            .replaceAll('service_version=scriptureforge-api:abc123 load_run_id=load-run-123', 'service_version=scriptureforge-api:def456'),
         })),
       },
       'artifacts/observabilityprobe.json',
@@ -5061,7 +5063,7 @@ test('recordEvidence rejects observability evidence without tenant-aware log mar
           { name: 'rust-prometheus-metrics', passed: true, target: 'https://rust.staging.scriptureforge.ai/metrics', status_code: 200, result_summary: observabilityProbeMarkerSummaries['rust-prometheus-metrics'] },
           observabilityProbeReportProbe('trace-backend-search', { target: 'https://traces.staging.scriptureforge.ai/search?trace_id=11112222333344445555666677778888' }),
           observabilityProbeReportProbe('log-backend-trace-correlation', {
-            result_summary: 'got HTTP 200; verified markers: staging artifact, 11112222333344445555666677778888, trace_id, service_version, deployment_environment, release_candidate=abc123, service_version=scriptureforge-api:abc123',
+            result_summary: 'got HTTP 200; verified markers: staging artifact, 11112222333344445555666677778888, trace_id, service_version, deployment_environment, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
           }),
         ],
       },
@@ -5193,7 +5195,7 @@ test('recordEvidence rejects observability evidence without verified marker summ
         evidence_items: ['OBS-OTEL-001', 'OBS-ALERT-001'],
         probes: observabilityProbeReportProbes(Object.keys(observabilityProbeMarkerSummaries), (name) => ({
           result_summary: name === 'alert-delivery-status'
-            ? 'got HTTP 200; verified markers: staging artifact, success, delivered, test alert, alertmanager, alertname=ScriptureForgeHighErrorRate, receiver=staging-release, release_candidate=abc123, service_version=scriptureforge-api:abc123'
+            ? 'got HTTP 200; verified markers: staging artifact, success, delivered, test alert, alertmanager, alertname=ScriptureForgeHighErrorRate, receiver=staging-release, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123'
             : observabilityProbeMarkerSummaries[name],
         })),
       },
@@ -5363,7 +5365,7 @@ test('recordEvidence rejects observability evidence without Rust failure counter
             passed: true,
             target: 'https://rust.staging.scriptureforge.ai/metrics',
             status_code: 200,
-            result_summary: 'got HTTP 200; verified markers: staging artifact, scriptureforge_rust_engine_embedding_requests_total, scriptureforge_rust_engine_vector_search_requests_total, release_candidate=abc123, service_version=scriptureforge-api:abc123',
+            result_summary: 'got HTTP 200; verified markers: staging artifact, scriptureforge_rust_engine_embedding_requests_total, scriptureforge_rust_engine_vector_search_requests_total, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
           },
           observabilityProbeReportProbe('trace-backend-search'),
           observabilityProbeReportProbe('log-backend-trace-correlation'),
@@ -5399,7 +5401,7 @@ test('recordEvidence rejects observability evidence without API Rust dependency 
             passed: true,
             target: 'https://api.staging.scriptureforge.ai/metrics',
             status_code: 200,
-            result_summary: 'got HTTP 200; verified markers: staging artifact, scriptureforge_http_requests_total, scriptureforge_http_request_duration_seconds_sum, scriptureforge_http_requests_total{, status=, websocket_active_connections_count, ai_inference_duration_seconds_sum, ai_inference_duration_seconds_count, release_candidate=abc123, service_version=scriptureforge-api:abc123',
+            result_summary: 'got HTTP 200; verified markers: staging artifact, scriptureforge_http_requests_total, scriptureforge_http_request_duration_seconds_sum, scriptureforge_http_requests_total{, status=, websocket_active_connections_count, ai_inference_duration_seconds_sum, ai_inference_duration_seconds_count, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
           },
           { name: 'rust-prometheus-metrics', passed: true, target: 'https://rust.staging.scriptureforge.ai/metrics', status_code: 200, result_summary: observabilityProbeMarkerSummaries['rust-prometheus-metrics'] },
           observabilityProbeReportProbe('trace-backend-search'),
@@ -5436,7 +5438,7 @@ test('recordEvidence rejects observability evidence without architecture metric 
             passed: true,
             target: 'https://api.staging.scriptureforge.ai/metrics',
             status_code: 200,
-            result_summary: 'got HTTP 200; verified markers: staging artifact, scriptureforge_http_requests_total, scriptureforge_http_request_duration_seconds_sum, scriptureforge_http_requests_total{, status=, scriptureforge_dependency_operations_total{dependency="rust_engine",operation="vector_search",status="success", scriptureforge_dependency_operation_duration_seconds_sum{dependency="rust_engine",operation="vector_search",status="success", release_candidate=abc123, service_version=scriptureforge-api:abc123',
+            result_summary: 'got HTTP 200; verified markers: staging artifact, scriptureforge_http_requests_total, scriptureforge_http_request_duration_seconds_sum, scriptureforge_http_requests_total{, status=, scriptureforge_dependency_operations_total{dependency="rust_engine",operation="vector_search",status="success", scriptureforge_dependency_operation_duration_seconds_sum{dependency="rust_engine",operation="vector_search",status="success", release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
           },
           { name: 'rust-prometheus-metrics', passed: true, target: 'https://rust.staging.scriptureforge.ai/metrics', status_code: 200, result_summary: observabilityProbeMarkerSummaries['rust-prometheus-metrics'] },
           observabilityProbeReportProbe('trace-backend-search'),
@@ -5584,7 +5586,7 @@ test('recordEvidence records production-grade security evidence', () => {
             app_grants_verified: true,
             app_grant_tables: 9,
             app_grants: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
-          result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grants=SELECT,INSERT,UPDATE,DELETE; verified markers: staging artifact, release_candidate=abc123, service_version=scriptureforge-api:abc123',
+          result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grants=SELECT,INSERT,UPDATE,DELETE; verified markers: staging artifact, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
         },
       ],
     },
@@ -5619,7 +5621,7 @@ test('recordEvidence rejects DB user evidence without structured current user pr
             app_grants_verified: true,
             app_grant_tables: 9,
             app_grants: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
-            result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grants=SELECT,INSERT,UPDATE,DELETE; verified markers: staging artifact, release_candidate=abc123, service_version=scriptureforge-api:abc123',
+            result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grants=SELECT,INSERT,UPDATE,DELETE; verified markers: staging artifact, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
           },
         ],
       },
@@ -5725,7 +5727,7 @@ test('recordEvidence rejects security evidence for a different release candidate
           status_code: 200,
           result_summary: securityProbeMarkerSummaries[name]
             .replaceAll('release_candidate=abc123', 'release_candidate=def456')
-            .replaceAll('service_version=scriptureforge-api:abc123', 'service_version=scriptureforge-api:def456'),
+            .replaceAll('service_version=scriptureforge-api:abc123 load_run_id=load-run-123', 'service_version=scriptureforge-api:def456'),
         })),
       },
       'artifacts/securityprobe.json',
@@ -6176,7 +6178,7 @@ test('recordEvidence rejects database user evidence without scriptureforge_app p
             app_grants_verified: true,
             app_grant_tables: 9,
             app_grants: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
-            result_summary: 'connected as "tenant_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grants=SELECT,INSERT,UPDATE,DELETE; verified markers: staging artifact, release_candidate=abc123, service_version=scriptureforge-api:abc123',
+            result_summary: 'connected as "tenant_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grants=SELECT,INSERT,UPDATE,DELETE; verified markers: staging artifact, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
           },
         ],
       },
@@ -6211,7 +6213,7 @@ test('recordEvidence rejects database user evidence without bypass RLS denial pr
             app_grants_verified: true,
             app_grant_tables: 9,
             app_grants: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
-            result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false createrole=false createdb=false privileged_operation_denied=true; verified markers: staging artifact, release_candidate=abc123, service_version=scriptureforge-api:abc123',
+            result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false createrole=false createdb=false privileged_operation_denied=true; verified markers: staging artifact, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
           },
         ],
       },
@@ -6246,7 +6248,7 @@ test('recordEvidence rejects database user evidence without denied privileged op
             app_grants_verified: true,
             app_grant_tables: 9,
             app_grants: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
-            result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false; verified markers: staging artifact, release_candidate=abc123, service_version=scriptureforge-api:abc123',
+            result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false; verified markers: staging artifact, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
           },
         ],
       },
@@ -6281,7 +6283,7 @@ test('recordEvidence rejects database user evidence without application grant pr
             app_grants_verified: true,
             app_grant_tables: 9,
             app_grants: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
-            result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true; verified markers: staging artifact, release_candidate=abc123, service_version=scriptureforge-api:abc123',
+            result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true; verified markers: staging artifact, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
           },
         ],
       },
@@ -6316,7 +6318,7 @@ test('recordEvidence rejects database user evidence without staging artifact pro
             app_grants_verified: true,
             app_grant_tables: 9,
             app_grants: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
-            result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grants=SELECT,INSERT,UPDATE,DELETE; verified markers: release_candidate=abc123, service_version=scriptureforge-api:abc123',
+            result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grants=SELECT,INSERT,UPDATE,DELETE; verified markers: release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
           },
         ],
       },
@@ -6424,7 +6426,7 @@ test('recordEvidence rejects resilience evidence for a different release candida
           status_code: 200,
           result_summary: resilienceProbeMarkerSummaries[name]
             .replaceAll('release_candidate=abc123', 'release_candidate=def456')
-            .replaceAll('service_version=scriptureforge-api:abc123', 'service_version=scriptureforge-api:def456'),
+            .replaceAll('service_version=scriptureforge-api:abc123 load_run_id=load-run-123', 'service_version=scriptureforge-api:def456'),
         })),
       },
       'artifacts/resilienceprobe.json',
@@ -6943,6 +6945,7 @@ test('recordEvidence rejects under-target HTTP performance evidence', () => {
         production_min_ws_events: 30000,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         threshold_failures: [],
         duration_ms: 60000,
         rps: 120,
@@ -6995,6 +6998,7 @@ test('recordEvidence rejects private-network performance evidence targets', () =
         production_min_ws_events: 30000,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         threshold_failures: [],
         duration_ms: 60000,
         rps: 6000,
@@ -7723,6 +7727,7 @@ test('recordEvidence rejects performance evidence without verified marker summar
         production_min_ws_events: 30000,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         threshold_failures: [],
         duration_ms: 60000,
         rps: 5200,
@@ -7975,6 +7980,21 @@ test('recordEvidence rejects performance evidence without release linkage fields
       'go run ./tools/loadtest',
     ),
     /PERF-HTTP-001 report must include release_candidate/,
+  );
+});
+
+test('recordEvidence rejects performance evidence without load run identity', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'PERF-HTTP-001', status: 'pending_external' }] },
+      httpPerformanceReport({
+        load_run_id: '',
+        result_summary: performanceReportSummaries.http.replace(' load_run_id=load-run-123', ''),
+      }),
+      'artifacts/load-http.json',
+      'go run ./tools/loadtest',
+    ),
+    /PERF-HTTP-001 report must include load_run_id/,
   );
 });
 
@@ -8708,7 +8728,7 @@ test('recordEvidence rejects abuse evidence for a different release candidate', 
         name,
         summary
           .replaceAll('release_candidate=abc123', 'release_candidate=def456')
-          .replaceAll('service_version=scriptureforge-api:abc123', 'service_version=scriptureforge-api:def456'),
+          .replaceAll('service_version=scriptureforge-api:abc123 load_run_id=load-run-123', 'service_version=scriptureforge-api:def456'),
       ]),
   );
   const probes = abuseProbeReportProbes((name) => ({
@@ -8729,7 +8749,7 @@ test('recordEvidence rejects abuse evidence for a different release candidate', 
         config_artifact_verified: true,
         config_artifact_summary: abuseConfigSummary
           .replaceAll('release_candidate=abc123', 'release_candidate=def456')
-          .replaceAll('service_version=scriptureforge-api:abc123', 'service_version=scriptureforge-api:def456'),
+          .replaceAll('service_version=scriptureforge-api:abc123 load_run_id=load-run-123', 'service_version=scriptureforge-api:def456'),
         threshold_pass: true,
         release_candidate: 'def456',
         service_version: 'scriptureforge-api:def456',

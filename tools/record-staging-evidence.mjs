@@ -103,9 +103,9 @@ const productionPerformanceTargets = {
 };
 
 const requiredPerformanceSummaryMarkers = {
-  'PERF-HTTP-001': ['staging_http', 'https://', 'min_rps', '5000', 'max_p99_ms', '200', 'production_target_rps=5000', 'production_target_p99_ms=200', 'production_min_duration_ms=60000', 'duration_ms>=60000', 'observed_rps', 'observed_p99_ms', 'threshold_pass=true', 'release_candidate', 'service_version', 'http_replica_artifact_url', 'http_replica_artifact_verified', 'http_replica_count=', 'dependency_telemetry_artifact_url', 'dependency_telemetry_artifact_verified', 'dependency_latency_artifact_verified=true', 'dependency_postgres_p99_ms=', 'dependency_redis_p99_ms='],
-  'PERF-WS-001': ['staging artifact', 'staging_websocket', 'wss://', 'min_rps', '500', 'max_p99_ms', '200', 'production_target_rps=500', 'production_target_p99_ms=200', 'production_min_duration_ms=60000', 'duration_ms>=60000', 'production_min_ws_events=30000', 'observed_rps', 'observed_p99_ms', 'threshold_pass=true', 'release_candidate', 'service_version', 'ws_sequence_contiguous=true', 'ws_origin=https://', 'ws_room_id=', 'ws_authenticated=true', 'ws_expected_events', 'ws_polling_latest_sequence', 'ws_replica_artifact_url=https://', 'ws_replica_artifact_verified', 'ws_replica_count=', 'ws_reconnect_artifact_url=https://', 'ws_reconnect_artifact_verified', 'ws_reconnect_sequence_continues=true', 'ws_polling_artifact_url=https://', 'ws_polling_artifact_verified', 'ws_polling_artifact_latest_sequence_validated=true', 'ws_polling_artifact_latest_sequence_matches_run=true', 'redis_telemetry_artifact_url=https://', 'redis_telemetry_artifact_verified', 'ws_distinct_artifacts=true', 'room_broadcast_drops=0'],
-  'DATA-REDIS-001': ['staging artifact', 'staging_websocket', 'release_candidate', 'service_version', 'ws_room_id=', 'ws_sequence_contiguous=true', 'production_min_ws_events=30000', 'ws_expected_events', 'ws_unique_sequences', 'ws_min_sequence', 'ws_max_sequence', 'ws_polling_latest_sequence', 'ws_polling_artifact_url=https://', 'ws_polling_artifact_latest_sequence_validated=true', 'ws_polling_artifact_latest_sequence_matches_run=true', 'redis_telemetry_artifact_url=https://', 'redis_telemetry_artifact_verified', 'ws_distinct_artifacts=true', 'room_broadcast_drops=0'],
+  'PERF-HTTP-001': ['staging_http', 'https://', 'min_rps', '5000', 'max_p99_ms', '200', 'production_target_rps=5000', 'production_target_p99_ms=200', 'production_min_duration_ms=60000', 'duration_ms>=60000', 'observed_rps', 'observed_p99_ms', 'threshold_pass=true', 'release_candidate', 'service_version', 'load_run_id=', 'http_replica_artifact_url', 'http_replica_artifact_verified', 'http_replica_count=', 'dependency_telemetry_artifact_url', 'dependency_telemetry_artifact_verified', 'dependency_latency_artifact_verified=true', 'dependency_postgres_p99_ms=', 'dependency_redis_p99_ms='],
+  'PERF-WS-001': ['staging artifact', 'staging_websocket', 'wss://', 'min_rps', '500', 'max_p99_ms', '200', 'production_target_rps=500', 'production_target_p99_ms=200', 'production_min_duration_ms=60000', 'duration_ms>=60000', 'production_min_ws_events=30000', 'observed_rps', 'observed_p99_ms', 'threshold_pass=true', 'release_candidate', 'service_version', 'load_run_id=', 'ws_sequence_contiguous=true', 'ws_origin=https://', 'ws_room_id=', 'ws_authenticated=true', 'ws_expected_events', 'ws_polling_latest_sequence', 'ws_replica_artifact_url=https://', 'ws_replica_artifact_verified', 'ws_replica_count=', 'ws_reconnect_artifact_url=https://', 'ws_reconnect_artifact_verified', 'ws_reconnect_sequence_continues=true', 'ws_polling_artifact_url=https://', 'ws_polling_artifact_verified', 'ws_polling_artifact_latest_sequence_validated=true', 'ws_polling_artifact_latest_sequence_matches_run=true', 'redis_telemetry_artifact_url=https://', 'redis_telemetry_artifact_verified', 'ws_distinct_artifacts=true', 'room_broadcast_drops=0'],
+  'DATA-REDIS-001': ['staging artifact', 'staging_websocket', 'release_candidate', 'service_version', 'load_run_id=', 'ws_room_id=', 'ws_sequence_contiguous=true', 'production_min_ws_events=30000', 'ws_expected_events', 'ws_unique_sequences', 'ws_min_sequence', 'ws_max_sequence', 'ws_polling_latest_sequence', 'ws_polling_artifact_url=https://', 'ws_polling_artifact_latest_sequence_validated=true', 'ws_polling_artifact_latest_sequence_matches_run=true', 'redis_telemetry_artifact_url=https://', 'redis_telemetry_artifact_verified', 'ws_distinct_artifacts=true', 'room_broadcast_drops=0'],
 };
 
 const forbiddenPerformanceSummaryMarkers = [
@@ -651,12 +651,15 @@ function validatePerformanceEvidence(report, manifest) {
     }
     const reportReleaseCandidate = String(report.release_candidate ?? '').trim();
     const reportServiceVersion = String(report.service_version ?? '').trim();
+    const loadRunID = String(report.load_run_id ?? '').trim() || summaryMarkerValue(String(report.result_summary ?? ''), 'load_run_id');
     assert.ok(reportReleaseCandidate, `${id} report must include release_candidate`);
     assert.ok(reportServiceVersion, `${id} report must include service_version`);
+    assert.ok(loadRunID, `${id} report must include load_run_id`);
     assertSummaryIncludesMarkers(id, String(report.result_summary ?? ''), [
       ...(requiredPerformanceSummaryMarkers[id] ?? []),
       `release_candidate=${reportReleaseCandidate}`,
       `service_version=${reportServiceVersion}`,
+      `load_run_id=${loadRunID}`,
     ]);
     assertSummaryExcludesMarkers(id, String(report.result_summary ?? ''), forbiddenPerformanceSummaryMarkers);
   }
@@ -688,6 +691,7 @@ function validatePerformanceEvidence(report, manifest) {
       ...requiredPerformanceSummaryMarkers['DATA-REDIS-001'],
       `release_candidate=${String(report.release_candidate ?? '').trim()}`,
       `service_version=${String(report.service_version ?? '').trim()}`,
+      `load_run_id=${String(report.load_run_id ?? '').trim()}`,
     ]);
   }
   if (evidenceItems.includes('PERF-HTTP-001')) {
@@ -736,6 +740,11 @@ function reportNumericValue(report, key) {
   const match = summary.match(new RegExp(`(?:^|\\s|;)${escaped}=(-?\\d+(?:\\.\\d+)?)\\b`));
   assert.ok(match, `load report must include ${key}`);
   return Number(match[1]);
+}
+
+function summaryMarkerValue(summary, key) {
+  const pattern = new RegExp(`(?:^|[\\s,;])${key}=([^\\s,;]+)`, 'i');
+  return pattern.exec(String(summary ?? ''))?.[1] ?? '';
 }
 
 function validateTLSEvidence(report, manifest) {

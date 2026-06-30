@@ -51,6 +51,7 @@ type config struct {
 	DependencyTelemetryURL    string
 	ReleaseCandidate          string
 	ServiceVersion            string
+	LoadRunID                 string
 	ArtifactEvidence          stagingArtifactEvidence
 }
 
@@ -88,6 +89,7 @@ type report struct {
 	RoomBroadcastDrops        *int     `json:"room_broadcast_drops,omitempty"`
 	ReleaseCandidate          string   `json:"release_candidate,omitempty"`
 	ServiceVersion            string   `json:"service_version,omitempty"`
+	LoadRunID                 string   `json:"load_run_id,omitempty"`
 	WSExpectedEvents          int      `json:"ws_expected_events,omitempty"`
 	WSUniqueSequences         int      `json:"ws_unique_sequences,omitempty"`
 	WSMinSequence             int64    `json:"ws_min_sequence,omitempty"`
@@ -162,6 +164,7 @@ func parseFlags() config {
 	flag.StringVar(&cfg.DependencyTelemetryURL, "dependency-telemetry-artifact-url", os.Getenv("STAGING_DEPENDENCY_TELEMETRY_ARTIFACT_URL"), "HTTPS artifact proving database and Redis telemetry during the HTTP load run")
 	flag.StringVar(&cfg.ReleaseCandidate, "release-candidate", os.Getenv("STAGING_RELEASE_CANDIDATE"), "release candidate SHA or tag that staging artifacts must name")
 	flag.StringVar(&cfg.ServiceVersion, "service-version", os.Getenv("STAGING_SERVICE_VERSION"), "deployed service version that staging artifacts must name")
+	flag.StringVar(&cfg.LoadRunID, "load-run-id", os.Getenv("STAGING_LOAD_RUN_ID"), "unique staging load run id that the load report and side artifacts must all name")
 	flag.Parse()
 	return cfg
 }
@@ -520,6 +523,10 @@ func validateStagingHTTPArtifacts(client *http.Client, cfg config) (stagingArtif
 	}
 	releaseMarker := "release_candidate=" + releaseCandidate
 	serviceVersionMarker := "service_version=" + serviceVersion
+	loadRunMarker, err := requireLoadRunMarker(cfg)
+	if err != nil {
+		return evidence, err
+	}
 	artifacts := []struct {
 		name     string
 		target   string
@@ -535,6 +542,7 @@ func validateStagingHTTPArtifacts(client *http.Client, cfg config) (stagingArtif
 				"staging artifact",
 				releaseMarker,
 				serviceVersionMarker,
+				loadRunMarker,
 			},
 		},
 		{
@@ -551,6 +559,7 @@ func validateStagingHTTPArtifacts(client *http.Client, cfg config) (stagingArtif
 				"staging artifact",
 				releaseMarker,
 				serviceVersionMarker,
+				loadRunMarker,
 			},
 		},
 	}
@@ -602,6 +611,10 @@ func validateStagingWebSocketArtifacts(client *http.Client, cfg config) (staging
 	}
 	releaseMarker := "release_candidate=" + releaseCandidate
 	serviceVersionMarker := "service_version=" + serviceVersion
+	loadRunMarker, err := requireLoadRunMarker(cfg)
+	if err != nil {
+		return evidence, err
+	}
 	roomMarker := "room_id=" + cfg.WSRoomID
 	artifacts := []struct {
 		name     string
@@ -618,6 +631,7 @@ func validateStagingWebSocketArtifacts(client *http.Client, cfg config) (staging
 				"staging artifact",
 				releaseMarker,
 				serviceVersionMarker,
+				loadRunMarker,
 			},
 		},
 		{
@@ -632,6 +646,7 @@ func validateStagingWebSocketArtifacts(client *http.Client, cfg config) (staging
 				"staging artifact",
 				releaseMarker,
 				serviceVersionMarker,
+				loadRunMarker,
 			},
 		},
 		{
@@ -646,6 +661,7 @@ func validateStagingWebSocketArtifacts(client *http.Client, cfg config) (staging
 				"staging artifact",
 				releaseMarker,
 				serviceVersionMarker,
+				loadRunMarker,
 			},
 		},
 		{
@@ -662,6 +678,7 @@ func validateStagingWebSocketArtifacts(client *http.Client, cfg config) (staging
 				"staging artifact",
 				releaseMarker,
 				serviceVersionMarker,
+				loadRunMarker,
 			},
 		},
 	}
@@ -768,6 +785,14 @@ func requireReleaseMetadata(cfg config) (string, string, error) {
 		return "", "", errors.New("service-version is required for staging load evidence")
 	}
 	return releaseCandidate, serviceVersion, nil
+}
+
+func requireLoadRunMarker(cfg config) (string, error) {
+	loadRunID := strings.TrimSpace(cfg.LoadRunID)
+	if loadRunID == "" {
+		return "", errors.New("staging load evidence requires -load-run-id or STAGING_LOAD_RUN_ID")
+	}
+	return "load_run_id=" + loadRunID, nil
 }
 
 func validateArtifactMarkers(client *http.Client, name, target string, required []string, expectedPollingLatestSequence int) (string, error) {
@@ -915,6 +940,7 @@ func buildReport(cfg config, elapsed time.Duration, load loadResult) report {
 		RoomBroadcastDrops:        cfg.ArtifactEvidence.RoomBroadcastDrops,
 		ReleaseCandidate:          strings.TrimSpace(cfg.ReleaseCandidate),
 		ServiceVersion:            strings.TrimSpace(cfg.ServiceVersion),
+		LoadRunID:                 strings.TrimSpace(cfg.LoadRunID),
 		EvidenceItems:             evidenceItemsFor(cfg),
 	}
 	result.ProductionTargetRPS, result.ProductionTargetP99MS = productionTargetFor(cfg)
@@ -943,7 +969,7 @@ func buildReport(cfg config, elapsed time.Duration, load loadResult) report {
 
 func resultSummaryFor(result report) string {
 	summary := fmt.Sprintf(
-		"profile=%s target=%s concurrency=%d duration_ms=%d min_rps=%.0f max_p99_ms=%d production_target_rps=%.0f production_target_p99_ms=%d production_min_duration_ms=%d observed_rps=%.2f observed_p99_ms=%d threshold_pass=%t release_candidate=%s service_version=%s",
+		"profile=%s target=%s concurrency=%d duration_ms=%d min_rps=%.0f max_p99_ms=%d production_target_rps=%.0f production_target_p99_ms=%d production_min_duration_ms=%d observed_rps=%.2f observed_p99_ms=%d threshold_pass=%t release_candidate=%s service_version=%s load_run_id=%s",
 		result.EvidenceProfile,
 		result.Target,
 		result.Concurrency,
@@ -958,6 +984,7 @@ func resultSummaryFor(result report) string {
 		result.ThresholdPass,
 		result.ReleaseCandidate,
 		result.ServiceVersion,
+		result.LoadRunID,
 	)
 	if result.EvidenceProfile == "staging_http" {
 		summary = fmt.Sprintf(
@@ -979,6 +1006,7 @@ func resultSummaryFor(result report) string {
 			"observed_p99_ms",
 			"release_candidate",
 			"service_version",
+			"load_run_id",
 			"http_replica_artifact_url",
 			"http_replica_artifact_verified",
 			"dependency_telemetry_artifact_url",
@@ -1024,6 +1052,7 @@ func resultSummaryFor(result report) string {
 			"observed_p99_ms",
 			"release_candidate",
 			"service_version",
+			"load_run_id",
 			"ws_sequence_contiguous=true",
 			"ws_origin=https://",
 			"ws_room_id",
