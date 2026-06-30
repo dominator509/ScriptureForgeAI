@@ -12,14 +12,16 @@ import (
 )
 
 var requiredAIProbeSummaryMarkers = map[string][]string{
-	"ai-provider-config":       {"staging artifact", "AI_PROVIDER", "AI_CHAT_MODEL", "AI_CHAT_ENDPOINT", "AI_HTTP_TIMEOUT_MS", "AI_MAX_RETRIES", "OPENAI_API_KEY redacted", "configured", "AI_PROVIDER=openai", "AI_CHAT_MODEL=gpt-staging", "AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions", "AI_HTTP_TIMEOUT_MS=3500", "AI_MAX_RETRIES=1", "release_candidate=sha-ai", "service_version=scriptureforge-api:sha-ai"},
-	"ai-generation-route":      {"staging artifact", "/api/v1/ai/generate/study", "authenticated", "JWT claims", "organization_id=", "user_id=", "request_id=", "200", "generated_curriculum", "[Genesis 1:1]", "release_candidate=sha-ai", "service_version=scriptureforge-api:sha-ai"},
-	"ai-timeout-degradation":   {"staging artifact", "provider timeout", "degradation", "retry exhausted", "503", "fail closed", "AI_ORCHESTRATION_ENGINE_FAULT", "provider_timeout=true", "retry_exhausted=true", "fail_closed=true", "release_candidate=sha-ai", "service_version=scriptureforge-api:sha-ai"},
-	"ai-citation-verification": {"staging artifact", "no-citation rejected", "hallucinated citation rejected", "verified citation accepted", "citation_trails", "citation_id=", "release_candidate=sha-ai", "service_version=scriptureforge-api:sha-ai"},
-	"ai-audit-persistence":     {"staging artifact", "ai_request_logs", "citation_trails", "organization_id=", "user_id=", "request_id=", "citation_id=", "succeeded", "failed", "verified", "tenant rls", "cross-tenant hidden", "distinct_ai_artifacts=true", "release_candidate=sha-ai", "service_version=scriptureforge-api:sha-ai"},
+	"ai-provider-config":       {"staging artifact", "AI_PROVIDER", "AI_CHAT_MODEL", "AI_CHAT_ENDPOINT", "AI_HTTP_TIMEOUT_MS", "AI_MAX_RETRIES", "OPENAI_API_KEY redacted", "configured", "AI_PROVIDER=openai", "AI_CHAT_MODEL=gpt-staging", "AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions", "AI_HTTP_TIMEOUT_MS=3500", "AI_MAX_RETRIES=1", "release_candidate=sha-ai", "service_version=scriptureforge-api:sha-ai", "load_run_id=ai-run-123"},
+	"ai-generation-route":      {"staging artifact", "/api/v1/ai/generate/study", "authenticated", "JWT claims", "organization_id=", "user_id=", "request_id=", "200", "generated_curriculum", "[Genesis 1:1]", "release_candidate=sha-ai", "service_version=scriptureforge-api:sha-ai", "load_run_id=ai-run-123"},
+	"ai-timeout-degradation":   {"staging artifact", "provider timeout", "degradation", "retry exhausted", "503", "fail closed", "AI_ORCHESTRATION_ENGINE_FAULT", "provider_timeout=true", "retry_exhausted=true", "fail_closed=true", "release_candidate=sha-ai", "service_version=scriptureforge-api:sha-ai", "load_run_id=ai-run-123"},
+	"ai-citation-verification": {"staging artifact", "no-citation rejected", "hallucinated citation rejected", "verified citation accepted", "citation_trails", "citation_id=", "release_candidate=sha-ai", "service_version=scriptureforge-api:sha-ai", "load_run_id=ai-run-123"},
+	"ai-audit-persistence":     {"staging artifact", "ai_request_logs", "citation_trails", "organization_id=", "user_id=", "request_id=", "citation_id=", "succeeded", "failed", "verified", "tenant rls", "cross-tenant hidden", "distinct_ai_artifacts=true", "release_candidate=sha-ai", "service_version=scriptureforge-api:sha-ai", "load_run_id=ai-run-123"},
 }
 
-const aiReleaseMarkers = " release_candidate=sha-ai service_version=scriptureforge-api:sha-ai"
+const aiLoadRunID = "ai-run-123"
+const aiLoadRunMarker = "load_run_id=" + aiLoadRunID
+const aiReleaseMarkers = " release_candidate=sha-ai service_version=scriptureforge-api:sha-ai " + aiLoadRunMarker
 
 func stagingAIConfig(timeout time.Duration) config {
 	return config{
@@ -30,6 +32,7 @@ func stagingAIConfig(timeout time.Duration) config {
 		AuditArtifactURL:       "https://ai-artifacts.staging.scriptureforge.ai/ai/audit",
 		ReleaseCandidate:       "sha-ai",
 		ServiceVersion:         "scriptureforge-api:sha-ai",
+		LoadRunID:              aiLoadRunID,
 		Timeout:                timeout,
 	}
 }
@@ -49,6 +52,16 @@ func TestRunRequiresReleaseIdentity(t *testing.T) {
 	err := runWithClient(cfg, &output, http.DefaultClient)
 	if err == nil || !strings.Contains(err.Error(), "release-candidate") {
 		t.Fatalf("expected release identity error, got %v", err)
+	}
+}
+
+func TestRunRequiresLoadRunID(t *testing.T) {
+	var output bytes.Buffer
+	cfg := stagingAIConfig(time.Second)
+	cfg.LoadRunID = ""
+	err := runWithClient(cfg, &output, http.DefaultClient)
+	if err == nil || !strings.Contains(err.Error(), "load-run-id") {
+		t.Fatalf("expected load run identity error, got %v", err)
 	}
 }
 
@@ -104,7 +117,7 @@ func TestRunEmitsAIEvidenceWhenArtifactsPass(t *testing.T) {
 	if !result.ThresholdPass {
 		t.Fatalf("expected threshold pass: %+v", result)
 	}
-	if result.ReleaseCandidate != "sha-ai" || result.ServiceVersion != "scriptureforge-api:sha-ai" {
+	if result.ReleaseCandidate != "sha-ai" || result.ServiceVersion != "scriptureforge-api:sha-ai" || result.LoadRunID != aiLoadRunID {
 		t.Fatalf("report missing release identity: %+v", result)
 	}
 	if len(result.EvidenceItems) != 1 || result.EvidenceItems[0] != "EXT-AI-001" {
@@ -117,6 +130,35 @@ func TestRunEmitsAIEvidenceWhenArtifactsPass(t *testing.T) {
 	assertAIAuditRequestID(t, result.Probes, "req-123")
 	assertAICitationID(t, result.Probes, "cite-123")
 	assertAITenantPrincipals(t, result.Probes, "org-123", "user-123")
+}
+
+func TestRunFailsWhenAIArtifactsUseDifferentLoadRunID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/provider":
+			_, _ = w.Write([]byte("configured AI_PROVIDER=openai AI_CHAT_MODEL=gpt-staging AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions AI_HTTP_TIMEOUT_MS=3500 AI_MAX_RETRIES=1 OPENAI_API_KEY redacted" + aiReleaseMarkers))
+		case "/generation":
+			_, _ = w.Write([]byte(`/api/v1/ai/generate/study authenticated JWT claims organization_id=org-123 user_id=user-123 request_id=req-123 returned 200 generated_curriculum with [Genesis 1:1] release_candidate=sha-ai service_version=scriptureforge-api:sha-ai load_run_id=ai-run-999`))
+		case "/degradation":
+			_, _ = w.Write([]byte("provider timeout degradation retry exhausted returned 503 fail closed AI_ORCHESTRATION_ENGINE_FAULT" + aiReleaseMarkers))
+		case "/citation":
+			_, _ = w.Write([]byte("no-citation rejected; hallucinated citation rejected; verified citation accepted; citation_trails persisted citation_id=cite-123" + aiReleaseMarkers))
+		case "/audit":
+			_, _ = w.Write([]byte("ai_request_logs request_id=req-123 citation_id=cite-123 organization_id=org-123 user_id=user-123 succeeded failed citation_trails verified tenant rls cross-tenant hidden distinct_ai_artifacts=true" + aiReleaseMarkers))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := runWithClient(stagingAIConfig(time.Second), &output, clientForHTTPServer(t, server))
+	if err == nil {
+		t.Fatalf("expected mismatched AI load run artifact to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "ai-generation-route") {
+		t.Fatalf("report did not identify load-run-bound generation probe:\n%s", output.String())
+	}
 }
 
 func assertAIGenerationRequestID(t *testing.T, probes []probeResult, want string) {

@@ -36,6 +36,7 @@ type config struct {
 	AuditArtifactURL       string
 	ReleaseCandidate       string
 	ServiceVersion         string
+	LoadRunID              string
 	Timeout                time.Duration
 }
 
@@ -49,6 +50,7 @@ type report struct {
 	ThresholdPass    bool          `json:"threshold_pass"`
 	ReleaseCandidate string        `json:"release_candidate"`
 	ServiceVersion   string        `json:"service_version"`
+	LoadRunID        string        `json:"load_run_id"`
 	Probes           []probeResult `json:"probes"`
 	EvidenceItems    []string      `json:"evidence_items"`
 }
@@ -91,6 +93,7 @@ func parseFlags() config {
 	flag.StringVar(&cfg.AuditArtifactURL, "audit-artifact-url", os.Getenv("STAGING_AI_AUDIT_ARTIFACT_URL"), "ai_request_logs/citation_trails query artifact URL")
 	flag.StringVar(&cfg.ReleaseCandidate, "release-candidate", os.Getenv("RELEASE_CANDIDATE"), "exact release candidate SHA being proven")
 	flag.StringVar(&cfg.ServiceVersion, "service-version", os.Getenv("SERVICE_VERSION"), "deployed service version being proven")
+	flag.StringVar(&cfg.LoadRunID, "load-run-id", os.Getenv("STAGING_LOAD_RUN_ID"), "exact staging AI run identifier that every AI artifact must name")
 	flag.DurationVar(&cfg.Timeout, "timeout", 5*time.Second, "per-probe timeout")
 	flag.Parse()
 	return cfg
@@ -109,8 +112,9 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 	}
 	cfg.ReleaseCandidate = strings.TrimSpace(cfg.ReleaseCandidate)
 	cfg.ServiceVersion = strings.TrimSpace(cfg.ServiceVersion)
-	if cfg.ReleaseCandidate == "" || cfg.ServiceVersion == "" {
-		return errors.New("AI proof requires -release-candidate and -service-version")
+	cfg.LoadRunID = strings.TrimSpace(cfg.LoadRunID)
+	if cfg.ReleaseCandidate == "" || cfg.ServiceVersion == "" || cfg.LoadRunID == "" {
+		return errors.New("AI proof requires -release-candidate, -service-version, and -load-run-id")
 	}
 	var err error
 	cfg.ProviderArtifactURL, err = normalizeArtifactURL(cfg.ProviderArtifactURL, "provider-artifact-url")
@@ -148,6 +152,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 	releaseMarkers := []string{
 		fmt.Sprintf("release_candidate=%s", cfg.ReleaseCandidate),
 		fmt.Sprintf("service_version=%s", cfg.ServiceVersion),
+		fmt.Sprintf("load_run_id=%s", cfg.LoadRunID),
 	}
 
 	probes := []probeResult{
@@ -166,6 +171,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 		ThresholdPass:    true,
 		ReleaseCandidate: cfg.ReleaseCandidate,
 		ServiceVersion:   cfg.ServiceVersion,
+		LoadRunID:        cfg.LoadRunID,
 		Probes:           probes,
 		EvidenceItems:    []string{"EXT-AI-001"},
 	}
