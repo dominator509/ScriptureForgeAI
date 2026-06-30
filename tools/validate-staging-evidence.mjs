@@ -275,8 +275,9 @@ const strictSecretLeakMarkers = [
   '-----begin',
 ];
 const dbUserSegmentMarkerRequirements = new Map([
-  ['database-scoped-user', ['staging artifact', 'connected as', 'scriptureforge_app', 'superuser=false', 'bypassrls=false', 'createrole=false', 'createdb=false', 'privileged_operation_denied=true', 'app_grants_verified=true', 'app_grant_tables=9', 'app_grants=SELECT,INSERT,UPDATE,DELETE', 'release_candidate=', 'service_version=']],
+  ['database-scoped-user', ['staging artifact', 'connected as', 'scriptureforge_app', 'current_user=scriptureforge_app', 'superuser=false', 'bypassrls=false', 'createrole=false', 'createdb=false', 'privileged_operation_denied=true', 'app_grants_verified=true', 'app_grant_tables=9', 'app_grants=SELECT,INSERT,UPDATE,DELETE', 'release_candidate=', 'service_version=']],
 ]);
+const dbUserPrincipalBindingPattern = /database-scoped-user(?=[^;]*connected as "?scriptureforge_app"?)(?=[^;]*current_user=scriptureforge_app)/i;
 const resilienceSegmentMarkerRequirements = new Map([
   ['api-ready-before-rollback', ['staging artifact', 'ready', 'service_version', 'deployment_environment', 'pre_rollback_version', 'release_candidate=']],
   ['rollback-rollout-artifact', ['staging artifact', 'rollout', 'undo', 'revision', 'previous_revision', 'target_revision', 'scriptureforge-api', 'successfully rolled out', 'release_candidate=', 'service_version=']],
@@ -558,6 +559,7 @@ export const strictProbeFamilies = {
     summaryIncludes: [
       'database-scoped-user',
       'connected as',
+      'current_user=scriptureforge_app',
       'superuser=false',
       'bypassrls=false',
       'createrole=false',
@@ -1440,6 +1442,12 @@ function validateStrictReleaseItemEvidence(item, manifest) {
         `SEC-DBUSER-001 strict release evidence must include database user markers on ${segment}`,
       );
     }
+    const dbUserSegment = findEvidenceSegment(evidence, 'database-scoped-user');
+    assert.match(
+      dbUserSegment,
+      dbUserPrincipalBindingPattern,
+      'SEC-DBUSER-001 database-scoped-user must bind connected user and current_user to scriptureforge_app',
+    );
   }
   if (item.id === 'DR-ROLLBACK-001' || item.id === 'DR-BACKUP-001') {
     const requiredSegments = item.id === 'DR-ROLLBACK-001'

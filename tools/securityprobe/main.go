@@ -44,13 +44,22 @@ type report struct {
 }
 
 type probeResult struct {
-	Name          string `json:"name"`
-	Target        string `json:"target"`
-	Passed        bool   `json:"passed"`
-	StatusCode    int    `json:"status_code,omitempty"`
-	LatencyMS     int64  `json:"latency_ms,omitempty"`
-	RoleARN       string `json:"role_arn,omitempty"`
-	ResultSummary string `json:"result_summary"`
+	Name                      string   `json:"name"`
+	Target                    string   `json:"target"`
+	Passed                    bool     `json:"passed"`
+	StatusCode                int      `json:"status_code,omitempty"`
+	LatencyMS                 int64    `json:"latency_ms,omitempty"`
+	RoleARN                   string   `json:"role_arn,omitempty"`
+	CurrentUser               string   `json:"current_user,omitempty"`
+	Superuser                 *bool    `json:"superuser,omitempty"`
+	BypassRLS                 *bool    `json:"bypassrls,omitempty"`
+	CreateRole                *bool    `json:"createrole,omitempty"`
+	CreateDB                  *bool    `json:"createdb,omitempty"`
+	PrivilegedOperationDenied *bool    `json:"privileged_operation_denied,omitempty"`
+	AppGrantsVerified         *bool    `json:"app_grants_verified,omitempty"`
+	AppGrantTables            int      `json:"app_grant_tables,omitempty"`
+	AppGrants                 []string `json:"app_grants,omitempty"`
+	ResultSummary             string   `json:"result_summary"`
 }
 
 var requiredApplicationGrantTables = []string{
@@ -311,8 +320,27 @@ func probeDatabaseUser(databaseURL string, timeout time.Duration, releaseMarkers
 		return failedProbe("database-scoped-user", "redacted-database-url", grantErr.Error())
 	}
 	passed := currentUser == principal && !isPrivilegedPrincipal(currentUser) && !isSuperuser && !canBypassRLS && !canCreateRole && !canCreateDB && privilegedOperationDenied && appGrantsVerified
-	summary := fmt.Sprintf("connected as %q in %dms; superuser=%t bypassrls=%t createrole=%t createdb=%t privileged_operation_denied=%t app_grants_verified=%t app_grant_tables=%d app_grants=%s; verified markers: staging artifact, %s", currentUser, latency, isSuperuser, canBypassRLS, canCreateRole, canCreateDB, privilegedOperationDenied, appGrantsVerified, len(requiredApplicationGrantTables), strings.Join(requiredApplicationGrantPrivileges, ","), strings.Join(releaseMarkers, ", "))
-	return probeResult{Name: "database-scoped-user", Target: "redacted-database-url", Passed: passed, LatencyMS: latency, ResultSummary: summary}
+	summary := fmt.Sprintf("connected as %q in %dms; current_user=%s superuser=%t bypassrls=%t createrole=%t createdb=%t privileged_operation_denied=%t app_grants_verified=%t app_grant_tables=%d app_grants=%s; verified markers: staging artifact, %s", currentUser, latency, currentUser, isSuperuser, canBypassRLS, canCreateRole, canCreateDB, privilegedOperationDenied, appGrantsVerified, len(requiredApplicationGrantTables), strings.Join(requiredApplicationGrantPrivileges, ","), strings.Join(releaseMarkers, ", "))
+	return probeResult{
+		Name:                      "database-scoped-user",
+		Target:                    "redacted-database-url",
+		Passed:                    passed,
+		LatencyMS:                 latency,
+		CurrentUser:               currentUser,
+		Superuser:                 boolPtr(isSuperuser),
+		BypassRLS:                 boolPtr(canBypassRLS),
+		CreateRole:                boolPtr(canCreateRole),
+		CreateDB:                  boolPtr(canCreateDB),
+		PrivilegedOperationDenied: boolPtr(privilegedOperationDenied),
+		AppGrantsVerified:         boolPtr(appGrantsVerified),
+		AppGrantTables:            len(requiredApplicationGrantTables),
+		AppGrants:                 requiredApplicationGrantPrivileges,
+		ResultSummary:             summary,
+	}
+}
+
+func boolPtr(value bool) *bool {
+	return &value
 }
 
 func applicationGrantsArePresent(ctx context.Context, pool *pgxpool.Pool) (bool, error) {

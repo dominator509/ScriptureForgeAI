@@ -1892,6 +1892,16 @@ function validateSecurityEvidence(report, manifest) {
       const summary = String(probe.result_summary ?? '');
       assert.match(summary, /connected as/i, 'database-scoped-user summary must prove a live connection');
       assert.match(summary, /connected as "?scriptureforge_app"?/i, 'database-scoped-user summary must prove connected as scriptureforge_app');
+      assert.equal(String(probe.current_user ?? ''), 'scriptureforge_app', 'database-scoped-user structured current_user must be scriptureforge_app');
+      assert.equal(probe.superuser, false, 'database-scoped-user structured superuser must be false');
+      assert.equal(probe.bypassrls, false, 'database-scoped-user structured bypassrls must be false');
+      assert.equal(probe.createrole, false, 'database-scoped-user structured createrole must be false');
+      assert.equal(probe.createdb, false, 'database-scoped-user structured createdb must be false');
+      assert.equal(probe.privileged_operation_denied, true, 'database-scoped-user structured privileged_operation_denied must be true');
+      assert.equal(probe.app_grants_verified, true, 'database-scoped-user structured app_grants_verified must be true');
+      assert.equal(probe.app_grant_tables, 9, 'database-scoped-user structured app_grant_tables must be 9');
+      assert.deepEqual(probe.app_grants, ['SELECT', 'INSERT', 'UPDATE', 'DELETE'], 'database-scoped-user structured app_grants must be SELECT,INSERT,UPDATE,DELETE');
+      assert.match(summary, /current_user=scriptureforge_app/i, 'database-scoped-user summary must prove current_user=scriptureforge_app');
       assert.match(summary, /superuser=false/i, 'database-scoped-user summary must prove superuser=false');
       assert.match(summary, /bypassrls=false/i, 'database-scoped-user summary must prove bypassrls=false');
       assert.match(summary, /createrole=false/i, 'database-scoped-user summary must prove createrole=false');
