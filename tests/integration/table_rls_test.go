@@ -22,6 +22,9 @@ const (
 	tenantCitationA  = "15151515-1515-4151-8151-151515151515"
 	tenantCitationB  = "16161616-1616-4161-8161-161616161616"
 	tenantWriteProbe = "17171717-1717-4171-8171-171717171717"
+	tenantWriteUser  = "18181818-1818-4181-8181-181818181818"
+	tenantWriteRoom  = "19191919-1919-4191-8191-191919191919"
+	tenantWriteAI    = "20202020-2020-4202-8202-202020202020"
 )
 
 func TestTenantRLSCoversAllTenantTables(t *testing.T) {
@@ -95,6 +98,7 @@ func TestTenantRLSCoversAllTenantTables(t *testing.T) {
 		{table: "ai_request_logs", predicate: "id = $1", ownID: tenantAILogB, blockedID: tenantAILogA},
 		{table: "citation_trails", predicate: "id = $1", ownID: tenantCitationB, blockedID: tenantCitationA},
 	})
+	assertSameTenantWritesPassAllTables(ctx, t, db)
 
 	setTenantForTest(ctx, t, db, tenantOrgA, func(ctx context.Context, tx pgx.Tx) {
 		requireRLSWriteDenied(t, ctx, tx, `INSERT INTO organizations (id, name) VALUES ($1, 'Cross Tenant Org')`, tenantWriteProbe)
@@ -124,6 +128,30 @@ func TestTenantRLSCoversAllTenantTables(t *testing.T) {
 		requireRLSMutationHidden(t, ctx, tx, "scripture_texts", "cross-tenant delete hidden", `DELETE FROM scripture_texts WHERE id = $1`, tenantScriptureB)
 		requireRLSMutationHidden(t, ctx, tx, "users", "cross-tenant delete hidden", `DELETE FROM users WHERE id = $1`, tenantUserB)
 		requireRLSMutationHidden(t, ctx, tx, "organizations", "cross-tenant delete hidden", `DELETE FROM organizations WHERE id = $1`, tenantOrgB)
+	})
+}
+
+func assertSameTenantWritesPassAllTables(ctx context.Context, t *testing.T, db *pgxpool.Pool) {
+	t.Helper()
+	setTenantForTest(ctx, t, db, tenantWriteProbe, func(ctx context.Context, tx pgx.Tx) {
+		if _, err := tx.Exec(ctx, `SAVEPOINT rls_same_tenant_write_probe`); err != nil {
+			t.Fatalf("create same-tenant write savepoint: %v", err)
+		}
+		mustExecTenant(t, ctx, tx, `INSERT INTO organizations (id, name) VALUES ($1, 'Tenant Write Probe')`, tenantWriteProbe)
+		mustExecTenant(t, ctx, tx, `INSERT INTO users (id, organization_id, email, password_hash, role) VALUES ($1, $2, 'same-write@example.test', 'hash', 'member')`, tenantWriteUser, tenantWriteProbe)
+		mustExecTenant(t, ctx, tx, `INSERT INTO scripture_texts (organization_id, book, chapter, verse, content) VALUES ($1, 'Genesis', 1, 2, 'Same tenant scripture')`, tenantWriteProbe)
+		mustExecTenant(t, ctx, tx, `INSERT INTO refresh_tokens (organization_id, user_id, token_hash, expires_at) VALUES ($1, $2, 'same-tenant-token-hash', now() + interval '1 hour')`, tenantWriteProbe, tenantWriteUser)
+		mustExecTenant(t, ctx, tx, `INSERT INTO journal_entries (organization_id, user_id, ciphertext, iv, salt_id) VALUES ($1, $2, 'same-cipher', 'same-iv', 'same:salt:v1')`, tenantWriteProbe, tenantWriteUser)
+		mustExecTenant(t, ctx, tx, `INSERT INTO live_rooms (id, organization_id, host_user_id, title) VALUES ($1, $2, $3, 'Same Tenant Room')`, tenantWriteRoom, tenantWriteProbe, tenantWriteUser)
+		mustExecTenant(t, ctx, tx, `INSERT INTO room_participants (organization_id, room_id, user_id) VALUES ($1, $2, $3)`, tenantWriteProbe, tenantWriteRoom, tenantWriteUser)
+		mustExecTenant(t, ctx, tx, `INSERT INTO ai_request_logs (id, organization_id, user_id, prompt, status) VALUES ($1, $2, $3, 'same prompt', 'succeeded')`, tenantWriteAI, tenantWriteProbe, tenantWriteUser)
+		mustExecTenant(t, ctx, tx, `INSERT INTO citation_trails (organization_id, ai_request_log_id, citation, verified) VALUES ($1, $2, '[Genesis 1:2]', true)`, tenantWriteProbe, tenantWriteAI)
+		if _, err := tx.Exec(ctx, `ROLLBACK TO SAVEPOINT rls_same_tenant_write_probe`); err != nil {
+			t.Fatalf("rollback same-tenant write savepoint: %v", err)
+		}
+		if _, err := tx.Exec(ctx, `RELEASE SAVEPOINT rls_same_tenant_write_probe`); err != nil {
+			t.Fatalf("release same-tenant write savepoint: %v", err)
+		}
 	})
 }
 
