@@ -274,6 +274,34 @@ func TestMetricsHandlerServesPrometheusText(t *testing.T) {
 	}
 }
 
+func TestMetricsHandlerRestrictsMethods(t *testing.T) {
+	observer := NewObserver(Options{})
+
+	head := httptest.NewRecorder()
+	observer.MetricsHandler().ServeHTTP(head, httptest.NewRequest(http.MethodHead, "/metrics", nil))
+	if head.Code != http.StatusOK {
+		t.Fatalf("HEAD /metrics status = %d, want 200", head.Code)
+	}
+	if head.Body.Len() != 0 {
+		t.Fatalf("HEAD /metrics body length = %d, want 0", head.Body.Len())
+	}
+	if got := head.Header().Get("Content-Type"); !strings.Contains(got, "text/plain") {
+		t.Fatalf("HEAD /metrics content type = %q, want text/plain", got)
+	}
+
+	post := httptest.NewRecorder()
+	observer.MetricsHandler().ServeHTTP(post, httptest.NewRequest(http.MethodPost, "/metrics", nil))
+	if post.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST /metrics status = %d, want 405", post.Code)
+	}
+	if got := post.Header().Get("Allow"); got != "GET, HEAD" {
+		t.Fatalf("POST /metrics Allow = %q, want GET, HEAD", got)
+	}
+	if strings.Contains(post.Body.String(), "scriptureforge_http_requests_total") {
+		t.Fatalf("POST /metrics should not expose metrics body:\n%s", post.Body.String())
+	}
+}
+
 func TestMiddlewareDoesNotRecordMetricsScrapes(t *testing.T) {
 	var logs bytes.Buffer
 	observer := NewObserver(Options{Writer: &logs})
