@@ -12,7 +12,12 @@ export const rustCargoRequiredTests = [
   'scripture_engine_health_service_name_matches_grpc_service',
   'default_bind_address_is_reachable_outside_localhost',
   'default_metrics_address_is_reachable_outside_localhost',
+  'default_observability_config_is_staging_safe',
+  'traceparent_metadata_extracts_trace_id',
+  'malformed_traceparent_does_not_emit_trace_id',
   'rust_engine_metrics_render_prometheus_counters',
+  'metrics_http_response_allows_get_and_head_only',
+  'json_escape_handles_control_characters',
 ];
 
 export const rustCargoProofMarkers = [
@@ -22,7 +27,11 @@ export const rustCargoProofMarkers = [
   'rust_vector_search_bounds_test=true',
   'rust_health_service_test=true',
   'rust_bind_address_test=true',
+  'rust_observability_defaults_test=true',
+  'rust_traceparent_test=true',
   'rust_metrics_render_test=true',
+  'rust_metrics_http_test=true',
+  'rust_json_escape_test=true',
   ...rustCargoRequiredTests,
 ];
 

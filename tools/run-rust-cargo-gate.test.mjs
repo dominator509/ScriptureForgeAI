@@ -70,5 +70,5 @@ test('runRustCargoGate rejects successful cargo output without proof tests', () 
 });
 
 function requiredRustPassOutput() {
-  return `${rustCargoRequiredTests.map((testName) => `test tests::${testName} ... ok`).join('\n')}\ntest result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out\n`;
+  return `${rustCargoRequiredTests.map((testName) => `test tests::${testName} ... ok`).join('\n')}\ntest result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out\n`;
 }
