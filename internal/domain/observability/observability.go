@@ -111,6 +111,7 @@ type Options struct {
 
 type accessLog struct {
 	Level                 string `json:"level"`
+	Severity              string `json:"severity"`
 	Message               string `json:"message"`
 	TraceID               string `json:"trace_id"`
 	Component             string `json:"component"`
@@ -126,6 +127,7 @@ type accessLog struct {
 	DurationMS            int64  `json:"duration_ms"`
 	RemoteAddr            string `json:"remote_addr"`
 	At                    string `json:"at"`
+	Timestamp             string `json:"timestamp"`
 }
 
 type statusRecorder struct {
@@ -324,6 +326,7 @@ func (o *Observer) Middleware(next http.Handler) http.Handler {
 		o.record(r.Method, route, recorder.status, duration)
 		o.writeAccessLog(accessLog{
 			Level:                 "info",
+			Severity:              "info",
 			Message:               "http_request",
 			TraceID:               traceID,
 			Component:             o.component,
@@ -339,6 +342,7 @@ func (o *Observer) Middleware(next http.Handler) http.Handler {
 			DurationMS:            duration.Milliseconds(),
 			RemoteAddr:            r.RemoteAddr,
 			At:                    start.UTC().Format(time.RFC3339Nano),
+			Timestamp:             start.UTC().Format(time.RFC3339Nano),
 		})
 	})
 }

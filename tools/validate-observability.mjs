@@ -29,6 +29,7 @@ export const observabilityProofMarkers = [
   'alert_rules=true',
   'trace_id_logs=true',
   'trace_id_shape_guard=true',
+  'structured_log_canonical_fields=true',
   'metrics_endpoint=true',
   'dependency_spans=true',
   'websocket_profile_metrics=true',
@@ -157,6 +158,8 @@ for (const phrase of ['Traceparent', 'trace_id', 'retention', 'OpenTelemetry', '
 
 for (const phrase of [
   'Component',
+  'Severity              string `json:"severity"`',
+  'Timestamp             string `json:"timestamp"`',
   'ServiceVersion',
   'DeploymentEnvironment',
   'TenantID',
@@ -189,6 +192,8 @@ for (const phrase of [
 
 for (const phrase of [
   'TestMiddlewareRejectsInvalidXTraceIDAndGeneratorFallbacks',
+  'access log missing canonical timestamp field',
+  'access log missing canonical severity field',
   'TestMiddlewareBindsOTelSpanToAcceptedXTraceID',
   'TestMiddlewarePreservesStreamingResponseWriterCapabilities',
   'exported span trace id',
@@ -336,12 +341,22 @@ for (const [artifactName, artifactSource] of [
 }
 
 for (const phrase of [
+  'timestamp=',
+  'severity=',
   'tenant_id=',
   'user_id=',
   'role=',
 ]) {
   assert.ok(observabilityProbe.includes(phrase), `observability probe missing concrete log principal marker ${phrase}`);
   assert.ok(recordStagingEvidence.includes(phrase), `staging evidence recorder missing concrete log principal marker ${phrase}`);
+}
+assert.ok(validateStagingEvidence.includes('timestamp=[^\\s,;]+'), 'staging evidence validator missing concrete log timestamp regex');
+assert.ok(validateStagingEvidence.includes('severity=[A-Za-z0-9_.:-]+'), 'staging evidence validator missing concrete log severity regex');
+for (const phrase of [
+  'tenant_id=',
+  'user_id=',
+  'role=',
+]) {
   assert.ok(validateStagingEvidence.includes(`${phrase}[A-Za-z0-9_.:-]+`), `staging evidence validator missing concrete log principal regex for ${phrase}`);
 }
 

@@ -136,7 +136,7 @@ const rustVectorSearchRequestsPattern = /\bvector_search_requests=([1-9][0-9]*(?
 const apiRustVectorSearchOpsPattern = /\bapi_rust_vector_search_ops=([1-9][0-9]*(?:\.[0-9]+)?)\b/i;
 const apiRustVectorSearchSecondsPattern = /\bapi_rust_vector_search_seconds=(?:0\.[0-9]*[1-9][0-9]*|[1-9][0-9]*(?:\.[0-9]+)?)\b/i;
 const obsTraceSearchPattern = /trace-backend-search(?=[^;]*staging artifact)(?=[^;]*scriptureforge-api)(?=[^;]*scriptureforge-rust-engine)(?=[^;]*route=\/)(?=[^;]*method=[A-Z]+)(?=[^;]*release_candidate=)(?=[^;]*load_run_id=)/i;
-const obsLogCorrelationPattern = /log-backend-trace-correlation(?=[^;]*staging artifact)(?=[^;]*trace_id)(?=[^;]*scriptureforge-api)(?=[^;]*scriptureforge-rust-engine)(?=[^;]*route=\/)(?=[^;]*method=[A-Z]+)(?=[^;]*service_version)(?=[^;]*deployment_environment)(?=[^;]*tenant_id=[A-Za-z0-9_.:-]+)(?=[^;]*user_id=[A-Za-z0-9_.:-]+)(?=[^;]*role=[A-Za-z0-9_.:-]+)(?=[^;]*distinct_otel_artifacts=true)(?=[^;]*release_candidate=)(?=[^;]*load_run_id=)/i;
+const obsLogCorrelationPattern = /log-backend-trace-correlation(?=[^;]*staging artifact)(?=[^;]*trace_id)(?=[^;]*scriptureforge-api)(?=[^;]*scriptureforge-rust-engine)(?=[^;]*route=\/)(?=[^;]*method=[A-Z]+)(?=[^;]*timestamp=[^\s,;]+)(?=[^;]*severity=[A-Za-z0-9_.:-]+)(?=[^;]*service_version)(?=[^;]*deployment_environment)(?=[^;]*tenant_id=[A-Za-z0-9_.:-]+)(?=[^;]*user_id=[A-Za-z0-9_.:-]+)(?=[^;]*role=[A-Za-z0-9_.:-]+)(?=[^;]*distinct_otel_artifacts=true)(?=[^;]*release_candidate=)(?=[^;]*load_run_id=)/i;
 const obsDashboardImportPattern = /dashboard-import(?=[^;]*staging artifact)(?=[^;]*ScriptureForge)(?=[^;]*scriptureforge_http_requests_total)(?=[^;]*scriptureforge_http_request_duration_seconds_sum)(?=[^;]*websocket_active_connections_count)(?=[^;]*room_broadcast)(?=[^;]*ai_inference_duration_seconds)(?=[^;]*scriptureforge_rust_engine_)(?=[^;]*trace_id)(?=[^;]*release_candidate=)(?=[^;]*load_run_id=)/i;
 const obsAlertRulesPattern = /alert-rules-loaded(?=[^;]*staging artifact)(?=[^;]*ScriptureForgeHighErrorRate)(?=[^;]*ScriptureForgeTrafficAbsent)(?=[^;]*ScriptureForgeAuthFailureSpike)(?=[^;]*ScriptureForgeAbuseLimitSpike)(?=[^;]*ScriptureForgeRouteLatencyElevated)(?=[^;]*ScriptureForgeDependencyFailures)(?=[^;]*ScriptureForgeAIInferenceLatencyElevated)(?=[^;]*ScriptureForgeJournalWriteFailures)(?=[^;]*ScriptureForgeRoomStreamFailures)(?=[^;]*ScriptureForgeRoomBroadcastDrops)(?=[^;]*ScriptureForgeRustEngineFailures)(?=[^;]*scriptureforge_http_requests_total)(?=[^;]*scriptureforge_dependency_operations_total)(?=[^;]*ai_inference_duration_seconds)(?=[^;]*release_candidate=)(?=[^;]*load_run_id=)/i;
 const obsAlertDeliveryPattern = /alert-delivery-status(?=[^;]*staging artifact)(?=[^;]*success)(?=[^;]*delivered)(?=[^;]*test alert)(?=[^;]*alertmanager)(?=[^;]*alertname=[A-Za-z0-9_.:-]+)(?=[^;]*receiver=[A-Za-z0-9_.:-]+)(?=[^;]*delivery_id=[A-Za-z0-9_.:-]+)(?=[^;]*release_candidate=)(?=[^;]*load_run_id=)/i;
@@ -772,6 +772,8 @@ export const strictProbeFamilies = {
       'service_version',
       'load_run_id',
       'deployment_environment',
+      'timestamp=',
+      'severity=',
       'tenant_id=',
       'user_id=',
       'role=',

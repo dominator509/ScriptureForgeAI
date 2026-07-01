@@ -31,6 +31,7 @@ describe('validate-observability', () => {
       'alert_rules=true',
       'trace_id_logs=true',
       'trace_id_shape_guard=true',
+      'structured_log_canonical_fields=true',
       'metrics_endpoint=true',
       'dependency_spans=true',
       'websocket_profile_metrics=true',
@@ -59,6 +60,12 @@ describe('validate-observability', () => {
     const apiObservability = baseSources.apiObservability.replaceAll('normalizeTraceID', 'traceIDNormalizerRemoved');
 
     expectValidationFailure(cloneSources({ apiObservability }), /API structured log observability missing normalizeTraceID/);
+  });
+
+  it('rejects canonical structured log field drift', () => {
+    const apiObservability = baseSources.apiObservability.replace('Timestamp             string `json:"timestamp"`', 'LegacyAtOnly          string `json:"at"`');
+
+    expectValidationFailure(cloneSources({ apiObservability }), /API structured log observability missing Timestamp\s+string `json:"timestamp"`/);
   });
 
   it('rejects Rust engine observability drift', () => {

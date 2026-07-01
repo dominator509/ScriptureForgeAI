@@ -23,6 +23,8 @@ var (
 	traceIDPattern         = regexp.MustCompile(`\b([0-9a-f]{32})\b`)
 	routePattern           = regexp.MustCompile(`(?i)\broute=([^\s,;]+)`)
 	methodPattern          = regexp.MustCompile(`(?i)\bmethod=([A-Z]+)\b`)
+	timestampPattern       = regexp.MustCompile(`(?i)\btimestamp=([^\s,;]+)`)
+	severityPattern        = regexp.MustCompile(`(?i)\bseverity=([A-Za-z][A-Za-z0-9_.:-]*)\b`)
 	tenantIDPattern        = regexp.MustCompile(`(?i)\btenant_id=([^\s,;]+)`)
 	userIDPattern          = regexp.MustCompile(`(?i)\buser_id=([^\s,;]+)`)
 	rolePattern            = regexp.MustCompile(`(?i)\brole=([^\s,;]+)`)
@@ -280,7 +282,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 			probeContainsAll(client, "api-prometheus-metrics", cfg.APIMetricsURL, append([]string{"scriptureforge_http_requests_total", "scriptureforge_http_request_duration_seconds_sum", "scriptureforge_http_requests_total{", "status=", "websocket_active_connections_count", `scriptureforge_dependency_operations_total{dependency="websocket",operation="room_broadcast",status="dropped"`, "ai_inference_duration_seconds_sum", "ai_inference_duration_seconds_count", `scriptureforge_dependency_operations_total{dependency="rust_engine",operation="vector_search",status="success"`, `scriptureforge_dependency_operation_duration_seconds_sum{dependency="rust_engine",operation="vector_search",status="success"`}, releaseMarkers...)),
 			probeContainsAll(client, "rust-prometheus-metrics", cfg.RustMetricsURL, append([]string{"scriptureforge_rust_engine_embedding_requests_total", "scriptureforge_rust_engine_embedding_failures_total", "scriptureforge_rust_engine_vector_search_requests_total", "scriptureforge_rust_engine_vector_search_failures_total"}, releaseMarkers...)),
 			probeContainsAllWithExpectations(client, "trace-backend-search", cfg.TraceQueryURL, append([]string{cfg.TraceID, "scriptureforge-api", "scriptureforge-rust-engine", "route=" + cfg.ObservedRoute, "method=" + cfg.HTTPMethod}, releaseMarkers...), probeExpectations{TraceID: cfg.TraceID, ObservedRoute: cfg.ObservedRoute, HTTPMethod: cfg.HTTPMethod}),
-			probeContainsAllWithExpectations(client, "log-backend-trace-correlation", cfg.LogQueryURL, append([]string{cfg.TraceID, "trace_id", "scriptureforge-api", "scriptureforge-rust-engine", "route=" + cfg.ObservedRoute, "method=" + cfg.HTTPMethod, "service_version", "deployment_environment", "tenant_id=" + cfg.TenantID, "user_id=" + cfg.UserID, "role=" + cfg.Role, "distinct_otel_artifacts=true"}, releaseMarkers...), probeExpectations{TraceID: cfg.TraceID, ObservedRoute: cfg.ObservedRoute, HTTPMethod: cfg.HTTPMethod, TenantID: cfg.TenantID, UserID: cfg.UserID, Role: cfg.Role}),
+			probeContainsAllWithExpectations(client, "log-backend-trace-correlation", cfg.LogQueryURL, append([]string{cfg.TraceID, "trace_id", "scriptureforge-api", "scriptureforge-rust-engine", "route=" + cfg.ObservedRoute, "method=" + cfg.HTTPMethod, "timestamp=", "severity=", "service_version", "deployment_environment", "tenant_id=" + cfg.TenantID, "user_id=" + cfg.UserID, "role=" + cfg.Role, "distinct_otel_artifacts=true"}, releaseMarkers...), probeExpectations{TraceID: cfg.TraceID, ObservedRoute: cfg.ObservedRoute, HTTPMethod: cfg.HTTPMethod, TenantID: cfg.TenantID, UserID: cfg.UserID, Role: cfg.Role}),
 		)
 		evidenceItems = append(evidenceItems, "OBS-OTEL-001")
 	}
@@ -579,6 +581,8 @@ func probeContains(client *http.Client, name, target string, required []string, 
 	traceID := ""
 	observedRoute := ""
 	httpMethod := ""
+	timestamp := ""
+	severity := ""
 	tenantID := ""
 	userID := ""
 	role := ""
@@ -602,10 +606,12 @@ func probeContains(client *http.Client, name, target string, required []string, 
 		}
 	}
 	if name == "log-backend-trace-correlation" {
+		timestamp = extractMatch(text, timestampPattern)
+		severity = extractMatch(text, severityPattern)
 		tenantID = extractMatch(text, tenantIDPattern)
 		userID = extractMatch(text, userIDPattern)
 		role = extractMatch(text, rolePattern)
-		if tenantID == "" || userID == "" || role == "" {
+		if timestamp == "" || severity == "" || tenantID == "" || userID == "" || role == "" {
 			passed = false
 		}
 		if strings.TrimSpace(expected.TenantID) != "" && tenantID != strings.TrimSpace(expected.TenantID) {
@@ -640,7 +646,7 @@ func probeContains(client *http.Client, name, target string, required []string, 
 			summary += fmt.Sprintf("; trace_id=%s, route=%s, method=%s", traceID, observedRoute, httpMethod)
 		}
 		if name == "log-backend-trace-correlation" {
-			summary += fmt.Sprintf(", tenant_id=%s, user_id=%s, role=%s", tenantID, userID, role)
+			summary += fmt.Sprintf(", timestamp=%s, severity=%s, tenant_id=%s, user_id=%s, role=%s", timestamp, severity, tenantID, userID, role)
 		}
 		if name == "alert-delivery-status" {
 			summary += fmt.Sprintf("; alertname=%s, receiver=%s, delivery_id=%s", alertName, alertReceiver, deliveryID)

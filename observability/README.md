@@ -15,7 +15,7 @@ The current services expose:
 - `X-Trace-ID` and W3C `Traceparent` propagation on all observed HTTP responses. Inbound `Traceparent` and `X-Trace-ID` values are accepted only when they contain a 32-character non-zero hex trace ID; otherwise the API emits a generated W3C-shaped trace ID and a nonzero response span ID.
 - OpenTelemetry request spans and low-cardinality dependency spans through an env-driven OTLP/HTTP trace exporter when `OTEL_EXPORTER_OTLP_ENDPOINT` is configured.
 - Rust gRPC JSON startup/request/error logs with `trace_id` extracted from W3C `traceparent` metadata and service/version/environment fields from deployment env.
-- Structured JSON access logs with `trace_id`, `component`, `service`, `service_version`, `deployment_environment`, verified `tenant_id`/`user_id`/`role` when JWT claims are present, `method`, normalized `path`, `status`, `duration_ms`, `remote_addr`, and timestamp fields.
+- Structured JSON access logs with canonical `timestamp` and `severity` fields plus `trace_id`, `component`, `service`, `service_version`, `deployment_environment`, verified `tenant_id`/`user_id`/`role` when JWT claims are present, `method`, normalized `path`, `status`, `duration_ms`, `remote_addr`, and legacy-compatible `at`/`level` aliases.
 - Prometheus text metrics at `/metrics` for `GET` requests on both the Go API and Rust engine. `HEAD` returns the same headers without a body for lightweight availability checks, and other methods return `405 Method Not Allowed` with `Allow: GET, HEAD`.
   - `scriptureforge_http_requests_total{method,path,status}`
   - `scriptureforge_http_request_duration_seconds_bucket{method,path,status,le}`

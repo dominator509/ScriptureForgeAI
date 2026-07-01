@@ -17,7 +17,7 @@ func requiredOTELSummaryMarkers(traceID string) map[string][]string {
 		"api-prometheus-metrics":        {"staging artifact", "scriptureforge_http_requests_total", "scriptureforge_http_request_duration_seconds_sum", "scriptureforge_http_requests_total{", "status=", "websocket_active_connections_count", `scriptureforge_dependency_operations_total{dependency="websocket",operation="room_broadcast",status="dropped"`, "ai_inference_duration_seconds_sum", "ai_inference_duration_seconds_count", `scriptureforge_dependency_operations_total{dependency="rust_engine",operation="vector_search",status="success"`, `scriptureforge_dependency_operation_duration_seconds_sum{dependency="rust_engine",operation="vector_search",status="success"`, "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs", "load_run_id=obs-run-123"},
 		"rust-prometheus-metrics":       {"staging artifact", "scriptureforge_rust_engine_embedding_requests_total", "scriptureforge_rust_engine_embedding_failures_total", "scriptureforge_rust_engine_vector_search_requests_total", "scriptureforge_rust_engine_vector_search_failures_total", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs", "load_run_id=obs-run-123"},
 		"trace-backend-search":          {"staging artifact", traceID, "scriptureforge-api", "scriptureforge-rust-engine", "route=/api/v1/ai/generate/study", "method=POST", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs", "load_run_id=obs-run-123"},
-		"log-backend-trace-correlation": {"staging artifact", traceID, "trace_id", "scriptureforge-api", "scriptureforge-rust-engine", "route=/api/v1/ai/generate/study", "method=POST", "service_version", "deployment_environment", "tenant_id=org-staging", "user_id=user-staging", "role=admin", "distinct_otel_artifacts=true", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs", "load_run_id=obs-run-123"},
+		"log-backend-trace-correlation": {"staging artifact", traceID, "trace_id", "scriptureforge-api", "scriptureforge-rust-engine", "route=/api/v1/ai/generate/study", "method=POST", "timestamp=", "severity=", "service_version", "deployment_environment", "tenant_id=org-staging", "user_id=user-staging", "role=admin", "distinct_otel_artifacts=true", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs", "load_run_id=obs-run-123"},
 	}
 }
 
@@ -244,7 +244,7 @@ func TestRunEmitsOTELEvidenceWhenAllObservabilityProofsPass(t *testing.T) {
 		case "/traces":
 			_, _ = w.Write([]byte("trace 11112222333344445555666677778888 found service scriptureforge-api downstream scriptureforge-rust-engine route=/api/v1/ai/generate/study method=POST" + observabilityReleaseMarkers))
 		case "/logs":
-			_, _ = w.Write([]byte(`{"trace_id":"11112222333344445555666677778888","service":"scriptureforge-api","downstream":"scriptureforge-rust-engine","route":"/api/v1/ai/generate/study","method":"POST","service_version":"staging-1","deployment_environment":"staging","tenant_id":"org-staging","user_id":"user-staging","role":"admin","message":"http_request","distinct_otel_artifacts":true} tenant_id=org-staging user_id=user-staging role=admin distinct_otel_artifacts=true route=/api/v1/ai/generate/study method=POST ` + observabilityReleaseMarkers))
+			_, _ = w.Write([]byte(`{"trace_id":"11112222333344445555666677778888","service":"scriptureforge-api","downstream":"scriptureforge-rust-engine","route":"/api/v1/ai/generate/study","method":"POST","timestamp":"2026-07-01T12:00:00Z","severity":"info","service_version":"staging-1","deployment_environment":"staging","tenant_id":"org-staging","user_id":"user-staging","role":"admin","message":"http_request","distinct_otel_artifacts":true} timestamp=2026-07-01T12:00:00Z severity=info tenant_id=org-staging user_id=user-staging role=admin distinct_otel_artifacts=true route=/api/v1/ai/generate/study method=POST ` + observabilityReleaseMarkers))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -305,7 +305,7 @@ func TestRunFailsWhenOTELArtifactUsesDifferentLoadRun(t *testing.T) {
 		case "/traces":
 			_, _ = w.Write([]byte("trace 11112222333344445555666677778888 found service scriptureforge-api downstream scriptureforge-rust-engine route=/api/v1/ai/generate/study method=POST" + observabilityReleaseMarkers))
 		case "/logs":
-			_, _ = w.Write([]byte(`{"trace_id":"11112222333344445555666677778888","service":"scriptureforge-api","downstream":"scriptureforge-rust-engine","route":"/api/v1/ai/generate/study","method":"POST","service_version":"staging-1","deployment_environment":"staging","tenant_id":"org-staging","user_id":"user-staging","role":"admin","message":"http_request","distinct_otel_artifacts":true} tenant_id=org-staging user_id=user-staging role=admin distinct_otel_artifacts=true route=/api/v1/ai/generate/study method=POST ` + observabilityReleaseMarkers))
+			_, _ = w.Write([]byte(`{"trace_id":"11112222333344445555666677778888","service":"scriptureforge-api","downstream":"scriptureforge-rust-engine","route":"/api/v1/ai/generate/study","method":"POST","timestamp":"2026-07-01T12:00:00Z","severity":"info","service_version":"staging-1","deployment_environment":"staging","tenant_id":"org-staging","user_id":"user-staging","role":"admin","message":"http_request","distinct_otel_artifacts":true} timestamp=2026-07-01T12:00:00Z severity=info tenant_id=org-staging user_id=user-staging role=admin distinct_otel_artifacts=true route=/api/v1/ai/generate/study method=POST ` + observabilityReleaseMarkers))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -334,7 +334,7 @@ func TestRunFailsWhenTraceBackendBindsWrongTraceEvent(t *testing.T) {
 		case "/traces":
 			_, _ = w.Write([]byte("trace 99992222333344445555666677778888 scriptureforge-api scriptureforge-rust-engine route=/api/v1/other method=GET trace 11112222333344445555666677778888 route=/api/v1/ai/generate/study method=POST" + observabilityReleaseMarkers))
 		case "/logs":
-			_, _ = w.Write([]byte(`{"trace_id":"11112222333344445555666677778888","service":"scriptureforge-api","downstream":"scriptureforge-rust-engine","route":"/api/v1/ai/generate/study","method":"POST","service_version":"staging-1","deployment_environment":"staging"} route=/api/v1/ai/generate/study method=POST tenant_id=org-staging user_id=user-staging role=admin distinct_otel_artifacts=true ` + observabilityReleaseMarkers))
+			_, _ = w.Write([]byte(`{"trace_id":"11112222333344445555666677778888","service":"scriptureforge-api","downstream":"scriptureforge-rust-engine","route":"/api/v1/ai/generate/study","method":"POST","timestamp":"2026-07-01T12:00:00Z","severity":"info","service_version":"staging-1","deployment_environment":"staging"} route=/api/v1/ai/generate/study method=POST timestamp=2026-07-01T12:00:00Z severity=info tenant_id=org-staging user_id=user-staging role=admin distinct_otel_artifacts=true ` + observabilityReleaseMarkers))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -363,7 +363,7 @@ func TestRunFailsWhenLogBackendBindsWrongPrincipalEvent(t *testing.T) {
 		case "/traces":
 			_, _ = w.Write([]byte("trace 11112222333344445555666677778888 scriptureforge-api scriptureforge-rust-engine found route=/api/v1/ai/generate/study method=POST" + observabilityReleaseMarkers))
 		case "/logs":
-			_, _ = w.Write([]byte(`{"trace_id":"11112222333344445555666677778888","service":"scriptureforge-api","downstream":"scriptureforge-rust-engine","service_version":"staging-1","deployment_environment":"staging"} route=/api/v1/ai/generate/study method=POST tenant_id=org-other user_id=user-other role=member tenant_id=org-staging user_id=user-staging role=admin distinct_otel_artifacts=true ` + observabilityReleaseMarkers))
+			_, _ = w.Write([]byte(`{"trace_id":"11112222333344445555666677778888","service":"scriptureforge-api","downstream":"scriptureforge-rust-engine","timestamp":"2026-07-01T12:00:00Z","severity":"info","service_version":"staging-1","deployment_environment":"staging"} route=/api/v1/ai/generate/study method=POST timestamp=2026-07-01T12:00:00Z severity=info tenant_id=org-other user_id=user-other role=member tenant_id=org-staging user_id=user-staging role=admin distinct_otel_artifacts=true ` + observabilityReleaseMarkers))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -610,7 +610,7 @@ func TestRunFailsWhenRustMetricsMissFailureCounters(t *testing.T) {
 		case "/traces":
 			_, _ = w.Write([]byte("trace abcdefabcdefabcdefabcdefabcdefab scriptureforge-api scriptureforge-rust-engine found route=/api/v1/ai/generate/study method=POST" + observabilityReleaseMarkers))
 		case "/logs":
-			_, _ = w.Write([]byte(`{"trace_id":"abcdefabcdefabcdefabcdefabcdefab","service":"scriptureforge-api","downstream":"scriptureforge-rust-engine","service_version":"staging-1","deployment_environment":"staging","tenant_id":"org","user_id":"user","role":"admin","route":"/api/v1/ai/generate/study","method":"POST"} tenant_id=org user_id=user role=admin ` + observabilityReleaseMarkers))
+			_, _ = w.Write([]byte(`{"trace_id":"abcdefabcdefabcdefabcdefabcdefab","service":"scriptureforge-api","downstream":"scriptureforge-rust-engine","timestamp":"2026-07-01T12:00:00Z","severity":"info","service_version":"staging-1","deployment_environment":"staging","tenant_id":"org","user_id":"user","role":"admin","route":"/api/v1/ai/generate/study","method":"POST"} timestamp=2026-07-01T12:00:00Z severity=info tenant_id=org user_id=user role=admin ` + observabilityReleaseMarkers))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -657,7 +657,7 @@ scriptureforge_http_request_duration_seconds_sum 0.01` + observabilityReleaseMar
 		case "/traces":
 			_, _ = w.Write([]byte("trace abcdefabcdefabcdefabcdefabcdefab scriptureforge-api scriptureforge-rust-engine found route=/api/v1/ai/generate/study method=POST" + observabilityReleaseMarkers))
 		case "/logs":
-			_, _ = w.Write([]byte(`{"trace_id":"abcdefabcdefabcdefabcdefabcdefab","service":"scriptureforge-api","downstream":"scriptureforge-rust-engine","service_version":"staging-1","deployment_environment":"staging","tenant_id":"org","user_id":"user","role":"admin","route":"/api/v1/ai/generate/study","method":"POST"} tenant_id=org user_id=user role=admin ` + observabilityReleaseMarkers))
+			_, _ = w.Write([]byte(`{"trace_id":"abcdefabcdefabcdefabcdefabcdefab","service":"scriptureforge-api","downstream":"scriptureforge-rust-engine","timestamp":"2026-07-01T12:00:00Z","severity":"info","service_version":"staging-1","deployment_environment":"staging","tenant_id":"org","user_id":"user","role":"admin","route":"/api/v1/ai/generate/study","method":"POST"} timestamp=2026-07-01T12:00:00Z severity=info tenant_id=org user_id=user role=admin ` + observabilityReleaseMarkers))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -706,7 +706,7 @@ scriptureforge_dependency_operation_duration_seconds_sum{dependency="rust_engine
 		case "/traces":
 			_, _ = w.Write([]byte("trace abcdefabcdefabcdefabcdefabcdefab scriptureforge-api scriptureforge-rust-engine found route=/api/v1/ai/generate/study method=POST" + observabilityReleaseMarkers))
 		case "/logs":
-			_, _ = w.Write([]byte(`{"trace_id":"abcdefabcdefabcdefabcdefabcdefab","service":"scriptureforge-api","downstream":"scriptureforge-rust-engine","service_version":"staging-1","deployment_environment":"staging","tenant_id":"org","user_id":"user","role":"admin","route":"/api/v1/ai/generate/study","method":"POST"} tenant_id=org user_id=user role=admin ` + observabilityReleaseMarkers))
+			_, _ = w.Write([]byte(`{"trace_id":"abcdefabcdefabcdefabcdefabcdefab","service":"scriptureforge-api","downstream":"scriptureforge-rust-engine","timestamp":"2026-07-01T12:00:00Z","severity":"info","service_version":"staging-1","deployment_environment":"staging","tenant_id":"org","user_id":"user","role":"admin","route":"/api/v1/ai/generate/study","method":"POST"} timestamp=2026-07-01T12:00:00Z severity=info tenant_id=org user_id=user role=admin ` + observabilityReleaseMarkers))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -798,7 +798,7 @@ func TestRunFailsWhenLogsContainWrongTenantPrincipalValues(t *testing.T) {
 		case "/traces":
 			_, _ = w.Write([]byte("trace abcdefabcdefabcdefabcdefabcdefab scriptureforge-api scriptureforge-rust-engine found route=/api/v1/ai/generate/study method=POST" + observabilityReleaseMarkers))
 		case "/logs":
-			_, _ = w.Write([]byte(`{"trace_id":"abcdefabcdefabcdefabcdefabcdefab","service":"scriptureforge-api","downstream":"scriptureforge-rust-engine","service_version":"staging-1","deployment_environment":"staging","tenant_id":"org-other","user_id":"user-other","role":"member","route":"/api/v1/ai/generate/study","method":"POST"} tenant_id=org-other user_id=user-other role=member distinct_otel_artifacts=true route=/api/v1/ai/generate/study method=POST ` + observabilityReleaseMarkers))
+			_, _ = w.Write([]byte(`{"trace_id":"abcdefabcdefabcdefabcdefabcdefab","service":"scriptureforge-api","downstream":"scriptureforge-rust-engine","timestamp":"2026-07-01T12:00:00Z","severity":"info","service_version":"staging-1","deployment_environment":"staging","tenant_id":"org-other","user_id":"user-other","role":"member","route":"/api/v1/ai/generate/study","method":"POST"} timestamp=2026-07-01T12:00:00Z severity=info tenant_id=org-other user_id=user-other role=member distinct_otel_artifacts=true route=/api/v1/ai/generate/study method=POST ` + observabilityReleaseMarkers))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -967,7 +967,7 @@ func TestRunRejectsMockMarkedObservabilityArtifacts(t *testing.T) {
 		case "/traces":
 			_, _ = w.Write([]byte("trace abcdefabcdefabcdefabcdefabcdefab scriptureforge-api scriptureforge-rust-engine found route=/api/v1/ai/generate/study method=POST" + observabilityReleaseMarkers))
 		case "/logs":
-			_, _ = w.Write([]byte(`{"trace_id":"abcdefabcdefabcdefabcdefabcdefab","service":"scriptureforge-api","downstream":"scriptureforge-rust-engine","service_version":"staging-1","deployment_environment":"staging","tenant_id":"org","user_id":"user","role":"admin","route":"/api/v1/ai/generate/study","method":"POST"} tenant_id=org user_id=user role=admin ` + observabilityReleaseMarkers))
+			_, _ = w.Write([]byte(`{"trace_id":"abcdefabcdefabcdefabcdefabcdefab","service":"scriptureforge-api","downstream":"scriptureforge-rust-engine","timestamp":"2026-07-01T12:00:00Z","severity":"info","service_version":"staging-1","deployment_environment":"staging","tenant_id":"org","user_id":"user","role":"admin","route":"/api/v1/ai/generate/study","method":"POST"} timestamp=2026-07-01T12:00:00Z severity=info tenant_id=org user_id=user role=admin ` + observabilityReleaseMarkers))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}

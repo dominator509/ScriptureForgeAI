@@ -56,6 +56,12 @@ func TestMiddlewareAddsTraceIDStructuredLogAndMetrics(t *testing.T) {
 	if entry.TraceID != generatedTraceID || entry.Method != http.MethodPost || entry.Path != "/api/v1/journal_entries" || entry.Status != http.StatusAccepted {
 		t.Fatalf("unexpected access log entry: %#v", entry)
 	}
+	if entry.Timestamp != "2026-06-25T13:00:00Z" || entry.At != entry.Timestamp {
+		t.Fatalf("access log missing canonical timestamp field: %#v", entry)
+	}
+	if entry.Severity != "info" || entry.Level != entry.Severity {
+		t.Fatalf("access log missing canonical severity field: %#v", entry)
+	}
 	if entry.Component != "scriptureforge-api" || entry.Service != "scriptureforge-api" || entry.ServiceVersion != "test-version" || entry.DeploymentEnvironment != "test" {
 		t.Fatalf("access log missing service identity fields: %#v", entry)
 	}
