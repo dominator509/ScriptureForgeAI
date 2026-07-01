@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { platform } from 'node:os';
-import { delimiter, extname, join } from 'node:path';
+import { delimiter, extname, join, win32 as pathWin32 } from 'node:path';
 
 const isWindows = platform() === 'win32';
 
@@ -149,6 +149,7 @@ export function windowsFallbackDirectoriesForCommand(name, env = process.env, { 
   if (platformName !== 'win32') {
     return [];
   }
+  const pathJoin = platformName === 'win32' ? pathWin32.join : join;
   const repoRoot = process.cwd();
   const programFiles = [
     env.ProgramFiles,
@@ -157,88 +158,88 @@ export function windowsFallbackDirectoriesForCommand(name, env = process.env, { 
     'C:\\Program Files (x86)',
   ].filter(Boolean);
   const userProfile = env.USERPROFILE ?? env.UserProfile ?? '';
-  const localAppData = env.LOCALAPPDATA ?? (userProfile ? join(userProfile, 'AppData', 'Local') : '');
+  const localAppData = env.LOCALAPPDATA ?? (userProfile ? pathJoin(userProfile, 'AppData', 'Local') : '');
   const directories = [];
 
   if (name === 'rtk') {
     if (userProfile) {
-      directories.push(join(userProfile, '.local', 'bin'));
+      directories.push(pathJoin(userProfile, '.local', 'bin'));
     }
     directories.push('C:\\Users\\domin\\.local\\bin');
   }
 
   if (name === 'go') {
-    directories.push(join(repoRoot, '.tools', 'go', 'bin'));
+    directories.push(pathJoin(repoRoot, '.tools', 'go', 'bin'));
   }
 
   if (name === 'cargo' || name === 'rustc') {
-    directories.push(join(repoRoot, '.tools', 'cargo', 'bin'));
+    directories.push(pathJoin(repoRoot, '.tools', 'cargo', 'bin'));
   }
 
   if (name === 'terraform') {
-    directories.push(join(repoRoot, '.tools', 'terraform'));
+    directories.push(pathJoin(repoRoot, '.tools', 'terraform'));
   }
 
   if (name === 'gopls') {
-    directories.push(join(repoRoot, '.tools', 'go', 'bin'));
+    directories.push(pathJoin(repoRoot, '.tools', 'go', 'bin'));
     if (userProfile) {
-      directories.push(join(userProfile, 'go', 'bin'));
+      directories.push(pathJoin(userProfile, 'go', 'bin'));
     }
     directories.push('C:\\Users\\domin\\go\\bin');
   }
 
   if (name === 'aws') {
     for (const root of programFiles) {
-      directories.push(join(root, 'Amazon', 'AWSCLIV2'));
-      directories.push(join(root, 'AWSCLIV2'));
+      directories.push(pathJoin(root, 'Amazon', 'AWSCLIV2'));
+      directories.push(pathJoin(root, 'AWSCLIV2'));
     }
     if (localAppData) {
-      directories.push(join(localAppData, 'Microsoft', 'WinGet', 'Links'));
+      directories.push(pathJoin(localAppData, 'Microsoft', 'WinGet', 'Links'));
     }
     if (env.ChocolateyInstall) {
-      directories.push(join(env.ChocolateyInstall, 'bin'));
+      directories.push(pathJoin(env.ChocolateyInstall, 'bin'));
     }
     directories.push('C:\\ProgramData\\chocolatey\\bin');
     if (userProfile) {
-      directories.push(join(userProfile, 'scoop', 'shims'));
+      directories.push(pathJoin(userProfile, 'scoop', 'shims'));
     }
   }
 
   if (name === 'gh') {
     for (const root of programFiles) {
-      directories.push(join(root, 'GitHub CLI'));
+      directories.push(pathJoin(root, 'GitHub CLI'));
     }
     if (localAppData) {
-      directories.push(join(localAppData, 'Microsoft', 'WinGet', 'Links'));
+      directories.push(pathJoin(localAppData, 'Microsoft', 'WinGet', 'Links'));
     }
     if (env.ChocolateyInstall) {
-      directories.push(join(env.ChocolateyInstall, 'bin'));
+      directories.push(pathJoin(env.ChocolateyInstall, 'bin'));
     }
     directories.push('C:\\ProgramData\\chocolatey\\bin');
     if (userProfile) {
-      directories.push(join(userProfile, 'scoop', 'shims'));
+      directories.push(pathJoin(userProfile, 'scoop', 'shims'));
     }
   }
 
   if (name === 'psql') {
     for (const root of programFiles) {
-      const postgresRoot = join(root, 'PostgreSQL');
+      const postgresRoot = pathJoin(root, 'PostgreSQL');
       for (const version of discoverChildDirectories(postgresRoot)) {
-        directories.push(join(postgresRoot, version, 'bin'));
+        directories.push(pathJoin(postgresRoot, version, 'bin'));
       }
       for (const version of ['18', '17', '16', '15', '14', '13', '12']) {
-        directories.push(join(postgresRoot, version, 'bin'));
+        directories.push(pathJoin(postgresRoot, version, 'bin'));
       }
     }
     if (localAppData) {
-      directories.push(join(localAppData, 'Microsoft', 'WinGet', 'Links'));
+      directories.push(pathJoin(localAppData, 'Microsoft', 'WinGet', 'Links'));
     }
     if (env.ChocolateyInstall) {
-      directories.push(join(env.ChocolateyInstall, 'bin'));
+      directories.push(pathJoin(env.ChocolateyInstall, 'bin'));
     }
     directories.push('C:\\ProgramData\\chocolatey\\bin');
     if (userProfile) {
-      directories.push(join(userProfile, 'scoop', 'shims'));
+      directories.push(pathJoin(userProfile, 'scoop', 'shims'));
     }
   }
 
