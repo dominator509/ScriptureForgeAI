@@ -3,6 +3,9 @@ import test from 'node:test';
 import { parseArgs, requiredIds, strictProbeFamilies, validateManifest } from './validate-staging-evidence.mjs';
 import { ciReleaseEvidenceProofMarkers } from './write-ci-release-evidence.mjs';
 
+const releaseCandidate = '0123456789abcdef0123456789abcdef01234567';
+const probeBackedStrictReleaseIds = Object.keys(strictProbeFamilies).sort();
+
 test('parseArgs supports manifest path and strict release mode', () => {
   const args = parseArgs(['--manifest', 'production-readiness/staging.json', '--strict-release']);
   assert.equal(args.evidenceFile, 'production-readiness/staging.json');
@@ -2484,6 +2487,40 @@ test('validateManifest strict release rejects mobile crypto proof without concre
     assert.throws(
       () => validateManifest(manifest, { strictRelease: true }),
       expected,
+    );
+  }
+});
+
+test('validateManifest strict release rejects local report artifacts across all probe-backed blockers', () => {
+  for (const id of probeBackedStrictReleaseIds) {
+    const manifest = baseManifest({
+      releaseCandidate,
+      statusFor: (candidate) => candidate === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+    });
+    const item = manifest.items.find((candidate) => candidate.id === id);
+    item.evidence[0].artifact = `artifacts/${id.toLowerCase()}-local-report.json`;
+
+    assert.throws(
+      () => validateManifest(manifest, { strictRelease: true }),
+      new RegExp(`${id} strict release evidence must include a tools\\/${strictProbeFamilies[id].commandIncludes} JSON report`),
+      `${id} should reject local report artifacts`,
+    );
+  }
+});
+
+test('validateManifest strict release rejects wrong-family report artifacts across all probe-backed blockers', () => {
+  for (const id of probeBackedStrictReleaseIds) {
+    const manifest = baseManifest({
+      releaseCandidate,
+      statusFor: (candidate) => candidate === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+    });
+    const item = manifest.items.find((candidate) => candidate.id === id);
+    item.evidence[0].artifact = 'https://artifacts.staging.scriptureforge.ai/unrelated-probe-report.json';
+
+    assert.throws(
+      () => validateManifest(manifest, { strictRelease: true }),
+      new RegExp(`${id} strict release evidence must include a tools\\/${strictProbeFamilies[id].commandIncludes} JSON report`),
+      `${id} should reject report artifacts from another evidence family`,
     );
   }
 });
