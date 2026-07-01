@@ -44,7 +44,8 @@ For staging evidence collection, use `tools\use-project-path.cmd --strict-stagin
 - Rust: `cd services/scripture-engine && cargo test --locked`
 - Terraform local validation: `cd build/terraform && terraform fmt -check -recursive && terraform init -backend=false && terraform validate`
 - Serena/Obsidian drift: `node tools/validate-serena-obsidian.mjs`
-- Obsidian readiness snapshot: `node tools/sync-obsidian-readiness.mjs --check`
+- Obsidian readiness snapshot for clean checkouts: `node tools/sync-obsidian-readiness.mjs --manifest production-readiness/staging-evidence.example.json --contract-manifest production-readiness/staging-evidence.example.json --expected-release-candidate replace-with-git-sha-or-tag --check`
+- Obsidian readiness snapshot for real staging evidence: pass `STAGING_EVIDENCE_FILE` or `--manifest production-readiness/staging-evidence.staging.json` after bootstrapping and recording environment artifacts.
 - Full local gate report: `node tools/run-local-gates.mjs --report artifacts/local-gate-report.json`
 
 ## Important Docs And Notes
