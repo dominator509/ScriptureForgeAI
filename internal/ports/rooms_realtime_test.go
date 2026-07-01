@@ -87,8 +87,7 @@ func TestLiveRoomRejectsInvalidEventAndBroadcastsAcceptedEvent(t *testing.T) {
 
 	first := dialRoom(t, server.URL, "room-1", "a")
 	defer first.Close()
-	second := dialRoom(t, server.URL, "room-1", "b")
-	defer second.Close()
+	invalidPeer := dialRoom(t, server.URL, "room-1", "b")
 
 	if err := first.WriteJSON(RoomEvent{Type: "cursor", RoomID: "wrong-room", Payload: json.RawMessage(`{"x":1}`)}); err != nil {
 		t.Fatalf("write invalid event: %v", err)
@@ -106,17 +105,22 @@ func TestLiveRoomRejectsInvalidEventAndBroadcastsAcceptedEvent(t *testing.T) {
 	if got := store.appendCount(); got != 0 {
 		t.Fatalf("invalid event append count = %d, want 0", got)
 	}
+	if err := invalidPeer.Close(); err != nil {
+		t.Fatalf("close invalid-phase peer: %v", err)
+	}
 
-	waitForRoomSubscribers(t, hub, "room-1", 1)
+	waitForRoomSubscribers(t, hub, "room-1", 0)
 	replacement := dialRoom(t, server.URL, "room-1", "a2")
 	defer replacement.Close()
+	second := dialRoom(t, server.URL, "room-1", "b2")
+	defer second.Close()
 	waitForRoomSubscribers(t, hub, "room-1", 2)
 	if err := replacement.WriteJSON(RoomEvent{Type: "cursor", RoomID: "room-1", Payload: json.RawMessage(`{"verse":"John 1:1"}`)}); err != nil {
 		t.Fatalf("write valid event: %v", err)
 	}
 
-	firstEvent := readRoomEvent(t, replacement)
-	secondEvent := readRoomEvent(t, second)
+	firstEvent := readRoomEventWithPayload(t, replacement, "John 1:1", 1)
+	secondEvent := readRoomEventWithPayload(t, second, "John 1:1", 1)
 	for _, event := range []RoomEvent{firstEvent, secondEvent} {
 		if event.Type != "cursor" || event.RoomID != "room-1" || event.Sequence != 1 || event.SentAt.IsZero() {
 			t.Fatalf("broadcast event = %#v", event)
