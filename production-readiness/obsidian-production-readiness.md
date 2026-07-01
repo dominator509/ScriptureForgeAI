@@ -160,6 +160,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Mobile Distinct Artifact Segment Guard**: the staging evidence recorder and strict-release validation now require `distinct_mobile_artifacts=true` on each EAS/native-device, native crypto, and staging config proof segment, so one segment cannot lend distinct-artifact proof to another `CLIENT-MOBILE-001` segment.
 - [x] **Mobile Artifact Alias Guard**: `tools/mobileprobe` and the staging evidence recorder canonicalize EAS/native-device, native crypto, and staging config artifact URLs before distinctness checks, so default-port, host-case, query-order, or fragment aliases cannot satisfy separate mobile proof roles.
 - [x] **Mobile Exact Release Binding Guard**: `tools/mobileprobe`, the staging evidence recorder, and strict staging manifest validation require EAS/native-device, native crypto, and staging-config mobile artifacts to carry exact `release_candidate=<manifest release_candidate>` plus `service_version` markers before `CLIENT-MOBILE-001` can support final readiness.
+- [x] **Mobile Build Identity Binding Guard**: `tools/mobileprobe`, staging evidence recording, and strict-release validation require EAS/native-device, native crypto, and staging-config proof to carry the same concrete `mobile_build_id=<id>`, so native AES-GCM evidence cannot be paired with a different app build or config artifact.
 - [x] **Mobile Crypto Zeroization Evidence Guard**: `tools/mobileprobe`, staging evidence recording, and strict-release validation now require native AES-GCM smoke artifacts to prove passphrase, salt, and plaintext buffers were explicitly zeroized, not only generically "wiped" or "cleared"; `tools/verify-journal-crypto.mjs` also rejects removal of the mobile `bytes.fill(0)` wipe helper.
 - [x] **Mobile Crypto Runtime Zeroization Guard**: `tools/verify-journal-crypto.mjs` captures the IV and associated-data buffers passed through the native quick-crypto AES-GCM harness and emits `runtime_buffer_zeroization=true` only after proving those runtime buffers are zeroed after encrypt/decrypt.
 - [x] **Mobile Crypto Failure-Path Cleanup Guard**: mobile journal crypto wipes passphrase and salt byte buffers even when key import fails, wipes temporary base64 decode buffers after copying ciphertext/IV data, and `tools/verify-journal-crypto.mjs` requires those cleanup paths before local crypto evidence can pass; native-device/EAS proof remains tracked under `CLIENT-MOBILE-001`.
@@ -330,11 +331,11 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 1
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: bde2fc478725cb6899a467a60c9108ddd58e8256
+- expected_release_candidate: 31982f42ae80b24feb2dac2af9a1a51cb34b6384
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: bde2fc478725cb6899a467a60c9108ddd58e8256
+    - expected_release_candidate: 31982f42ae80b24feb2dac2af9a1a51cb34b6384
     - actual_release_candidate: ce96c283410756444a63b1345646fc69cf274d22
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
     - required: tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted

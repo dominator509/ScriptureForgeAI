@@ -18,9 +18,9 @@ const mobileLoadRunID = "load-run-123"
 const mobileReleaseMarkersText = " release_candidate=" + mobileReleaseCandidate + " service_version=" + mobileServiceVersion + " load_run_id=" + mobileLoadRunID
 
 var requiredMobileProbeSummaryMarkers = map[string][]string{
-	"mobile-eas-or-device-run":   {"staging artifact", "eas", "build", "finished", "android", "ios", "native device", "installed app", "release channel staging", "expo profile staging", "platforms=android,ios", "release_channel=staging", "expo_profile=staging", "release_candidate=" + mobileReleaseCandidate, "service_version=" + mobileServiceVersion, "load_run_id=" + mobileLoadRunID, "distinct_mobile_artifacts=true"},
-	"mobile-native-crypto-smoke": {"staging artifact", "react-native-quick-crypto", "native provider", "native module loaded", "provider status react-native-quick-crypto", "native-required true", "AES-GCM", "round-trip", "unique_iv=true", "unique IV", "tamper rejected", "associated data", "wrong associated data rejected", "associated_data_salt_id=", "associated_data_salt_version=", "non-extractable", "provider-bound key", "fallback-derived key rejected", "key disposed", "disposed handle rejected", "revoked_key_rejected=true", "stale raw key rejected", "passphrase wiped", "passphrase buffer zeroized", "salt wiped", "salt buffer zeroized", "plaintext cleared", "plaintext buffer zeroized", "release_candidate=" + mobileReleaseCandidate, "service_version=" + mobileServiceVersion, "load_run_id=" + mobileLoadRunID, "distinct_mobile_artifacts=true"},
-	"mobile-staging-config":      {"staging artifact", "EXPO_PUBLIC_API_BASE_URL", "EXPO_PUBLIC_WS_BASE_URL", "EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true", "EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging", "https://", "wss://", "staging", "EXPO_PUBLIC_API_BASE_URL=https://api.staging.example", "EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example", "release_candidate=" + mobileReleaseCandidate, "service_version=" + mobileServiceVersion, "load_run_id=" + mobileLoadRunID, "distinct_mobile_artifacts=true"},
+	"mobile-eas-or-device-run":   {"staging artifact", "eas", "build", "finished", "android", "ios", "native device", "installed app", "release channel staging", "expo profile staging", "mobile_build_id=mobile-build-123", "platforms=android,ios", "release_channel=staging", "expo_profile=staging", "release_candidate=" + mobileReleaseCandidate, "service_version=" + mobileServiceVersion, "load_run_id=" + mobileLoadRunID, "distinct_mobile_artifacts=true"},
+	"mobile-native-crypto-smoke": {"staging artifact", "react-native-quick-crypto", "native provider", "native module loaded", "provider status react-native-quick-crypto", "native-required true", "mobile_build_id=mobile-build-123", "AES-GCM", "round-trip", "unique_iv=true", "unique IV", "tamper rejected", "associated data", "wrong associated data rejected", "associated_data_salt_id=", "associated_data_salt_version=", "non-extractable", "provider-bound key", "fallback-derived key rejected", "key disposed", "disposed handle rejected", "revoked_key_rejected=true", "stale raw key rejected", "passphrase wiped", "passphrase buffer zeroized", "salt wiped", "salt buffer zeroized", "plaintext cleared", "plaintext buffer zeroized", "release_candidate=" + mobileReleaseCandidate, "service_version=" + mobileServiceVersion, "load_run_id=" + mobileLoadRunID, "distinct_mobile_artifacts=true"},
+	"mobile-staging-config":      {"staging artifact", "EXPO_PUBLIC_API_BASE_URL", "EXPO_PUBLIC_WS_BASE_URL", "EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true", "EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging", "mobile_build_id=mobile-build-123", "https://", "wss://", "staging", "EXPO_PUBLIC_API_BASE_URL=https://api.staging.example", "EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example", "release_candidate=" + mobileReleaseCandidate, "service_version=" + mobileServiceVersion, "load_run_id=" + mobileLoadRunID, "distinct_mobile_artifacts=true"},
 }
 
 func stagingMobileConfig(timeout time.Duration) config {
@@ -88,11 +88,11 @@ func TestRunEmitsMobileEvidenceWhenArtifactsPass(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/eas":
-			_, _ = w.Write([]byte("staging artifact EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging"))
+			_, _ = w.Write([]byte("staging artifact EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, mobile_build_id=mobile-build-123 platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging"))
 		case "/crypto":
-			_, _ = w.Write([]byte("staging artifact runJournalCryptoSelfTest react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM native smoke round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
+			_, _ = w.Write([]byte("staging artifact runJournalCryptoSelfTest react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true mobile_build_id=mobile-build-123 AES-GCM native smoke round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
-			_, _ = w.Write([]byte("staging artifact EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
+			_, _ = w.Write([]byte("staging artifact mobile_build_id=mobile-build-123 EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -121,6 +121,11 @@ func TestRunEmitsMobileEvidenceWhenArtifactsPass(t *testing.T) {
 		t.Fatalf("unexpected load run ID: %+v", result)
 	}
 	assertProbeSummariesIncludeMarkers(t, result.Probes, requiredMobileProbeSummaryMarkers)
+	for _, probe := range result.Probes {
+		if probe.MobileBuildID != "mobile-build-123" {
+			t.Fatalf("probe %s did not expose shared mobile build ID: %+v", probe.Name, probe)
+		}
+	}
 	cryptoProbe := findProbe(t, result.Probes, "mobile-native-crypto-smoke")
 	if cryptoProbe.Provider != "react-native-quick-crypto" {
 		t.Fatalf("native crypto probe did not expose structured provider: %+v", cryptoProbe)
@@ -130,6 +135,29 @@ func TestRunEmitsMobileEvidenceWhenArtifactsPass(t *testing.T) {
 	}
 	if cryptoProbe.AssociatedDataSaltID != "journal:self-test:server-derived-salt" || cryptoProbe.AssociatedDataVersion != "1" {
 		t.Fatalf("native crypto probe did not expose structured associated-data salt binding: %+v", cryptoProbe)
+	}
+}
+
+func TestRunFailsWhenMobileBuildIDsDoNotMatch(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/eas":
+			_, _ = w.Write([]byte("staging artifact EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, mobile_build_id=mobile-build-123 platforms=android,ios release_channel=staging expo_profile=staging"))
+		case "/crypto":
+			_, _ = w.Write([]byte("staging artifact runJournalCryptoSelfTest react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true mobile_build_id=mobile-build-other AES-GCM native smoke round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
+		case "/config":
+			_, _ = w.Write([]byte("staging artifact mobile_build_id=mobile-build-123 EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := runWithClient(stagingMobileConfig(time.Second), &output, clientForHTTPServer(t, server))
+	if err == nil {
+		t.Fatalf("expected mismatched mobile build ID evidence to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "mobile_build_id values do not match") {
+		t.Fatalf("report did not explain mobile build ID mismatch:\n%s", output.String())
 	}
 }
 

@@ -26,6 +26,7 @@ var (
 	mobileDeploymentEnvironmentPattern = regexp.MustCompile(`(?i)\bEXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=([A-Za-z0-9_.:-]+)\b`)
 	mobileProviderPattern              = regexp.MustCompile(`(?i)\bprovider=([A-Za-z0-9_.:-]+)\b`)
 	mobileNativeRequiredPattern        = regexp.MustCompile(`(?i)\bnative_required=(true|false)\b`)
+	mobileBuildIDPattern               = regexp.MustCompile(`(?i)\bmobile_build_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
 	mobileAssociatedDataSaltIDPattern  = regexp.MustCompile(`(?i)\bassociated_data_salt_id=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b`)
 	mobileAssociatedDataVersionPattern = regexp.MustCompile(`(?i)\bassociated_data_salt_version=([1-9][0-9]*)\b`)
 )
@@ -58,6 +59,7 @@ type probeResult struct {
 	LatencyMS             int64  `json:"latency_ms,omitempty"`
 	Provider              string `json:"provider,omitempty"`
 	NativeRequired        *bool  `json:"native_required,omitempty"`
+	MobileBuildID         string `json:"mobile_build_id,omitempty"`
 	Platforms             string `json:"platforms,omitempty"`
 	ReleaseChannel        string `json:"release_channel,omitempty"`
 	ExpoProfile           string `json:"expo_profile,omitempty"`
@@ -141,10 +143,11 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 		"load_run_id=" + cfg.LoadRunID,
 	}
 	probes := []probeResult{
-		probeArtifact(client, "mobile-eas-or-device-run", cfg.EASArtifactURL, append([]string{"staging artifact", "eas", "build", "finished", "android", "ios", "native device", "installed app", "release channel staging", "expo profile staging"}, releaseMarkers...), []string{"development client only", "development client", "development build", "dev client", "debug client", "expo go", "simulator", "simulator only", "simulator run", "simulator validation", "emulator", "android emulator", "ios simulator", "remote debug", "mock", "placeholder", "dry-run", "local-only"}),
-		probeArtifact(client, "mobile-native-crypto-smoke", cfg.NativeCryptoSmokeURL, append([]string{"staging artifact", "runJournalCryptoSelfTest", "react-native-quick-crypto", "native provider", "native module loaded", "provider status react-native-quick-crypto", "provider=react-native-quick-crypto", "native-required true", "native_required=true", "AES-GCM", "round-trip", "unique_iv=true", "unique IV", "tamper rejected", "associated data", "wrong associated data rejected", "associated_data_salt_id=", "associated_data_salt_version=", "non-extractable", "provider-bound key", "fallback-derived key rejected", "key disposed", "disposed handle rejected", "revoked_key_rejected=true", "stale raw key rejected", "passphrase wiped", "passphrase buffer zeroized", "salt wiped", "salt buffer zeroized", "plaintext cleared", "plaintext buffer zeroized"}, releaseMarkers...), []string{"node:webcrypto", "node webcrypto", "node crypto", "node.js crypto", "node crypto shim", "browser webcrypto", "global webcrypto", "globalthis.crypto", "crypto.subtle", "javascript fallback", "js fallback", "fallback webcrypto", "webcrypto fallback", "expo-crypto", "expo crypto", "placeholder", "mock", "local-only"}),
-		probeArtifact(client, "mobile-staging-config", cfg.StagingConfigProofURL, append([]string{"staging artifact", "EXPO_PUBLIC_API_BASE_URL", "EXPO_PUBLIC_WS_BASE_URL", "EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true", "EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging", "https://", "wss://", "staging"}, releaseMarkers...), []string{"localhost", "127.0.0.1", "10.", "172.16.", "192.168.", "169.254.", "0.0.0.0", "[::1]", "local-only", "https://api.scriptureforge.com", "wss://api.scriptureforge.com", "EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=false", "EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO = false", "EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=development", "EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=local"}),
+		probeArtifact(client, "mobile-eas-or-device-run", cfg.EASArtifactURL, append([]string{"staging artifact", "eas", "build", "finished", "android", "ios", "native device", "installed app", "release channel staging", "expo profile staging", "mobile_build_id="}, releaseMarkers...), []string{"development client only", "development client", "development build", "dev client", "debug client", "expo go", "simulator", "simulator only", "simulator run", "simulator validation", "emulator", "android emulator", "ios simulator", "remote debug", "mock", "placeholder", "dry-run", "local-only"}),
+		probeArtifact(client, "mobile-native-crypto-smoke", cfg.NativeCryptoSmokeURL, append([]string{"staging artifact", "runJournalCryptoSelfTest", "react-native-quick-crypto", "native provider", "native module loaded", "provider status react-native-quick-crypto", "provider=react-native-quick-crypto", "native-required true", "native_required=true", "mobile_build_id=", "AES-GCM", "round-trip", "unique_iv=true", "unique IV", "tamper rejected", "associated data", "wrong associated data rejected", "associated_data_salt_id=", "associated_data_salt_version=", "non-extractable", "provider-bound key", "fallback-derived key rejected", "key disposed", "disposed handle rejected", "revoked_key_rejected=true", "stale raw key rejected", "passphrase wiped", "passphrase buffer zeroized", "salt wiped", "salt buffer zeroized", "plaintext cleared", "plaintext buffer zeroized"}, releaseMarkers...), []string{"node:webcrypto", "node webcrypto", "node crypto", "node.js crypto", "node crypto shim", "browser webcrypto", "global webcrypto", "globalthis.crypto", "crypto.subtle", "javascript fallback", "js fallback", "fallback webcrypto", "webcrypto fallback", "expo-crypto", "expo crypto", "placeholder", "mock", "local-only"}),
+		probeArtifact(client, "mobile-staging-config", cfg.StagingConfigProofURL, append([]string{"staging artifact", "EXPO_PUBLIC_API_BASE_URL", "EXPO_PUBLIC_WS_BASE_URL", "EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true", "EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging", "mobile_build_id=", "https://", "wss://", "staging"}, releaseMarkers...), []string{"localhost", "127.0.0.1", "10.", "172.16.", "192.168.", "169.254.", "0.0.0.0", "[::1]", "local-only", "https://api.scriptureforge.com", "wss://api.scriptureforge.com", "EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=false", "EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO = false", "EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=development", "EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=local"}),
 	}
+	enforceMobileBuildLinkage(probes)
 
 	result := report{
 		ObservedAt:       time.Now().UTC().Format("2006-01-02T15:04:05Z"),
@@ -203,18 +206,21 @@ func probeArtifact(client *http.Client, name, target string, required []string, 
 	deploymentEnvironment := ""
 	provider := ""
 	nativeRequired := ""
+	mobileBuildID := ""
 	var nativeRequiredValue *bool
 	associatedDataSaltID := ""
 	associatedDataVersion := ""
 	if name == "mobile-eas-or-device-run" {
+		mobileBuildID = extractMatch(text, mobileBuildIDPattern)
 		platforms = extractMatch(text, mobilePlatformsPattern)
 		releaseChannel = extractMatch(text, mobileReleaseChannelPattern)
 		expoProfile = extractMatch(text, mobileExpoProfilePattern)
-		if platforms == "" || !containsAllFold(platforms, []string{"android", "ios"}) || releaseChannel != "staging" || expoProfile != "staging" {
+		if mobileBuildID == "" || platforms == "" || !containsAllFold(platforms, []string{"android", "ios"}) || releaseChannel != "staging" || expoProfile != "staging" {
 			passed = false
 		}
 	}
 	if name == "mobile-native-crypto-smoke" {
+		mobileBuildID = extractMatch(text, mobileBuildIDPattern)
 		provider = extractMatch(text, mobileProviderPattern)
 		nativeRequired = extractMatch(text, mobileNativeRequiredPattern)
 		associatedDataSaltID = extractMatch(text, mobileAssociatedDataSaltIDPattern)
@@ -223,16 +229,17 @@ func probeArtifact(client *http.Client, name, target string, required []string, 
 			value := nativeRequired == "true"
 			nativeRequiredValue = &value
 		}
-		if provider != "react-native-quick-crypto" || nativeRequired != "true" || associatedDataSaltID == "" || associatedDataVersion == "" {
+		if mobileBuildID == "" || provider != "react-native-quick-crypto" || nativeRequired != "true" || associatedDataSaltID == "" || associatedDataVersion == "" {
 			passed = false
 		}
 	}
 	if name == "mobile-staging-config" {
+		mobileBuildID = extractMatch(text, mobileBuildIDPattern)
 		apiBaseURL = extractMatch(text, mobileAPIBaseURLPattern)
 		wsBaseURL = extractMatch(text, mobileWSBaseURLPattern)
 		requireNativeCrypto = extractMatch(text, mobileRequireNativeCryptoPattern)
 		deploymentEnvironment = extractMatch(text, mobileDeploymentEnvironmentPattern)
-		if apiBaseURL == "" || wsBaseURL == "" || requireNativeCrypto != "true" || deploymentEnvironment != "staging" {
+		if mobileBuildID == "" || apiBaseURL == "" || wsBaseURL == "" || requireNativeCrypto != "true" || deploymentEnvironment != "staging" {
 			passed = false
 		}
 	}
@@ -242,16 +249,36 @@ func probeArtifact(client *http.Client, name, target string, required []string, 
 	} else {
 		summary += "; verified markers: " + strings.Join(required, ", ")
 		if name == "mobile-eas-or-device-run" {
-			summary += fmt.Sprintf(", platforms=%s, release_channel=%s, expo_profile=%s", platforms, releaseChannel, expoProfile)
+			summary += fmt.Sprintf(", mobile_build_id=%s, platforms=%s, release_channel=%s, expo_profile=%s", mobileBuildID, platforms, releaseChannel, expoProfile)
 		}
 		if name == "mobile-native-crypto-smoke" {
-			summary += fmt.Sprintf(", provider=%s, native_required=%s, associated_data_salt_id=%s, associated_data_salt_version=%s", provider, nativeRequired, associatedDataSaltID, associatedDataVersion)
+			summary += fmt.Sprintf(", mobile_build_id=%s, provider=%s, native_required=%s, associated_data_salt_id=%s, associated_data_salt_version=%s", mobileBuildID, provider, nativeRequired, associatedDataSaltID, associatedDataVersion)
 		}
 		if name == "mobile-staging-config" {
-			summary += fmt.Sprintf(", EXPO_PUBLIC_API_BASE_URL=%s, EXPO_PUBLIC_WS_BASE_URL=%s, EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=%s, EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=%s", apiBaseURL, wsBaseURL, requireNativeCrypto, deploymentEnvironment)
+			summary += fmt.Sprintf(", mobile_build_id=%s, EXPO_PUBLIC_API_BASE_URL=%s, EXPO_PUBLIC_WS_BASE_URL=%s, EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=%s, EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=%s", mobileBuildID, apiBaseURL, wsBaseURL, requireNativeCrypto, deploymentEnvironment)
 		}
 	}
-	return probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, Provider: provider, NativeRequired: nativeRequiredValue, Platforms: platforms, ReleaseChannel: releaseChannel, ExpoProfile: expoProfile, APIBaseURL: apiBaseURL, WSBaseURL: wsBaseURL, RequireNativeCrypto: requireNativeCrypto, DeploymentEnvironment: deploymentEnvironment, AssociatedDataSaltID: associatedDataSaltID, AssociatedDataVersion: associatedDataVersion, ResultSummary: summary}
+	return probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, Provider: provider, NativeRequired: nativeRequiredValue, MobileBuildID: mobileBuildID, Platforms: platforms, ReleaseChannel: releaseChannel, ExpoProfile: expoProfile, APIBaseURL: apiBaseURL, WSBaseURL: wsBaseURL, RequireNativeCrypto: requireNativeCrypto, DeploymentEnvironment: deploymentEnvironment, AssociatedDataSaltID: associatedDataSaltID, AssociatedDataVersion: associatedDataVersion, ResultSummary: summary}
+}
+
+func enforceMobileBuildLinkage(probes []probeResult) {
+	buildIDs := map[string]bool{}
+	for i := range probes {
+		if !probes[i].Passed || probes[i].MobileBuildID == "" {
+			continue
+		}
+		buildIDs[probes[i].MobileBuildID] = true
+	}
+	if len(buildIDs) <= 1 {
+		return
+	}
+	for i := range probes {
+		if probes[i].MobileBuildID == "" {
+			continue
+		}
+		probes[i].Passed = false
+		probes[i].ResultSummary += "; mobile_build_id values do not match across mobile evidence artifacts"
+	}
 }
 
 func validateDistinctArtifactURLs(urls map[string]string) error {

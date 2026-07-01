@@ -108,6 +108,7 @@ const mobileRequireNativeCryptoPattern = /\bEXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=tr
 const mobileDeploymentEnvironmentPattern = /\bEXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging\b/i;
 const mobileNativeProviderPattern = /\bprovider=([A-Za-z0-9_.:-]+)\b/i;
 const mobileNativeRequiredPattern = /\bnative_required=(true|false)\b/i;
+const mobileBuildIDPattern = /\bmobile_build_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const mobileAssociatedDataSaltIDPattern = /\bassociated_data_salt_id=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b/i;
 const mobileAssociatedDataVersionPattern = /\bassociated_data_salt_version=([1-9][0-9]*)\b/i;
 const tlsCertHostnamePattern = /\bcert_hostname=([A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z0-9.-]+)\b/i;
@@ -312,9 +313,9 @@ const rustSegmentMarkerRequirements = new Map([
   ['api-rust-integration-metrics', ['staging artifact', 'Go API rust_engine vector_search success', 'scriptureforge_dependency_operations_total', 'scriptureforge_dependency_operation_duration_seconds_sum', 'api_rust_metrics_samples_verified=true', 'distinct_metrics_targets=true', 'release_candidate=', 'service_version=', 'deployment_environment=', 'load_run_id=']],
 ]);
 const mobileSegmentMarkerRequirements = new Map([
-  ['mobile-eas-or-device-run', ['staging artifact', 'eas', 'build', 'finished', 'android', 'ios', 'native device', 'installed app', 'release channel staging', 'expo profile staging', 'distinct_mobile_artifacts=true', 'release_candidate=', 'service_version=']],
-  ['mobile-native-crypto-smoke', ['staging artifact', 'runJournalCryptoSelfTest', 'react-native-quick-crypto', 'native provider', 'native module loaded', 'provider status react-native-quick-crypto', 'provider=react-native-quick-crypto', 'native-required true', 'native_required=true', 'AES-GCM', 'round-trip', 'unique_iv=true', 'unique IV', 'tamper rejected', 'associated data', 'wrong associated data rejected', 'associated_data_salt_id=', 'associated_data_salt_version=', 'non-extractable', 'provider-bound key', 'fallback-derived key rejected', 'key disposed', 'disposed handle rejected', 'revoked_key_rejected=true', 'stale raw key rejected', 'passphrase wiped', 'passphrase buffer zeroized', 'salt wiped', 'salt buffer zeroized', 'plaintext cleared', 'plaintext buffer zeroized', 'distinct_mobile_artifacts=true', 'release_candidate=', 'service_version=']],
-  ['mobile-staging-config', ['staging artifact', 'EXPO_PUBLIC_API_BASE_URL', 'EXPO_PUBLIC_WS_BASE_URL', 'EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true', 'EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging', 'https://', 'wss://', 'staging', 'distinct_mobile_artifacts=true', 'release_candidate=', 'service_version=']],
+  ['mobile-eas-or-device-run', ['staging artifact', 'eas', 'build', 'finished', 'android', 'ios', 'native device', 'installed app', 'release channel staging', 'expo profile staging', 'mobile_build_id=', 'distinct_mobile_artifacts=true', 'release_candidate=', 'service_version=']],
+  ['mobile-native-crypto-smoke', ['staging artifact', 'runJournalCryptoSelfTest', 'react-native-quick-crypto', 'native provider', 'native module loaded', 'provider status react-native-quick-crypto', 'provider=react-native-quick-crypto', 'native-required true', 'native_required=true', 'mobile_build_id=', 'AES-GCM', 'round-trip', 'unique_iv=true', 'unique IV', 'tamper rejected', 'associated data', 'wrong associated data rejected', 'associated_data_salt_id=', 'associated_data_salt_version=', 'non-extractable', 'provider-bound key', 'fallback-derived key rejected', 'key disposed', 'disposed handle rejected', 'revoked_key_rejected=true', 'stale raw key rejected', 'passphrase wiped', 'passphrase buffer zeroized', 'salt wiped', 'salt buffer zeroized', 'plaintext cleared', 'plaintext buffer zeroized', 'distinct_mobile_artifacts=true', 'release_candidate=', 'service_version=']],
+  ['mobile-staging-config', ['staging artifact', 'EXPO_PUBLIC_API_BASE_URL', 'EXPO_PUBLIC_WS_BASE_URL', 'EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true', 'EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging', 'mobile_build_id=', 'https://', 'wss://', 'staging', 'distinct_mobile_artifacts=true', 'release_candidate=', 'service_version=']],
 ]);
 
 const disallowedStrictEvidenceMarkers = [
@@ -1606,6 +1607,7 @@ function validateStrictReleaseItemEvidence(item, manifest) {
   }
   if (item.id === 'CLIENT-MOBILE-001') {
     const mobileLoadRunIDs = new Set();
+    const mobileBuildIDs = new Set();
     for (const [segment, markers] of mobileSegmentMarkerRequirements) {
       const missingSegmentMarkers = evidence.some((artifact) => {
         const summary = String(artifact.result_summary ?? '');
@@ -1620,8 +1622,12 @@ function validateStrictReleaseItemEvidence(item, manifest) {
       const loadRunID = summarySegmentCapture(findEvidenceSegment(evidence, segment), segment, /\bload_run_id=([^\s,;]+)/i);
       assert.ok(loadRunID, `CLIENT-MOBILE-001 strict release evidence must include load_run_id on ${segment}`);
       mobileLoadRunIDs.add(loadRunID);
+      const mobileBuildID = summarySegmentCapture(findEvidenceSegment(evidence, segment), segment, mobileBuildIDPattern);
+      assert.ok(mobileBuildID, `CLIENT-MOBILE-001 strict release evidence must include mobile_build_id on ${segment}`);
+      mobileBuildIDs.add(mobileBuildID);
     }
     assert.equal(mobileLoadRunIDs.size, 1, 'CLIENT-MOBILE-001 strict release evidence load_run_id values must all match');
+    assert.equal(mobileBuildIDs.size, 1, 'CLIENT-MOBILE-001 strict release evidence mobile_build_id values must all match');
     const easSegment = findEvidenceSegment(evidence, 'mobile-eas-or-device-run');
     assert.match(
       easSegment,

@@ -247,6 +247,8 @@ const mobileRequireNativeCryptoPattern = /^true$/i;
 const mobileDeploymentEnvironmentPattern = /^staging$/i;
 const mobileNativeProviderPattern = /^react-native-quick-crypto$/;
 const mobileNativeRequiredPattern = /^true$/i;
+const mobileBuildIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
+const mobileBuildIDSummaryPattern = /\bmobile_build_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const mobileNativeProviderSummaryPattern = /\bprovider=([A-Za-z0-9_.:-]+)\b/i;
 const mobileNativeRequiredSummaryPattern = /\bnative_required=(true|false)\b/i;
 const mobileAssociatedDataSaltIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
@@ -1388,6 +1390,7 @@ function validateMobileEvidence(report, manifest) {
   ]);
   const probes = Array.isArray(report.probes) ? report.probes : [];
   const probeLoadRunIDs = new Set();
+  const mobileBuildIDs = new Set();
   assert.equal(probes.length, requiredProbes.size, 'CLIENT-MOBILE-001 report must include exactly the required mobile probes');
   for (const probe of probes) {
     assert.ok(requiredProbes.delete(probe.name), `CLIENT-MOBILE-001 report includes unexpected or duplicate probe ${probe.name}`);
@@ -1401,28 +1404,36 @@ function validateMobileEvidence(report, manifest) {
     assertSummaryIncludesMarkers(probe.name, summary, [...(requiredMobileProbeSummaryMarkers.get(probe.name) ?? []), ...reportReleaseMarkers]);
     assertSummaryExcludesMarkers(probe.name, summary, forbiddenMobileProbeSummaryMarkers);
     if (probe.name === 'mobile-eas-or-device-run') {
+      const mobileBuildID = String(probe.mobile_build_id ?? extractFirstMatch(summary, mobileBuildIDSummaryPattern)).trim();
       const platforms = String(probe.platforms ?? '').trim();
       const releaseChannel = String(probe.release_channel ?? '').trim();
       const expoProfile = String(probe.expo_profile ?? '').trim();
+      assert.match(mobileBuildID, mobileBuildIDPattern, 'mobile-eas-or-device-run probe must include structured mobile_build_id');
+      mobileBuildIDs.add(mobileBuildID);
       assert.match(platforms, mobilePlatformsPattern, 'mobile-eas-or-device-run probe must include structured platforms with android and ios');
       assert.match(releaseChannel, mobileReleaseChannelPattern, 'mobile-eas-or-device-run probe must include structured release_channel=staging');
       assert.match(expoProfile, mobileExpoProfilePattern, 'mobile-eas-or-device-run probe must include structured expo_profile=staging');
       assertSummaryIncludesMarkers(probe.name, summary, [
+        `mobile_build_id=${mobileBuildID}`,
         `platforms=${platforms}`,
         `release_channel=${releaseChannel}`,
         `expo_profile=${expoProfile}`,
       ]);
     }
     if (probe.name === 'mobile-native-crypto-smoke') {
+      const mobileBuildID = String(probe.mobile_build_id ?? extractFirstMatch(summary, mobileBuildIDSummaryPattern)).trim();
       const provider = String(probe.provider ?? extractFirstMatch(summary, mobileNativeProviderSummaryPattern)).trim();
       const nativeRequired = String(probe.native_required ?? extractFirstMatch(summary, mobileNativeRequiredSummaryPattern)).trim();
       const associatedDataSaltID = String(probe.associated_data_salt_id ?? extractFirstMatch(summary, mobileAssociatedDataSaltIDSummaryPattern)).trim();
       const associatedDataVersion = String(probe.associated_data_salt_version ?? extractFirstMatch(summary, mobileAssociatedDataVersionSummaryPattern)).trim();
+      assert.match(mobileBuildID, mobileBuildIDPattern, 'mobile-native-crypto-smoke probe must include structured mobile_build_id');
+      mobileBuildIDs.add(mobileBuildID);
       assert.match(provider, mobileNativeProviderPattern, 'mobile-native-crypto-smoke probe must include structured provider=react-native-quick-crypto');
       assert.match(nativeRequired, mobileNativeRequiredPattern, 'mobile-native-crypto-smoke probe must include structured native_required=true');
       assert.match(associatedDataSaltID, mobileAssociatedDataSaltIDPattern, 'mobile-native-crypto-smoke probe must include structured associated_data_salt_id');
       assert.match(associatedDataVersion, mobileAssociatedDataVersionPattern, 'mobile-native-crypto-smoke probe must include positive structured associated_data_salt_version');
       assertSummaryIncludesMarkers(probe.name, summary, [
+        `mobile_build_id=${mobileBuildID}`,
         `provider=${provider}`,
         `native_required=${nativeRequired}`,
         `associated_data_salt_id=${associatedDataSaltID}`,
@@ -1430,15 +1441,19 @@ function validateMobileEvidence(report, manifest) {
       ]);
     }
     if (probe.name === 'mobile-staging-config') {
+      const mobileBuildID = String(probe.mobile_build_id ?? extractFirstMatch(summary, mobileBuildIDSummaryPattern)).trim();
       const apiBaseURL = String(probe.api_base_url ?? '').trim();
       const wsBaseURL = String(probe.ws_base_url ?? '').trim();
       const requireNativeCrypto = String(probe.require_native_crypto ?? '').trim();
       const deploymentEnvironment = String(probe.deployment_environment ?? '').trim();
+      assert.match(mobileBuildID, mobileBuildIDPattern, 'mobile-staging-config probe must include structured mobile_build_id');
+      mobileBuildIDs.add(mobileBuildID);
       assert.match(apiBaseURL, mobileAPIBaseURLPattern, 'mobile-staging-config probe must include structured HTTPS api_base_url');
       assert.match(wsBaseURL, mobileWSBaseURLPattern, 'mobile-staging-config probe must include structured WSS ws_base_url');
       assert.match(requireNativeCrypto, mobileRequireNativeCryptoPattern, 'mobile-staging-config probe must include structured require_native_crypto=true');
       assert.match(deploymentEnvironment, mobileDeploymentEnvironmentPattern, 'mobile-staging-config probe must include structured deployment_environment=staging');
       assertSummaryIncludesMarkers(probe.name, summary, [
+        `mobile_build_id=${mobileBuildID}`,
         `EXPO_PUBLIC_API_BASE_URL=${apiBaseURL}`,
         `EXPO_PUBLIC_WS_BASE_URL=${wsBaseURL}`,
         `EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=${requireNativeCrypto}`,
@@ -1447,6 +1462,7 @@ function validateMobileEvidence(report, manifest) {
     }
   }
   assertDistinctReportURLs('CLIENT-MOBILE-001', probes.map((probe) => [probe.name, String(probe.target ?? '')]));
+  assert.equal(mobileBuildIDs.size, 1, 'CLIENT-MOBILE-001 mobile_build_id values must match across mobile probes');
   assert.equal(requiredProbes.size, 0, `CLIENT-MOBILE-001 report missing probes: ${[...requiredProbes].join(', ')}`);
   assertSummaryIncludesMarkers('CLIENT-MOBILE-001', probes.map((probe) => String(probe.result_summary ?? '')).join(' '), [
     'distinct_mobile_artifacts=true',

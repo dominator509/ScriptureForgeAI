@@ -470,9 +470,9 @@ function abuseProbeReportProbes(overridesForName = () => ({})) {
 }
 
 const mobileProbeMarkerSummaries = {
-  'mobile-eas-or-device-run': 'got HTTP 200; verified markers: staging artifact, eas, build, finished, android, ios, native device, installed app, release channel staging, expo profile staging, platforms=android,ios, release_channel=staging, expo_profile=staging, release_candidate=abc123, service_version=scriptureforge-mobile:abc123, load_run_id=load-run-123, distinct_mobile_artifacts=true',
-  'mobile-native-crypto-smoke': 'got HTTP 200; verified markers: staging artifact, runJournalCryptoSelfTest, react-native-quick-crypto, native provider, native module loaded, provider status react-native-quick-crypto, provider=react-native-quick-crypto, native-required true, native_required=true, AES-GCM, round-trip, unique_iv=true, unique IV, tamper rejected, associated data, wrong associated data rejected, associated_data_salt_id=journal:self-test:server-derived-salt, associated_data_salt_version=1, non-extractable, provider-bound key, fallback-derived key rejected, key disposed, disposed handle rejected, revoked_key_rejected=true, stale raw key rejected, passphrase wiped, passphrase buffer zeroized, salt wiped, salt buffer zeroized, plaintext cleared, plaintext buffer zeroized, release_candidate=abc123, service_version=scriptureforge-mobile:abc123, load_run_id=load-run-123, distinct_mobile_artifacts=true',
-  'mobile-staging-config': 'got HTTP 200; verified markers: staging artifact, EXPO_PUBLIC_API_BASE_URL, EXPO_PUBLIC_WS_BASE_URL, EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true, EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging, https://, wss://, staging, EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai, EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai, release_candidate=abc123, service_version=scriptureforge-mobile:abc123, load_run_id=load-run-123, distinct_mobile_artifacts=true',
+  'mobile-eas-or-device-run': 'got HTTP 200; verified markers: staging artifact, eas, build, finished, android, ios, native device, installed app, release channel staging, expo profile staging, mobile_build_id=mobile-build-123, platforms=android,ios, release_channel=staging, expo_profile=staging, release_candidate=abc123, service_version=scriptureforge-mobile:abc123, load_run_id=load-run-123, distinct_mobile_artifacts=true',
+  'mobile-native-crypto-smoke': 'got HTTP 200; verified markers: staging artifact, runJournalCryptoSelfTest, react-native-quick-crypto, native provider, native module loaded, provider status react-native-quick-crypto, provider=react-native-quick-crypto, native-required true, native_required=true, mobile_build_id=mobile-build-123, AES-GCM, round-trip, unique_iv=true, unique IV, tamper rejected, associated data, wrong associated data rejected, associated_data_salt_id=journal:self-test:server-derived-salt, associated_data_salt_version=1, non-extractable, provider-bound key, fallback-derived key rejected, key disposed, disposed handle rejected, revoked_key_rejected=true, stale raw key rejected, passphrase wiped, passphrase buffer zeroized, salt wiped, salt buffer zeroized, plaintext cleared, plaintext buffer zeroized, release_candidate=abc123, service_version=scriptureforge-mobile:abc123, load_run_id=load-run-123, distinct_mobile_artifacts=true',
+  'mobile-staging-config': 'got HTTP 200; verified markers: staging artifact, EXPO_PUBLIC_API_BASE_URL, EXPO_PUBLIC_WS_BASE_URL, EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true, EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging, mobile_build_id=mobile-build-123, https://, wss://, staging, EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai, EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai, release_candidate=abc123, service_version=scriptureforge-mobile:abc123, load_run_id=load-run-123, distinct_mobile_artifacts=true',
 };
 
 function mobileEASProbe(overrides = {}) {
@@ -484,6 +484,7 @@ function mobileEASProbe(overrides = {}) {
     platforms: 'android,ios',
     release_channel: 'staging',
     expo_profile: 'staging',
+    mobile_build_id: 'mobile-build-123',
     result_summary: mobileProbeMarkerSummaries['mobile-eas-or-device-run'],
     ...overrides,
   };
@@ -499,6 +500,7 @@ function mobileConfigProbe(overrides = {}) {
     ws_base_url: 'wss://api.staging.scriptureforge.ai',
     require_native_crypto: 'true',
     deployment_environment: 'staging',
+    mobile_build_id: 'mobile-build-123',
     result_summary: mobileProbeMarkerSummaries['mobile-staging-config'],
     ...overrides,
   };
@@ -1815,6 +1817,37 @@ test('recordEvidence rejects mobile evidence without distinct artifact proof', (
       'go run ./tools/mobileprobe',
     ),
     /mobile-eas-or-device-run result_summary must include verified marker distinct_mobile_artifacts=true/,
+  );
+});
+
+test('recordEvidence rejects mobile evidence with mixed build IDs', () => {
+  assert.throws(
+    () => recordEvidence(
+      { release_candidate: 'abc123', items: [{ id: 'CLIENT-MOBILE-001' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-mobile:abc123',
+        load_run_id: 'load-run-123',
+        evidence_items: ['CLIENT-MOBILE-001'],
+        probes: [
+          mobileEASProbe(),
+          {
+            name: 'mobile-native-crypto-smoke',
+            passed: true,
+            target: 'https://artifacts.staging.scriptureforge.ai/mobile/native-crypto-smoke.txt',
+            status_code: 200,
+            mobile_build_id: 'mobile-build-other',
+            result_summary: mobileProbeMarkerSummaries['mobile-native-crypto-smoke'].replace('mobile_build_id=mobile-build-123', 'mobile_build_id=mobile-build-other'),
+          },
+          mobileConfigProbe(),
+        ],
+      },
+      'artifacts/mobileprobe.json',
+      'go run ./tools/mobileprobe',
+    ),
+    /CLIENT-MOBILE-001 mobile_build_id values must match across mobile probes/,
   );
 });
 
