@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { platform } from 'node:os';
+import { resolve } from 'node:path';
 
 export const goTestProofMarkers = [
   'go_test_all_packages=true',
@@ -153,11 +154,15 @@ export function runGoCoreGate({
 } = {}) {
   const command = bin || defaultGoBin(platformName);
   const plan = goArgsForMode(mode);
+  const childEnv = {
+    ...env,
+    GOCACHE: env.GOCACHE || resolve(cwd, '.gocache'),
+  };
   const child = spawnSyncImpl(command, plan.args, {
     cwd,
     encoding: 'utf8',
     stdio: 'pipe',
-    env,
+    env: childEnv,
   });
   const output = `${child.stdout || ''}${child.stderr || ''}${child.error ? child.error.message : ''}`;
   if ((child.status ?? 1) === 0 && mode === 'test') {

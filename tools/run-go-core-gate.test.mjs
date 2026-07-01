@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { resolve } from 'node:path';
 import test from 'node:test';
 import {
   defaultGoBin,
@@ -58,6 +59,24 @@ test('runGoCoreGate runs go test with release proof markers', () => {
   assert.deepEqual(result.markers, goTestProofMarkers);
   assert.equal(calls[0].command, 'go');
   assert.deepEqual(calls[0].args, ['test', './...', '-count=1', '-timeout=90s', '-v']);
+  assert.equal(calls[0].options.env.GO_ENV, 'testing');
+});
+
+test('runGoCoreGate defaults GOCACHE to the repo-local cache', () => {
+  const calls = [];
+  const result = runGoCoreGate({
+    mode: 'vet',
+    bin: 'go',
+    cwd: 'repo',
+    spawnSyncImpl(command, args, options) {
+      calls.push({ command, args, options });
+      return { status: 0, stdout: '', stderr: '' };
+    },
+    env: { GO_ENV: 'testing' },
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(calls[0].options.env.GOCACHE, resolve('repo', '.gocache'));
   assert.equal(calls[0].options.env.GO_ENV, 'testing');
 });
 
