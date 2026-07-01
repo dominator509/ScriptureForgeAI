@@ -160,6 +160,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Local All-Table RLS Mutation Proof Guard**: `tools/run-rls-db-integration.mjs` and local gate validation now require explicit proof markers that same-tenant reads and writes pass and cross-tenant reads, inserts, updates, and deletes are denied or hidden across all nine tenant-scoped tables before local tenant isolation evidence can support readiness.
 - [x] **Local Same-Tenant RLS Update/Delete Guard**: `TestTenantRLSCoversAllTenantTables` now proves same-tenant update and delete operations affect exactly one row for every tenant-scoped table, and the local RLS proof marker contract requires `rls_same_tenant_updates_pass_all_tables=true` plus `rls_same_tenant_deletes_pass_all_tables=true`.
 - [x] **Production Room Membership RLS Wiring Guard**: `tools/validate-rls-schema.mjs` rejects production `RoomHandler` or `SocketConnection` route construction that installs a `MembershipValidator` override, and requires both default membership paths to set `app.current_org_id` through `auth.SetTenantContext` before querying `room_participants` by organization, room, and user.
+- [x] **Tenant Context UUID Guard**: `auth.SetTenantContext` trims and validates the JWT-derived organization ID as a UUID before writing transaction-local `app.current_org_id`, with unit coverage proving malformed tenant IDs fail before database use.
 - [x] **Staging Service Version Release Binding Guard**: `tools/record-staging-evidence.mjs` now rejects probe reports whose top-level `service_version` does not include the manifest release candidate, and strict release manifest validation requires probe report summaries to include `service_version=<service>:<manifest release_candidate>` so stale service build evidence cannot be paired with a current release SHA.
 - [x] **Tenant DB Role And Bypass Guard**: `tools/tenantprobe`, the staging evidence recorder, and strict staging validation now require deployed DB/RLS artifacts to prove `current_user=scriptureforge_app`, `superuser=false`, `bypassrls=false`, `current_setting('app.current_org_id')`, and `row_security=on`, so a generic non-superuser note or unnamed DB role cannot satisfy `DATA-RLS-001`.
 - [x] **Tenant RLS Table Count Guard**: `tools/tenantprobe`, the staging evidence recorder, and strict-release validation require deployed DB/RLS artifacts to prove `rls_tables_verified=9`, `rls_forced_tables=9`, and `rls_policy_scope=app.current_org_id`, so table-name lists alone cannot satisfy all-table RLS proof.
@@ -373,11 +374,11 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 2
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: cd80c8f36ea9a92fcceb1b226c3427bd6f67ec81
+- expected_release_candidate: 2f0b7b9b469ccac72d3721354f8f747d2df132fc
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: cd80c8f36ea9a92fcceb1b226c3427bd6f67ec81
+    - expected_release_candidate: 2f0b7b9b469ccac72d3721354f8f747d2df132fc
     - actual_release_candidate: b1c70b67e157f8c382cf3b872ef943e24714a95b
   - STAGING-EVIDENCE-CONTRACT [failed]: Environment-specific pending evidence requirements are stale relative to production-readiness/staging-evidence.example.json.
     - required: DEPLOY-TF-001 required_evidence must be refreshed from the checked-in example contract (6 current entries, 6 expected entries)

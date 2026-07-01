@@ -91,7 +91,7 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
     *   `POST /api/auth/login` (compatibility alias)
 *   **Data Entities:** `User`, `Organization`, `Workspace`, `Session`, `RefreshToken`.
 *   **Security Considerations:** Cryptographic salt hashing via Argon2id. Multi-factor authentication (MFA) via TOTP protocols is structurally mandatory for `Tenant_Admin` and `Super_Admin` actors.
-*   **Failure Modes & Logic Risks:** Tenant bleeding (cross-tenant visibility via corrupted workspace session swapping). Mitigation involves appending `organization_id` implicitly to all database queries via an authenticated context wrapper, completely isolating it from direct client parameters.
+*   **Failure Modes & Logic Risks:** Tenant bleeding (cross-tenant visibility via corrupted workspace session swapping). Mitigation involves appending `organization_id` implicitly to all database queries via an authenticated context wrapper, completely isolating it from direct client parameters. The authenticated organization context must be validated as a UUID before setting transaction-local `app.current_org_id` for Postgres RLS.
 
 ### 5.2 Role-Based Access Control (RBAC) & Permissions
 *   **Purpose:** Granular data verification engine ensuring exact feature execution based on user clearance levels.
