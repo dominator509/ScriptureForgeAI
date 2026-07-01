@@ -256,6 +256,9 @@ for (const requiredMobileCryptoSmokeSnippet of [
 for (const requiredWebCryptoSmokeSnippet of [
   'web journal AES-GCM round-trips and rejects tampered ciphertext',
   'wrong associated data must reject web journal ciphertext',
+  'web_crypto_unique_iv=true',
+  'AES-GCM IVs must be unique per encryption',
+  'same web journal plaintext must not produce repeated ciphertext',
   'web journal associated data rejects missing salt identity',
   'web_crypto_associated_data_input_guard=true',
   'JOURNAL_PBKDF2_ITERATIONS, 600000',

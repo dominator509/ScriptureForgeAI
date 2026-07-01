@@ -752,7 +752,7 @@ function terraformValidateProofOutput() {
 function webSmokeProofOutput() {
   return [
     'web api smoke proof: web_api_auth_routes=true, web_api_encrypted_journal=true, web_api_rooms_ws=true, web_runtime_strict_endpoint_guard=true',
-    'web crypto smoke proof: web_crypto_aes_gcm=true, web_crypto_associated_data=true, web_crypto_pbkdf2_600000=true, web_crypto_key_disposal=true',
+    'web crypto smoke proof: web_crypto_aes_gcm=true, web_crypto_unique_iv=true, web_crypto_associated_data=true, web_crypto_pbkdf2_600000=true, web_crypto_key_disposal=true',
   ].join('\n');
 }
 

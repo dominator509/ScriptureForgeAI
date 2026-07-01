@@ -168,6 +168,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Mobile Crypto Failure-Path Cleanup Guard**: mobile journal crypto wipes passphrase and salt byte buffers even when key import fails, wipes temporary base64 decode buffers after copying ciphertext/IV data, and `tools/verify-journal-crypto.mjs` requires those cleanup paths before local crypto evidence can pass; native-device/EAS proof remains tracked under `CLIENT-MOBILE-001`.
 - [x] **Mobile Native Self-Test Export Guard**: `mobile/src/lib/crypto.ts` exports `runJournalCryptoSelfTest()` so an EAS/native run can emit provider status, native-required mode, AES-GCM round-trip, tamper rejection, associated-data rejection, non-extractable key behavior, disposed-key rejection, and lifecycle markers from inside the app runtime; `tools/verify-journal-crypto.mjs` emits `native_device_self_test_export=true` and `native_device_self_test_markers=true`. Actual native-device/EAS artifacts remain pending under `CLIENT-MOBILE-001`.
 - [x] **Mobile Native Self-Test Artifact Origin Guard**: `runJournalCryptoSelfTest()` now emits a literal `runJournalCryptoSelfTest` marker, and `tools/mobileprobe`, staging evidence recording, and strict-release validation require that marker on the `mobile-native-crypto-smoke` segment so `CLIENT-MOBILE-001` native AES-GCM/key-lifecycle proof must come from the exported app-runtime self-test path.
+- [x] **Web AES-GCM IV Freshness Guard**: `web/src/lib/crypto.smoke.mts`, `tools/verify-journal-crypto.mjs`, and `tools/validate-local-gate-report.mjs` now require repeated same-plaintext journal encryptions to produce fresh IVs and different ciphertext with `web_crypto_unique_iv=true` proof before local web crypto smoke evidence can pass.
 - [x] **Mobile AES-GCM IV Freshness Guard**: `runJournalCryptoSelfTest()`, `mobile/src/lib/crypto.smoke.mts`, `tools/verify-journal-crypto.mjs`, `tools/mobileprobe`, staging evidence recording, and strict-release validation now require `unique_iv=true`/`unique IV` proof so native mobile AES-GCM evidence must show fresh IV material for repeated journal encryptions.
 - [x] **Mobile AES-GCM Salt Binding Guard**: `runJournalCryptoSelfTest()` now emits concrete `associated_data_salt_id=<id>` and `associated_data_salt_version=<n>` markers, and `tools/verify-journal-crypto.mjs` rejects drift that stops binding AES-GCM associated data to backend salt metadata.
 - [x] **Client Associated-Data Input Guard**: web and mobile `journalAssociatedData()` now reject blank salt IDs plus non-positive or non-integer salt versions before building AES-GCM associated data, and client smoke/verifier gates require `*_crypto_associated_data_input_guard=true` markers.
@@ -334,11 +335,11 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 1
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: 6401f3fcf7f8db9ed3b8c94521e4edf8d7782567
+- expected_release_candidate: b41f5780d4844738ea536b3ac62c92e46e176fba
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: 6401f3fcf7f8db9ed3b8c94521e4edf8d7782567
+    - expected_release_candidate: b41f5780d4844738ea536b3ac62c92e46e176fba
     - actual_release_candidate: ce96c283410756444a63b1345646fc69cf274d22
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
     - required: tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted

@@ -34,6 +34,7 @@ export const webSmokeProofMarkers = [
   'web_api_rooms_ws=true',
   'web_runtime_strict_endpoint_guard=true',
   'web_crypto_aes_gcm=true',
+  'web_crypto_unique_iv=true',
   'web_crypto_associated_data=true',
   'web_crypto_pbkdf2_600000=true',
   'web_crypto_key_disposal=true',

@@ -16,6 +16,7 @@ import {
 const originalWindow = globalThis.window;
 const webCryptoSmokeProofMarkers = [
   'web_crypto_aes_gcm=true',
+  'web_crypto_unique_iv=true',
   'web_crypto_associated_data=true',
   'web_crypto_associated_data_input_guard=true',
   'web_crypto_pbkdf2_600000=true',
@@ -46,9 +47,16 @@ test('web journal AES-GCM round-trips and rejects tampered ciphertext', async ()
   const key = await deriveIsolationKey('correct horse battery staple', 'journal:v1:server-derived-salt');
   const associatedData = journalAssociatedData('journal:v1:server-derived-salt', 1);
   const encrypted = await encryptJournalData(plaintext, key, associatedData);
+  const secondEncrypted = await encryptJournalData(plaintext, key, associatedData);
 
   assert.notEqual(encrypted.ciphertext, Buffer.from(plaintext).toString('base64'));
   assert.ok(encrypted.iv.length > 0);
+  assert.notEqual(secondEncrypted.iv, encrypted.iv, 'AES-GCM IVs must be unique per encryption');
+  assert.notEqual(
+    secondEncrypted.ciphertext,
+    encrypted.ciphertext,
+    'same web journal plaintext must not produce repeated ciphertext',
+  );
   assert.equal(await decryptJournalData(encrypted, key, associatedData), plaintext);
 
   await assert.rejects(
