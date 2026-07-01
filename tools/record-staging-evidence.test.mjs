@@ -8695,6 +8695,36 @@ test('recordEvidence rejects performance evidence without load run identity', ()
   );
 });
 
+test('recordEvidence rejects mixed performance load run identities', () => {
+  assert.throws(
+    () => recordEvidence(
+      {
+        items: [
+          {
+            id: 'PERF-HTTP-001',
+            status: 'passed',
+            evidence: [{
+              observed_at: '2026-06-25T12:00:00Z',
+              command_or_probe: 'go run ./tools/loadtest',
+              artifact: 'https://artifacts.staging.scriptureforge.ai/load/http.json',
+              result_summary: performanceReportSummaries.http,
+            }],
+          },
+          { id: 'PERF-WS-001', status: 'pending_external' },
+          { id: 'DATA-REDIS-001', status: 'pending_external' },
+        ],
+      },
+      websocketPerformanceReport({
+        load_run_id: 'load-run-456',
+        result_summary: performanceReportSummaries.websocket.replaceAll('load_run_id=load-run-123', 'load_run_id=load-run-456'),
+      }),
+      'artifacts/load-ws.json',
+      'go run ./tools/loadtest',
+    ),
+    /performance evidence load_run_id values must match across PERF-HTTP-001, PERF-WS-001, and DATA-REDIS-001/,
+  );
+});
+
 test('recordEvidence rejects under-target WebSocket performance evidence', () => {
   assert.throws(
     () => recordEvidence(

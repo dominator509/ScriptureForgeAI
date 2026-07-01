@@ -1312,6 +1312,30 @@ function validateStrictRelease(manifest) {
     assert.equal(item.status, 'passed', `${item.id} must be passed for strict release validation`);
     validateStrictReleaseItemEvidence(item, manifest);
   }
+  assertStrictPerformanceLoadRunLinkage(manifest);
+}
+
+function assertStrictPerformanceLoadRunLinkage(manifest) {
+  const loadRunIDs = new Set();
+  for (const itemID of ['PERF-HTTP-001', 'PERF-WS-001', 'DATA-REDIS-001']) {
+    const item = manifest.items.find((candidate) => candidate.id === itemID);
+    assert.ok(item, `strict release manifest missing ${itemID}`);
+    const evidence = Array.isArray(item.evidence) ? item.evidence : [];
+    const itemLoadRunIDs = new Set();
+    for (const artifact of evidence) {
+      const match = String(artifact.result_summary ?? '').match(/\bload_run_id=([^\s,;]+)/i);
+      if (match) {
+        itemLoadRunIDs.add(match[1]);
+        loadRunIDs.add(match[1]);
+      }
+    }
+    assert.equal(itemLoadRunIDs.size, 1, `${itemID} strict release evidence must include exactly one load_run_id`);
+  }
+  assert.equal(
+    loadRunIDs.size,
+    1,
+    'strict release performance evidence load_run_id values must match across PERF-HTTP-001, PERF-WS-001, and DATA-REDIS-001',
+  );
 }
 
 function validateStrictAcceptedRisk(item) {

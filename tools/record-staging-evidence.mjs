@@ -116,6 +116,8 @@ const forbiddenPerformanceSummaryMarkers = [
   'p99 above threshold',
 ];
 
+const performanceEvidenceItemIDs = ['PERF-HTTP-001', 'PERF-WS-001', 'DATA-REDIS-001'];
+
 const requiredTenantRLSContextMarkers = [
   'staging artifact',
   'current_user=scriptureforge_app',
@@ -622,6 +624,9 @@ function assertNoLocalTarget(report, id) {
 
 function validatePerformanceEvidence(report, manifest) {
   const evidenceItems = report.evidence_items ?? [];
+  const performanceLoadRunIDs = new Set();
+  const reportLoadRunID = String(report.load_run_id ?? '').trim()
+    || summaryMarkerValue(String(report.result_summary ?? ''), 'load_run_id');
   for (const [id, target] of Object.entries(productionPerformanceTargets)) {
     if (!evidenceItems.includes(id)) {
       continue;
@@ -670,15 +675,15 @@ function validatePerformanceEvidence(report, manifest) {
     }
     const reportReleaseCandidate = String(report.release_candidate ?? '').trim();
     const reportServiceVersion = String(report.service_version ?? '').trim();
-    const loadRunID = String(report.load_run_id ?? '').trim() || summaryMarkerValue(String(report.result_summary ?? ''), 'load_run_id');
     assert.ok(reportReleaseCandidate, `${id} report must include release_candidate`);
     assert.ok(reportServiceVersion, `${id} report must include service_version`);
-    assert.ok(loadRunID, `${id} report must include load_run_id`);
+    assert.ok(reportLoadRunID, `${id} report must include load_run_id`);
+    performanceLoadRunIDs.add(reportLoadRunID);
     assertSummaryIncludesMarkers(id, String(report.result_summary ?? ''), [
       ...(requiredPerformanceSummaryMarkers[id] ?? []),
       `release_candidate=${reportReleaseCandidate}`,
       `service_version=${reportServiceVersion}`,
-      `load_run_id=${loadRunID}`,
+      `load_run_id=${reportLoadRunID}`,
     ]);
     assertSummaryExcludesMarkers(id, String(report.result_summary ?? ''), forbiddenPerformanceSummaryMarkers);
   }
@@ -710,9 +715,11 @@ function validatePerformanceEvidence(report, manifest) {
       ...requiredPerformanceSummaryMarkers['DATA-REDIS-001'],
       `release_candidate=${String(report.release_candidate ?? '').trim()}`,
       `service_version=${String(report.service_version ?? '').trim()}`,
-      `load_run_id=${String(report.load_run_id ?? '').trim()}`,
+      `load_run_id=${reportLoadRunID}`,
     ]);
+    performanceLoadRunIDs.add(reportLoadRunID);
   }
+  assertPerformanceLoadRunMatchesManifest(manifest, performanceLoadRunIDs);
   if (evidenceItems.includes('PERF-HTTP-001')) {
     const httpReplicaArtifactURL = String(report.http_replica_artifact_url ?? '');
     assert.match(httpReplicaArtifactURL, /^https:\/\//, 'PERF-HTTP-001 report must include HTTPS http_replica_artifact_url');
@@ -748,6 +755,29 @@ function validatePerformanceEvidence(report, manifest) {
     assert.match(redisTelemetryArtifactURL, /^https:\/\//, 'DATA-REDIS-001 report must include HTTPS redis_telemetry_artifact_url');
     assertNonLocalOrPrivateTarget(redisTelemetryArtifactURL, `DATA-REDIS-001 redis_telemetry_artifact_url must not be local/self-test: ${redisTelemetryArtifactURL}`);
   }
+}
+
+function assertPerformanceLoadRunMatchesManifest(manifest, incomingLoadRunIDs) {
+  if (incomingLoadRunIDs.size === 0) {
+    return;
+  }
+  for (const id of performanceEvidenceItemIDs) {
+    const item = manifest.items?.find((candidate) => candidate.id === id);
+    if (!item || item.status !== 'passed' || !Array.isArray(item.evidence)) {
+      continue;
+    }
+    for (const evidence of item.evidence) {
+      const existingLoadRunID = summaryMarkerValue(String(evidence.result_summary ?? ''), 'load_run_id');
+      if (existingLoadRunID) {
+        incomingLoadRunIDs.add(existingLoadRunID);
+      }
+    }
+  }
+  assert.equal(
+    incomingLoadRunIDs.size,
+    1,
+    'performance evidence load_run_id values must match across PERF-HTTP-001, PERF-WS-001, and DATA-REDIS-001',
+  );
 }
 
 function reportNumericValue(report, key) {

@@ -3910,6 +3910,21 @@ test('validateManifest strict release rejects load evidence without exact manife
   );
 });
 
+test('validateManifest strict release rejects mixed performance load run identities', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'DATA-REDIS-001');
+  item.evidence[0].result_summary = item.evidence[0].result_summary
+    .replaceAll('load_run_id=load-run-123', 'load_run_id=load-run-456');
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /strict release performance evidence load_run_id values must match across PERF-HTTP-001, PERF-WS-001, and DATA-REDIS-001/,
+  );
+});
+
 test('validateManifest strict release rejects generic passed security signoff evidence', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
