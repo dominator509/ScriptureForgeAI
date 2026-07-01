@@ -1586,12 +1586,7 @@ function validateRustEvidence(report, manifest) {
   const probes = Array.isArray(report.probes) ? report.probes : [];
   const probesByName = new Map(probes.map((probe) => [probe.name, probe]));
   const health = probesByName.get('rust-grpc-health');
-  const explicitReportLoadRunID = String(report.load_run_id ?? '').trim();
-  if (String(manifest.release_candidate ?? '').trim()) {
-    assert.ok(explicitReportLoadRunID, 'RUST-GRPC-001 report must include load_run_id');
-  }
-  const reportLoadRunID = explicitReportLoadRunID
-    || summaryMarkerValue(String(health?.result_summary ?? ''), 'load_run_id');
+  const reportLoadRunID = String(report.load_run_id ?? '').trim();
   assert.ok(reportLoadRunID, 'RUST-GRPC-001 report must include load_run_id');
   assert.ok(health, 'RUST-GRPC-001 report must include rust-grpc-health probe');
   assert.equal(health.passed, true, 'rust-grpc-health must pass');
@@ -2072,12 +2067,7 @@ function validateSecurityEvidence(report, manifest) {
   const expectedProbeCount = requiredArtifactProbes.size + (requiresDBUser ? 1 : 0);
   const probes = Array.isArray(report.probes) ? report.probes : [];
   assert.equal(probes.length, expectedProbeCount, 'security report must include exactly the required probes for requested evidence items');
-  const explicitReportLoadRunID = String(report.load_run_id ?? '').trim();
-  if (String(manifest.release_candidate ?? '').trim()) {
-    assert.ok(explicitReportLoadRunID, 'security report must include load_run_id');
-  }
-  const reportLoadRunID = explicitReportLoadRunID
-    || summaryMarkerValue(String(probes[0]?.result_summary ?? ''), 'load_run_id');
+  const reportLoadRunID = String(report.load_run_id ?? '').trim();
   assert.ok(reportLoadRunID, 'security report must include load_run_id');
 
   let sawDBUser = false;

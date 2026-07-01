@@ -2367,6 +2367,33 @@ test('recordEvidence rejects Rust gRPC evidence without report load run identity
   );
 });
 
+test('recordEvidence rejects Rust gRPC evidence with only summary load run identity', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'RUST-GRPC-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-rust-engine:abc123',
+        deployment_environment: 'staging',
+        grpc_target: 'scriptureforge-rust-engine.staging.svc.cluster.local:50051',
+        metrics_target: 'http://scriptureforge-rust-engine.staging.svc.cluster.local:9102/metrics',
+        api_metrics_target: 'https://api.staging.scriptureforge.ai/metrics',
+        evidence_items: ['RUST-GRPC-001'],
+        probes: [
+          rustProbe('rust-grpc-health', { target: 'scriptureforge-rust-engine.staging.svc.cluster.local:50051' }),
+          rustProbe('rust-metrics', { target: 'http://scriptureforge-rust-engine.staging.svc.cluster.local:9102/metrics' }),
+          rustProbe('api-rust-integration-metrics', { target: 'https://api.staging.scriptureforge.ai/metrics' }),
+        ],
+      },
+      'artifacts/rustprobe.json',
+      'go run ./tools/rustprobe',
+    ),
+    /RUST-GRPC-001 report must include load_run_id/,
+  );
+});
+
 test('recordEvidence rejects Rust gRPC evidence without structured positive metric samples', () => {
   assert.throws(
     () => recordEvidence(
@@ -6331,6 +6358,39 @@ test('recordEvidence rejects security evidence without report load run identity'
   );
 });
 
+test('recordEvidence rejects security evidence with only summary load run identity', () => {
+  const artifactProbeNames = [
+    'irsa-service-account',
+    'secret-provider-class',
+    'synced-secret-metadata-redacted',
+    'iam-secrets-policy',
+    'scoped-secrets-access-test',
+  ];
+
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'SEC-SECRETS-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['SEC-SECRETS-001'],
+        probes: artifactProbeNames.map((name) => ({
+          name,
+          passed: true,
+          target: `https://artifacts.staging.scriptureforge.ai/security/${name}.txt`,
+          status_code: 200,
+          result_summary: securityProbeMarkerSummaries[name],
+        })),
+      },
+      'artifacts/securityprobe.json',
+      'go run ./tools/securityprobe -probe-secrets',
+    ),
+    /security report must include load_run_id/,
+  );
+});
+
 test('recordEvidence rejects DB user evidence without structured current user proof', () => {
   assert.throws(
     () => recordEvidence(
@@ -6340,6 +6400,7 @@ test('recordEvidence rejects DB user evidence without structured current user pr
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['SEC-DBUSER-001'],
         probes: [
           {
@@ -6483,6 +6544,7 @@ test('recordEvidence rejects security evidence with local secret artifacts', () 
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['SEC-SECRETS-001'],
         probes: [
           { name: 'irsa-service-account', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/security/service-account.txt', status_code: 200, result_summary: securityProbeMarkerSummaries['irsa-service-account'] },
@@ -6508,6 +6570,7 @@ test('recordEvidence rejects security evidence with duplicate secret artifact UR
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['SEC-SECRETS-001'],
         probes: [
           { name: 'irsa-service-account', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/security/shared-secret-proof.txt', status_code: 200, result_summary: securityProbeMarkerSummaries['irsa-service-account'] },
@@ -6533,6 +6596,7 @@ test('recordEvidence rejects secret evidence without verified marker summaries',
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['SEC-SECRETS-001'],
         probes: [
           {
@@ -6588,6 +6652,7 @@ test('recordEvidence rejects secret evidence without staging artifact provenance
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['SEC-SECRETS-001'],
         probes: [
           {
@@ -6643,6 +6708,7 @@ test('recordEvidence rejects secret evidence without scoped IAM markers', () => 
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['SEC-SECRETS-001'],
         probes: [
           {
@@ -6698,6 +6764,7 @@ test('recordEvidence rejects secret evidence without SecretProviderClass object-
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['SEC-SECRETS-001'],
         probes: [
           {
@@ -6753,6 +6820,7 @@ test('recordEvidence rejects secret evidence without synced-secret redaction mar
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['SEC-SECRETS-001'],
         probes: [
           {
@@ -6808,6 +6876,7 @@ test('recordEvidence rejects secret evidence without synced-secret ownership mar
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['SEC-SECRETS-001'],
         probes: [
           {
@@ -6865,6 +6934,7 @@ test('recordEvidence rejects database user evidence without non-admin role proof
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['SEC-DBUSER-001'],
         probes: [
           {
@@ -6901,6 +6971,7 @@ test('recordEvidence rejects database user evidence without scriptureforge_app p
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['SEC-DBUSER-001'],
         probes: [
           {
@@ -6937,6 +7008,7 @@ test('recordEvidence rejects database user evidence without bypass RLS denial pr
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['SEC-DBUSER-001'],
         probes: [
           {
@@ -6973,6 +7045,7 @@ test('recordEvidence rejects database user evidence without denied privileged op
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['SEC-DBUSER-001'],
         probes: [
           {
@@ -7009,6 +7082,7 @@ test('recordEvidence rejects database user evidence without application grant pr
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['SEC-DBUSER-001'],
         probes: [
           {
@@ -7045,6 +7119,7 @@ test('recordEvidence rejects database user evidence without application grant ta
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['SEC-DBUSER-001'],
         probes: [
           {
@@ -7081,6 +7156,7 @@ test('recordEvidence rejects database user evidence without staging artifact pro
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['SEC-DBUSER-001'],
         probes: [
           {
