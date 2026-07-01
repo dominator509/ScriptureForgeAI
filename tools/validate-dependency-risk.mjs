@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
+import path from 'node:path';
 
 export const dependencyRiskProofMarkers = [
   'mobile_lockfile_uuid_detected=true',
@@ -8,11 +9,12 @@ export const dependencyRiskProofMarkers = [
   'drr001_register_current=true',
   'drr001_review_current=true',
   'drr001_expiry_current=true',
+  'drr001_mobile_runtime_not_imported=true',
   'high_or_worse_audit_gate_documented=true',
   'remediation_closure_documented=true',
 ];
 
-export function validateDependencyRisk({ lockfile, register, today = new Date().toISOString().slice(0, 10) }) {
+export function validateDependencyRisk({ lockfile, register, runtimeSources = [], today = new Date().toISOString().slice(0, 10) }) {
   const uuidVersion = packageVersion(lockfile, 'node_modules/uuid');
   const expoVersion = packageVersion(lockfile, 'node_modules/expo');
   assert.ok(uuidVersion, 'mobile package lock must include node_modules/uuid while DRR-001 is tracked');
@@ -24,6 +26,7 @@ export function validateDependencyRisk({ lockfile, register, today = new Date().
       assert.ok(register.includes(snippet), `dependency risk register missing ${snippet}`);
     }
     validateDRR001Dates(register, today);
+    validateNoRuntimeUUIDImports(runtimeSources);
   } else {
     assert.ok(!register.includes('DRR-001'), `DRR-001 should be closed because locked uuid ${uuidVersion} is >= 11.1.1`);
   }
@@ -33,6 +36,16 @@ export function validateDependencyRisk({ lockfile, register, today = new Date().
     expoVersion,
     drr001Required: uuidIsStillRisk,
   };
+}
+
+export function validateNoRuntimeUUIDImports(runtimeSources = []) {
+  const uuidRuntimeImportPattern = /\b(?:from\s+['"]uuid['"]|require\(\s*['"]uuid['"]\s*\)|import\(\s*['"]uuid['"]\s*\))/;
+  for (const source of runtimeSources) {
+    assert.ok(
+      !uuidRuntimeImportPattern.test(source.content),
+      `DRR-001 accepted risk must remain tooling-only; mobile runtime source imports uuid: ${source.path}`,
+    );
+  }
 }
 
 function validateDRR001Dates(register, today) {
@@ -99,8 +112,44 @@ async function main() {
   const [lockfilePath = 'mobile/package-lock.json', registerPath = 'security/dependency_risk_register.md'] = process.argv.slice(2);
   const lockfile = JSON.parse(await readFile(lockfilePath, 'utf8'));
   const register = await readFile(registerPath, 'utf8');
-  const result = validateDependencyRisk({ lockfile, register });
+  const runtimeSources = await collectRuntimeSources();
+  const result = validateDependencyRisk({ lockfile, register, runtimeSources });
   console.log(`dependency risk validated: uuid ${result.uuidVersion}, expo ${result.expoVersion}, DRR-001 required=${result.drr001Required}, ${dependencyRiskProofMarkers.join(', ')}`);
+}
+
+async function collectRuntimeSources() {
+  const roots = ['mobile/App.tsx', 'mobile/src'];
+  const sources = [];
+  for (const root of roots) {
+    sources.push(...await collectRuntimeSourcesFromPath(root));
+  }
+  return sources;
+}
+
+async function collectRuntimeSourcesFromPath(root) {
+  const statsEntries = await readdir(root, { withFileTypes: true }).catch(async () => {
+    return null;
+  });
+  if (!statsEntries) {
+    return [{
+      path: root,
+      content: await readFile(root, 'utf8'),
+    }];
+  }
+
+  const sources = [];
+  for (const entry of statsEntries) {
+    const childPath = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      sources.push(...await collectRuntimeSourcesFromPath(childPath));
+    } else if (/\.(?:ts|tsx|mts|js|jsx)$/.test(entry.name)) {
+      sources.push({
+        path: childPath,
+        content: await readFile(childPath, 'utf8'),
+      });
+    }
+  }
+  return sources;
 }
 
 if (import.meta.url === `file://${process.argv[1]?.replaceAll('\\', '/')}` || process.argv[1]?.endsWith('validate-dependency-risk.mjs')) {

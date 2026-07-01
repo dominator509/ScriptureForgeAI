@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compareSemver, validateDependencyRisk } from './validate-dependency-risk.mjs';
+import { compareSemver, validateDependencyRisk, validateNoRuntimeUUIDImports } from './validate-dependency-risk.mjs';
 
 test('compareSemver compares major, minor, and patch versions', () => {
   assert.ok(compareSemver('7.0.3', '11.1.1') < 0);
@@ -72,6 +72,27 @@ test('validateDependencyRisk rejects DRR-001 review dates after expiry', () => {
       today: '2026-06-27',
     }),
     /DRR-001 Review due must be on or before Expires/,
+  );
+});
+
+test('validateDependencyRisk rejects uuid imports from mobile runtime while DRR-001 is accepted', () => {
+  assert.throws(
+    () => validateDependencyRisk({
+      lockfile: lockfile('7.0.3', '56.0.12'),
+      register: register('7.0.3', '56.0.12'),
+      runtimeSources: [{ path: 'mobile/src/lib/runtime.ts', content: 'import { v4 } from "uuid";' }],
+      today: '2026-06-27',
+    }),
+    /mobile runtime source imports uuid/,
+  );
+});
+
+test('validateNoRuntimeUUIDImports rejects dynamic uuid imports', () => {
+  assert.throws(
+    () => validateNoRuntimeUUIDImports([
+      { path: 'mobile/src/lib/runtime.ts', content: 'const uuid = await import("uuid");' },
+    ]),
+    /mobile runtime source imports uuid/,
   );
 });
 

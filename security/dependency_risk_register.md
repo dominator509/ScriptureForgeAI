@@ -17,6 +17,7 @@ This register tracks dependency findings that are not yet remediated in code but
 - Dry-run remediation recheck: `npm.cmd audit fix --package-lock-only --dry-run --json --cache C:\dev\ScriptureForgeAI\.npm-cache` on 2026-06-25 reports `changed: 0` and keeps the same `expo@46.0.21` semver-major fix recommendation.
 - Forced fix impact: `npm audit fix --force` proposes `expo@46.0.21`, which is a breaking downgrade from the current Expo `56.0.12` lane and would undermine the current React Native dependency line.
 - Risk decision: Accepted temporarily for local/CI readiness because this is Expo CLI/config tooling rather than application runtime journal cryptography, and high-or-worse audit gating is enforced in CI.
+- Runtime reachability guard: `tools/validate-dependency-risk.mjs` scans `mobile/App.tsx` and `mobile/src` and fails if mobile runtime code imports `uuid` while DRR-001 remains accepted.
 - Risk owner: Security/release owner
 - Accepted by: Release owner and security reviewer
 - Review due: 2026-07-25
