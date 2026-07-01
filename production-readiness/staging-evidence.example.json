@@ -225,7 +225,7 @@
       "status": "pending_external",
       "description": "AI provider configuration, timeout/degradation behavior, citation verification, and audit persistence are proven in staging.",
       "required_evidence": [
-        "tools/aiprobe JSON report with EXT-AI-001 evidence item and report-level load_run_id=<same run>",
+        "tools/aiprobe JSON report with EXT-AI-001 evidence item, report-level load_run_id=<same run>, and persisted staging-manifest structured_report.ai_generation_audit_proof matching provider config, generation principal/request, fail-closed timeout booleans, citation ID, and audit principal/request/citation markers",
         "tools/stagingprobe -probe-ai JSON report",
         "Provider readiness probe with staging artifact provenance, AI_PROVIDER, AI_CHAT_MODEL, AI_CHAT_ENDPOINT, AI_HTTP_TIMEOUT_MS, AI_MAX_RETRIES, OPENAI_API_KEY redacted proof, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
         "Authenticated tenant generation probe with staging artifact provenance, JWT claims, organization_id=org-staging, user_id=user-staging, canonical route, generated_curriculum, citation proof, structured request_id=<id>, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",

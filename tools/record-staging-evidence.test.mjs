@@ -4245,6 +4245,26 @@ test('recordEvidence records production-grade AI evidence', () => {
   );
 
   assert.equal(updated.items[0].status, 'passed');
+  assert.deepEqual(updated.items[0].evidence[0].structured_report, {
+    ai_generation_audit_proof: {
+      ai_provider: 'openai',
+      ai_chat_model: 'gpt-staging',
+      ai_chat_endpoint: 'https://api.openai.com/v1/chat/completions',
+      ai_http_timeout_ms: 3500,
+      ai_max_retries: 1,
+      generation_request_id: 'req-123',
+      generation_organization_id: 'org-123',
+      generation_user_id: 'user-123',
+      provider_timeout: true,
+      retry_exhausted: true,
+      fail_closed: true,
+      citation_id: 'cite-123',
+      audit_request_id: 'req-123',
+      audit_organization_id: 'org-123',
+      audit_user_id: 'user-123',
+      audit_citation_id: 'cite-123',
+    },
+  });
 });
 
 test('recordEvidence rejects AI evidence without report load run identity', () => {

@@ -966,6 +966,7 @@ function passedEvidenceFor(id, releaseCandidate = sha) {
       : `https://artifacts.staging.scriptureforge.ai/${probe}.json`,
     result_summary: strictEvidenceSummary(id, releaseCandidate),
     ...(id === 'DATA-RLS-001' ? { structured_report: tenantRLSStructuredReport() } : {}),
+    ...(id === 'EXT-AI-001' ? { structured_report: aiGenerationAuditStructuredReport() } : {}),
   };
 }
 
@@ -1114,6 +1115,29 @@ function tenantRLSStructuredReport() {
         cross_hidden: true,
         write_denied: true,
       })),
+    },
+  };
+}
+
+function aiGenerationAuditStructuredReport() {
+  return {
+    ai_generation_audit_proof: {
+      ai_provider: 'openai',
+      ai_chat_model: 'gpt-staging',
+      ai_chat_endpoint: 'https://api.openai.com/v1/chat/completions',
+      ai_http_timeout_ms: 3500,
+      ai_max_retries: 1,
+      generation_request_id: 'req-1',
+      generation_organization_id: 'org-staging',
+      generation_user_id: 'user-staging',
+      provider_timeout: true,
+      retry_exhausted: true,
+      fail_closed: true,
+      citation_id: 'cite-1',
+      audit_request_id: 'req-1',
+      audit_organization_id: 'org-staging',
+      audit_user_id: 'user-staging',
+      audit_citation_id: 'cite-1',
     },
   };
 }

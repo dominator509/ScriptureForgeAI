@@ -1804,6 +1804,62 @@ test('validateManifest strict release rejects AI audit user ID mismatch', () => 
   );
 });
 
+test('validateManifest strict release rejects AI evidence without structured generation audit proof', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'EXT-AI-001');
+  delete item.evidence[0].structured_report;
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /EXT-AI-001 strict release evidence must include exactly one structured ai_generation_audit_proof report/,
+  );
+});
+
+test('validateManifest strict release rejects AI structured provider drift', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'EXT-AI-001');
+  item.evidence[0].structured_report.ai_generation_audit_proof.ai_provider = 'other-provider';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /EXT-AI-001 structured report ai_provider must match ai-provider-config marker/,
+  );
+});
+
+test('validateManifest strict release rejects AI structured request drift', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'EXT-AI-001');
+  item.evidence[0].structured_report.ai_generation_audit_proof.generation_request_id = 'req-drift';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /EXT-AI-001 structured report generation_request_id must match ai-generation-route request_id marker/,
+  );
+});
+
+test('validateManifest strict release rejects AI structured fail-closed drift', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'EXT-AI-001');
+  item.evidence[0].structured_report.ai_generation_audit_proof.fail_closed = false;
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /EXT-AI-001 structured report fail_closed must be true/,
+  );
+});
+
 test('validateManifest strict release rejects AI evidence with disabled citation or audit marker', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
@@ -4569,6 +4625,7 @@ function passedEvidenceFor(id) {
         ? 'threat model approval complete; security/dependency_risk_register.md#DRR-001 dependency risk decision reviewed; residual risk review complete; owner/security approval recorded; release risk signoff approved; signoff_artifact_verified=true; release_candidate=0123456789abcdef0123456789abcdef01234567'
       : `${id} passed`,
     ...(id === 'DATA-RLS-001' ? { structured_report: tenantRLSStructuredReport() } : {}),
+    ...(id === 'EXT-AI-001' ? { structured_report: aiGenerationAuditStructuredReport() } : {}),
   };
 }
 
@@ -4670,6 +4727,29 @@ function tenantRLSStructuredReport() {
         cross_hidden: true,
         write_denied: true,
       })),
+    },
+  };
+}
+
+function aiGenerationAuditStructuredReport() {
+  return {
+    ai_generation_audit_proof: {
+      ai_provider: 'openai',
+      ai_chat_model: 'gpt-staging',
+      ai_chat_endpoint: 'https://api.openai.com/v1/chat/completions',
+      ai_http_timeout_ms: 3500,
+      ai_max_retries: 1,
+      generation_request_id: 'req-123',
+      generation_organization_id: 'org-staging',
+      generation_user_id: 'user-staging',
+      provider_timeout: true,
+      retry_exhausted: true,
+      fail_closed: true,
+      citation_id: 'cite-123',
+      audit_request_id: 'req-123',
+      audit_organization_id: 'org-staging',
+      audit_user_id: 'user-staging',
+      audit_citation_id: 'cite-123',
     },
   };
 }

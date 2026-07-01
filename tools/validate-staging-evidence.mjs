@@ -2152,6 +2152,13 @@ function validateStrictReleaseItemEvidence(item, manifest) {
       citationID,
       'EXT-AI-001 strict release ai-audit-persistence citation_id must match ai-citation-verification citation_id',
     );
+    assertStrictAIStructuredReport(evidence, {
+      providerSegment,
+      generationSegment,
+      degradationSegment,
+      citationSegment,
+      auditSegment,
+    });
     for (const [segment, markers] of aiSegmentMarkerRequirements) {
       const missingSegmentMarkers = evidence.some((artifact) => {
         const summary = String(artifact.result_summary ?? '');
@@ -2369,6 +2376,48 @@ function extractTextMarker(segmentText, marker, itemID) {
   const match = pattern.exec(segmentText);
   assert.ok(match, `${itemID} strict release evidence must include ${marker}`);
   return String(match[1] ?? '').trim();
+}
+
+function assertStrictAIStructuredReport(evidence, segments) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.ai_generation_audit_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    'EXT-AI-001 strict release evidence must include exactly one structured ai_generation_audit_proof report',
+  );
+  const report = structuredReports[0];
+  const provider = extractTextMarker(segments.providerSegment, 'AI_PROVIDER', 'EXT-AI-001 structured report provider binding');
+  const model = extractTextMarker(segments.providerSegment, 'AI_CHAT_MODEL', 'EXT-AI-001 structured report provider binding');
+  const endpoint = extractTextMarker(segments.providerSegment, 'AI_CHAT_ENDPOINT', 'EXT-AI-001 structured report provider binding');
+  const timeoutMS = extractTextMarker(segments.providerSegment, 'AI_HTTP_TIMEOUT_MS', 'EXT-AI-001 structured report provider binding');
+  const maxRetries = extractTextMarker(segments.providerSegment, 'AI_MAX_RETRIES', 'EXT-AI-001 structured report provider binding');
+  assert.equal(String(report.ai_provider ?? ''), provider, 'EXT-AI-001 structured report ai_provider must match ai-provider-config marker');
+  assert.equal(String(report.ai_chat_model ?? ''), model, 'EXT-AI-001 structured report ai_chat_model must match ai-provider-config marker');
+  assert.equal(String(report.ai_chat_endpoint ?? ''), endpoint, 'EXT-AI-001 structured report ai_chat_endpoint must match ai-provider-config marker');
+  assert.equal(Number(report.ai_http_timeout_ms), Number(timeoutMS), 'EXT-AI-001 structured report ai_http_timeout_ms must match ai-provider-config marker');
+  assert.equal(Number(report.ai_max_retries), Number(maxRetries), 'EXT-AI-001 structured report ai_max_retries must match ai-provider-config marker');
+
+  const generationRequestID = segments.generationSegment.match(aiRequestIDPattern)?.[1] ?? '';
+  const generationOrganizationID = segments.generationSegment.match(aiOrganizationIDPattern)?.[1] ?? '';
+  const generationUserID = segments.generationSegment.match(aiUserIDPattern)?.[1] ?? '';
+  const citationID = segments.citationSegment.match(aiCitationIDPattern)?.[1] ?? '';
+  const auditRequestID = segments.auditSegment.match(aiRequestIDPattern)?.[1] ?? '';
+  const auditOrganizationID = segments.auditSegment.match(aiOrganizationIDPattern)?.[1] ?? '';
+  const auditUserID = segments.auditSegment.match(aiUserIDPattern)?.[1] ?? '';
+  const auditCitationID = segments.auditSegment.match(aiCitationIDPattern)?.[1] ?? '';
+  assert.equal(String(report.generation_request_id ?? ''), generationRequestID, 'EXT-AI-001 structured report generation_request_id must match ai-generation-route request_id marker');
+  assert.equal(String(report.generation_organization_id ?? ''), generationOrganizationID, 'EXT-AI-001 structured report generation_organization_id must match ai-generation-route organization_id marker');
+  assert.equal(String(report.generation_user_id ?? ''), generationUserID, 'EXT-AI-001 structured report generation_user_id must match ai-generation-route user_id marker');
+  assert.equal(String(report.citation_id ?? ''), citationID, 'EXT-AI-001 structured report citation_id must match ai-citation-verification citation_id marker');
+  assert.equal(String(report.audit_request_id ?? ''), auditRequestID, 'EXT-AI-001 structured report audit_request_id must match ai-audit-persistence request_id marker');
+  assert.equal(String(report.audit_organization_id ?? ''), auditOrganizationID, 'EXT-AI-001 structured report audit_organization_id must match ai-audit-persistence organization_id marker');
+  assert.equal(String(report.audit_user_id ?? ''), auditUserID, 'EXT-AI-001 structured report audit_user_id must match ai-audit-persistence user_id marker');
+  assert.equal(String(report.audit_citation_id ?? ''), auditCitationID, 'EXT-AI-001 structured report audit_citation_id must match ai-audit-persistence citation_id marker');
+  assert.equal(report.provider_timeout, true, 'EXT-AI-001 structured report provider_timeout must be true');
+  assert.equal(report.retry_exhausted, true, 'EXT-AI-001 structured report retry_exhausted must be true');
+  assert.equal(report.fail_closed, true, 'EXT-AI-001 structured report fail_closed must be true');
 }
 
 function assertStrictWebSocketArtifactRoomBinding(evidence, itemID) {

@@ -2766,9 +2766,16 @@ function recordEvidence(manifest, report, artifact, command) {
 }
 
 function structuredEvidenceForReport(itemID, report) {
-  if (itemID !== 'DATA-RLS-001') {
-    return null;
+  if (itemID === 'DATA-RLS-001') {
+    return structuredTenantRLSEvidenceForReport(report);
   }
+  if (itemID === 'EXT-AI-001') {
+    return structuredAIEvidenceForReport(report);
+  }
+  return null;
+}
+
+function structuredTenantRLSEvidenceForReport(report) {
   const dbProof = (Array.isArray(report.probes) ? report.probes : [])
     .find((probe) => probe.name === 'database-rls-context-proof');
   assert.ok(dbProof, 'DATA-RLS-001 structured evidence requires database-rls-context-proof probe');
@@ -2792,6 +2799,40 @@ function structuredEvidenceForReport(itemID, report) {
           write_denied: outcome?.write_denied === true,
         }))
         : [],
+    },
+  };
+}
+
+function structuredAIEvidenceForReport(report) {
+  const probes = Array.isArray(report.probes) ? report.probes : [];
+  const provider = probes.find((probe) => probe.name === 'ai-provider-config');
+  const generation = probes.find((probe) => probe.name === 'ai-generation-route');
+  const degradation = probes.find((probe) => probe.name === 'ai-timeout-degradation');
+  const citation = probes.find((probe) => probe.name === 'ai-citation-verification');
+  const audit = probes.find((probe) => probe.name === 'ai-audit-persistence');
+  assert.ok(provider, 'EXT-AI-001 structured evidence requires ai-provider-config probe');
+  assert.ok(generation, 'EXT-AI-001 structured evidence requires ai-generation-route probe');
+  assert.ok(degradation, 'EXT-AI-001 structured evidence requires ai-timeout-degradation probe');
+  assert.ok(citation, 'EXT-AI-001 structured evidence requires ai-citation-verification probe');
+  assert.ok(audit, 'EXT-AI-001 structured evidence requires ai-audit-persistence probe');
+  return {
+    ai_generation_audit_proof: {
+      ai_provider: String(provider.ai_provider ?? ''),
+      ai_chat_model: String(provider.ai_chat_model ?? ''),
+      ai_chat_endpoint: String(provider.ai_chat_endpoint ?? ''),
+      ai_http_timeout_ms: Number(provider.ai_http_timeout_ms),
+      ai_max_retries: Number(provider.ai_max_retries),
+      generation_request_id: String(generation.request_id ?? ''),
+      generation_organization_id: String(generation.organization_id ?? ''),
+      generation_user_id: String(generation.user_id ?? ''),
+      provider_timeout: degradation.provider_timeout === true,
+      retry_exhausted: degradation.retry_exhausted === true,
+      fail_closed: degradation.fail_closed === true,
+      citation_id: String(citation.citation_id ?? ''),
+      audit_request_id: String(audit.request_id ?? ''),
+      audit_organization_id: String(audit.organization_id ?? ''),
+      audit_user_id: String(audit.user_id ?? ''),
+      audit_citation_id: String(audit.citation_id ?? ''),
     },
   };
 }
