@@ -41,6 +41,18 @@ const tenantRLSMarkerSummary = [
   'load_run_id=load-run-123',
 ].join(', ');
 
+const tenantRLSTableNames = [
+  'organizations',
+  'users',
+  'scripture_texts',
+  'refresh_tokens',
+  'journal_entries',
+  'live_rooms',
+  'room_participants',
+  'ai_request_logs',
+  'citation_trails',
+];
+
 const tenantAPIProbeMarkerSummaries = {
   'owner-create-encrypted-journal': 'create returned HTTP 201; verified markers: same-tenant journal write accepted, encrypted journal created, plaintext not returned, plaintext-shaped journal payload denied, malformed encrypted envelope rejected, journal_id=entry-1, load_run_id=load-run-123',
   'blocked-journal-tenant-override-write-denied': 'tenant override journal write returned HTTP 400; verified markers: cross-tenant journal write denied, tenant override rejected, load_run_id=load-run-123',
@@ -129,6 +141,7 @@ function tenantRLSProbeReport(overridesByProbe = {}) {
         row_security: 'on',
         rls_tables_verified: 9,
         rls_forced_tables: 9,
+        rls_table_names: tenantRLSTableNames,
         rls_policy_scope: 'app.current_org_id',
         result_summary: `database RLS proof returned HTTP 200; verified markers: ${tenantRLSMarkerSummary}`,
         ...(overridesByProbe['database-rls-context-proof'] ?? {}),
@@ -1477,6 +1490,22 @@ test('recordEvidence rejects tenant RLS evidence without structured RLS table co
       'go run ./tools/tenantprobe',
     ),
     /database-rls-context-proof must include structured rls_tables_verified=9/,
+  );
+});
+
+test('recordEvidence rejects tenant RLS evidence without exact structured RLS table names', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DATA-RLS-001' }] },
+      tenantRLSProbeReport({
+        'database-rls-context-proof': {
+          rls_table_names: tenantRLSTableNames.filter((table) => table !== 'room_participants'),
+        },
+      }),
+      'artifacts/tenantprobe.json',
+      'go run ./tools/tenantprobe',
+    ),
+    /structured rls_table_names must match every tenant-scoped table/,
   );
 });
 

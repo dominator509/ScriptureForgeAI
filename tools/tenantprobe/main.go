@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -46,19 +47,20 @@ type report struct {
 }
 
 type probeResult struct {
-	Name              string `json:"name"`
-	Target            string `json:"target"`
-	Passed            bool   `json:"passed"`
-	StatusCode        int    `json:"status_code,omitempty"`
-	LatencyMS         int64  `json:"latency_ms,omitempty"`
-	JournalID         string `json:"journal_id,omitempty"`
-	RoomID            string `json:"room_id,omitempty"`
-	ApplicationRole   string `json:"application_role,omitempty"`
-	RowSecurity       string `json:"row_security,omitempty"`
-	RLSTablesVerified int    `json:"rls_tables_verified,omitempty"`
-	RLSForcedTables   int    `json:"rls_forced_tables,omitempty"`
-	RLSPolicyScope    string `json:"rls_policy_scope,omitempty"`
-	ResultSummary     string `json:"result_summary"`
+	Name              string   `json:"name"`
+	Target            string   `json:"target"`
+	Passed            bool     `json:"passed"`
+	StatusCode        int      `json:"status_code,omitempty"`
+	LatencyMS         int64    `json:"latency_ms,omitempty"`
+	JournalID         string   `json:"journal_id,omitempty"`
+	RoomID            string   `json:"room_id,omitempty"`
+	ApplicationRole   string   `json:"application_role,omitempty"`
+	RowSecurity       string   `json:"row_security,omitempty"`
+	RLSTablesVerified int      `json:"rls_tables_verified,omitempty"`
+	RLSForcedTables   int      `json:"rls_forced_tables,omitempty"`
+	RLSTableNames     []string `json:"rls_table_names,omitempty"`
+	RLSPolicyScope    string   `json:"rls_policy_scope,omitempty"`
+	ResultSummary     string   `json:"result_summary"`
 }
 
 type journalPayload struct {
@@ -74,7 +76,19 @@ type roomPayload struct {
 	Title string `json:"title"`
 }
 
-var requiredDBRLSMarkers = []string{
+var tenantScopedRLSTables = []string{
+	"organizations",
+	"users",
+	"scripture_texts",
+	"refresh_tokens",
+	"journal_entries",
+	"live_rooms",
+	"room_participants",
+	"ai_request_logs",
+	"citation_trails",
+}
+
+var requiredDBRLSMarkers = append([]string{
 	"staging artifact",
 	"current_user=scriptureforge_app",
 	"non-superuser",
@@ -87,15 +101,7 @@ var requiredDBRLSMarkers = []string{
 	"rls_tables_verified=9",
 	"rls_forced_tables=9",
 	"rls_policy_scope=app.current_org_id",
-	"organizations",
-	"users",
-	"scripture_texts",
-	"refresh_tokens",
-	"journal_entries",
-	"live_rooms",
-	"room_participants",
-	"ai_request_logs",
-	"citation_trails",
+}, append(tenantScopedRLSTables, []string{
 	"same-tenant read visible",
 	"cross-tenant read hidden",
 	"cross-tenant write denied",
@@ -105,7 +111,7 @@ var requiredDBRLSMarkers = []string{
 	"privileged_mfa_enrollment_rls=true",
 	"ai_audit_rls=true",
 	"generated_curriculum_audit_rls=true",
-}
+}...)...)
 
 var uuidPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
@@ -294,6 +300,7 @@ func probeDBRLSArtifact(client *http.Client, target, releaseCandidate, serviceVe
 		result.RowSecurity = "on"
 		result.RLSTablesVerified = 9
 		result.RLSForcedTables = 9
+		result.RLSTableNames = slices.Clone(tenantScopedRLSTables)
 		result.RLSPolicyScope = "app.current_org_id"
 	}
 	return result

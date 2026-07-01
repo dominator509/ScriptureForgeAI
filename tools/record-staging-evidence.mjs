@@ -1498,6 +1498,7 @@ function validateTenantRLSEvidence(report, manifest) {
           `DATA-RLS-001 database-rls-context-proof result_summary must include verified marker ${marker}`,
         );
       }
+      assert.deepEqual(probe.rls_table_names, requiredAppGrantTableNames, 'DATA-RLS-001 database-rls-context-proof structured rls_table_names must match every tenant-scoped table');
       assertProbeLoadRunBinding(probe.name, summary, reportLoadRunID, probeLoadRunIDs);
     } else if (probe.name.includes('journal')) {
       assert.match(target, /^https:\/\//, `${probe.name} target must be an HTTPS deployed API URL`);

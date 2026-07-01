@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -703,7 +704,7 @@ func TestDBRLSArtifactSummarizesVerifiedTenantScopedTables(t *testing.T) {
 	if !result.Passed {
 		t.Fatalf("DB RLS proof failed: %+v", result)
 	}
-	if result.ApplicationRole != "scriptureforge_app" || result.RowSecurity != "on" || result.RLSTablesVerified != 9 || result.RLSForcedTables != 9 || result.RLSPolicyScope != "app.current_org_id" {
+	if result.ApplicationRole != "scriptureforge_app" || result.RowSecurity != "on" || result.RLSTablesVerified != 9 || result.RLSForcedTables != 9 || !slices.Equal(result.RLSTableNames, tenantScopedRLSTables) || result.RLSPolicyScope != "app.current_org_id" {
 		t.Fatalf("DB RLS proof missing structured fields: %+v", result)
 	}
 	for _, marker := range []string{
