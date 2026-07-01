@@ -2073,7 +2073,11 @@ function validateSecurityEvidence(report, manifest) {
   const expectedProbeCount = requiredArtifactProbes.size + (requiresDBUser ? 1 : 0);
   const probes = Array.isArray(report.probes) ? report.probes : [];
   assert.equal(probes.length, expectedProbeCount, 'security report must include exactly the required probes for requested evidence items');
-  const reportLoadRunID = String(report.load_run_id ?? '').trim()
+  const explicitReportLoadRunID = String(report.load_run_id ?? '').trim();
+  if (String(manifest.release_candidate ?? '').trim()) {
+    assert.ok(explicitReportLoadRunID, 'security report must include load_run_id');
+  }
+  const reportLoadRunID = explicitReportLoadRunID
     || summaryMarkerValue(String(probes[0]?.result_summary ?? ''), 'load_run_id');
   assert.ok(reportLoadRunID, 'security report must include load_run_id');
 

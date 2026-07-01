@@ -6262,6 +6262,7 @@ test('recordEvidence records production-grade security evidence', () => {
       threshold_pass: true,
       release_candidate: 'abc123',
       service_version: 'scriptureforge-api:abc123',
+      load_run_id: 'load-run-123',
       evidence_items: ['SEC-SECRETS-001', 'SEC-DBUSER-001'],
       probes: [
         ...artifactProbeNames.map((name) => ({
@@ -6295,6 +6296,39 @@ test('recordEvidence records production-grade security evidence', () => {
 
   assert.equal(updated.items[0].status, 'passed');
   assert.equal(updated.items[1].status, 'passed');
+});
+
+test('recordEvidence rejects security evidence without report load run identity', () => {
+  const artifactProbeNames = [
+    'irsa-service-account',
+    'secret-provider-class',
+    'synced-secret-metadata-redacted',
+    'iam-secrets-policy',
+    'scoped-secrets-access-test',
+  ];
+
+  assert.throws(
+    () => recordEvidence(
+      { release_candidate: 'abc123', items: [{ id: 'SEC-SECRETS-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['SEC-SECRETS-001'],
+        probes: artifactProbeNames.map((name) => ({
+          name,
+          passed: true,
+          target: `https://artifacts.staging.scriptureforge.ai/security/${name}.txt`,
+          status_code: 200,
+          result_summary: securityProbeMarkerSummaries[name],
+        })),
+      },
+      'artifacts/securityprobe.json',
+      'go run ./tools/securityprobe -probe-secrets',
+    ),
+    /security report must include load_run_id/,
+  );
 });
 
 test('recordEvidence rejects DB user evidence without structured current user proof', () => {
@@ -6349,6 +6383,7 @@ test('recordEvidence rejects secret evidence without concrete IAM role ARN marke
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['SEC-SECRETS-001'],
         probes: artifactProbeNames.map((name) => ({
           name,
@@ -6384,6 +6419,7 @@ test('recordEvidence rejects secret evidence with mismatched role ARN markers', 
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['SEC-SECRETS-001'],
         probes: artifactProbeNames.map((name) => ({
           name,
@@ -6419,6 +6455,7 @@ test('recordEvidence rejects security evidence for a different release candidate
         threshold_pass: true,
         release_candidate: 'def456',
         service_version: 'scriptureforge-api:def456',
+        load_run_id: 'load-run-123',
         evidence_items: ['SEC-SECRETS-001'],
         probes: artifactProbeNames.map((name) => ({
           name,
