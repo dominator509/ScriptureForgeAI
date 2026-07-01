@@ -7,7 +7,9 @@ target/
 .env.*
 !.env.example
 !.env.*.example
-.serena/
+.serena/*
+!.serena/.gitignore
+!.serena/project.yml
 .tools/
 .tmp/
 .gocache/

@@ -1,0 +1,50 @@
+project_name: "ScriptureForgeAI"
+languages:
+  - go
+  - typescript
+  - rust
+  - terraform
+  - markdown
+  - yaml
+encoding: "utf-8"
+line_ending:
+language_backend: LSP
+ignore_all_files_in_gitignore: true
+ls_specific_settings: {}
+additional_workspace_folders:
+  - web
+  - mobile
+  - services/scripture-engine
+  - production-readiness
+  - tools
+ignored_paths:
+  - node_modules
+  - web/node_modules
+  - mobile/node_modules
+  - .next
+  - web/.next
+  - dist
+  - coverage
+  - target
+  - services/scripture-engine/target
+  - .terraform
+  - build/terraform/.terraform
+  - artifacts
+  - .tools
+  - .gocache
+  - .npm-cache
+  - .serena/cache
+  - "*.tsbuildinfo"
+  - "*.tfstate"
+  - "*.tfstate.*"
+  - "production-readiness/staging-evidence.staging.json"
+read_only: false
+excluded_tools: []
+included_optional_tools: []
+fixed_tools: []
+default_modes: []
+added_modes: []
+initial_prompt: "Read AGENTS.md and REPO_BRIEF.md before making changes. Keep production-readiness claims evidence-based."
+symbol_info_budget:
+read_only_memory_patterns: []
+ignored_memory_patterns: []
