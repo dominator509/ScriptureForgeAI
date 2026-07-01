@@ -10722,6 +10722,34 @@ test('recordEvidence records production-grade abuse evidence', () => {
   assert.equal(updated.items[0].status, 'passed');
   assert.match(updated.items[0].evidence[0].result_summary, /config_artifact_verified=true/);
   assert.match(updated.items[0].evidence[0].result_summary, /distinct_abuse_artifacts=true/);
+  assert.deepEqual(updated.items[0].evidence[0].structured_report, {
+    abuse_rate_limit_proof: {
+      config_artifact_verified: true,
+      config_assignments: {
+        ABUSE_LIMIT_AUTH_REQUESTS: 2,
+        ABUSE_LIMIT_AUTH_WINDOW_SECONDS: 60,
+        ABUSE_LIMIT_AUTH_ACCOUNT_REQUESTS: 2,
+        ABUSE_LIMIT_AUTH_ACCOUNT_WINDOW_SECONDS: 60,
+        ABUSE_LIMIT_AI_REQUESTS: 2,
+        ABUSE_LIMIT_JOURNAL_REQUESTS: 2,
+        ABUSE_LIMIT_ROOMS_REQUESTS: 2,
+        ABUSE_LIMIT_WEBSOCKET_REQUESTS: 2,
+        ABUSE_LIMIT_MAX_BUCKETS: 1000,
+      },
+      profiles: abuseProbeNames.map((name) => ({
+        name,
+        attempts: 2,
+        retry_after: 60,
+        rate_limit: 1,
+        rate_limit_remaining: 0,
+        rate_limit_reset: 1782403200,
+        account_scoped: name === 'auth-account-rate-limit',
+        forwarded_client_ip_rotated: name === 'auth-account-rate-limit',
+        refresh_token_scoped: name === 'auth-refresh-rate-limit',
+        websocket_upgrade: name === 'websocket-rate-limit',
+      })),
+    },
+  });
 });
 
 test('recordEvidence rejects abuse evidence with only summary load run identity', () => {

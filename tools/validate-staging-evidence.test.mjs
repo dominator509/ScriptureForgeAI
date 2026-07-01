@@ -3747,6 +3747,64 @@ test('validateManifest strict release rejects abuse config with zero assignment 
   );
 });
 
+test('validateManifest strict release rejects abuse evidence without structured rate-limit proof', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const abuseItem = manifest.items.find((item) => item.id === 'ABUSE-LIMIT-001');
+  delete abuseItem.evidence[0].structured_report;
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /ABUSE-LIMIT-001 strict release evidence must include exactly one structured abuse_rate_limit_proof report/,
+  );
+});
+
+test('validateManifest strict release rejects abuse structured profile attempt drift', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const abuseItem = manifest.items.find((item) => item.id === 'ABUSE-LIMIT-001');
+  abuseItem.evidence[0].structured_report.abuse_rate_limit_proof.profiles
+    .find((profile) => profile.name === 'auth-rate-limit').attempts = 3;
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /ABUSE-LIMIT-001 structured report auth-rate-limit attempts must match summary marker/,
+  );
+});
+
+test('validateManifest strict release rejects abuse structured header drift', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const abuseItem = manifest.items.find((item) => item.id === 'ABUSE-LIMIT-001');
+  abuseItem.evidence[0].structured_report.abuse_rate_limit_proof.profiles
+    .find((profile) => profile.name === 'journal-rate-limit').rate_limit_remaining = 1;
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /ABUSE-LIMIT-001 structured report journal-rate-limit rate_limit_remaining must match summary marker/,
+  );
+});
+
+test('validateManifest strict release rejects abuse structured config drift', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const abuseItem = manifest.items.find((item) => item.id === 'ABUSE-LIMIT-001');
+  abuseItem.evidence[0].structured_report.abuse_rate_limit_proof.config_assignments.ABUSE_LIMIT_AI_REQUESTS = 5;
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /ABUSE-LIMIT-001 structured report config_assignments\.ABUSE_LIMIT_AI_REQUESTS must match config_artifact_summary marker/,
+  );
+});
+
 test('validateManifest strict release rejects HTTP load evidence without threshold and artifact markers', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
@@ -4680,9 +4738,42 @@ function passedEvidenceFor(id) {
       : id === 'SEC-SIGNOFF-001'
         ? 'threat model approval complete; security/dependency_risk_register.md#DRR-001 dependency risk decision reviewed; residual risk review complete; owner/security approval recorded; release risk signoff approved; signoff_artifact_verified=true; release_candidate=0123456789abcdef0123456789abcdef01234567'
       : `${id} passed`,
+    ...(id === 'ABUSE-LIMIT-001' ? { structured_report: abuseRateLimitStructuredReport() } : {}),
     ...(id === 'DATA-RLS-001' ? { structured_report: tenantRLSStructuredReport() } : {}),
     ...(id === 'EXT-AI-001' ? { structured_report: aiGenerationAuditStructuredReport() } : {}),
     ...(id === 'EXT-ZOOM-001' ? { structured_report: zoomResilienceWebhookStructuredReport() } : {}),
+  };
+}
+
+function abuseRateLimitStructuredReport() {
+  const profileNames = ['auth-rate-limit', 'auth-account-rate-limit', 'auth-refresh-rate-limit', 'ai-rate-limit', 'journal-rate-limit', 'rooms-rate-limit', 'websocket-rate-limit'];
+  return {
+    abuse_rate_limit_proof: {
+      config_artifact_verified: true,
+      config_assignments: {
+        ABUSE_LIMIT_AUTH_REQUESTS: 2,
+        ABUSE_LIMIT_AUTH_WINDOW_SECONDS: 60,
+        ABUSE_LIMIT_AUTH_ACCOUNT_REQUESTS: 2,
+        ABUSE_LIMIT_AUTH_ACCOUNT_WINDOW_SECONDS: 60,
+        ABUSE_LIMIT_AI_REQUESTS: 2,
+        ABUSE_LIMIT_JOURNAL_REQUESTS: 2,
+        ABUSE_LIMIT_ROOMS_REQUESTS: 2,
+        ABUSE_LIMIT_WEBSOCKET_REQUESTS: 2,
+        ABUSE_LIMIT_MAX_BUCKETS: 1000,
+      },
+      profiles: profileNames.map((name) => ({
+        name,
+        attempts: 2,
+        retry_after: 60,
+        rate_limit: 1,
+        rate_limit_remaining: 0,
+        rate_limit_reset: 1782403200,
+        account_scoped: name === 'auth-account-rate-limit',
+        forwarded_client_ip_rotated: name === 'auth-account-rate-limit',
+        refresh_token_scoped: name === 'auth-refresh-rate-limit',
+        websocket_upgrade: name === 'websocket-rate-limit',
+      })),
+    },
   };
 }
 

@@ -1932,6 +1932,7 @@ function validateStrictReleaseItemEvidence(item, manifest) {
     assertStrictAbuseAttempts(evidence);
     assertStrictAbuseRateLimitHeaders(evidence);
     assertStrictAbuseConfigAssignments(evidence);
+    assertStrictAbuseStructuredReport(evidence);
   }
   if (item.id === 'DEPLOY-TF-001') {
     const approvalEvidenceWithoutTicket = evidence.some((artifact) => {
@@ -2742,6 +2743,50 @@ function assertStrictAbuseConfigAssignments(evidence) {
     assert.ok(match, `ABUSE-LIMIT-001 strict release config_artifact_summary must include concrete ${key}=<positive integer>`);
     const value = Number.parseInt(match[1], 10);
     assert.ok(value > 0, `ABUSE-LIMIT-001 strict release config_artifact_summary ${key} must be a positive integer`);
+  }
+}
+
+function assertStrictAbuseStructuredReport(evidence) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.abuse_rate_limit_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    'ABUSE-LIMIT-001 strict release evidence must include exactly one structured abuse_rate_limit_proof report',
+  );
+  const report = structuredReports[0];
+  assert.equal(report.config_artifact_verified, true, 'ABUSE-LIMIT-001 structured report config_artifact_verified must be true');
+  for (const key of abuseConfigAssignmentKeys) {
+    const segmentText = findEvidenceSegment(evidence, 'config_artifact_summary');
+    const expected = extractNumericMarker(segmentText, key, 'ABUSE-LIMIT-001');
+    assert.equal(
+      Number(report.config_assignments?.[key]),
+      expected,
+      `ABUSE-LIMIT-001 structured report config_assignments.${key} must match config_artifact_summary marker`,
+    );
+  }
+  for (const segment of abuseRateLimitProfileSegments) {
+    const segmentText = findEvidenceSegment(evidence, segment);
+    const profile = (Array.isArray(report.profiles) ? report.profiles : []).find((candidate) => candidate?.name === segment);
+    assert.ok(profile, `ABUSE-LIMIT-001 structured report profiles must include ${segment}`);
+    const attemptsMatch = /(?:after\s+(\d+)\s+attempts\b|(?:^|[\s,])attempts=(\d+)\b)/i.exec(segmentText);
+    const attempts = Number.parseInt(attemptsMatch?.[1] ?? attemptsMatch?.[2] ?? '0', 10);
+    assert.equal(Number(profile.attempts), attempts, `ABUSE-LIMIT-001 structured report ${segment} attempts must match summary marker`);
+    assert.equal(Number(profile.retry_after), extractAbuseHeader(segmentText, 'Retry-After', segment), `ABUSE-LIMIT-001 structured report ${segment} retry_after must match summary marker`);
+    assert.equal(Number(profile.rate_limit), extractAbuseHeader(segmentText, 'X-RateLimit-Limit', segment), `ABUSE-LIMIT-001 structured report ${segment} rate_limit must match summary marker`);
+    assert.equal(Number(profile.rate_limit_remaining), extractAbuseHeader(segmentText, 'X-RateLimit-Remaining', segment), `ABUSE-LIMIT-001 structured report ${segment} rate_limit_remaining must match summary marker`);
+    assert.equal(Number(profile.rate_limit_reset), extractAbuseHeader(segmentText, 'X-RateLimit-Reset', segment), `ABUSE-LIMIT-001 structured report ${segment} rate_limit_reset must match summary marker`);
+    if (segment === 'auth-account-rate-limit') {
+      assert.equal(profile.account_scoped, true, 'ABUSE-LIMIT-001 structured report auth-account-rate-limit account_scoped must be true');
+      assert.equal(profile.forwarded_client_ip_rotated, true, 'ABUSE-LIMIT-001 structured report auth-account-rate-limit forwarded_client_ip_rotated must be true');
+    }
+    if (segment === 'auth-refresh-rate-limit') {
+      assert.equal(profile.refresh_token_scoped, true, 'ABUSE-LIMIT-001 structured report auth-refresh-rate-limit refresh_token_scoped must be true');
+    }
+    if (segment === 'websocket-rate-limit') {
+      assert.equal(profile.websocket_upgrade, true, 'ABUSE-LIMIT-001 structured report websocket-rate-limit websocket_upgrade must be true');
+    }
   }
 }
 

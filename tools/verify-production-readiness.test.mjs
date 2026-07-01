@@ -965,6 +965,7 @@ function passedEvidenceFor(id, releaseCandidate = sha) {
       ? 'security/release-risk-signoff.md'
       : `https://artifacts.staging.scriptureforge.ai/${probe}.json`,
     result_summary: strictEvidenceSummary(id, releaseCandidate),
+    ...(id === 'ABUSE-LIMIT-001' ? { structured_report: abuseRateLimitStructuredReport() } : {}),
     ...(id === 'DATA-RLS-001' ? { structured_report: tenantRLSStructuredReport() } : {}),
     ...(id === 'EXT-AI-001' ? { structured_report: aiGenerationAuditStructuredReport() } : {}),
     ...(id === 'EXT-ZOOM-001' ? { structured_report: zoomResilienceWebhookStructuredReport() } : {}),
@@ -1115,6 +1116,38 @@ function tenantRLSStructuredReport() {
         same_visible: true,
         cross_hidden: true,
         write_denied: true,
+      })),
+    },
+  };
+}
+
+function abuseRateLimitStructuredReport() {
+  const profileNames = ['auth-rate-limit', 'auth-account-rate-limit', 'auth-refresh-rate-limit', 'ai-rate-limit', 'journal-rate-limit', 'rooms-rate-limit', 'websocket-rate-limit'];
+  return {
+    abuse_rate_limit_proof: {
+      config_artifact_verified: true,
+      config_assignments: {
+        ABUSE_LIMIT_AUTH_REQUESTS: 2,
+        ABUSE_LIMIT_AUTH_WINDOW_SECONDS: 60,
+        ABUSE_LIMIT_AUTH_ACCOUNT_REQUESTS: 2,
+        ABUSE_LIMIT_AUTH_ACCOUNT_WINDOW_SECONDS: 60,
+        ABUSE_LIMIT_AI_REQUESTS: 2,
+        ABUSE_LIMIT_JOURNAL_REQUESTS: 2,
+        ABUSE_LIMIT_ROOMS_REQUESTS: 2,
+        ABUSE_LIMIT_WEBSOCKET_REQUESTS: 2,
+        ABUSE_LIMIT_MAX_BUCKETS: 1000,
+      },
+      profiles: profileNames.map((name) => ({
+        name,
+        attempts: 2,
+        retry_after: 60,
+        rate_limit: 1,
+        rate_limit_remaining: 0,
+        rate_limit_reset: 1782403200,
+        account_scoped: name === 'auth-account-rate-limit',
+        forwarded_client_ip_rotated: name === 'auth-account-rate-limit',
+        refresh_token_scoped: name === 'auth-refresh-rate-limit',
+        websocket_upgrade: name === 'websocket-rate-limit',
       })),
     },
   };

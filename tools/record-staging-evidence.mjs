@@ -2766,6 +2766,9 @@ function recordEvidence(manifest, report, artifact, command) {
 }
 
 function structuredEvidenceForReport(itemID, report) {
+  if (itemID === 'ABUSE-LIMIT-001') {
+    return structuredAbuseEvidenceForReport(report);
+  }
   if (itemID === 'DATA-RLS-001') {
     return structuredTenantRLSEvidenceForReport(report);
   }
@@ -2776,6 +2779,30 @@ function structuredEvidenceForReport(itemID, report) {
     return structuredZoomEvidenceForReport(report);
   }
   return null;
+}
+
+function structuredAbuseEvidenceForReport(report) {
+  return {
+    abuse_rate_limit_proof: {
+      config_artifact_verified: report.config_artifact_verified === true,
+      config_assignments: Object.fromEntries(abuseConfigAssignmentKeys.map((key) => {
+        const match = new RegExp(`\\b${key}=([0-9]+)\\b`).exec(String(report.config_artifact_summary ?? ''));
+        return [key, match ? Number.parseInt(match[1], 10) : 0];
+      })),
+      profiles: (Array.isArray(report.probes) ? report.probes : []).map((probe) => ({
+        name: String(probe?.name ?? ''),
+        attempts: Number(probe?.attempts),
+        retry_after: Number.parseInt(String(probe?.retry_after ?? ''), 10),
+        rate_limit: Number.parseInt(String(probe?.rate_limit ?? ''), 10),
+        rate_limit_remaining: Number.parseInt(String(probe?.rate_limit_remaining ?? ''), 10),
+        rate_limit_reset: Number.parseInt(String(probe?.rate_limit_reset ?? ''), 10),
+        account_scoped: probe?.account_scoped === true,
+        forwarded_client_ip_rotated: probe?.forwarded_client_ip_rotated === true,
+        refresh_token_scoped: probe?.refresh_token_scoped === true,
+        websocket_upgrade: probe?.websocket_upgrade === true,
+      })),
+    },
+  };
 }
 
 function structuredTenantRLSEvidenceForReport(report) {
