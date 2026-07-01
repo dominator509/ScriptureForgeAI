@@ -206,7 +206,7 @@
       "status": "pending_external",
       "description": "Zoom OAuth, meeting creation fallback, webhook signature validation, endpoint URL validation, duplicate webhook idempotency, and room mapping are proven with staging credentials.",
       "required_evidence": [
-        "tools/zoomprobe JSON report with EXT-ZOOM-001 evidence item and report-level load_run_id=<same run>",
+        "tools/zoomprobe JSON report with EXT-ZOOM-001 evidence item, report-level load_run_id=<same run>, and persisted staging-manifest structured_report.zoom_resilience_webhook_proof matching timeout/circuit/fallback booleans, webhook signature and timestamp, webhook outcome booleans, URL validation tokens, duplicate delivery/tracking IDs and side-effect booleans, and meeting-to-room mapping IDs",
         "tools/stagingprobe -probe-zoom JSON report",
         "Zoom OAuth probe output with exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
         "Meeting create or fallback output with exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",

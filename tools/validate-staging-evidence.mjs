@@ -2067,6 +2067,13 @@ function validateStrictReleaseItemEvidence(item, manifest) {
       zoomInternalRoomIDPattern,
       'EXT-ZOOM-001 zoom-meeting-room-mapping must include concrete internal_room_id=<id>',
     );
+    assertStrictZoomStructuredReport(evidence, {
+      timeoutCircuitSegment,
+      webhookSignatureSegment,
+      webhookValidationSegment,
+      duplicateSegment,
+      roomMappingSegment,
+    });
   }
   if (item.id === 'EXT-AI-001') {
     const missingCitationVerificationProof = evidence.some((artifact) => {
@@ -2418,6 +2425,45 @@ function assertStrictAIStructuredReport(evidence, segments) {
   assert.equal(report.provider_timeout, true, 'EXT-AI-001 structured report provider_timeout must be true');
   assert.equal(report.retry_exhausted, true, 'EXT-AI-001 structured report retry_exhausted must be true');
   assert.equal(report.fail_closed, true, 'EXT-AI-001 structured report fail_closed must be true');
+}
+
+function assertStrictZoomStructuredReport(evidence, segments) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.zoom_resilience_webhook_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    'EXT-ZOOM-001 strict release evidence must include exactly one structured zoom_resilience_webhook_proof report',
+  );
+  const report = structuredReports[0];
+  const webhookSignature = segments.webhookSignatureSegment.match(zoomWebhookSignaturePattern)?.[1] ?? '';
+  const webhookTimestamp = segments.webhookSignatureSegment.match(zoomWebhookTimestampPattern)?.[1] ?? '';
+  const plainToken = segments.webhookValidationSegment.match(zoomPlainTokenPattern)?.[1] ?? '';
+  const encryptedToken = segments.webhookValidationSegment.match(zoomEncryptedTokenPattern)?.[1] ?? '';
+  const duplicateTrackingID = segments.duplicateSegment.match(zoomTrackingIDPattern)?.[1] ?? '';
+  const duplicateDeliveryID = segments.duplicateSegment.match(zoomDeliveryIDPattern)?.[1] ?? '';
+  const meetingExternalID = segments.roomMappingSegment.match(zoomMeetingExternalIDPattern)?.[1] ?? '';
+  const internalRoomID = segments.roomMappingSegment.match(zoomInternalRoomIDPattern)?.[1] ?? '';
+
+  assert.equal(report.provider_timeout, true, 'EXT-ZOOM-001 structured report provider_timeout must be true');
+  assert.equal(report.circuit_open, true, 'EXT-ZOOM-001 structured report circuit_open must be true');
+  assert.equal(report.offline_fallback, true, 'EXT-ZOOM-001 structured report offline_fallback must be true');
+  assert.equal(String(report.webhook_signature ?? ''), webhookSignature, 'EXT-ZOOM-001 structured report webhook_signature must match zoom-webhook-signature-delivery marker');
+  assert.equal(String(report.webhook_timestamp ?? ''), webhookTimestamp, 'EXT-ZOOM-001 structured report webhook_timestamp must match zoom-webhook-signature-delivery marker');
+  assert.equal(report.stale_rejected, true, 'EXT-ZOOM-001 structured report stale_rejected must be true');
+  assert.equal(report.replay_rejected, true, 'EXT-ZOOM-001 structured report replay_rejected must be true');
+  assert.equal(report.invalid_signature_rejected, true, 'EXT-ZOOM-001 structured report invalid_signature_rejected must be true');
+  assert.equal(report.signed_delivery_accepted, true, 'EXT-ZOOM-001 structured report signed_delivery_accepted must be true');
+  assert.equal(String(report.plain_token ?? ''), plainToken, 'EXT-ZOOM-001 structured report plain_token must match zoom-webhook-url-validation marker');
+  assert.equal(String(report.encrypted_token ?? ''), encryptedToken, 'EXT-ZOOM-001 structured report encrypted_token must match zoom-webhook-url-validation marker');
+  assert.equal(String(report.validation_response ?? ''), '200', 'EXT-ZOOM-001 structured report validation_response must be 200');
+  assert.equal(String(report.duplicate_delivery_id ?? ''), duplicateDeliveryID, 'EXT-ZOOM-001 structured report duplicate_delivery_id must match zoom-duplicate-webhook-idempotency delivery_id marker');
+  assert.equal(String(report.duplicate_tracking_id ?? ''), duplicateTrackingID, 'EXT-ZOOM-001 structured report duplicate_tracking_id must match zoom-duplicate-webhook-idempotency x-zm-trackingid marker');
+  assert.equal(report.single_state_mutation, true, 'EXT-ZOOM-001 structured report single_state_mutation must be true');
+  assert.equal(report.no_duplicate_side_effects, true, 'EXT-ZOOM-001 structured report no_duplicate_side_effects must be true');
+  assert.equal(String(report.meeting_external_id ?? ''), meetingExternalID, 'EXT-ZOOM-001 structured report meeting_external_id must match zoom-meeting-room-mapping marker');
+  assert.equal(String(report.internal_room_id ?? ''), internalRoomID, 'EXT-ZOOM-001 structured report internal_room_id must match zoom-meeting-room-mapping marker');
 }
 
 function assertStrictWebSocketArtifactRoomBinding(evidence, itemID) {

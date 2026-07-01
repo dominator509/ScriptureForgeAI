@@ -1639,6 +1639,62 @@ test('validateManifest strict release rejects Zoom evidence without segment load
   );
 });
 
+test('validateManifest strict release rejects Zoom evidence without structured resilience webhook proof', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'EXT-ZOOM-001');
+  delete item.evidence[0].structured_report;
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /EXT-ZOOM-001 strict release evidence must include exactly one structured zoom_resilience_webhook_proof report/,
+  );
+});
+
+test('validateManifest strict release rejects Zoom structured webhook signature drift', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'EXT-ZOOM-001');
+  item.evidence[0].structured_report.zoom_resilience_webhook_proof.webhook_signature = 'v0=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /EXT-ZOOM-001 structured report webhook_signature must match zoom-webhook-signature-delivery marker/,
+  );
+});
+
+test('validateManifest strict release rejects Zoom structured duplicate ID drift', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'EXT-ZOOM-001');
+  item.evidence[0].structured_report.zoom_resilience_webhook_proof.duplicate_delivery_id = 'zm-delivery-drift';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /EXT-ZOOM-001 structured report duplicate_delivery_id must match zoom-duplicate-webhook-idempotency delivery_id marker/,
+  );
+});
+
+test('validateManifest strict release rejects Zoom structured fallback drift', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'EXT-ZOOM-001');
+  item.evidence[0].structured_report.zoom_resilience_webhook_proof.offline_fallback = false;
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /EXT-ZOOM-001 structured report offline_fallback must be true/,
+  );
+});
+
 test('validateManifest strict release rejects AI evidence without citation and audit markers', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
@@ -4626,6 +4682,32 @@ function passedEvidenceFor(id) {
       : `${id} passed`,
     ...(id === 'DATA-RLS-001' ? { structured_report: tenantRLSStructuredReport() } : {}),
     ...(id === 'EXT-AI-001' ? { structured_report: aiGenerationAuditStructuredReport() } : {}),
+    ...(id === 'EXT-ZOOM-001' ? { structured_report: zoomResilienceWebhookStructuredReport() } : {}),
+  };
+}
+
+function zoomResilienceWebhookStructuredReport() {
+  return {
+    zoom_resilience_webhook_proof: {
+      provider_timeout: true,
+      circuit_open: true,
+      offline_fallback: true,
+      webhook_signature: 'v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      webhook_timestamp: '1710000000',
+      stale_rejected: true,
+      replay_rejected: true,
+      invalid_signature_rejected: true,
+      signed_delivery_accepted: true,
+      plain_token: 'zoom-plain-123',
+      encrypted_token: 'zoom-encrypted-456',
+      validation_response: '200',
+      duplicate_delivery_id: 'zm-delivery-123',
+      duplicate_tracking_id: 'zm-track-123',
+      single_state_mutation: true,
+      no_duplicate_side_effects: true,
+      meeting_external_id: 'zoom-123',
+      internal_room_id: 'room-abc',
+    },
   };
 }
 

@@ -3506,6 +3506,28 @@ test('recordEvidence records production-grade Zoom evidence', () => {
   );
 
   assert.equal(updated.items[0].status, 'passed');
+  assert.deepEqual(updated.items[0].evidence[0].structured_report, {
+    zoom_resilience_webhook_proof: {
+      provider_timeout: true,
+      circuit_open: true,
+      offline_fallback: true,
+      webhook_signature: 'v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      webhook_timestamp: '1710000000',
+      stale_rejected: true,
+      replay_rejected: true,
+      invalid_signature_rejected: true,
+      signed_delivery_accepted: true,
+      plain_token: 'zoom-plain-123',
+      encrypted_token: 'zoom-encrypted-456',
+      validation_response: '200',
+      duplicate_delivery_id: 'zm-delivery-123',
+      duplicate_tracking_id: 'zm-track-123',
+      single_state_mutation: true,
+      no_duplicate_side_effects: true,
+      meeting_external_id: 'zoom-123',
+      internal_room_id: 'room-abc',
+    },
+  });
 });
 
 test('recordEvidence rejects Zoom evidence without report load run identity', () => {

@@ -2772,6 +2772,9 @@ function structuredEvidenceForReport(itemID, report) {
   if (itemID === 'EXT-AI-001') {
     return structuredAIEvidenceForReport(report);
   }
+  if (itemID === 'EXT-ZOOM-001') {
+    return structuredZoomEvidenceForReport(report);
+  }
   return null;
 }
 
@@ -2833,6 +2836,42 @@ function structuredAIEvidenceForReport(report) {
       audit_organization_id: String(audit.organization_id ?? ''),
       audit_user_id: String(audit.user_id ?? ''),
       audit_citation_id: String(audit.citation_id ?? ''),
+    },
+  };
+}
+
+function structuredZoomEvidenceForReport(report) {
+  const probes = Array.isArray(report.probes) ? report.probes : [];
+  const timeout = probes.find((probe) => probe.name === 'zoom-timeout-circuit-fallback');
+  const webhook = probes.find((probe) => probe.name === 'zoom-webhook-signature-delivery');
+  const validation = probes.find((probe) => probe.name === 'zoom-webhook-url-validation');
+  const duplicate = probes.find((probe) => probe.name === 'zoom-duplicate-webhook-idempotency');
+  const mapping = probes.find((probe) => probe.name === 'zoom-meeting-room-mapping');
+  assert.ok(timeout, 'EXT-ZOOM-001 structured evidence requires zoom-timeout-circuit-fallback probe');
+  assert.ok(webhook, 'EXT-ZOOM-001 structured evidence requires zoom-webhook-signature-delivery probe');
+  assert.ok(validation, 'EXT-ZOOM-001 structured evidence requires zoom-webhook-url-validation probe');
+  assert.ok(duplicate, 'EXT-ZOOM-001 structured evidence requires zoom-duplicate-webhook-idempotency probe');
+  assert.ok(mapping, 'EXT-ZOOM-001 structured evidence requires zoom-meeting-room-mapping probe');
+  return {
+    zoom_resilience_webhook_proof: {
+      provider_timeout: timeout.provider_timeout === true,
+      circuit_open: timeout.circuit_open === true,
+      offline_fallback: timeout.offline_fallback === true,
+      webhook_signature: String(webhook.webhook_signature ?? ''),
+      webhook_timestamp: String(webhook.webhook_timestamp ?? ''),
+      stale_rejected: webhook.stale_rejected === true,
+      replay_rejected: webhook.replay_rejected === true,
+      invalid_signature_rejected: webhook.invalid_signature_rejected === true,
+      signed_delivery_accepted: webhook.signed_delivery_accepted === true,
+      plain_token: String(validation.plain_token ?? ''),
+      encrypted_token: String(validation.encrypted_token ?? ''),
+      validation_response: String(validation.validation_response ?? ''),
+      duplicate_delivery_id: String(duplicate.delivery_id ?? ''),
+      duplicate_tracking_id: String(duplicate.tracking_id ?? ''),
+      single_state_mutation: duplicate.single_state_mutation === true,
+      no_duplicate_side_effects: duplicate.no_duplicate_side_effects === true,
+      meeting_external_id: String(mapping.meeting_external_id ?? ''),
+      internal_room_id: String(mapping.internal_room_id ?? ''),
     },
   };
 }
