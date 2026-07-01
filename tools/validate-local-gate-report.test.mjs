@@ -648,6 +648,15 @@ test('validateLocalGateReport rejects missing git head', () => {
   assert.throws(() => validateLocalGateReport(report), /git_head/);
 });
 
+test('validateLocalGateReport rejects reports without fresh remote metadata proof', () => {
+  const report = completeReport();
+  delete report.git_remote_refreshed;
+  assert.throws(
+    () => validateLocalGateReport(report),
+    /local gate report requires fresh git remote metadata from git fetch --dry-run/,
+  );
+});
+
 test('validateLocalGateReport rejects reports observed after validation date', () => {
   const report = completeReport();
   report.observed_at = '2026-06-26T00:00:00Z';
@@ -704,6 +713,7 @@ function completeReport({ dryRun = false, failedGateID = '', skippedGateID = '',
     git_upstream: gitUpstream,
     git_ahead: gitAhead,
     git_behind: gitBehind,
+    git_remote_refreshed: true,
     git_status_clean: gitStatusClean,
     git_status_short: gitStatusShort,
     observed_at: '2026-06-25T12:00:00Z',
@@ -915,6 +925,7 @@ function partialReport({ consistentTotals = false } = {}) {
     git_upstream: 'origin/codex/production-readiness-remediation',
     git_ahead: 0,
     git_behind: 0,
+    git_remote_refreshed: true,
     git_status_clean: true,
     git_status_short: '',
     observed_at: '2026-06-25T12:00:00Z',

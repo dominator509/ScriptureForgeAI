@@ -775,6 +775,7 @@ function localGateReport({ dryRun = false, gitHead = sha, gitBranch = 'main', gi
     git_upstream: gitUpstream,
     git_ahead: 0,
     git_behind: 0,
+    git_remote_refreshed: true,
     git_status_clean: true,
     git_status_short: '',
     observed_at: observedAt,

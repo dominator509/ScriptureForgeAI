@@ -85,7 +85,7 @@ export function buildGatePlan({ only = [] } = {}) {
   }));
 }
 
-export async function runGatePlan(plan, { dryRun = false, continueOnFailure = false, executor = executeGate } = {}) {
+export async function runGatePlan(plan, { dryRun = false, continueOnFailure = false, executor = executeGate, gitStateReader = readGitState } = {}) {
   const startedAt = new Date();
   const results = [];
   for (const gate of plan) {
@@ -112,7 +112,7 @@ export async function runGatePlan(plan, { dryRun = false, continueOnFailure = fa
   const failed = results.filter((result) => result.exit_code !== 0);
   return {
     schema_version: 1,
-    ...readGitState(),
+    ...gitStateReader(),
     observed_at: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
     duration_ms: Date.now() - startedAt.getTime(),
     threshold_pass: failed.length === 0 && results.length === plan.length,
@@ -124,31 +124,42 @@ export async function runGatePlan(plan, { dryRun = false, continueOnFailure = fa
   };
 }
 
-function readGitHead() {
-  return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-}
-
-function readGitState() {
-  const statusShort = execFileSync('git', ['status', '--short'], { encoding: 'utf8' }).trimEnd();
-  const branch = execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim();
-  const upstream = readOptionalGit(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}']);
+export function readGitState({ git = execGit, optionalGit = readOptionalGit } = {}) {
+  refreshGitRemoteState(git);
+  const statusShort = git(['status', '--short']).trimEnd();
+  const branch = git(['branch', '--show-current']).trim();
+  const upstream = optionalGit(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}']);
   let ahead = 0;
   let behind = 0;
   if (upstream) {
-    const divergence = readOptionalGit(['rev-list', '--left-right', '--count', `HEAD...${upstream}`]);
+    const divergence = optionalGit(['rev-list', '--left-right', '--count', `HEAD...${upstream}`]);
     const [left, right] = divergence.split(/\s+/).map((value) => Number.parseInt(value, 10));
     ahead = Number.isFinite(left) ? left : 0;
     behind = Number.isFinite(right) ? right : 0;
   }
   return {
-    git_head: readGitHead(),
+    git_head: git(['rev-parse', 'HEAD']).trim(),
     git_branch: branch,
     git_upstream: upstream,
     git_ahead: ahead,
     git_behind: behind,
+    git_remote_refreshed: true,
     git_status_clean: statusShort === '',
     git_status_short: statusShort,
   };
+}
+
+function refreshGitRemoteState(git) {
+  try {
+    git(['fetch', '--dry-run']);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`git fetch --dry-run must succeed before writing local gate report: ${message}`);
+  }
+}
+
+function execGit(args) {
+  return execFileSync('git', args, { encoding: 'utf8' });
 }
 
 function readOptionalGit(args) {

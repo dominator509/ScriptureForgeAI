@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { isAbsolute, resolve } from 'node:path';
 import test from 'node:test';
-import { buildGatePlan, buildSpawnPlan, gateDefinitions, parseArgs, resolveGateForExecution, runGatePlan } from './run-local-gates.mjs';
+import { buildGatePlan, buildSpawnPlan, gateDefinitions, parseArgs, readGitState, resolveGateForExecution, runGatePlan } from './run-local-gates.mjs';
 
 test('parseArgs supports dry run, report, continue, and only', () => {
   const args = parseArgs(['--dry-run', '--continue-on-failure', '--report', 'out.json', '--only', 'go-test,go-vet']);
@@ -188,10 +188,11 @@ test('buildSpawnPlan launches Windows command shims through cmd', () => {
 
 test('runGatePlan dry run reports every gate as skipped and passing', async () => {
   const plan = buildGatePlan({ only: ['go-test', 'go-vet'] });
-  const report = await runGatePlan(plan, { dryRun: true });
+  const report = await runGatePlan(plan, { dryRun: true, gitStateReader: fakeGitState });
   assert.equal(report.threshold_pass, true);
   assert.equal(report.gates_run, 2);
   assert.equal(report.results.every((result) => result.skipped), true);
+  assert.equal(report.git_remote_refreshed, true);
 });
 
 test('runGatePlan stops on first failure unless continueOnFailure is set', async () => {
@@ -202,11 +203,11 @@ test('runGatePlan stops on first failure unless continueOnFailure is set', async
     stderr: `${gate.id} stderr`,
   });
 
-  const stopped = await runGatePlan(plan, { executor });
+  const stopped = await runGatePlan(plan, { executor, gitStateReader: fakeGitState });
   assert.equal(stopped.threshold_pass, false);
   assert.equal(stopped.gates_run, 2);
 
-  const continued = await runGatePlan(plan, { executor, continueOnFailure: true });
+  const continued = await runGatePlan(plan, { executor, continueOnFailure: true, gitStateReader: fakeGitState });
   assert.equal(continued.threshold_pass, false);
   assert.equal(continued.gates_run, 3);
   assert.equal(continued.gates_failed, 1);
@@ -223,6 +224,7 @@ test('runGatePlan records synchronous executor failures as failed gates', async 
 
   const report = await runGatePlan(plan, {
     continueOnFailure: true,
+    gitStateReader: fakeGitState,
     executor: async (gate) => {
       try {
         return await executor(gate);
@@ -237,3 +239,60 @@ test('runGatePlan records synchronous executor failures as failed gates', async 
   assert.equal(report.gates_failed, 1);
   assert.match(report.results[0].stderr_tail, /spawn EINVAL/);
 });
+
+test('readGitState refreshes remote metadata before reading ahead behind counts', () => {
+  const calls = [];
+  const state = readGitState({
+    git: (args) => {
+      calls.push(args.join(' '));
+      if (args.join(' ') === 'fetch --dry-run') return '';
+      if (args.join(' ') === 'status --short') return '';
+      if (args.join(' ') === 'branch --show-current') return 'codex/production-readiness-remediation\n';
+      if (args.join(' ') === 'rev-parse HEAD') return '0123456789abcdef0123456789abcdef01234567\n';
+      throw new Error(`unexpected git args ${args.join(' ')}`);
+    },
+    optionalGit: (args) => {
+      calls.push(args.join(' '));
+      if (args.join(' ') === 'rev-parse --abbrev-ref --symbolic-full-name @{upstream}') {
+        return 'origin/codex/production-readiness-remediation';
+      }
+      if (args.join(' ') === 'rev-list --left-right --count HEAD...origin/codex/production-readiness-remediation') {
+        return '0\t0';
+      }
+      return '';
+    },
+  });
+
+  assert.equal(calls[0], 'fetch --dry-run');
+  assert.equal(state.git_remote_refreshed, true);
+  assert.equal(state.git_ahead, 0);
+  assert.equal(state.git_behind, 0);
+});
+
+test('readGitState rejects unrefreshable remote metadata', () => {
+  assert.throws(
+    () => readGitState({
+      git: (args) => {
+        if (args.join(' ') === 'fetch --dry-run') {
+          throw new Error('network unavailable');
+        }
+        return '';
+      },
+      optionalGit: () => '',
+    }),
+    /git fetch --dry-run must succeed before writing local gate report: network unavailable/,
+  );
+});
+
+function fakeGitState() {
+  return {
+    git_head: '0123456789abcdef0123456789abcdef01234567',
+    git_branch: 'codex/production-readiness-remediation',
+    git_upstream: 'origin/codex/production-readiness-remediation',
+    git_ahead: 0,
+    git_behind: 0,
+    git_remote_refreshed: true,
+    git_status_clean: true,
+    git_status_short: '',
+  };
+}

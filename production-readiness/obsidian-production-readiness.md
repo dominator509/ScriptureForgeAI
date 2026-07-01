@@ -103,6 +103,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Staging Evidence Gap Report CI Gate Guard**: `.github/workflows/security.yml` runs the same checked-in contract gap-report command with explicit `--allow-blockers`, and `tools/validate-ci-workflow.mjs` rejects workflow drift that removes or weakens that gate before CI release evidence is written.
 - [x] **Final Production Readiness Claim Proof Marker Guard**: `tools/verify-production-readiness.mjs` returns and prints proof markers for strict release manifest validation, local gate report validation, strict staging PATH readiness, clean/synced git, release-candidate-to-HEAD matching, local-gate-to-HEAD matching, separate local-gate branch and upstream matching, local-gate chronology, current Obsidian snapshot verification, and blocker-free staging gap-report validation before any production-ready claim can pass.
 - [x] **Final Git Remote Freshness Guard**: `tools/verify-production-readiness.mjs` runs `git fetch --dry-run` before reading current status, so ahead/behind checks depend on freshly reachable upstream metadata rather than stale local tracking refs.
+- [x] **Local Gate Remote Freshness Guard**: `tools/run-local-gates.mjs` now records `git_remote_refreshed=true` only after `git fetch --dry-run` succeeds, and `tools/validate-local-gate-report.mjs` rejects reports missing that marker before they can support final readiness.
 - [x] **Final Local Gate Freshness Guard**: `tools/verify-production-readiness.mjs` rejects same-SHA local gate reports older than 24 hours at production-readiness verification time, so stale clean reports cannot support a current production-ready claim.
 - [x] **Current Non-Dry Local Gate Run**: `node tools/run-local-gates.mjs --continue-on-failure --report artifacts/local-gate-report-current.json` completed on 2026-06-29T21:27:33Z with 33/33 gates run, 0 failed, `dry_run=false`, and branch/upstream synced; the report remains development evidence only because it captured `git_status_clean=false` from the dirty remediation worktree.
 - [x] **Final Failure Diagnostics Guard**: failed `tools/verify-production-readiness.mjs` runs now print staging evidence blocker IDs, status counts, strict staging PATH status, and strict release readiness status even when the first hard failure is local evidence such as a dirty local-gate report.
@@ -342,11 +343,11 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 1
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: 723d75b9880c14096d342ed00cc3a59d76adb7cb
+- expected_release_candidate: 884807cc97a17d5339a168538665ecf1826e59ee
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: 723d75b9880c14096d342ed00cc3a59d76adb7cb
+    - expected_release_candidate: 884807cc97a17d5339a168538665ecf1826e59ee
     - actual_release_candidate: ce96c283410756444a63b1345646fc69cf274d22
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
     - required: tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted

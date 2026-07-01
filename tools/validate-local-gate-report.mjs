@@ -79,6 +79,7 @@ export function validateLocalGateReport(report, {
   assert.equal(typeof report.git_upstream, 'string', 'git_upstream is required');
   assert.equal(typeof report.git_ahead, 'number', 'git_ahead is required');
   assert.equal(typeof report.git_behind, 'number', 'git_behind is required');
+  assert.equal(report.git_remote_refreshed, true, 'local gate report requires fresh git remote metadata from git fetch --dry-run');
   assert.equal(typeof report.git_status_clean, 'boolean', 'git_status_clean is required');
   assert.equal(typeof report.git_status_short, 'string', 'git_status_short is required');
   assert.match(report.observed_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, 'observed_at must be ISO UTC without milliseconds');
