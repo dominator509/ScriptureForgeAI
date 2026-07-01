@@ -70,7 +70,7 @@ For staging evidence collection, use `tools\use-project-path.cmd --strict-stagin
 
 - Do not commit secrets, `.env*` files, Terraform state, local evidence manifests, or generated caches.
 - Avoid editing generated protobuf output unless regenerating intentionally from `proto/scripture.proto`.
-- Treat `artifacts/`, `.tools/`, `.gocache/`, `.npm-cache/`, `node_modules/`, `.next/`, `target/`, `.terraform/`, and `*.tsbuildinfo` as local/generated.
+- Treat `artifacts/`, `.tools/`, `.tmp/`, `.gocache/`, `.npm-cache/`, `node_modules/`, `.next/`, `target/`, `.terraform/`, and `*.tsbuildinfo` as local/generated.
 - Do not weaken production-readiness wording: if proof is local-only or staging evidence is missing, keep that boundary explicit.
 - Do not change app behavior during Serena/Obsidian setup work unless explicitly requested.
 

@@ -9,6 +9,7 @@ target/
 !.env.*.example
 .serena/
 .tools/
+.tmp/
 .gocache/
 .npm-cache/
 artifacts/
