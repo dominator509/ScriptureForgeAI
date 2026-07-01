@@ -239,10 +239,13 @@ const securityProbeMarkerSummaries = {
 };
 
 const dbAppGrantTableNames = 'organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails';
+const terraformStateKMSKeyID = 'alias/scriptureforge-terraform-state';
+const terraformDatabaseKMSKeyARN = 'arn:aws:kms:us-east-1:123456789012:key/11111111-1111-4111-8111-111111111111';
+const terraformRedisKMSKeyARN = 'arn:aws:kms:us-east-1:123456789012:key/22222222-2222-4222-8222-222222222222';
 
 const deploymentProbeMarkerSummaries = {
-  'terraform-remote-backend-init': 'got HTTP 200; staging artifact; verified markers: terraform, s3, backend, bucket, key, encrypt=true, kms_key_id=, versioning=enabled, dynamodb_table, successfully initialized, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
-  'terraform-staging-plan': 'got HTTP 200; staging artifact; verified markers: Terraform, Plan:, aws_eks_cluster, aws_eks_node_group, aws_rds_cluster, aws_elasticache_replication_group, aws_ecr_repository, kubernetes_deployment, kubernetes_ingress_v1, kubernetes_horizontal_pod_autoscaler_v2, kubernetes_pod_disruption_budget_v1, kubernetes_manifest, aws_iam_role, kms_key_id, database_kms_key_arn, redis_kms_key_arn, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'terraform-remote-backend-init': `got HTTP 200; staging artifact; verified markers: terraform, s3, backend, bucket, key, encrypt=true, kms_key_id=${terraformStateKMSKeyID}, versioning=enabled, dynamodb_table, successfully initialized, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123`,
+  'terraform-staging-plan': `got HTTP 200; staging artifact; verified markers: Terraform, Plan:, aws_eks_cluster, aws_eks_node_group, aws_rds_cluster, aws_elasticache_replication_group, aws_ecr_repository, kubernetes_deployment, kubernetes_ingress_v1, kubernetes_horizontal_pod_autoscaler_v2, kubernetes_pod_disruption_budget_v1, kubernetes_manifest, aws_iam_role, kms_key_id=${terraformStateKMSKeyID}, database_kms_key_arn=${terraformDatabaseKMSKeyARN}, redis_kms_key_arn=${terraformRedisKMSKeyARN}, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123`,
   'terraform-staging-apply-or-approval': 'got HTTP 200; staging artifact; verified markers: deployment approval, approved, DEPLOY-TF-001, change_ticket=PLATFORM-123, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123, distinct_terraform_artifacts=true',
   'kubernetes-rollout-status': 'got HTTP 200; staging artifact; verified markers: namespace, staging, deployment, scriptureforge-api, scriptureforge-web, scriptureforge-rust-engine, successfully rolled out, ready, available, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
   'kubernetes-workload-resources': 'got HTTP 200; staging artifact; verified markers: namespace, staging, deployment, service, ingress, hpa, pdb, ready, available, targets, minavailable, readinessProbe, livenessProbe, rollingUpdate, maxUnavailable=0, minReplicas, maxReplicas, tls, SecretProviderClass, image, scriptureforge-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, scriptureforge-web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb, scriptureforge-rust-engine@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123, scriptureforge-api, scriptureforge-web, scriptureforge-rust-engine, concrete_image_digests=3, workload_image_digests=3, distinct_kubernetes_artifacts=true',
@@ -5205,7 +5208,7 @@ test('recordEvidence rejects Terraform evidence without remote state KMS and ver
         threshold_pass: true,
         evidence_items: ['DEPLOY-TF-001'],
         probes: [
-          { name: 'terraform-remote-backend-init', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/deploy/terraform-init.txt', status_code: 200, result_summary: deploymentProbeMarkerSummaries['terraform-remote-backend-init'].replace('kms_key_id=, versioning=enabled, ', '') },
+          { name: 'terraform-remote-backend-init', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/deploy/terraform-init.txt', status_code: 200, result_summary: deploymentProbeMarkerSummaries['terraform-remote-backend-init'].replace(`kms_key_id=${terraformStateKMSKeyID}, versioning=enabled, `, '') },
           { name: 'terraform-staging-plan', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/deploy/terraform-plan.txt', status_code: 200, result_summary: deploymentProbeMarkerSummaries['terraform-staging-plan'] },
           terraformApplyProbe(),
         ],
@@ -5214,6 +5217,42 @@ test('recordEvidence rejects Terraform evidence without remote state KMS and ver
       'go run ./tools/deploymentprobe -probe-terraform',
     ),
     /terraform-remote-backend-init result_summary must include verified marker kms_key_id=/,
+  );
+});
+
+test('recordEvidence rejects Terraform evidence without concrete KMS values', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DEPLOY-TF-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        evidence_items: ['DEPLOY-TF-001'],
+        probes: [
+          {
+            name: 'terraform-remote-backend-init',
+            passed: true,
+            target: 'https://artifacts.staging.scriptureforge.ai/deploy/terraform-init.txt',
+            status_code: 200,
+            result_summary: deploymentProbeMarkerSummaries['terraform-remote-backend-init'].replace(`kms_key_id=${terraformStateKMSKeyID}`, 'kms_key_id='),
+          },
+          {
+            name: 'terraform-staging-plan',
+            passed: true,
+            target: 'https://artifacts.staging.scriptureforge.ai/deploy/terraform-plan.txt',
+            status_code: 200,
+            result_summary: deploymentProbeMarkerSummaries['terraform-staging-plan']
+              .replace(`kms_key_id=${terraformStateKMSKeyID}`, 'kms_key_id')
+              .replace(`database_kms_key_arn=${terraformDatabaseKMSKeyARN}`, 'database_kms_key_arn')
+              .replace(`redis_kms_key_arn=${terraformRedisKMSKeyARN}`, 'redis_kms_key_arn'),
+          },
+          terraformApplyProbe(),
+        ],
+      },
+      'artifacts/deploymentprobe-terraform.json',
+      'go run ./tools/deploymentprobe -probe-terraform',
+    ),
+    /terraform-remote-backend-init probe must include concrete terraform_state_kms_key_id/,
   );
 });
 

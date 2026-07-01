@@ -55,6 +55,9 @@ const strictAcceptedRiskRefs = {
 
 const strictReleaseEnvironments = new Set(['staging', 'production', 'prod']);
 const terraformApprovalChangeTicketPattern = /\bchange_ticket=[a-z][a-z0-9]+-\d+\b/i;
+const terraformStateKMSKeyPattern = /\bkms_key_id=(arn:aws:kms:[a-z0-9-]+:[0-9]{12}:(?:key\/[a-f0-9-]{36}|alias\/[A-Za-z0-9/_+=,.@-]+)|alias\/[A-Za-z0-9/_+=,.@-]+)\b/i;
+const terraformDatabaseKMSKeyARNPattern = /\bdatabase_kms_key_arn=arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key\/[a-f0-9-]{36}\b/i;
+const terraformRedisKMSKeyARNPattern = /\bredis_kms_key_arn=arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key\/[a-f0-9-]{36}\b/i;
 const kubernetesWorkloadImageDigestPatterns = new Map([
   ['scriptureforge-api', /(?:scriptureforge-api|scriptureforge\/api)[^\s,;]*@sha256:[a-f0-9]{64}\b/i],
   ['scriptureforge-web', /(?:scriptureforge-web|scriptureforge\/web)[^\s,;]*@sha256:[a-f0-9]{64}\b/i],
@@ -1639,6 +1642,28 @@ function validateStrictReleaseItemEvidence(item, manifest) {
       missingApplyOrApprovalMarkers,
       false,
       'DEPLOY-TF-001 strict release evidence must include apply or approval markers on terraform-staging-apply-or-approval',
+    );
+    const backendSegment = findEvidenceSegment(evidence, 'terraform-remote-backend-init');
+    assert.match(
+      backendSegment,
+      terraformStateKMSKeyPattern,
+      'DEPLOY-TF-001 terraform-remote-backend-init must include concrete kms_key_id',
+    );
+    const planSegment = findEvidenceSegment(evidence, 'terraform-staging-plan');
+    assert.match(
+      planSegment,
+      terraformStateKMSKeyPattern,
+      'DEPLOY-TF-001 terraform-staging-plan must include concrete kms_key_id',
+    );
+    assert.match(
+      planSegment,
+      terraformDatabaseKMSKeyARNPattern,
+      'DEPLOY-TF-001 terraform-staging-plan must include concrete database_kms_key_arn',
+    );
+    assert.match(
+      planSegment,
+      terraformRedisKMSKeyARNPattern,
+      'DEPLOY-TF-001 terraform-staging-plan must include concrete redis_kms_key_arn',
     );
   }
   if (item.id === 'DEPLOY-K8S-001') {

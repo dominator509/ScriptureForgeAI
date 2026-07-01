@@ -216,6 +216,11 @@ const terraformApplyOrApprovalSummaryMarkerSets = [
   ['staging artifact', 'deployment approval', 'approved', 'DEPLOY-TF-001', 'change_ticket=', 'release_candidate', 'service_version', 'distinct_terraform_artifacts=true'],
 ];
 const terraformApprovalChangeTicketPattern = /\bchange_ticket=[A-Z][A-Z0-9]+-\d+\b/;
+const terraformStateKMSKeyPattern = /^(?:arn:aws:kms:[a-z0-9-]+:[0-9]{12}:(?:key\/[a-f0-9-]{36}|alias\/[A-Za-z0-9/_+=,.@-]+)|alias\/[A-Za-z0-9/_+=,.@-]+)$/;
+const terraformStateKMSKeySummaryPattern = /\bkms_key_id=(arn:aws:kms:[a-z0-9-]+:[0-9]{12}:(?:key\/[a-f0-9-]{36}|alias\/[A-Za-z0-9/_+=,.@-]+)|alias\/[A-Za-z0-9/_+=,.@-]+)\b/i;
+const terraformStorageKMSKeyARNPattern = /^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key\/[a-f0-9-]{36}$/;
+const terraformDatabaseKMSKeyARNSummaryPattern = /\bdatabase_kms_key_arn=(arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key\/[a-f0-9-]{36})\b/i;
+const terraformRedisKMSKeyARNSummaryPattern = /\bredis_kms_key_arn=(arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key\/[a-f0-9-]{36})\b/i;
 const immutableImageDigestPattern = /sha256:[a-fA-F0-9]{64}/g;
 const kubernetesWorkloadImageDigestPatterns = new Map([
   ['scriptureforge-api', /(?:scriptureforge-api|scriptureforge\/api)[^\s,;]*@sha256:[a-fA-F0-9]{64}\b/],
@@ -1306,6 +1311,19 @@ function validateTerraformEvidence(report, manifest) {
       }
     } else {
       assertSummaryIncludesMarkers(probe.name, summary, [...(requiredTerraformProbeSummaryMarkers.get(probe.name) ?? []), probeLoadRunMarker]);
+      const stateKMSKey = String(probe.terraform_state_kms_key_id ?? extractFirstMatch(summary, terraformStateKMSKeySummaryPattern)).trim();
+      assert.match(stateKMSKey, terraformStateKMSKeyPattern, `${probe.name} probe must include concrete terraform_state_kms_key_id`);
+      assertSummaryIncludesMarkers(probe.name, summary, [`kms_key_id=${stateKMSKey}`]);
+      if (probe.name === 'terraform-staging-plan') {
+        const databaseKMSKeyARN = String(probe.database_kms_key_arn ?? extractFirstMatch(summary, terraformDatabaseKMSKeyARNSummaryPattern)).trim();
+        const redisKMSKeyARN = String(probe.redis_kms_key_arn ?? extractFirstMatch(summary, terraformRedisKMSKeyARNSummaryPattern)).trim();
+        assert.match(databaseKMSKeyARN, terraformStorageKMSKeyARNPattern, 'terraform-staging-plan probe must include concrete database_kms_key_arn');
+        assert.match(redisKMSKeyARN, terraformStorageKMSKeyARNPattern, 'terraform-staging-plan probe must include concrete redis_kms_key_arn');
+        assertSummaryIncludesMarkers(probe.name, summary, [
+          `database_kms_key_arn=${databaseKMSKeyARN}`,
+          `redis_kms_key_arn=${redisKMSKeyARN}`,
+        ]);
+      }
     }
   }
   assertDistinctReportURLs('DEPLOY-TF-001', terraformArtifactTargets);

@@ -47,6 +47,9 @@ type probeResult struct {
 	StatusCode           int               `json:"status_code,omitempty"`
 	LatencyMS            int64             `json:"latency_ms,omitempty"`
 	ChangeTicket         string            `json:"change_ticket,omitempty"`
+	TerraformStateKMSKey string            `json:"terraform_state_kms_key_id,omitempty"`
+	DatabaseKMSKeyARN    string            `json:"database_kms_key_arn,omitempty"`
+	RedisKMSKeyARN       string            `json:"redis_kms_key_arn,omitempty"`
 	ConcreteImageDigests int               `json:"concrete_image_digests,omitempty"`
 	WorkloadImageDigests int               `json:"workload_image_digests,omitempty"`
 	ImageDigests         map[string]string `json:"image_digests,omitempty"`
@@ -54,6 +57,9 @@ type probeResult struct {
 }
 
 var terraformApprovalTicketPattern = regexp.MustCompile(`(?i)\bchange[_ -]?ticket\s*[:=]\s*([A-Z][A-Z0-9]+-\d+)\b`)
+var terraformStateKMSKeyPattern = regexp.MustCompile(`(?i)\bkms_key_id=(arn:aws:kms:[a-z0-9-]+:[0-9]{12}:(?:key/[a-f0-9-]{36}|alias/[A-Za-z0-9/_+=,.@-]+)|alias/[A-Za-z0-9/_+=,.@-]+)\b`)
+var terraformDatabaseKMSKeyARNPattern = regexp.MustCompile(`(?i)\bdatabase_kms_key_arn=(arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key/[a-f0-9-]{36})\b`)
+var terraformRedisKMSKeyARNPattern = regexp.MustCompile(`(?i)\bredis_kms_key_arn=(arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key/[a-f0-9-]{36})\b`)
 var immutableImageDigestPattern = regexp.MustCompile(`sha256:[a-fA-F0-9]{64}`)
 var kubernetesWorkloadImageDigests = map[string]*regexp.Regexp{
 	"scriptureforge-api":         regexp.MustCompile(`(?i)(?:scriptureforge-api|scriptureforge/api)[^\s,;]*@(sha256:[a-f0-9]{64})\b`),
@@ -235,10 +241,12 @@ func probeArtifactAny(client *http.Client, name, target string, acceptableRequir
 	if passed {
 		changeTicket := approvalTicket(name, text)
 		matchedRequiredSet = appendApprovalTicketMarker(changeTicket, matchedRequiredSet)
+		matchedRequiredSet = appendTerraformKMSMarkers(name, text, matchedRequiredSet)
 		matchedRequiredSet = appendKubernetesDigestMarker(name, text, matchedRequiredSet)
 		matchedRequiredSet = append(matchedRequiredSet, extraVerifiedMarkers...)
 		summary = fmt.Sprintf("%s; staging artifact; verified markers: %s", summary, strings.Join(matchedRequiredSet, ", "))
 		result := probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, ChangeTicket: changeTicket, ResultSummary: summary}
+		applyTerraformKMSFields(&result, text)
 		applyKubernetesDigestFields(&result, text)
 		return result
 	} else {
@@ -248,6 +256,12 @@ func probeArtifactAny(client *http.Client, name, target string, acceptableRequir
 }
 
 func evidenceSpecificMarkersValid(name, text string) bool {
+	if name == "terraform-remote-backend-init" {
+		return terraformStateKMSKey(text) != ""
+	}
+	if name == "terraform-staging-plan" {
+		return terraformStateKMSKey(text) != "" && terraformDatabaseKMSKeyARN(text) != "" && terraformRedisKMSKeyARN(text) != ""
+	}
 	if name == "kubernetes-workload-resources" {
 		return concreteImageDigestCount(text) >= 3 && len(kubernetesWorkloadDigestMarkers(text)) == len(kubernetesWorkloadImageDigests)
 	}
@@ -255,6 +269,67 @@ func evidenceSpecificMarkersValid(name, text string) bool {
 		return true
 	}
 	return terraformApprovalTicketPattern.MatchString(text)
+}
+
+func appendTerraformKMSMarkers(name, text string, markers []string) []string {
+	switch name {
+	case "terraform-remote-backend-init":
+		if value := terraformStateKMSKey(text); value != "" {
+			markers = appendUniqueMarker(markers, "kms_key_id="+value)
+		}
+	case "terraform-staging-plan":
+		if value := terraformStateKMSKey(text); value != "" {
+			markers = appendUniqueMarker(markers, "kms_key_id="+value)
+		}
+		if value := terraformDatabaseKMSKeyARN(text); value != "" {
+			markers = appendUniqueMarker(markers, "database_kms_key_arn="+value)
+		}
+		if value := terraformRedisKMSKeyARN(text); value != "" {
+			markers = appendUniqueMarker(markers, "redis_kms_key_arn="+value)
+		}
+	}
+	return markers
+}
+
+func appendUniqueMarker(markers []string, marker string) []string {
+	lowerMarker := strings.ToLower(marker)
+	for _, existing := range markers {
+		if strings.ToLower(existing) == lowerMarker {
+			return markers
+		}
+	}
+	return append(markers, marker)
+}
+
+func applyTerraformKMSFields(result *probeResult, text string) {
+	if result.Name != "terraform-remote-backend-init" && result.Name != "terraform-staging-plan" {
+		return
+	}
+	result.TerraformStateKMSKey = terraformStateKMSKey(text)
+	if result.Name == "terraform-staging-plan" {
+		result.DatabaseKMSKeyARN = terraformDatabaseKMSKeyARN(text)
+		result.RedisKMSKeyARN = terraformRedisKMSKeyARN(text)
+	}
+}
+
+func terraformStateKMSKey(text string) string {
+	return extractFirstSubmatch(text, terraformStateKMSKeyPattern)
+}
+
+func terraformDatabaseKMSKeyARN(text string) string {
+	return extractFirstSubmatch(text, terraformDatabaseKMSKeyARNPattern)
+}
+
+func terraformRedisKMSKeyARN(text string) string {
+	return extractFirstSubmatch(text, terraformRedisKMSKeyARNPattern)
+}
+
+func extractFirstSubmatch(text string, pattern *regexp.Regexp) string {
+	match := pattern.FindStringSubmatch(text)
+	if len(match) < 2 {
+		return ""
+	}
+	return match[1]
 }
 
 func appendKubernetesDigestMarker(name, text string, markers []string) []string {

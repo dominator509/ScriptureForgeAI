@@ -326,7 +326,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Deployment Exact Release Binding Guard**: `tools/deploymentprobe`, the staging evidence recorder, and strict staging manifest validation now require Terraform/Kubernetes deployment evidence to carry the exact `release_candidate=<manifest release_candidate>` marker so stale deployment artifacts cannot satisfy `DEPLOY-TF-001` or `DEPLOY-K8S-001`.
 - [x] **Terraform Init/Plan Release Binding Guard**: `tools/deploymentprobe`, the staging evidence recorder, and strict-release validation now require `terraform-remote-backend-init` and `terraform-staging-plan` segments to carry exact `release_candidate=<manifest release_candidate>` plus `service_version` markers, so stale remote-backend or plan artifacts cannot be paired with a current apply/approval record.
 - [x] **Terraform Remote State KMS/Versioning Guard**: `tools/deploymentprobe`, the staging evidence recorder, strict-release validation, and the staging evidence contract now require `kms_key_id=` plus `versioning=enabled` on the `terraform-remote-backend-init` segment, so generic `encrypt=true` proof cannot satisfy deployment readiness without KMS-backed state encryption and state bucket versioning markers.
-- [x] **Terraform Storage KMS Input Guard**: Terraform now requires customer-managed `database_kms_key_arn` and `redis_kms_key_arn` inputs, wires them into Aurora and Redis encryption, and requires deployment plan evidence to show `kms_key_id`, `database_kms_key_arn`, and `redis_kms_key_arn` markers before `DEPLOY-TF-001` can support readiness.
+- [x] **Terraform Storage KMS Input Guard**: Terraform now requires customer-managed `database_kms_key_arn` and `redis_kms_key_arn` inputs, wires them into Aurora and Redis encryption, and requires deployment evidence to preserve concrete `kms_key_id=<arn-or-alias>`, `database_kms_key_arn=<arn:aws:kms:...:key/...>`, and `redis_kms_key_arn=<arn:aws:kms:...:key/...>` markers before `DEPLOY-TF-001` can support readiness.
 - [x] **Deployment Segment Guard**: strict-release validation now requires Terraform backend, Terraform plan, Terraform apply-or-approval, Kubernetes rollout, and Kubernetes workload resource segments to each carry their own required markers before `DEPLOY-TF-001` or `DEPLOY-K8S-001` can support final readiness.
 - [x] **Kubernetes Immutable Digest Count Guard**: `tools/deploymentprobe`, `tools/record-staging-evidence.mjs`, and strict-release validation now require `kubernetes-workload-resources` evidence to include at least three concrete `sha256:<64 hex>` immutable image digests bound to the API/web/Rust workload names, and the probe emits `concrete_image_digests=3` plus workload digest markers, so a generic digest label, unbound digest list, or single workload digest cannot satisfy `DEPLOY-K8S-001`.
 - [x] **Deployment Approval Change-Ticket Guard**: Terraform approval fallback evidence must include a structured `change_ticket` field plus matching `change_ticket=<ticket-id>` summary marker before `DEPLOY-TF-001` can pass without a real apply output; the probe, recorder, and strict-release verifier all reject approval fallback summaries that omit the ticket ID.
@@ -373,13 +373,14 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 2
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: 0507d8bf26fbc09916ed7c04210a072ea5d1cd91
+- expected_release_candidate: cd80c8f36ea9a92fcceb1b226c3427bd6f67ec81
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: 0507d8bf26fbc09916ed7c04210a072ea5d1cd91
+    - expected_release_candidate: cd80c8f36ea9a92fcceb1b226c3427bd6f67ec81
     - actual_release_candidate: b1c70b67e157f8c382cf3b872ef943e24714a95b
   - STAGING-EVIDENCE-CONTRACT [failed]: Environment-specific pending evidence requirements are stale relative to production-readiness/staging-evidence.example.json.
+    - required: DEPLOY-TF-001 required_evidence must be refreshed from the checked-in example contract (6 current entries, 6 expected entries)
     - required: DATA-RLS-001 required_evidence must be refreshed from the checked-in example contract (5 current entries, 5 expected entries)
     - required: EXT-ZOOM-001 required_evidence must be refreshed from the checked-in example contract (11 current entries, 11 expected entries)
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
