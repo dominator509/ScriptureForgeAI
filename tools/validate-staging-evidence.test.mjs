@@ -3045,6 +3045,21 @@ test('validateManifest strict release rejects backup restore source snapshot mis
   );
 });
 
+test('validateManifest strict release rejects backup snapshot without KMS key ID', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'DR-BACKUP-001');
+  item.evidence[0].result_summary = item.evidence[0].result_summary
+    .replace('kms_key_id=alias/scriptureforge-rds-backups', 'kms_key_id=');
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /DR-BACKUP-001 strict release backup-snapshot-artifact segment must include kms_key_id=<id>/,
+  );
+});
+
 test('validateManifest strict release rejects backup restore duration above RTO', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
@@ -4186,7 +4201,7 @@ function passedEvidenceFor(id) {
       : id === 'DR-ROLLBACK-001'
         ? 'DR-ROLLBACK-001 resilienceprobe passed: api-ready-before-rollback staging artifact ready service_version deployment_environment pre_rollback_version pre_rollback_version=release-1 release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123; rollback-rollout-artifact staging artifact rollout undo revision previous_revision target_revision scriptureforge-api successfully rolled out release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123; api-ready-after-rollback staging artifact ready service_version deployment_environment post_rollback_version post_rollback_version=release-0 rolled_back_from rolled_back_from=release-1 rolled_back_to rolled_back_to=release-0 release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123; degradation-drill-artifact staging artifact AI Zoom degradation fallback AI_ORCHESTRATION_ENGINE_FAULT offline://in-person non-AI routes healthy zoom circuit open ai_fault=true zoom_offline_fallback=true non_ai_routes_healthy=true zoom_circuit_open=true distinct_rollback_artifacts=true release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123'
       : id === 'DR-BACKUP-001'
-        ? 'DR-BACKUP-001 resilienceprobe passed: backup-snapshot-artifact staging artifact snapshot snapshot_id=snap-123 available encrypted kms retention automated backup source cluster rpo_minutes=15 release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123; restore-drill-artifact staging artifact restore restore_job_id=restore-456 available staging restored endpoint source snapshot_id=snap-123 checksum isolated restore rto_minutes=30 restore_duration_minutes=18 release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123; restored-database-smoke staging artifact smoke passed restored database tenant journal auth RLS migration version no plaintext journal distinct_backup_artifacts=true release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123'
+        ? 'DR-BACKUP-001 resilienceprobe passed: backup-snapshot-artifact staging artifact snapshot snapshot_id=snap-123 available encrypted kms_key_id=alias/scriptureforge-rds-backups retention automated backup source cluster rpo_minutes=15 release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123; restore-drill-artifact staging artifact restore restore_job_id=restore-456 available staging restored endpoint source snapshot_id=snap-123 checksum isolated restore rto_minutes=30 restore_duration_minutes=18 release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123; restored-database-smoke staging artifact smoke passed restored database tenant journal auth RLS migration version no plaintext journal distinct_backup_artifacts=true release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123'
       : id === 'ABUSE-LIMIT-001'
         ? abuseLimitSummary('0123456789abcdef0123456789abcdef01234567')
       : id === 'PERF-HTTP-001'

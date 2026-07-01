@@ -23,6 +23,7 @@ var (
 	rolledBackFromPattern         = regexp.MustCompile(`(?i)(?:"rolled_back_from"\s*:\s*"([^"]+)"|\brolled_back_from=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b)`)
 	rolledBackToPattern           = regexp.MustCompile(`(?i)(?:"rolled_back_to"\s*:\s*"([^"]+)"|\brolled_back_to=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b)`)
 	snapshotIDPattern             = regexp.MustCompile(`(?i)\bsnapshot_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
+	kmsKeyIDPattern               = regexp.MustCompile(`(?i)\bkms_key_id=([A-Za-z0-9][A-Za-z0-9._:/=-]*)\b`)
 	restoreJobIDPattern           = regexp.MustCompile(`(?i)\brestore_job_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
 	sourceSnapshotIDPattern       = regexp.MustCompile(`(?i)\bsource snapshot_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
 	rpoMinutesPattern             = regexp.MustCompile(`(?i)\brpo_minutes=([0-9]+)\b`)
@@ -71,6 +72,7 @@ type probeResult struct {
 	RolledBackFrom         string `json:"rolled_back_from,omitempty"`
 	RolledBackTo           string `json:"rolled_back_to,omitempty"`
 	SnapshotID             string `json:"snapshot_id,omitempty"`
+	KMSKeyID               string `json:"kms_key_id,omitempty"`
 	RestoreJobID           string `json:"restore_job_id,omitempty"`
 	SourceSnapshotID       string `json:"source_snapshot_id,omitempty"`
 	RPOMinutes             int    `json:"rpo_minutes,omitempty"`
@@ -213,7 +215,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 	}
 	if cfg.ProbeBackup {
 		probes = append(probes,
-			probeArtifact(client, "backup-snapshot-artifact", cfg.BackupArtifactURL, append([]string{"snapshot", "snapshot_id", "available", "encrypted", "kms", "retention", "automated backup", "source cluster", "rpo_minutes"}, releaseMarkers...)),
+			probeArtifact(client, "backup-snapshot-artifact", cfg.BackupArtifactURL, append([]string{"snapshot", "snapshot_id", "available", "encrypted", "kms_key_id=", "retention", "automated backup", "source cluster", "rpo_minutes"}, releaseMarkers...)),
 			probeArtifact(client, "restore-drill-artifact", cfg.RestoreArtifactURL, append([]string{"restore", "restore_job_id", "available", "staging", "restored endpoint", "source snapshot_id", "checksum", "isolated restore", "rto_minutes", "restore_duration_minutes"}, releaseMarkers...)),
 			probeReadyOrArtifact(client, "restored-database-smoke", cfg.RestoredSmokeURL, append([]string{"smoke passed", "restored database", "tenant", "journal", "auth", "RLS", "migration version", "no plaintext journal", "distinct_backup_artifacts=true"}, releaseMarkers...)),
 		)
@@ -265,9 +267,9 @@ func probeArtifact(client *http.Client, name, target string, required []string) 
 	} else {
 		result.ResultSummary += fmt.Sprintf("; staging artifact; verified markers: %s", strings.Join(required, ", "))
 	}
-	if name == "backup-snapshot-artifact" && (result.SnapshotID == "" || result.RPOMinutes <= 0) {
+	if name == "backup-snapshot-artifact" && (result.SnapshotID == "" || result.KMSKeyID == "" || result.RPOMinutes <= 0) {
 		result.Passed = false
-		result.ResultSummary += "; structured snapshot_id or rpo_minutes missing"
+		result.ResultSummary += "; structured snapshot_id, kms_key_id, or rpo_minutes missing"
 	}
 	if name == "restore-drill-artifact" && (result.RestoreJobID == "" || result.SourceSnapshotID == "" || result.RTOMinutes <= 0 || result.RestoreDurationMinutes <= 0) {
 		result.Passed = false
@@ -298,10 +300,10 @@ func resilienceStructuredSummaryMarkers(result probeResult) string {
 		}
 		return fmt.Sprintf("; post_rollback_version=%s rolled_back_from=%s rolled_back_to=%s", result.PostRollbackVersion, result.RolledBackFrom, result.RolledBackTo)
 	case "backup-snapshot-artifact":
-		if result.SnapshotID == "" || result.RPOMinutes <= 0 {
+		if result.SnapshotID == "" || result.KMSKeyID == "" || result.RPOMinutes <= 0 {
 			return ""
 		}
-		return fmt.Sprintf("; snapshot_id=%s rpo_minutes=%d", result.SnapshotID, result.RPOMinutes)
+		return fmt.Sprintf("; snapshot_id=%s kms_key_id=%s rpo_minutes=%d", result.SnapshotID, result.KMSKeyID, result.RPOMinutes)
 	case "restore-drill-artifact":
 		if result.RestoreJobID == "" || result.SourceSnapshotID == "" || result.RTOMinutes <= 0 || result.RestoreDurationMinutes <= 0 {
 			return ""
@@ -376,6 +378,7 @@ func applyStructuredProbeFields(result *probeResult, text string) {
 		result.RolledBackTo = extractStringField(rolledBackToPattern, text)
 	case "backup-snapshot-artifact":
 		result.SnapshotID = extractStringField(snapshotIDPattern, text)
+		result.KMSKeyID = extractStringField(kmsKeyIDPattern, text)
 		result.RPOMinutes = extractPositiveIntField(rpoMinutesPattern, text)
 	case "restore-drill-artifact":
 		result.RestoreJobID = extractStringField(restoreJobIDPattern, text)

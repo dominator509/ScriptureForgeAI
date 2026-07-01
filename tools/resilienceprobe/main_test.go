@@ -69,7 +69,7 @@ func TestRunEmitsRollbackAndBackupEvidenceWhenDrillsPass(t *testing.T) {
 		case "/degradation":
 			_, _ = w.Write([]byte("staging artifact AI degradation fallback exercised with AI_ORCHESTRATION_ENGINE_FAULT ai_fault=true; Zoom degradation fallback exercised with offline://in-person zoom_offline_fallback=true; non-AI routes healthy non_ai_routes_healthy=true; zoom circuit open zoom_circuit_open=true distinct_rollback_artifacts=true release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/backup":
-			_, _ = w.Write([]byte("staging artifact snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
+			_, _ = w.Write([]byte("staging artifact snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms_key_id=alias/scriptureforge-rds-backups retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restore":
 			_, _ = w.Write([]byte("staging artifact restore restore_job_id=restore-456 cluster scriptureforge-restore staging available restored endpoint scriptureforge-restore.cluster source snapshot_id=snap-123 checksum verified isolated restore rto_minutes=30 restore_duration_minutes=18 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restored-smoke":
@@ -106,7 +106,7 @@ func TestRunEmitsRollbackAndBackupEvidenceWhenDrillsPass(t *testing.T) {
 		"rollback-rollout-artifact":  {"staging artifact", "rollout", "undo", "revision", "previous_revision", "target_revision", "scriptureforge-api", "successfully rolled out", "release_candidate", "sha-new", "release-1", "load_run_id=resilience-run-123"},
 		"api-ready-after-rollback":   {"staging artifact", "ready", "service_version", "deployment_environment", "post_rollback_version", "post_rollback_version=release-0", "rolled_back_from", "rolled_back_from=release-1", "rolled_back_to", "rolled_back_to=release-0", "release_candidate", "sha-new", "release-1", "load_run_id=resilience-run-123"},
 		"degradation-drill-artifact": {"staging artifact", "AI", "Zoom", "degradation", "fallback", "AI_ORCHESTRATION_ENGINE_FAULT", "offline://in-person", "non-AI routes healthy", "zoom circuit open", "ai_fault=true", "zoom_offline_fallback=true", "non_ai_routes_healthy=true", "zoom_circuit_open=true", "distinct_rollback_artifacts=true", "release_candidate", "sha-new", "release-1", "load_run_id=resilience-run-123"},
-		"backup-snapshot-artifact":   {"staging artifact", "snapshot", "snapshot_id", "snapshot_id=snap-123", "available", "encrypted", "kms", "retention", "automated backup", "source cluster", "rpo_minutes", "rpo_minutes=15", "release_candidate", "sha-new", "release-1", "load_run_id=resilience-run-123"},
+		"backup-snapshot-artifact":   {"staging artifact", "snapshot", "snapshot_id", "snapshot_id=snap-123", "available", "encrypted", "kms_key_id=alias/scriptureforge-rds-backups", "retention", "automated backup", "source cluster", "rpo_minutes", "rpo_minutes=15", "release_candidate", "sha-new", "release-1", "load_run_id=resilience-run-123"},
 		"restore-drill-artifact":     {"staging artifact", "restore", "restore_job_id", "restore_job_id=restore-456", "available", "staging", "restored endpoint", "source snapshot_id", "source snapshot_id=snap-123", "checksum", "isolated restore", "rto_minutes", "rto_minutes=30", "restore_duration_minutes", "restore_duration_minutes=18", "release_candidate", "sha-new", "release-1", "load_run_id=resilience-run-123"},
 		"restored-database-smoke":    {"staging artifact", "smoke passed", "restored database", "tenant", "journal", "auth", "RLS", "migration version", "no plaintext journal", "distinct_backup_artifacts=true", "release_candidate", "sha-new", "release-1", "load_run_id=resilience-run-123"},
 	}
@@ -125,7 +125,7 @@ func TestRunFailsWhenBackupArtifactOmitsStagingProvenance(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/backup":
-			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
+			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms_key_id=alias/scriptureforge-rds-backups retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restore":
 			_, _ = w.Write([]byte("staging artifact restore restore_job_id=restore-456 cluster scriptureforge-restore staging available restored endpoint scriptureforge-restore.cluster source snapshot_id=snap-123 checksum verified isolated restore rto_minutes=30 restore_duration_minutes=18 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restored-smoke":
@@ -143,6 +143,31 @@ func TestRunFailsWhenBackupArtifactOmitsStagingProvenance(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "backup-snapshot-artifact") {
 		t.Fatalf("report missing backup probe:\n%s", output.String())
+	}
+}
+
+func TestRunFailsWhenBackupArtifactOmitsKMSKeyID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/backup":
+			_, _ = w.Write([]byte("staging artifact snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
+		case "/restore":
+			_, _ = w.Write([]byte("staging artifact restore restore_job_id=restore-456 cluster scriptureforge-restore staging available restored endpoint scriptureforge-restore.cluster source snapshot_id=snap-123 checksum verified isolated restore rto_minutes=30 restore_duration_minutes=18 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
+		case "/restored-smoke":
+			_, _ = w.Write([]byte("staging artifact smoke passed against restored database tenant auth RLS migration version journal read/write verified with no plaintext journal distinct_backup_artifacts=true release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	cfg := stagingResilienceConfig(time.Second)
+	cfg.ProbeRollback = false
+	err := runWithClient(cfg, &output, clientForHTTPServer(t, server))
+	if err == nil {
+		t.Fatalf("expected missing KMS key ID to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "kms_key_id") {
+		t.Fatalf("report did not explain missing KMS key ID:\n%s", output.String())
 	}
 }
 
@@ -187,7 +212,7 @@ func assertBackupRestoreStructuredFields(t *testing.T, probes []probeResult) {
 			}
 		case "backup-snapshot-artifact":
 			sawBackup = true
-			if probe.SnapshotID != "snap-123" || probe.RPOMinutes != 15 {
+			if probe.SnapshotID != "snap-123" || probe.KMSKeyID != "alias/scriptureforge-rds-backups" || probe.RPOMinutes != 15 {
 				t.Fatalf("unexpected backup structured fields: %+v", probe)
 			}
 		case "restore-drill-artifact":
@@ -229,7 +254,7 @@ func TestRunFailsWhenArtifactsAreMarkedMockOnly(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/backup":
-			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
+			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms_key_id=alias/scriptureforge-rds-backups retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restore":
 			_, _ = w.Write([]byte("mock restore restore_job_id=restore-456 cluster scriptureforge-restore staging available restored endpoint scriptureforge-restore.cluster source snapshot_id=snap-123 checksum verified isolated restore rto_minutes=30 restore_duration_minutes=18 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restored-smoke":
@@ -363,7 +388,7 @@ func TestRunFailsWhenRestoreArtifactIsIncomplete(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/backup":
-			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
+			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms_key_id=alias/scriptureforge-rds-backups retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restore":
 			_, _ = w.Write([]byte("restore started but not complete"))
 		case "/restored-smoke":
@@ -388,7 +413,7 @@ func TestRunFailsWhenRestoreSourceSnapshotDoesNotMatchBackupSnapshot(t *testing.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/backup":
-			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
+			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms_key_id=alias/scriptureforge-rds-backups retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restore":
 			_, _ = w.Write([]byte("restore restore_job_id=restore-456 cluster scriptureforge-restore staging available restored endpoint scriptureforge-restore.cluster source snapshot_id=snap-other checksum verified isolated restore rto_minutes=30 restore_duration_minutes=18 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restored-smoke":
@@ -413,7 +438,7 @@ func TestRunFailsWhenBackupRestoreArtifactsOmitRecoveryObjectives(t *testing.T) 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/backup":
-			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms retention 7 days automated backup source cluster scriptureforge-staging"))
+			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms_key_id=alias/scriptureforge-rds-backups retention 7 days automated backup source cluster scriptureforge-staging"))
 		case "/restore":
 			_, _ = w.Write([]byte("restore restore_job_id=restore-456 cluster scriptureforge-restore staging available restored endpoint scriptureforge-restore.cluster source snapshot_id=snap-123 checksum verified isolated restore"))
 		case "/restored-smoke":
@@ -438,7 +463,7 @@ func TestRunFailsWhenRestoreDurationExceedsRTO(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/backup":
-			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
+			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms_key_id=alias/scriptureforge-rds-backups retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restore":
 			_, _ = w.Write([]byte("restore restore_job_id=restore-456 cluster scriptureforge-restore staging available restored endpoint scriptureforge-restore.cluster source snapshot_id=snap-123 checksum verified isolated restore rto_minutes=30 restore_duration_minutes=45 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restored-smoke":
@@ -490,7 +515,7 @@ func TestRunFailsWhenRestoredSmokeOmitsTenantJournalChecks(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/backup":
-			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
+			_, _ = w.Write([]byte("snapshot snapshot_id=snap-123 scriptureforge-staging-backup available encrypted kms_key_id=alias/scriptureforge-rds-backups retention 7 days automated backup source cluster scriptureforge-staging rpo_minutes=15 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restore":
 			_, _ = w.Write([]byte("restore restore_job_id=restore-456 cluster scriptureforge-restore staging available restored endpoint scriptureforge-restore.cluster source snapshot_id=snap-123 checksum verified isolated restore rto_minutes=30 restore_duration_minutes=18 release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
 		case "/restored-smoke":

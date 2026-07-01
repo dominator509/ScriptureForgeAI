@@ -230,6 +230,7 @@ const zoomWebhookTimestampPattern = /^[0-9]{10,}$/;
 const zoomValidationTokenPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const zoomValidationResponsePattern = /^200$/;
 const resilienceIdentifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
+const resilienceKMSKeyIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:/=-]*$/;
 const aiRequestIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const aiCitationIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const aiPrincipalIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
@@ -299,7 +300,7 @@ const requiredResilienceProbeSummaryMarkers = new Map([
   ['rollback-rollout-artifact', ['staging artifact', 'rollout', 'undo', 'revision', 'previous_revision', 'target_revision', 'scriptureforge-api', 'successfully rolled out']],
   ['api-ready-after-rollback', ['staging artifact', 'ready', 'service_version', 'deployment_environment', 'post_rollback_version', 'rolled_back_from', 'rolled_back_to']],
   ['degradation-drill-artifact', ['staging artifact', 'AI', 'Zoom', 'degradation', 'fallback', 'AI_ORCHESTRATION_ENGINE_FAULT', 'offline://in-person', 'non-AI routes healthy', 'zoom circuit open', 'ai_fault=true', 'zoom_offline_fallback=true', 'non_ai_routes_healthy=true', 'zoom_circuit_open=true', 'distinct_rollback_artifacts=true']],
-  ['backup-snapshot-artifact', ['staging artifact', 'snapshot', 'snapshot_id', 'available', 'encrypted', 'kms', 'retention', 'automated backup', 'source cluster', 'rpo_minutes']],
+  ['backup-snapshot-artifact', ['staging artifact', 'snapshot', 'snapshot_id', 'available', 'encrypted', 'kms_key_id=', 'retention', 'automated backup', 'source cluster', 'rpo_minutes']],
   ['restore-drill-artifact', ['staging artifact', 'restore', 'restore_job_id', 'available', 'staging', 'restored endpoint', 'source snapshot_id', 'checksum', 'isolated restore', 'rto_minutes', 'restore_duration_minutes']],
   ['restored-database-smoke', ['staging artifact', 'smoke passed', 'restored database', 'tenant', 'journal', 'auth', 'RLS', 'migration version', 'no plaintext journal', 'distinct_backup_artifacts=true']],
 ]);
@@ -2376,11 +2377,14 @@ function validateResilienceEvidence(report, manifest) {
     assertSummaryExcludesMarkers(probe.name, String(probe.result_summary ?? ''), forbiddenResilienceSummaryMarkers);
     if (probe.name === 'backup-snapshot-artifact') {
       const snapshotID = String(probe.snapshot_id ?? '').trim();
+      const kmsKeyID = String(probe.kms_key_id ?? '').trim();
       backupSnapshotID = snapshotID;
       assert.match(snapshotID, resilienceIdentifierPattern, 'backup-snapshot-artifact probe must include structured snapshot_id');
+      assert.match(kmsKeyID, resilienceKMSKeyIDPattern, 'backup-snapshot-artifact probe must include structured kms_key_id');
       assert.equal(Number.isInteger(probe.rpo_minutes) && probe.rpo_minutes > 0, true, 'backup-snapshot-artifact probe must include positive structured rpo_minutes');
       assertSummaryIncludesMarkers(probe.name, String(probe.result_summary ?? ''), [
         `snapshot_id=${snapshotID}`,
+        `kms_key_id=${kmsKeyID}`,
         `rpo_minutes=${probe.rpo_minutes}`,
       ]);
     }

@@ -265,7 +265,7 @@ const resilienceProbeMarkerSummaries = {
   'rollback-rollout-artifact': 'got HTTP 200; staging artifact; verified markers: rollout, undo, revision, previous_revision, target_revision, scriptureforge-api, successfully rolled out, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
   'api-ready-after-rollback': 'got HTTP 200; staging artifact; verified markers: ready, service_version, deployment_environment, post_rollback_version, rolled_back_from, rolled_back_to, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123; post_rollback_version=release-0 rolled_back_from=release-1 rolled_back_to=release-0',
   'degradation-drill-artifact': 'got HTTP 200; staging artifact; verified markers: AI, Zoom, degradation, fallback, AI_ORCHESTRATION_ENGINE_FAULT, offline://in-person, non-AI routes healthy, zoom circuit open, ai_fault=true, zoom_offline_fallback=true, non_ai_routes_healthy=true, zoom_circuit_open=true, distinct_rollback_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123; ai_fault=true zoom_offline_fallback=true non_ai_routes_healthy=true zoom_circuit_open=true',
-  'backup-snapshot-artifact': 'got HTTP 200; staging artifact; verified markers: snapshot, snapshot_id=snap-123, available, encrypted, kms, retention, automated backup, source cluster, rpo_minutes=15, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'backup-snapshot-artifact': 'got HTTP 200; staging artifact; verified markers: snapshot, snapshot_id=snap-123, available, encrypted, kms_key_id=alias/scriptureforge-rds-backups, retention, automated backup, source cluster, rpo_minutes=15, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
   'restore-drill-artifact': 'got HTTP 200; staging artifact; verified markers: restore, restore_job_id=restore-456, available, staging, restored endpoint, source snapshot_id=snap-123, checksum, isolated restore, rto_minutes=30, restore_duration_minutes=18, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
   'restored-database-smoke': 'got HTTP 200; staging artifact; verified markers: smoke passed, restored database, tenant, journal, auth, RLS, migration version, no plaintext journal, distinct_backup_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
 };
@@ -298,6 +298,9 @@ function resilienceProbeReportProbe(name, overrides = {}) {
   if (name === 'backup-snapshot-artifact') {
     if (!Object.hasOwn(overrides, 'snapshot_id')) {
       probe.snapshot_id = 'snap-123';
+    }
+    if (!Object.hasOwn(overrides, 'kms_key_id')) {
+      probe.kms_key_id = 'alias/scriptureforge-rds-backups';
     }
     if (!Object.hasOwn(overrides, 'rpo_minutes')) {
       probe.rpo_minutes = 15;
@@ -8832,6 +8835,32 @@ test('recordEvidence rejects WebSocket performance evidence without distinct art
       'go run ./tools/loadtest -websocket',
     ),
     /PERF-WS-001 result_summary must include verified marker ws_distinct_artifacts=true/,
+  );
+});
+
+test('recordEvidence rejects backup evidence without structured KMS key ID', () => {
+  const probeNames = [
+    'backup-snapshot-artifact',
+    'restore-drill-artifact',
+    'restored-database-smoke',
+  ];
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DR-BACKUP-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['DR-BACKUP-001'],
+        probes: resilienceProbeReportProbes(probeNames, (name) => (
+          name === 'backup-snapshot-artifact' ? { kms_key_id: '' } : {}
+        )),
+      },
+      'artifacts/resilienceprobe-backup.json',
+      'go run ./tools/resilienceprobe -probe-backup',
+    ),
+    /backup-snapshot-artifact probe must include structured kms_key_id/,
   );
 });
 

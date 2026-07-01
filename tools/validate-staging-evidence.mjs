@@ -142,6 +142,7 @@ const obsAlertRulesPattern = /alert-rules-loaded(?=[^;]*staging artifact)(?=[^;]
 const obsAlertDeliveryPattern = /alert-delivery-status(?=[^;]*staging artifact)(?=[^;]*success)(?=[^;]*delivered)(?=[^;]*test alert)(?=[^;]*alertmanager)(?=[^;]*alertname=[A-Za-z0-9_.:-]+)(?=[^;]*receiver=[A-Za-z0-9_.:-]+)(?=[^;]*delivery_id=[A-Za-z0-9_.:-]+)(?=[^;]*release_candidate=)(?=[^;]*load_run_id=)/i;
 const obsRetentionPolicyPattern = /telemetry-retention-policy(?=[^;]*staging artifact)(?=[^;]*retention)(?=[^;]*30 days)(?=[^;]*trace)(?=[^;]*logs)(?=[^;]*metrics)(?=[^;]*distinct_alert_artifacts=true)(?=[^;]*release_candidate=)(?=[^;]*load_run_id=)/i;
 const resilienceSnapshotIDPattern = /\bsnapshot_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const resilienceKMSKeyIDPattern = /\bkms_key_id=([A-Za-z0-9][A-Za-z0-9._:/=-]*)\b/i;
 const resilienceSourceSnapshotIDPattern = /\bsource snapshot_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const resiliencePreRollbackVersionPattern = /\bpre_rollback_version=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b/i;
 const resiliencePostRollbackVersionPattern = /\bpost_rollback_version=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b/i;
@@ -291,7 +292,7 @@ const resilienceSegmentMarkerRequirements = new Map([
   ['rollback-rollout-artifact', ['staging artifact', 'rollout', 'undo', 'revision', 'previous_revision', 'target_revision', 'scriptureforge-api', 'successfully rolled out', 'release_candidate=', 'service_version=', 'load_run_id=']],
   ['api-ready-after-rollback', ['staging artifact', 'ready', 'service_version', 'deployment_environment', 'post_rollback_version', 'rolled_back_from', 'rolled_back_to', 'release_candidate=', 'load_run_id=']],
   ['degradation-drill-artifact', ['staging artifact', 'AI', 'Zoom', 'degradation', 'fallback', 'AI_ORCHESTRATION_ENGINE_FAULT', 'offline://in-person', 'non-AI routes healthy', 'zoom circuit open', 'ai_fault=true', 'zoom_offline_fallback=true', 'non_ai_routes_healthy=true', 'zoom_circuit_open=true', 'distinct_rollback_artifacts=true', 'release_candidate=', 'service_version=', 'load_run_id=']],
-  ['backup-snapshot-artifact', ['staging artifact', 'snapshot', 'snapshot_id', 'available', 'encrypted', 'kms', 'retention', 'automated backup', 'source cluster', 'rpo_minutes', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['backup-snapshot-artifact', ['staging artifact', 'snapshot', 'snapshot_id', 'available', 'encrypted', 'kms_key_id=', 'retention', 'automated backup', 'source cluster', 'rpo_minutes', 'release_candidate=', 'service_version=', 'load_run_id=']],
   ['restore-drill-artifact', ['staging artifact', 'restore', 'restore_job_id', 'available', 'staging', 'restored endpoint', 'source snapshot_id', 'checksum', 'isolated restore', 'rto_minutes', 'restore_duration_minutes', 'release_candidate=', 'service_version=', 'load_run_id=']],
   ['restored-database-smoke', ['staging artifact', 'smoke passed', 'restored database', 'tenant', 'journal', 'auth', 'RLS', 'migration version', 'no plaintext journal', 'distinct_backup_artifacts=true', 'release_candidate=', 'service_version=', 'load_run_id=']],
 ]);
@@ -1134,7 +1135,7 @@ export const strictProbeFamilies = {
       'snapshot_id',
       'available',
       'encrypted',
-      'kms',
+      'kms_key_id=',
       'retention',
       'automated backup',
       'source cluster',
@@ -2284,10 +2285,12 @@ function assertStrictBackupRestoreSnapshotLinkage(evidence) {
   assert.ok(backupSegment, 'DR-BACKUP-001 strict release evidence must include backup-snapshot-artifact segment');
   assert.ok(restoreSegment, 'DR-BACKUP-001 strict release evidence must include restore-drill-artifact segment');
   const backupSnapshotID = backupSegment.match(resilienceSnapshotIDPattern)?.[1] ?? '';
+  const backupKMSKeyID = backupSegment.match(resilienceKMSKeyIDPattern)?.[1] ?? '';
   const restoreSourceSnapshotID = restoreSegment.match(resilienceSourceSnapshotIDPattern)?.[1] ?? '';
   const rtoMinutes = Number.parseInt(restoreSegment.match(resilienceRTOMinutesPattern)?.[1] ?? '', 10);
   const restoreDurationMinutes = Number.parseInt(restoreSegment.match(resilienceRestoreDurationMinutesPattern)?.[1] ?? '', 10);
   assert.ok(backupSnapshotID, 'DR-BACKUP-001 strict release backup-snapshot-artifact segment must include snapshot_id=<id>');
+  assert.ok(backupKMSKeyID, 'DR-BACKUP-001 strict release backup-snapshot-artifact segment must include kms_key_id=<id>');
   assert.ok(restoreSourceSnapshotID, 'DR-BACKUP-001 strict release restore-drill-artifact segment must include source snapshot_id=<id>');
   assert.equal(
     restoreSourceSnapshotID,
