@@ -1313,6 +1313,7 @@ function validateStrictRelease(manifest) {
     validateStrictReleaseItemEvidence(item, manifest);
   }
   assertStrictPerformanceLoadRunLinkage(manifest);
+  assertStrictReleaseLoadRunLinkage(manifest);
 }
 
 function assertStrictPerformanceLoadRunLinkage(manifest) {
@@ -1335,6 +1336,27 @@ function assertStrictPerformanceLoadRunLinkage(manifest) {
     loadRunIDs.size,
     1,
     'strict release performance evidence load_run_id values must match across PERF-HTTP-001, PERF-WS-001, and DATA-REDIS-001',
+  );
+}
+
+function assertStrictReleaseLoadRunLinkage(manifest) {
+  const loadRunIDs = new Set();
+  for (const item of manifest.items) {
+    if (item.id === 'SRC-CI-001' || item.id === 'SEC-SIGNOFF-001') {
+      continue;
+    }
+    const evidence = Array.isArray(item.evidence) ? item.evidence : [];
+    for (const artifact of evidence) {
+      const match = String(artifact.result_summary ?? '').match(/\bload_run_id=([^\s,;]+)/i);
+      if (match) {
+        loadRunIDs.add(match[1]);
+      }
+    }
+  }
+  assert.equal(
+    loadRunIDs.size,
+    1,
+    'strict release evidence load_run_id values must match across all staging evidence items',
   );
 }
 

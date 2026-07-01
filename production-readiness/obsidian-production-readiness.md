@@ -78,6 +78,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Staging Evidence Contract Local Gate Proof Marker Guard**: `tools/sync-staging-evidence-contract.mjs --check` emits proof markers for staging and contract manifest validation, pending_external required-evidence comparison, non-pending evidence preservation, and zero contract drift; `tools/validate-local-gate-report.mjs` rejects local gate reports whose `staging-evidence-contract-check` output lacks those markers.
 - [x] **Recorded Evidence Reserved Host Guard**: `tools/record-staging-evidence.mjs` rejects reserved documentation/sample hosts such as `.example`, `example.com`, `.test`, and `.invalid` across shared probe-backed evidence target/artifact ingestion, so manually edited or stale probe JSON cannot record sample-domain evidence into the staging manifest.
 - [x] **Recorded Evidence Artifact Alias Guard**: `tools/record-staging-evidence.mjs` canonicalizes artifact URLs before distinctness checks across probe-backed evidence, so default-port, host-case, query-order, or fragment aliases cannot satisfy separate staging proof roles.
+- [x] **Release-Wide Load Run Identity Guard**: `tools/record-staging-evidence.mjs` and strict-release validation require all staging evidence summaries that carry `load_run_id=<id>` to agree on one release-level staging run, so deployment, RLS, Rust, web/mobile, AI, Zoom, observability, security, resilience, abuse, and performance proof cannot be stitched together from unrelated captures.
 - [x] **Load Minimum Measurement Guard**: `tools/loadtest`, `tools/record-staging-evidence.mjs`, and strict staging validation require HTTP load evidence to prove at least 60 seconds of measurement and WebSocket/Redis evidence to prove at least 30,000 expected events before `PERF-HTTP-001`, `PERF-WS-001`, or `DATA-REDIS-001` can support readiness.
 - [x] **Load Side Artifact Value Guard**: `tools/loadtest`, the staging evidence recorder, and strict staging validation now parse and persist concrete `http_replica_count`, `ws_replica_count`, dependency p99, and `room_broadcast_drops` values, rejecting single-replica, over-threshold dependency latency, or nonzero broadcast-drop evidence before load claims can support readiness.
 - [x] **Performance Load Run Identity Guard**: the staging evidence recorder and strict-release validation require `PERF-HTTP-001`, `PERF-WS-001`, and `DATA-REDIS-001` evidence to share one concrete `load_run_id`, so HTTP throughput, WebSocket fan-out, and Redis sequence proof cannot be stitched together from unrelated staging load runs.
@@ -332,11 +333,11 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 1
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: 1b32be81b3dfbeacf8a26d505efb2ffe89f2cc44
+- expected_release_candidate: 0a8252a6c6a1b4014070ae596ce2c4bf0dc43e4d
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: 1b32be81b3dfbeacf8a26d505efb2ffe89f2cc44
+    - expected_release_candidate: 0a8252a6c6a1b4014070ae596ce2c4bf0dc43e4d
     - actual_release_candidate: ce96c283410756444a63b1345646fc69cf274d22
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
     - required: tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted

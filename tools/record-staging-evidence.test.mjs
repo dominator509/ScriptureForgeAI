@@ -3606,6 +3606,43 @@ test('recordEvidence records production-grade AI evidence', () => {
   assert.equal(updated.items[0].status, 'passed');
 });
 
+test('recordEvidence rejects mixed release load run identities across evidence families', () => {
+  const probeNames = Object.keys(aiProbeMarkerSummaries);
+  assert.throws(
+    () => recordEvidence(
+      {
+        release_candidate: 'abc123',
+        items: [
+          {
+            id: 'DEPLOY-TLS-001',
+            status: 'passed',
+            evidence: [{
+              observed_at: '2026-06-25T12:00:00Z',
+              command_or_probe: 'go run ./tools/stagingprobe',
+              artifact: 'https://artifacts.staging.scriptureforge.ai/stagingprobe.json',
+              result_summary: 'DEPLOY-TLS-001 stagingprobe passed: api-live staging artifact /live HTTP 200 release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+            }],
+          },
+          { id: 'EXT-AI-001', status: 'pending_external' },
+        ],
+      },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['EXT-AI-001'],
+        probes: aiProbeReportProbes(probeNames, (name) => ({
+          result_summary: aiProbeMarkerSummaries[name].replaceAll('load_run_id=load-run-123', 'load_run_id=load-run-456'),
+        })),
+      },
+      'artifacts/aiprobe.json',
+      'go run ./tools/aiprobe',
+    ),
+    /staging evidence load_run_id values must match across all recorded release evidence/,
+  );
+});
+
 test('recordEvidence rejects AI evidence without probe load run markers', () => {
   const probeNames = Object.keys(aiProbeMarkerSummaries);
   assert.throws(

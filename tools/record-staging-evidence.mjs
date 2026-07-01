@@ -780,6 +780,50 @@ function assertPerformanceLoadRunMatchesManifest(manifest, incomingLoadRunIDs) {
   );
 }
 
+function assertReportLoadRunMatchesManifest(manifest, report) {
+  const reportLoadRunIDs = collectReportLoadRunIDs(report);
+  if (reportLoadRunIDs.size === 0) {
+    return;
+  }
+  const loadRunIDs = new Set(reportLoadRunIDs);
+  for (const item of manifest.items ?? []) {
+    if (item.status !== 'passed' || !Array.isArray(item.evidence)) {
+      continue;
+    }
+    for (const evidence of item.evidence) {
+      const existingLoadRunID = summaryMarkerValue(String(evidence.result_summary ?? ''), 'load_run_id');
+      if (existingLoadRunID) {
+        loadRunIDs.add(existingLoadRunID);
+      }
+    }
+  }
+  assert.equal(
+    loadRunIDs.size,
+    1,
+    'staging evidence load_run_id values must match across all recorded release evidence',
+  );
+}
+
+function collectReportLoadRunIDs(report) {
+  const loadRunIDs = new Set();
+  const topLevelLoadRunID = String(report.load_run_id ?? '').trim();
+  if (topLevelLoadRunID) {
+    loadRunIDs.add(topLevelLoadRunID);
+  }
+  const summaries = [
+    report.result_summary,
+    report.config_artifact_summary,
+    ...(Array.isArray(report.probes) ? report.probes.map((probe) => probe.result_summary) : []),
+  ];
+  for (const summary of summaries) {
+    const loadRunID = summaryMarkerValue(String(summary ?? ''), 'load_run_id');
+    if (loadRunID) {
+      loadRunIDs.add(loadRunID);
+    }
+  }
+  return loadRunIDs;
+}
+
 function reportNumericValue(report, key) {
   if (typeof report[key] === 'number') {
     return report[key];
@@ -2433,6 +2477,7 @@ function recordEvidence(manifest, report, artifact, command) {
   validateResilienceEvidence(report, manifest);
   validatePerformanceEvidence(report, manifest);
   validateAbuseEvidence(report, manifest);
+  assertReportLoadRunMatchesManifest(manifest, report);
 
   const itemsById = new Map(manifest.items.map((item) => [item.id, item]));
   for (const id of report.evidence_items) {
