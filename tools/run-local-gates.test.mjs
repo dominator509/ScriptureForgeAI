@@ -108,6 +108,13 @@ test('buildGatePlan includes readiness sync unit tests in the tooling gate', () 
   assert.match(toolingGate.display, /tools\/verify-journal-crypto\.test\.mjs/);
 });
 
+test('buildGatePlan requires mobile build check to include journal crypto verifier output', () => {
+  const [mobileGate] = buildGatePlan({ only: ['mobile-build-check'] });
+  assert.ok(mobileGate.command.includes('--require-output'));
+  assert.ok(mobileGate.command.includes('journal crypto verification passed:'));
+  assert.match(mobileGate.display, /--require-output journal crypto verification passed:/);
+});
+
 test('buildGatePlan includes local and strict staging PATH readiness gates before expensive gates', () => {
   const gates = buildGatePlan();
   const localPathIndex = gates.findIndex((gate) => gate.id === 'project-path-readiness');

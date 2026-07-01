@@ -250,7 +250,7 @@ test('validateCIWorkflow rejects raw client build/typecheck gates without proof 
   );
 
   const rawMobileBuildCheck = text.replace(
-    'node ../tools/run-client-command.mjs --cwd . --script build:check --proof-name mobile-build-check-gate --marker mobile_typecheck=true --marker mobile_smoke=true --marker mobile_crypto_verification=true --bin npm',
+    'node ../tools/run-client-command.mjs --cwd . --script build:check --proof-name mobile-build-check-gate --marker mobile_typecheck=true --marker mobile_smoke=true --marker mobile_crypto_verification=true --require-output "journal crypto verification passed:" --bin npm',
     'npm run build:check',
   );
   assert.notEqual(rawMobileBuildCheck, text, 'fixture workflow must include wrapped mobile build check');

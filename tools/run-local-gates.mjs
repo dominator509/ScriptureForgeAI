@@ -22,7 +22,7 @@ export const gateDefinitions = [
   { id: 'web-build', command: [nodeBin, 'tools/run-client-command.mjs', '--cwd', 'web', '--script', 'build', '--proof-name', 'web-build-gate', '--marker', 'next_build=true', '--marker', 'web_production_bundle=true', '--bin', npmBin] },
   { id: 'mobile-audit', command: [nodeBin, 'tools/run-npm-audit.mjs', '--cwd', 'mobile', '--level', 'high', '--bin', npmBin] },
   { id: 'mobile-smoke', command: [npmBin, 'run', 'smoke'], cwd: 'mobile' },
-  { id: 'mobile-build-check', command: [nodeBin, 'tools/run-client-command.mjs', '--cwd', 'mobile', '--script', 'build:check', '--proof-name', 'mobile-build-check-gate', '--marker', 'mobile_typecheck=true', '--marker', 'mobile_smoke=true', '--marker', 'mobile_crypto_verification=true', '--bin', npmBin] },
+  { id: 'mobile-build-check', command: [nodeBin, 'tools/run-client-command.mjs', '--cwd', 'mobile', '--script', 'build:check', '--proof-name', 'mobile-build-check-gate', '--marker', 'mobile_typecheck=true', '--marker', 'mobile_smoke=true', '--marker', 'mobile_crypto_verification=true', '--require-output', 'journal crypto verification passed:', '--bin', npmBin] },
   { id: 'rust-protobuf-validation', command: [nodeBin, 'tools/verify-rust-protobuf.mjs'] },
   { id: 'rust-cargo-test', command: [nodeBin, 'tools/run-rust-cargo-gate.mjs', '--bin', cargoBin], env: { CARGO_HOME: '.tools/cargo', RUSTUP_HOME: '.tools/rustup' } },
   { id: 'terraform-fmt', command: [nodeBin, 'tools/run-terraform-command.mjs', '--mode', 'fmt', '--bin', terraformBin] },

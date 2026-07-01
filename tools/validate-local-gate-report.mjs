@@ -240,7 +240,9 @@ export function validateLocalGateReport(report, {
     }
     if (result.id === 'mobile-build-check') {
       const output = `${result.stdout_tail}\n${result.stderr_tail}`;
+      assert.match(result.command, /--require-output "journal crypto verification passed:"|--require-output journal crypto verification passed:/, 'mobile-build-check command must require journal crypto verifier proof output');
       assert.match(output, /mobile-build-check-gate validated:/, 'mobile-build-check output must include the mobile build-check proof summary');
+      assert.match(output, /journal crypto verification passed:/, 'mobile-build-check output must include journal crypto verifier proof output');
       for (const marker of mobileBuildCheckProofMarkers) {
         assert.ok(output.includes(marker), `mobile-build-check output must include ${marker}`);
       }

@@ -195,7 +195,7 @@ jobs:
         npm ci
         node ../tools/run-npm-audit.mjs --cwd . --level high --bin npm
         npm run smoke
-        node ../tools/run-client-command.mjs --cwd . --script build:check --proof-name mobile-build-check-gate --marker mobile_typecheck=true --marker mobile_smoke=true --marker mobile_crypto_verification=true --bin npm
+        node ../tools/run-client-command.mjs --cwd . --script build:check --proof-name mobile-build-check-gate --marker mobile_typecheck=true --marker mobile_smoke=true --marker mobile_crypto_verification=true --require-output "journal crypto verification passed:" --bin npm
 
     - name: Validate Rust Protobuf Tooling
       run: node tools/verify-rust-protobuf.mjs

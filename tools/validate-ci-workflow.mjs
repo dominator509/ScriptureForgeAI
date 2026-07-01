@@ -65,7 +65,7 @@ export const requiredMarkers = [
   { id: 'mobile-npm-ci', text: 'working-directory: mobile' },
   { id: 'mobile-audit', text: 'node ../tools/run-npm-audit.mjs --cwd . --level high --bin npm' },
   { id: 'mobile-smoke', text: 'npm run smoke' },
-  { id: 'mobile-build-check', text: 'node ../tools/run-client-command.mjs --cwd . --script build:check --proof-name mobile-build-check-gate --marker mobile_typecheck=true --marker mobile_smoke=true --marker mobile_crypto_verification=true --bin npm' },
+  { id: 'mobile-build-check', text: 'node ../tools/run-client-command.mjs --cwd . --script build:check --proof-name mobile-build-check-gate --marker mobile_typecheck=true --marker mobile_smoke=true --marker mobile_crypto_verification=true --require-output "journal crypto verification passed:" --bin npm' },
   { id: 'serena-obsidian-validation', text: 'node tools/validate-serena-obsidian.mjs' },
   { id: 'staging-evidence-contract-check', text: 'node tools/sync-staging-evidence-contract.mjs --check' },
   { id: 'obsidian-readiness-snapshot-check', text: 'node tools/sync-obsidian-readiness.mjs --check' },

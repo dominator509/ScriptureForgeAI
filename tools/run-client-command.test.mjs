@@ -16,12 +16,15 @@ test('parseArgs supports client command proof settings', () => {
     '--bin', 'npm',
     '--marker', 'web_typescript_no_emit=true',
     '--marker=web_runtime_types=true',
+    '--require-output', 'tsc ok',
+    '--require-output=runtime ok',
   ]);
   assert.equal(args.cwd, 'web');
   assert.equal(args.script, 'typecheck');
   assert.equal(args['proof-name'], 'web-typecheck-gate');
   assert.equal(args.bin, 'npm');
   assert.deepEqual(args.markers, ['web_typescript_no_emit=true', 'web_runtime_types=true']);
+  assert.deepEqual(args.requiredOutputs, ['tsc ok', 'runtime ok']);
 });
 
 test('resolveClientCommand uses npm.cmd on Windows', () => {
@@ -62,6 +65,37 @@ test('runClientCommand preserves failing exit codes', () => {
 
   assert.equal(result.exitCode, 2);
   assert.match(result.output, /type errors/);
+});
+
+test('runClientCommand rejects successful output missing required proof text', () => {
+  const result = runClientCommand({
+    script: 'build:check',
+    markers: ['mobile_crypto_verification=true'],
+    requiredOutputs: ['journal crypto verification passed:'],
+    spawnSyncImpl() {
+      return { status: 0, stdout: 'typecheck ok\nsmoke ok\n', stderr: '' };
+    },
+    platformName: 'linux',
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /client command missing required output: journal crypto verification passed:/);
+});
+
+test('runClientCommand accepts successful output with required proof text', () => {
+  const result = runClientCommand({
+    script: 'build:check',
+    markers: ['mobile_crypto_verification=true'],
+    requiredOutputs: ['journal crypto verification passed:'],
+    spawnSyncImpl() {
+      return { status: 0, stdout: 'journal crypto verification passed: native_quick_crypto_provider_loaded=true\n', stderr: '' };
+    },
+    platformName: 'linux',
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.match(result.output, /journal crypto verification passed:/);
+  assert.ok(result.markers.includes('mobile_crypto_verification=true'));
 });
 
 test('runClientCommand falls back through cmd for Windows command shims', () => {

@@ -289,6 +289,22 @@ test('validateLocalGateReport rejects client build reports without wrapper proof
     () => validateLocalGateReport(missingMobileBuildMarker),
     /mobile-build-check output must include mobile_crypto_verification=true/,
   );
+
+  const missingMobileBuildVerifierOutput = completeReport();
+  findGate(missingMobileBuildVerifierOutput, 'mobile-build-check').stdout_tail = mobileBuildCheckProofOutput()
+    .replace('journal crypto verification passed: native_quick_crypto_provider_loaded=true\n', '');
+  assert.throws(
+    () => validateLocalGateReport(missingMobileBuildVerifierOutput),
+    /mobile-build-check output must include journal crypto verifier proof output/,
+  );
+
+  const missingMobileBuildVerifierCommand = completeReport();
+  findGate(missingMobileBuildVerifierCommand, 'mobile-build-check').command = findGate(missingMobileBuildVerifierCommand, 'mobile-build-check').command
+    .replace(' --require-output journal crypto verification passed:', '');
+  assert.throws(
+    () => validateLocalGateReport(missingMobileBuildVerifierCommand),
+    /mobile-build-check command must match the canonical local gate command/,
+  );
 });
 
 test('validateLocalGateReport rejects Rust reports without protobuf or Cargo proof markers', () => {
@@ -806,7 +822,8 @@ function mobileSmokeProofOutput() {
 }
 
 function mobileBuildCheckProofOutput() {
-  return `mobile-build-check-gate validated: ${[
+  return `journal crypto verification passed: native_quick_crypto_provider_loaded=true
+mobile-build-check-gate validated: ${[
     ...clientCommandProofMarkers,
     'mobile_typecheck=true',
     'mobile_smoke=true',

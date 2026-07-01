@@ -16,6 +16,7 @@ export function runClientCommand({
   script,
   bin = 'npm',
   markers = [],
+  requiredOutputs = [],
   spawnSyncImpl = spawnSync,
   platformName = platform(),
   env = process.env,
@@ -41,10 +42,19 @@ export function runClientCommand({
   }
 
   const output = `${child.stdout || ''}${child.stderr || ''}${child.error ? child.error.message : ''}`;
-  const exitCode = child.status ?? 1;
+  let exitCode = child.status ?? 1;
+  let validatedOutput = output;
+  if (exitCode === 0 && requiredOutputs.length > 0) {
+    const missing = requiredOutputs.filter((requiredOutput) => !output.includes(requiredOutput));
+    if (missing.length > 0) {
+      const suffix = output.endsWith('\n') || output.length === 0 ? '' : '\n';
+      exitCode = 1;
+      validatedOutput = `${output}${suffix}client command missing required output: ${missing.join(', ')}\n`;
+    }
+  }
   return {
     exitCode,
-    output,
+    output: validatedOutput,
     markers: [...clientCommandProofMarkers, ...markers],
   };
 }
@@ -61,7 +71,7 @@ export function quoteShellArg(value) {
 }
 
 export function parseArgs(rawArgs) {
-  const parsed = { markers: [] };
+  const parsed = { markers: [], requiredOutputs: [] };
   for (let i = 0; i < rawArgs.length; i += 1) {
     const arg = rawArgs[i];
     if (arg === '--cwd' || arg === '--script' || arg === '--proof-name' || arg === '--bin') {
@@ -71,6 +81,11 @@ export function parseArgs(rawArgs) {
     }
     if (arg === '--marker') {
       parsed.markers.push(rawArgs[i + 1]);
+      i += 1;
+      continue;
+    }
+    if (arg === '--require-output') {
+      parsed.requiredOutputs.push(rawArgs[i + 1]);
       i += 1;
       continue;
     }
@@ -94,6 +109,10 @@ export function parseArgs(rawArgs) {
       parsed.markers.push(arg.slice('--marker='.length));
       continue;
     }
+    if (arg.startsWith('--require-output=')) {
+      parsed.requiredOutputs.push(arg.slice('--require-output='.length));
+      continue;
+    }
     throw new Error(`unknown argument ${arg}`);
   }
   return parsed;
@@ -110,6 +129,7 @@ function main() {
     script: args.script,
     bin: args.bin || 'npm',
     markers: args.markers,
+    requiredOutputs: args.requiredOutputs,
   });
 
   if (result.output) {
