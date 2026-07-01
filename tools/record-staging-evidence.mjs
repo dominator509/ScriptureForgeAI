@@ -263,7 +263,7 @@ const tenantOrgIDPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9
 
 const requiredKubernetesProbeSummaryMarkers = new Map([
   ['kubernetes-rollout-status', ['staging artifact', 'namespace', 'staging', 'deployment', 'scriptureforge-api', 'scriptureforge-web', 'scriptureforge-rust-engine', 'successfully rolled out', 'ready', 'available', 'release_candidate', 'service_version']],
-  ['kubernetes-workload-resources', ['staging artifact', 'namespace', 'staging', 'deployment', 'service', 'ingress', 'hpa', 'pdb', 'ready', 'available', 'targets', 'minavailable', 'readinessProbe', 'livenessProbe', 'rollingUpdate', 'maxUnavailable=0', 'minReplicas', 'maxReplicas', 'tls', 'SecretProviderClass', 'image', 'sha256:', 'release_candidate', 'service_version', 'scriptureforge-api', 'scriptureforge-web', 'scriptureforge-rust-engine', 'distinct_kubernetes_artifacts=true']],
+  ['kubernetes-workload-resources', ['staging artifact', 'namespace', 'staging', 'deployment', 'service', 'ingress', 'hpa', 'pdb', 'ready', 'available', 'targets', 'minavailable', 'readinessProbe', 'livenessProbe', 'rollingUpdate', 'maxUnavailable=0', 'minReplicas', 'maxReplicas', 'tls', 'SecretProviderClass', 'image', 'sha256:', 'release_candidate', 'service_version', 'scriptureforge-api', 'scriptureforge-web', 'scriptureforge-rust-engine', 'concrete_image_digests=3', 'workload_image_digests=3', 'distinct_kubernetes_artifacts=true']],
 ]);
 
 const forbiddenDeploymentSummaryMarkers = [
@@ -1076,6 +1076,7 @@ function validateKubernetesEvidence(report, manifest) {
         `kubernetes-workload-resources result_summary must include at least 3 immutable image digests, found ${digestCount}`,
       );
       assertKubernetesWorkloadImageDigests(summary, 'kubernetes-workload-resources result_summary');
+      assertKubernetesWorkloadStructuredImageDigests(probe, summary);
     }
   }
   assertDistinctReportURLs('DEPLOY-K8S-001', artifactTargets);
@@ -1092,6 +1093,39 @@ function assertKubernetesWorkloadImageDigests(summary, label) {
       String(summary ?? ''),
       pattern,
       `${label} must include immutable image digest bound to ${workload}`,
+    );
+  }
+}
+
+function assertKubernetesWorkloadStructuredImageDigests(probe, summary) {
+  const concreteImageDigests = Number(probe?.concrete_image_digests);
+  const workloadImageDigests = Number(probe?.workload_image_digests);
+  assert.equal(
+    Number.isInteger(concreteImageDigests) && concreteImageDigests >= 3,
+    true,
+    'kubernetes-workload-resources probe must include structured concrete_image_digests >= 3',
+  );
+  assert.equal(
+    workloadImageDigests,
+    kubernetesWorkloadImageDigestPatterns.size,
+    'kubernetes-workload-resources probe must include structured workload_image_digests=3',
+  );
+  const imageDigests = probe?.image_digests;
+  assert.equal(
+    imageDigests && typeof imageDigests === 'object' && !Array.isArray(imageDigests),
+    true,
+    'kubernetes-workload-resources probe must include structured image_digests',
+  );
+  for (const [workload] of kubernetesWorkloadImageDigestPatterns) {
+    const digest = String(imageDigests[workload] ?? '').trim().toLowerCase();
+    assert.match(
+      digest,
+      /^sha256:[a-f0-9]{64}$/,
+      `kubernetes-workload-resources structured image_digests.${workload} must be an immutable sha256 digest`,
+    );
+    assert.ok(
+      String(summary ?? '').toLowerCase().includes(`${workload}@${digest}`),
+      `kubernetes-workload-resources result_summary must include structured image digest marker ${workload}@${digest}`,
     );
   }
 }

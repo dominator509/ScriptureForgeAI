@@ -208,7 +208,17 @@ const deploymentProbeMarkerSummaries = {
   'terraform-staging-plan': 'got HTTP 200; staging artifact; verified markers: Terraform, Plan:, aws_eks_cluster, aws_eks_node_group, aws_rds_cluster, aws_elasticache_replication_group, aws_ecr_repository, kubernetes_deployment, kubernetes_ingress_v1, kubernetes_horizontal_pod_autoscaler_v2, kubernetes_pod_disruption_budget_v1, kubernetes_manifest, aws_iam_role, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
   'terraform-staging-apply-or-approval': 'got HTTP 200; staging artifact; verified markers: deployment approval, approved, DEPLOY-TF-001, change_ticket=PLATFORM-123, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123, distinct_terraform_artifacts=true',
   'kubernetes-rollout-status': 'got HTTP 200; staging artifact; verified markers: namespace, staging, deployment, scriptureforge-api, scriptureforge-web, scriptureforge-rust-engine, successfully rolled out, ready, available, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
-  'kubernetes-workload-resources': 'got HTTP 200; staging artifact; verified markers: namespace, staging, deployment, service, ingress, hpa, pdb, ready, available, targets, minavailable, readinessProbe, livenessProbe, rollingUpdate, maxUnavailable=0, minReplicas, maxReplicas, tls, SecretProviderClass, image, scriptureforge-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, scriptureforge-web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb, scriptureforge-rust-engine@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123, scriptureforge-api, scriptureforge-web, scriptureforge-rust-engine, distinct_kubernetes_artifacts=true',
+  'kubernetes-workload-resources': 'got HTTP 200; staging artifact; verified markers: namespace, staging, deployment, service, ingress, hpa, pdb, ready, available, targets, minavailable, readinessProbe, livenessProbe, rollingUpdate, maxUnavailable=0, minReplicas, maxReplicas, tls, SecretProviderClass, image, scriptureforge-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, scriptureforge-web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb, scriptureforge-rust-engine@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123, scriptureforge-api, scriptureforge-web, scriptureforge-rust-engine, concrete_image_digests=3, workload_image_digests=3, distinct_kubernetes_artifacts=true',
+};
+
+const kubernetesWorkloadDigestFields = {
+  concrete_image_digests: 3,
+  workload_image_digests: 3,
+  image_digests: {
+    'scriptureforge-api': 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    'scriptureforge-web': 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    'scriptureforge-rust-engine': 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+  },
 };
 
 function terraformApplyProbe(resultSummary = deploymentProbeMarkerSummaries['terraform-staging-apply-or-approval'], overrides = {}) {
@@ -5161,6 +5171,7 @@ test('recordEvidence records production-grade Kubernetes deployment evidence', (
         },
         {
           name: 'kubernetes-workload-resources',
+          ...kubernetesWorkloadDigestFields,
           passed: true,
           target: 'https://artifacts.staging.scriptureforge.ai/deploy/kubectl-resources.txt',
           result_summary: deploymentProbeMarkerSummaries['kubernetes-workload-resources'],
@@ -5191,6 +5202,7 @@ test('recordEvidence rejects Kubernetes deployment evidence without probe load r
           },
           {
             name: 'kubernetes-workload-resources',
+            ...kubernetesWorkloadDigestFields,
             passed: true,
             target: 'https://artifacts.staging.scriptureforge.ai/deploy/kubectl-resources.txt',
             result_summary: deploymentProbeMarkerSummaries['kubernetes-workload-resources'],
@@ -5221,6 +5233,7 @@ test('recordEvidence rejects Kubernetes deployment evidence with mixed probe loa
           },
           {
             name: 'kubernetes-workload-resources',
+            ...kubernetesWorkloadDigestFields,
             passed: true,
             target: 'https://artifacts.staging.scriptureforge.ai/deploy/kubectl-resources.txt',
             result_summary: deploymentProbeMarkerSummaries['kubernetes-workload-resources'].replace('load_run_id=load-run-123', 'load_run_id=load-run-456'),
@@ -5253,6 +5266,7 @@ test('recordEvidence rejects Kubernetes deployment evidence without report load 
           },
           {
             name: 'kubernetes-workload-resources',
+            ...kubernetesWorkloadDigestFields,
             passed: true,
             target: 'https://artifacts.staging.scriptureforge.ai/deploy/kubectl-resources.txt',
             result_summary: deploymentProbeMarkerSummaries['kubernetes-workload-resources'],
@@ -5283,6 +5297,7 @@ test('recordEvidence rejects Kubernetes evidence without staging artifact marker
           },
           {
             name: 'kubernetes-workload-resources',
+            ...kubernetesWorkloadDigestFields,
             passed: true,
             target: 'https://artifacts.staging.scriptureforge.ai/deploy/kubectl-resources.txt',
             result_summary: deploymentProbeMarkerSummaries['kubernetes-workload-resources'].replace('staging artifact; ', ''),
@@ -5313,6 +5328,7 @@ test('recordEvidence rejects Kubernetes evidence without verified marker summari
           },
           {
             name: 'kubernetes-workload-resources',
+            ...kubernetesWorkloadDigestFields,
             passed: true,
             target: 'https://artifacts.staging.scriptureforge.ai/deploy/kubectl-resources.txt',
             result_summary: deploymentProbeMarkerSummaries['kubernetes-workload-resources'].replace('pdb', ''),
@@ -5345,6 +5361,7 @@ test('recordEvidence rejects Kubernetes rollout evidence without release linkage
           },
           {
             name: 'kubernetes-workload-resources',
+            ...kubernetesWorkloadDigestFields,
             passed: true,
             target: 'https://artifacts.staging.scriptureforge.ai/deploy/kubectl-resources.txt',
             result_summary: deploymentProbeMarkerSummaries['kubernetes-workload-resources'],
@@ -5375,6 +5392,7 @@ test('recordEvidence rejects Kubernetes evidence with duplicate rollout and reso
           },
           {
             name: 'kubernetes-workload-resources',
+            ...kubernetesWorkloadDigestFields,
             passed: true,
             target: 'https://ARTIFACTS.staging.scriptureforge.ai:443/deploy/kubectl-shared.txt',
             result_summary: deploymentProbeMarkerSummaries['kubernetes-workload-resources'],
@@ -5405,6 +5423,7 @@ test('recordEvidence rejects Kubernetes evidence without distinct artifact summa
           },
           {
             name: 'kubernetes-workload-resources',
+            ...kubernetesWorkloadDigestFields,
             passed: true,
             target: 'https://artifacts.staging.scriptureforge.ai/deploy/kubectl-resources.txt',
             result_summary: deploymentProbeMarkerSummaries['kubernetes-workload-resources'].replace(', distinct_kubernetes_artifacts=true', ''),
@@ -5435,6 +5454,7 @@ test('recordEvidence rejects Kubernetes evidence without rollout safety markers'
           },
           {
             name: 'kubernetes-workload-resources',
+            ...kubernetesWorkloadDigestFields,
             passed: true,
             target: 'https://artifacts.staging.scriptureforge.ai/deploy/kubectl-resources.txt',
             result_summary: deploymentProbeMarkerSummaries['kubernetes-workload-resources'].replace('maxUnavailable=0, ', ''),
@@ -5465,6 +5485,7 @@ test('recordEvidence rejects Kubernetes evidence without image digest linkage ma
           },
           {
             name: 'kubernetes-workload-resources',
+            ...kubernetesWorkloadDigestFields,
             passed: true,
             target: 'https://artifacts.staging.scriptureforge.ai/deploy/kubectl-resources.txt',
             result_summary: deploymentProbeMarkerSummaries['kubernetes-workload-resources']
@@ -5478,6 +5499,71 @@ test('recordEvidence rejects Kubernetes evidence without image digest linkage ma
       'go run ./tools/deploymentprobe -probe-kubernetes',
     ),
     /kubernetes-workload-resources result_summary must include verified marker sha256:/,
+  );
+});
+
+test('recordEvidence rejects Kubernetes evidence without structured image digest fields', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DEPLOY-K8S-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        evidence_items: ['DEPLOY-K8S-001'],
+        probes: [
+          {
+            name: 'kubernetes-rollout-status',
+            passed: true,
+            target: 'https://artifacts.staging.scriptureforge.ai/deploy/kubectl-rollout-status.txt',
+            result_summary: deploymentProbeMarkerSummaries['kubernetes-rollout-status'],
+          },
+          {
+            name: 'kubernetes-workload-resources',
+            passed: true,
+            target: 'https://artifacts.staging.scriptureforge.ai/deploy/kubectl-resources.txt',
+            result_summary: deploymentProbeMarkerSummaries['kubernetes-workload-resources'],
+          },
+        ],
+      },
+      'artifacts/deploymentprobe-k8s.json',
+      'go run ./tools/deploymentprobe -probe-kubernetes',
+    ),
+    /kubernetes-workload-resources probe must include structured concrete_image_digests >= 3/,
+  );
+});
+
+test('recordEvidence rejects Kubernetes evidence with mismatched structured image digest fields', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DEPLOY-K8S-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        evidence_items: ['DEPLOY-K8S-001'],
+        probes: [
+          {
+            name: 'kubernetes-rollout-status',
+            passed: true,
+            target: 'https://artifacts.staging.scriptureforge.ai/deploy/kubectl-rollout-status.txt',
+            result_summary: deploymentProbeMarkerSummaries['kubernetes-rollout-status'],
+          },
+          {
+            name: 'kubernetes-workload-resources',
+            ...kubernetesWorkloadDigestFields,
+            image_digests: {
+              ...kubernetesWorkloadDigestFields.image_digests,
+              'scriptureforge-web': 'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+            },
+            passed: true,
+            target: 'https://artifacts.staging.scriptureforge.ai/deploy/kubectl-resources.txt',
+            result_summary: deploymentProbeMarkerSummaries['kubernetes-workload-resources'],
+          },
+        ],
+      },
+      'artifacts/deploymentprobe-k8s.json',
+      'go run ./tools/deploymentprobe -probe-kubernetes',
+    ),
+    /kubernetes-workload-resources result_summary must include structured image digest marker scriptureforge-web@sha256:dddd/,
   );
 });
 
@@ -5498,6 +5584,7 @@ test('recordEvidence rejects Kubernetes evidence with only generic image digest 
           },
           {
             name: 'kubernetes-workload-resources',
+            ...kubernetesWorkloadDigestFields,
             passed: true,
             target: 'https://artifacts.staging.scriptureforge.ai/deploy/kubectl-resources.txt',
             result_summary: deploymentProbeMarkerSummaries['kubernetes-workload-resources']
@@ -5531,6 +5618,7 @@ test('recordEvidence rejects Kubernetes evidence with unbound immutable image di
           },
           {
             name: 'kubernetes-workload-resources',
+            ...kubernetesWorkloadDigestFields,
             passed: true,
             target: 'https://artifacts.staging.scriptureforge.ai/deploy/kubectl-resources.txt',
             result_summary: deploymentProbeMarkerSummaries['kubernetes-workload-resources']
@@ -5564,6 +5652,7 @@ test('recordEvidence rejects Kubernetes evidence with admitted rollout failure s
           },
           {
             name: 'kubernetes-workload-resources',
+            ...kubernetesWorkloadDigestFields,
             passed: true,
             target: 'https://artifacts.staging.scriptureforge.ai/deploy/kubectl-resources.txt',
             result_summary: deploymentProbeMarkerSummaries['kubernetes-workload-resources'],

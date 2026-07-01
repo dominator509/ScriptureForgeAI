@@ -92,6 +92,21 @@ func TestRunEmitsTerraformAndKubernetesEvidenceWhenArtifactsPass(t *testing.T) {
 				t.Fatalf("probe %s summary missing marker %q: %s", probe.Name, marker, probe.ResultSummary)
 			}
 		}
+		if probe.Name == "kubernetes-workload-resources" {
+			if probe.ConcreteImageDigests != 3 || probe.WorkloadImageDigests != 3 {
+				t.Fatalf("workload resources omitted structured digest counts: %+v", probe)
+			}
+			expectedDigests := map[string]string{
+				"scriptureforge-api":         apiImageDigest,
+				"scriptureforge-web":         webImageDigest,
+				"scriptureforge-rust-engine": rustImageDigest,
+			}
+			for workload, digest := range expectedDigests {
+				if probe.ImageDigests[workload] != digest {
+					t.Fatalf("workload resources omitted structured digest for %s: %+v", workload, probe.ImageDigests)
+				}
+			}
+		}
 	}
 }
 

@@ -315,7 +315,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Terraform Apply Zero-Destroy Guard**: Terraform apply evidence must preserve `Apply complete`, `Resources:`, and `0 destroyed` markers before `DEPLOY-TF-001` can pass from a real apply artifact; otherwise the path must use the structured deployment-approval fallback with a matching change ticket.
 - [x] **Terraform Distinct Artifact Guard**: `tools/deploymentprobe`, the staging evidence recorder, and strict staging validation require Terraform backend, plan, and apply-or-approval proof to use distinct HTTPS artifact URLs plus `distinct_terraform_artifacts=true`, so one broad artifact cannot satisfy every `DEPLOY-TF-001` proof role.
 - [x] **Terraform Artifact Alias Guard**: `tools/deploymentprobe` canonicalizes Terraform evidence artifact URLs before distinctness checks, so default-port, host-case, query-order, or fragment aliases cannot satisfy separate backend, plan, and apply-or-approval proof roles.
-- [x] **Kubernetes Distinct Artifact Guard**: `tools/deploymentprobe`, the staging evidence recorder, and strict staging validation require Kubernetes rollout and workload-resource proof to use canonical-distinct HTTPS artifact URLs plus `distinct_kubernetes_artifacts=true`, so one broad `kubectl` artifact cannot satisfy both `DEPLOY-K8S-001` proof roles.
+- [x] **Kubernetes Distinct Artifact Guard**: `tools/deploymentprobe`, the staging evidence recorder, and strict staging validation require Kubernetes rollout and workload-resource proof to use canonical-distinct HTTPS artifact URLs plus structured workload image digests, `concrete_image_digests=3`, `workload_image_digests=3`, and `distinct_kubernetes_artifacts=true`, so one broad or summary-only `kubectl` artifact cannot satisfy both `DEPLOY-K8S-001` proof roles.
 - [x] **Kubernetes Release Identity Guard**: `tools/deploymentprobe`, `tools/record-staging-evidence.mjs`, and strict staging validation now require Kubernetes rollout/workload evidence to name the staging namespace plus immutable image digest, `release_candidate`, and `service_version` markers before `DEPLOY-K8S-001` can support a production-readiness claim.
 - [x] **Deployment Local Gate Proof Marker Guard**: `tools/validate-deployment-skeleton.mjs` emits proof markers for remote backend shape, IRSA secret access, SecretProviderClass sync, TLS ingress, RDS backup/final snapshot controls, Redis runtime wiring, Rust gRPC wiring, OTEL env wiring, HPA/PDB rollout safety, and root database URL absence; `tools/validate-local-gate-report.mjs` now rejects local gate reports whose `deployment-skeleton-validation` output lacks those markers.
 - [x] **Terraform Secret Input Guard**: `tools/validate-deployment-skeleton.mjs` now proves the database root passphrase is sensitive, length-validated, and has no Terraform default, and that API/JWT/OpenAI/Zoom workload secrets are accepted only as AWS Secrets Manager ARNs before local deployment evidence can support readiness.
@@ -351,15 +351,17 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - release_candidate: ce96c283410756444a63b1345646fc69cf274d22
 - strict_release_ready: no
 - strict_staging_path_ready: yes
-- non_manifest_blockers: 1
+- non_manifest_blockers: 2
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: 89d95cd6609734208fcdb8501412322d71213f6a
+- expected_release_candidate: fc966c5cb7ed86adacae7117ef8e30ee70076792
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: 89d95cd6609734208fcdb8501412322d71213f6a
+    - expected_release_candidate: fc966c5cb7ed86adacae7117ef8e30ee70076792
     - actual_release_candidate: ce96c283410756444a63b1345646fc69cf274d22
+  - STAGING-EVIDENCE-CONTRACT [failed]: Environment-specific pending evidence requirements are stale relative to production-readiness/staging-evidence.example.json.
+    - required: DEPLOY-K8S-001 required_evidence must be refreshed from the checked-in example contract (5 current entries, 5 expected entries)
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
     - required: tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted
     - required: Uploaded GitHub Actions ci-release-evidence artifact from the exact release SHA with release_candidate=<manifest release_candidate> marker in the recorded summary

@@ -305,7 +305,7 @@ const terraformApplyOrApprovalSegmentMarkerSets = [
 ];
 const kubernetesSegmentMarkerRequirements = new Map([
   ['kubernetes-rollout-status', ['staging artifact', 'namespace', 'staging', 'deployment', 'scriptureforge-api', 'scriptureforge-web', 'scriptureforge-rust-engine', 'successfully rolled out', 'ready', 'available', 'release_candidate=', 'service_version=', 'load_run_id=']],
-  ['kubernetes-workload-resources', ['staging artifact', 'namespace', 'staging', 'deployment', 'service', 'ingress', 'hpa', 'pdb', 'ready', 'available', 'targets', 'minavailable', 'readinessProbe', 'livenessProbe', 'rollingUpdate', 'maxUnavailable=0', 'minReplicas', 'maxReplicas', 'tls', 'SecretProviderClass', 'image', 'sha256:', 'release_candidate=', 'service_version=', 'load_run_id=', 'scriptureforge-api', 'scriptureforge-web', 'scriptureforge-rust-engine', 'distinct_kubernetes_artifacts=true']],
+  ['kubernetes-workload-resources', ['staging artifact', 'namespace', 'staging', 'deployment', 'service', 'ingress', 'hpa', 'pdb', 'ready', 'available', 'targets', 'minavailable', 'readinessProbe', 'livenessProbe', 'rollingUpdate', 'maxUnavailable=0', 'minReplicas', 'maxReplicas', 'tls', 'SecretProviderClass', 'image', 'sha256:', 'release_candidate=', 'service_version=', 'load_run_id=', 'scriptureforge-api', 'scriptureforge-web', 'scriptureforge-rust-engine', 'concrete_image_digests=3', 'workload_image_digests=3', 'distinct_kubernetes_artifacts=true']],
 ]);
 const rustSegmentMarkerRequirements = new Map([
   ['rust-grpc-health', ['staging artifact', 'grpc health', 'scriptureforge.engine.ScriptureEngine', 'SERVING', 'release_candidate=', 'service_version=', 'deployment_environment=', 'load_run_id=']],
@@ -2381,6 +2381,16 @@ function assertStrictKubernetesImageDigests(evidence) {
   assert.ok(
     uniqueDigests.size >= 3,
     `DEPLOY-K8S-001 strict release Kubernetes workload resources must include at least 3 immutable image digests, found ${uniqueDigests.size}`,
+  );
+  assert.equal(
+    extractNumericMarker(segmentText, 'concrete_image_digests', 'DEPLOY-K8S-001'),
+    uniqueDigests.size,
+    'DEPLOY-K8S-001 strict release Kubernetes workload resources concrete_image_digests must match unique image digest count',
+  );
+  assert.equal(
+    extractNumericMarker(segmentText, 'workload_image_digests', 'DEPLOY-K8S-001'),
+    kubernetesWorkloadImageDigestPatterns.size,
+    'DEPLOY-K8S-001 strict release Kubernetes workload resources must include workload_image_digests=3',
   );
   for (const [workload, pattern] of kubernetesWorkloadImageDigestPatterns) {
     assert.match(

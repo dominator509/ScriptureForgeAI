@@ -41,13 +41,16 @@ type report struct {
 }
 
 type probeResult struct {
-	Name          string `json:"name"`
-	Target        string `json:"target"`
-	Passed        bool   `json:"passed"`
-	StatusCode    int    `json:"status_code,omitempty"`
-	LatencyMS     int64  `json:"latency_ms,omitempty"`
-	ChangeTicket  string `json:"change_ticket,omitempty"`
-	ResultSummary string `json:"result_summary"`
+	Name                 string            `json:"name"`
+	Target               string            `json:"target"`
+	Passed               bool              `json:"passed"`
+	StatusCode           int               `json:"status_code,omitempty"`
+	LatencyMS            int64             `json:"latency_ms,omitempty"`
+	ChangeTicket         string            `json:"change_ticket,omitempty"`
+	ConcreteImageDigests int               `json:"concrete_image_digests,omitempty"`
+	WorkloadImageDigests int               `json:"workload_image_digests,omitempty"`
+	ImageDigests         map[string]string `json:"image_digests,omitempty"`
+	ResultSummary        string            `json:"result_summary"`
 }
 
 var terraformApprovalTicketPattern = regexp.MustCompile(`(?i)\bchange[_ -]?ticket\s*[:=]\s*([A-Z][A-Z0-9]+-\d+)\b`)
@@ -235,7 +238,9 @@ func probeArtifactAny(client *http.Client, name, target string, acceptableRequir
 		matchedRequiredSet = appendKubernetesDigestMarker(name, text, matchedRequiredSet)
 		matchedRequiredSet = append(matchedRequiredSet, extraVerifiedMarkers...)
 		summary = fmt.Sprintf("%s; staging artifact; verified markers: %s", summary, strings.Join(matchedRequiredSet, ", "))
-		return probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, ChangeTicket: changeTicket, ResultSummary: summary}
+		result := probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, ChangeTicket: changeTicket, ResultSummary: summary}
+		applyKubernetesDigestFields(&result, text)
+		return result
 	} else {
 		summary += "; artifact missing required markers or contains forbidden local/mock/failure markers"
 	}
@@ -256,12 +261,23 @@ func appendKubernetesDigestMarker(name, text string, markers []string) []string 
 	if name != "kubernetes-workload-resources" {
 		return markers
 	}
-	markers = append(markers, kubernetesWorkloadDigestMarkers(text)...)
+	digestMarkers := kubernetesWorkloadDigestMarkers(text)
+	markers = append(markers, digestMarkers...)
 	return append(markers,
 		fmt.Sprintf("concrete_image_digests=%d", concreteImageDigestCount(text)),
-		fmt.Sprintf("workload_image_digests=%d", len(kubernetesWorkloadDigestMarkers(text))),
+		fmt.Sprintf("workload_image_digests=%d", len(digestMarkers)),
 		"distinct_kubernetes_artifacts=true",
 	)
+}
+
+func applyKubernetesDigestFields(result *probeResult, text string) {
+	if result.Name != "kubernetes-workload-resources" {
+		return
+	}
+	digests := kubernetesWorkloadDigestMap(text)
+	result.ConcreteImageDigests = concreteImageDigestCount(text)
+	result.WorkloadImageDigests = len(digests)
+	result.ImageDigests = digests
 }
 
 func concreteImageDigestCount(text string) int {
@@ -277,13 +293,30 @@ func kubernetesWorkloadDigestMarkers(text string) []string {
 	workloads := []string{"scriptureforge-api", "scriptureforge-web", "scriptureforge-rust-engine"}
 	markers := make([]string, 0, len(workloads))
 	for _, workload := range workloads {
-		match := kubernetesWorkloadImageDigests[workload].FindStringSubmatch(text)
-		if len(match) < 2 {
-			continue
+		if digest := kubernetesWorkloadDigest(text, workload); digest != "" {
+			markers = append(markers, workload+"@"+digest)
 		}
-		markers = append(markers, workload+"@"+strings.ToLower(match[1]))
 	}
 	return markers
+}
+
+func kubernetesWorkloadDigestMap(text string) map[string]string {
+	workloads := []string{"scriptureforge-api", "scriptureforge-web", "scriptureforge-rust-engine"}
+	digests := make(map[string]string, len(workloads))
+	for _, workload := range workloads {
+		if digest := kubernetesWorkloadDigest(text, workload); digest != "" {
+			digests[workload] = digest
+		}
+	}
+	return digests
+}
+
+func kubernetesWorkloadDigest(text, workload string) string {
+	match := kubernetesWorkloadImageDigests[workload].FindStringSubmatch(text)
+	if len(match) < 2 {
+		return ""
+	}
+	return strings.ToLower(match[1])
 }
 
 func approvalTicket(name, text string) string {
