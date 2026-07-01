@@ -2775,6 +2775,12 @@ function structuredEvidenceForReport(itemID, report) {
   if (itemID === 'RUST-GRPC-001') {
     return structuredRustEvidenceForReport(report);
   }
+  if (itemID === 'PERF-HTTP-001') {
+    return structuredHTTPLoadEvidenceForReport(report);
+  }
+  if (itemID === 'PERF-WS-001' || itemID === 'DATA-REDIS-001') {
+    return structuredWebSocketRedisEvidenceForReport(report);
+  }
   if (itemID === 'EXT-AI-001') {
     return structuredAIEvidenceForReport(report);
   }
@@ -2857,6 +2863,60 @@ function structuredRustEvidenceForReport(report) {
       vector_search_requests: Number(metrics.vector_search_requests),
       api_rust_vector_search_ops: Number(apiMetrics.api_rust_vector_search_ops),
       api_rust_vector_search_seconds: Number(apiMetrics.api_rust_vector_search_seconds),
+    },
+  };
+}
+
+function structuredHTTPLoadEvidenceForReport(report) {
+  return {
+    http_load_threshold_proof: {
+      target: String(report.target ?? ''),
+      load_run_id: String(report.load_run_id ?? ''),
+      observed_rps: Number(report.rps),
+      observed_p99_ms: Number(report.p99_ms),
+      duration_ms: reportNumericValue(report, 'duration_ms'),
+      production_target_rps: Number(report.production_target_rps),
+      production_target_p99_ms: Number(report.production_target_p99_ms),
+      production_min_duration_ms: reportNumericValue(report, 'production_min_duration_ms'),
+      threshold_pass: report.threshold_pass === true,
+      http_replica_count: reportNumericValue(report, 'http_replica_count'),
+      dependency_postgres_p99_ms: reportNumericValue(report, 'dependency_postgres_p99_ms'),
+      dependency_redis_p99_ms: reportNumericValue(report, 'dependency_redis_p99_ms'),
+    },
+  };
+}
+
+function structuredWebSocketRedisEvidenceForReport(report) {
+  return {
+    websocket_redis_sequence_proof: {
+      target: String(report.target ?? ''),
+      ws_origin: String(report.ws_origin ?? ''),
+      load_run_id: String(report.load_run_id ?? ''),
+      ws_room_id: String(report.ws_room_id ?? ''),
+      ws_user_id: String(report.ws_user_id ?? ''),
+      ws_organization_id: String(report.ws_organization_id ?? ''),
+      ws_reconnect_room_id: String(report.ws_reconnect_room_id ?? ''),
+      ws_polling_room_id: String(report.ws_polling_room_id ?? ''),
+      redis_telemetry_room_id: String(report.redis_telemetry_room_id ?? ''),
+      observed_rps: Number(report.rps),
+      observed_p99_ms: Number(report.p99_ms),
+      duration_ms: reportNumericValue(report, 'duration_ms'),
+      production_target_rps: Number(report.production_target_rps),
+      production_target_p99_ms: Number(report.production_target_p99_ms),
+      production_min_duration_ms: reportNumericValue(report, 'production_min_duration_ms'),
+      production_min_ws_events: reportNumericValue(report, 'production_min_ws_events'),
+      ws_expected_events: reportNumericValue(report, 'ws_expected_events'),
+      ws_unique_sequences: reportNumericValue(report, 'ws_unique_sequences'),
+      ws_min_sequence: reportNumericValue(report, 'ws_min_sequence'),
+      ws_max_sequence: reportNumericValue(report, 'ws_max_sequence'),
+      ws_polling_latest_sequence: reportNumericValue(report, 'ws_polling_latest_sequence'),
+      ws_polling_artifact_latest_sequence: reportNumericValue(report, 'ws_polling_artifact_latest_sequence'),
+      ws_replica_count: reportNumericValue(report, 'ws_replica_count'),
+      room_broadcast_drops: reportNumericValue(report, 'room_broadcast_drops'),
+      threshold_pass: report.threshold_pass === true,
+      ws_authenticated: report.ws_authenticated === true,
+      ws_sequence_contiguous: report.ws_sequence_contiguous === true,
+      ws_reconnect_sequence_continues: report.ws_reconnect_sequence_continues === true,
     },
   };
 }

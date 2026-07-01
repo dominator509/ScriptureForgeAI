@@ -1893,6 +1893,7 @@ function validateStrictReleaseItemEvidence(item, manifest) {
       maxP99MS: 200,
       minDurationMS: 60000,
     });
+    assertStrictHTTPLoadStructuredReport(evidence);
   }
   if (item.id === 'PERF-WS-001') {
     for (const [segment, markers] of websocketPerformanceSegmentMarkerRequirements) {
@@ -1907,6 +1908,7 @@ function validateStrictReleaseItemEvidence(item, manifest) {
       minWSEvents: 30000,
     });
     assertStrictWebSocketSequenceNumbers(evidence, 'PERF-WS-001', 'PERF-WS-001', 30000);
+    assertStrictWebSocketRedisStructuredReport(evidence, 'PERF-WS-001');
   }
   if (item.id === 'DATA-REDIS-001') {
     for (const [segment, markers] of redisPerformanceSegmentMarkerRequirements) {
@@ -1915,6 +1917,7 @@ function validateStrictReleaseItemEvidence(item, manifest) {
     assertStrictWebSocketArtifactRoomBinding(evidence, 'DATA-REDIS-001');
     assertStrictWebSocketPrincipalBinding(evidence, 'DATA-REDIS-001');
     assertStrictRedisSequenceNumbers(evidence);
+    assertStrictWebSocketRedisStructuredReport(evidence, 'DATA-REDIS-001');
   }
   if (item.id === 'ABUSE-LIMIT-001') {
     const abuseLoadRunIDs = new Set();
@@ -2694,6 +2697,85 @@ function assertStrictPerformanceNumbers(itemID, evidence, segment, { minRPS, max
 
 function assertStrictRedisSequenceNumbers(evidence) {
   assertStrictWebSocketSequenceNumbers(evidence, 'DATA-REDIS-001', 'DATA-REDIS-001', 30000);
+}
+
+function assertStrictHTTPLoadStructuredReport(evidence) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.http_load_threshold_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    'PERF-HTTP-001 strict release evidence must include exactly one structured http_load_threshold_proof report',
+  );
+  const report = structuredReports[0];
+  const segmentText = findEvidenceSegment(evidence, 'PERF-HTTP-001');
+  assert.equal(String(report.load_run_id ?? ''), extractTextMarker(segmentText, 'load_run_id', 'PERF-HTTP-001 structured report'), 'PERF-HTTP-001 structured report load_run_id must match summary marker');
+  assert.equal(Number(report.observed_rps), extractNumericMarker(segmentText, 'observed_rps', 'PERF-HTTP-001 structured report'), 'PERF-HTTP-001 structured report observed_rps must match summary marker');
+  assert.equal(Number(report.observed_p99_ms), extractNumericMarker(segmentText, 'observed_p99_ms', 'PERF-HTTP-001 structured report'), 'PERF-HTTP-001 structured report observed_p99_ms must match summary marker');
+  assert.equal(Number(report.duration_ms), extractNumericMarker(segmentText, 'duration_ms', 'PERF-HTTP-001 structured report'), 'PERF-HTTP-001 structured report duration_ms must match summary marker');
+  assert.equal(Number(report.production_target_rps), extractNumericMarker(segmentText, 'production_target_rps', 'PERF-HTTP-001 structured report'), 'PERF-HTTP-001 structured report production_target_rps must match summary marker');
+  assert.equal(Number(report.production_target_p99_ms), extractNumericMarker(segmentText, 'production_target_p99_ms', 'PERF-HTTP-001 structured report'), 'PERF-HTTP-001 structured report production_target_p99_ms must match summary marker');
+  assert.equal(Number(report.production_min_duration_ms), extractNumericMarker(segmentText, 'production_min_duration_ms', 'PERF-HTTP-001 structured report'), 'PERF-HTTP-001 structured report production_min_duration_ms must match summary marker');
+  assert.equal(Number(report.http_replica_count), extractNumericMarker(segmentText, 'http_replica_count', 'PERF-HTTP-001 structured report'), 'PERF-HTTP-001 structured report http_replica_count must match summary marker');
+  assert.equal(Number(report.dependency_postgres_p99_ms), extractNumericMarker(segmentText, 'dependency_postgres_p99_ms', 'PERF-HTTP-001 structured report'), 'PERF-HTTP-001 structured report dependency_postgres_p99_ms must match summary marker');
+  assert.equal(Number(report.dependency_redis_p99_ms), extractNumericMarker(segmentText, 'dependency_redis_p99_ms', 'PERF-HTTP-001 structured report'), 'PERF-HTTP-001 structured report dependency_redis_p99_ms must match summary marker');
+  assert.equal(report.threshold_pass, true, 'PERF-HTTP-001 structured report threshold_pass must be true');
+}
+
+function assertStrictWebSocketRedisStructuredReport(evidence, itemID) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.websocket_redis_sequence_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    `${itemID} strict release evidence must include exactly one structured websocket_redis_sequence_proof report`,
+  );
+  const report = structuredReports[0];
+  const segmentText = findEvidenceSegment(evidence, itemID);
+  assert.equal(String(report.load_run_id ?? ''), extractTextMarker(segmentText, 'load_run_id', `${itemID} structured report`), `${itemID} structured report load_run_id must match summary marker`);
+  for (const marker of ['ws_room_id', 'ws_user_id', 'ws_organization_id', 'ws_reconnect_room_id', 'ws_polling_room_id', 'redis_telemetry_room_id']) {
+    assert.equal(String(report[marker] ?? ''), extractTextMarker(segmentText, marker, `${itemID} structured report`), `${itemID} structured report ${marker} must match summary marker`);
+  }
+  const requiredNumericMarkers =
+    itemID === 'DATA-REDIS-001'
+      ? [
+          'production_min_ws_events',
+          'ws_expected_events',
+          'ws_unique_sequences',
+          'ws_min_sequence',
+          'ws_max_sequence',
+          'ws_polling_latest_sequence',
+          'ws_polling_artifact_latest_sequence',
+        ]
+      : [
+          'observed_rps',
+          'observed_p99_ms',
+          'duration_ms',
+          'production_target_rps',
+          'production_target_p99_ms',
+          'production_min_duration_ms',
+          'production_min_ws_events',
+          'ws_expected_events',
+          'ws_unique_sequences',
+          'ws_min_sequence',
+          'ws_max_sequence',
+          'ws_polling_latest_sequence',
+          'ws_polling_artifact_latest_sequence',
+          'ws_replica_count',
+          'room_broadcast_drops',
+        ];
+  for (const marker of requiredNumericMarkers) {
+    assert.equal(Number(report[marker]), extractNumericMarker(segmentText, marker, `${itemID} structured report`), `${itemID} structured report ${marker} must match summary marker`);
+  }
+  assert.equal(report.threshold_pass, true, `${itemID} structured report threshold_pass must be true`);
+  assert.equal(report.ws_authenticated, true, `${itemID} structured report ws_authenticated must be true`);
+  assert.equal(report.ws_sequence_contiguous, true, `${itemID} structured report ws_sequence_contiguous must be true`);
+  assert.equal(report.ws_reconnect_sequence_continues, true, `${itemID} structured report ws_reconnect_sequence_continues must be true`);
+  if (itemID === 'DATA-REDIS-001') {
+    assert.equal(Number(report.room_broadcast_drops), 0, `${itemID} structured report room_broadcast_drops must be 0`);
+  }
 }
 
 function assertStrictWebSocketSequenceNumbers(evidence, itemID, segment, minExpectedEvents) {

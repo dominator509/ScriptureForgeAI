@@ -970,6 +970,8 @@ function passedEvidenceFor(id, releaseCandidate = sha) {
     ...(id === 'RUST-GRPC-001' ? { structured_report: rustGRPCRuntimeStructuredReport() } : {}),
     ...(id === 'EXT-AI-001' ? { structured_report: aiGenerationAuditStructuredReport() } : {}),
     ...(id === 'EXT-ZOOM-001' ? { structured_report: zoomResilienceWebhookStructuredReport() } : {}),
+    ...(id === 'PERF-HTTP-001' ? { structured_report: httpLoadThresholdStructuredReport() } : {}),
+    ...(['PERF-WS-001', 'DATA-REDIS-001'].includes(id) ? { structured_report: websocketRedisSequenceStructuredReport() } : {}),
   };
 }
 
@@ -1168,6 +1170,60 @@ function rustGRPCRuntimeStructuredReport() {
       vector_search_requests: 1,
       api_rust_vector_search_ops: 1,
       api_rust_vector_search_seconds: 0.042,
+    },
+  };
+}
+
+function httpLoadThresholdStructuredReport() {
+  return {
+    http_load_threshold_proof: {
+      target: 'https://api.staging.scriptureforge.ai/health',
+      load_run_id: 'load-run-123',
+      observed_rps: 5200,
+      observed_p99_ms: 180,
+      duration_ms: 60000,
+      production_target_rps: 5000,
+      production_target_p99_ms: 200,
+      production_min_duration_ms: 60000,
+      threshold_pass: true,
+      http_replica_count: 2,
+      dependency_postgres_p99_ms: 120,
+      dependency_redis_p99_ms: 20,
+    },
+  };
+}
+
+function websocketRedisSequenceStructuredReport() {
+  return {
+    websocket_redis_sequence_proof: {
+      target: 'wss://api.staging.scriptureforge.ai/api/v1/rooms/stream/room-1',
+      ws_origin: 'https://web.staging.scriptureforge.ai',
+      load_run_id: 'load-run-123',
+      ws_room_id: 'room-1',
+      ws_user_id: 'user-1',
+      ws_organization_id: 'org-1',
+      ws_reconnect_room_id: 'room-1',
+      ws_polling_room_id: 'room-1',
+      redis_telemetry_room_id: 'room-1',
+      observed_rps: 620,
+      observed_p99_ms: 140,
+      duration_ms: 60000,
+      production_target_rps: 500,
+      production_target_p99_ms: 200,
+      production_min_duration_ms: 60000,
+      production_min_ws_events: 30000,
+      ws_expected_events: 30000,
+      ws_unique_sequences: 30000,
+      ws_min_sequence: 1,
+      ws_max_sequence: 30000,
+      ws_polling_latest_sequence: 30000,
+      ws_polling_artifact_latest_sequence: 30000,
+      ws_replica_count: 2,
+      room_broadcast_drops: 0,
+      threshold_pass: true,
+      ws_authenticated: true,
+      ws_sequence_contiguous: true,
+      ws_reconnect_sequence_continues: true,
     },
   };
 }

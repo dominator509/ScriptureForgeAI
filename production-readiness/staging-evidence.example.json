@@ -123,7 +123,7 @@
       "status": "pending_external",
       "description": "Redis-backed room sequencing is contiguous under deployed multi-client concurrency.",
       "required_evidence": [
-        "External WebSocket load report with DATA-REDIS-001 evidence item and report-level load_run_id=<same load run>",
+        "External WebSocket load report with DATA-REDIS-001 evidence item, report-level load_run_id=<same load run>, and persisted staging-manifest structured_report.websocket_redis_sequence_proof matching room/principal IDs, reconnect/polling/Redis room bindings, production event minimum, expected/unique/min/max/polling sequence counts, zero room_broadcast_drops, and reconnect/auth/contiguous sequence booleans",
         "HTTPS Redis telemetry artifact from the same run",
         "Redis sequence ordering assertion output with no duplicate, skipped sequence, room-id mismatch, or room broadcast drop proof",
         "loadtest JSON ws_room_id matching exact ws_room_id=<id> result_summary marker, structured ws_user_id/ws_organization_id fields and markers proving the authenticated tenant principal, structured ws_reconnect_room_id/ws_polling_room_id/redis_telemetry_room_id fields and markers equal to ws_room_id, structured ws_reconnect_sequence_continues=true field/marker, production_min_ws_events=30000, at least 30000 expected/unique/max/polled events, ws_polling_latest_sequence and ws_polling_artifact_latest_sequence equal to ws_max_sequence, structured room_broadcast_drops=0 field/marker, plus result_summary marker list for WebSocket profile, authenticated HTTPS origin proof, staging artifact provenance, contiguous sequence fields, reconnect proof with ws_reconnect_sequence_continues=true, HTTP polling fallback proof, Redis telemetry artifact, redis_telemetry_artifact_verified marker, ws_polling_artifact_latest_sequence_validated=true marker, ws_polling_artifact_latest_sequence_matches_run=true marker, ws_distinct_artifacts=true marker, and room_broadcast_drops=0 marker"
@@ -242,7 +242,7 @@
       "status": "pending_external",
       "description": "Staging HTTP load test proves or revises the architecture target of 5000 requests per second with P99 under 200ms.",
       "required_evidence": [
-        "tools/loadtest JSON report with PERF-HTTP-001 evidence item and report-level load_run_id=<same load run>",
+        "tools/loadtest JSON report with PERF-HTTP-001 evidence item, report-level load_run_id=<same load run>, and persisted staging-manifest structured_report.http_load_threshold_proof matching target, observed RPS/P99/duration, production targets, threshold_pass=true, HTTP replica count, and Postgres/Redis dependency P99 latency",
         "HTTPS non-local, non-private, non-link-local, non-reserved ingress/API replica distribution artifact from the same run with replica_count>=2, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers; reserved example/test/invalid hosts are not accepted",
         "HTTPS non-local, non-private, non-link-local, non-reserved database and Redis telemetry artifact from the same run with concrete postgres_p99_ms=<n> and redis_p99_ms=<n> values greater than zero and <=200, dependency_threshold_pass=true, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers; reserved example/test/invalid hosts are not accepted",
         "HTTP replica and dependency telemetry artifacts must be canonical-distinct HTTPS URLs, not one combined proof artifact or URL alias",
@@ -255,7 +255,7 @@
       "status": "pending_external",
       "description": "Staging WebSocket load test proves multi-instance fan-out and Redis sequencing with real API replicas.",
       "required_evidence": [
-        "tools/loadtest -websocket JSON report with PERF-WS-001 and DATA-REDIS-001 evidence items and report-level load_run_id=<same load run>",
+        "tools/loadtest -websocket JSON report with PERF-WS-001 and DATA-REDIS-001 evidence items, report-level load_run_id=<same load run>, and persisted staging-manifest structured_report.websocket_redis_sequence_proof matching room/principal IDs, reconnect/polling/Redis room bindings, positive WebSocket throughput/P99/duration, expected/unique/min/max/polling sequence counts, replica count, zero room_broadcast_drops, and reconnect/auth/contiguous sequence booleans",
         "HTTPS non-local, non-private, non-link-local, non-reserved API replica distribution artifact from the same run with replica_count>=2, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers; reserved example/test/invalid hosts are not accepted",
         "HTTPS non-local, non-private, non-link-local, non-reserved reconnect behavior artifact from the same run with exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers; reserved example/test/invalid hosts are not accepted",
         "HTTPS non-local, non-private, non-link-local, non-reserved HTTP polling fallback artifact against the same staged room state with room_id=<same ws_room_id>, latest_sequence>=30000, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers; reserved example/test/invalid hosts are not accepted",
