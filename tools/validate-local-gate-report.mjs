@@ -36,8 +36,11 @@ export const webSmokeProofMarkers = [
   'web_crypto_aes_gcm=true',
   'web_crypto_unique_iv=true',
   'web_crypto_associated_data=true',
+  'web_crypto_associated_data_input_guard=true',
   'web_crypto_pbkdf2_600000=true',
   'web_crypto_key_disposal=true',
+  'web_crypto_revoked_key_rejected=true',
+  'web_crypto_import_failure_zeroization=true',
 ];
 export const mobileSmokeProofMarkers = [
   'mobile_api_auth_mfa=true',
@@ -46,8 +49,13 @@ export const mobileSmokeProofMarkers = [
   'mobile_runtime_native_required_guard=true',
   'mobile_crypto_aes_gcm=true',
   'mobile_crypto_associated_data=true',
+  'mobile_crypto_associated_data_input_guard=true',
+  'mobile_crypto_unique_iv=true',
+  'mobile_crypto_runtime_buffer_zeroization=true',
   'mobile_crypto_native_required_fail_closed=true',
+  'mobile_crypto_native_required_self_test_fail_closed=true',
   'mobile_crypto_self_test_markers=true',
+  'mobile_crypto_revoked_key_rejected=true',
 ];
 export const webTypecheckProofMarkers = [
   ...clientCommandProofMarkers,

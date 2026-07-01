@@ -212,6 +212,14 @@ test('validateLocalGateReport rejects client smoke reports without product-flow 
     /web-smoke output must include web_crypto_key_disposal=true/,
   );
 
+  const missingWebInputGuard = completeReport();
+  findGate(missingWebInputGuard, 'web-smoke').stdout_tail = webSmokeProofOutput()
+    .replace('web_crypto_associated_data_input_guard=true', 'web_crypto_associated_data_input_guard=false');
+  assert.throws(
+    () => validateLocalGateReport(missingWebInputGuard),
+    /web-smoke output must include web_crypto_associated_data_input_guard=true/,
+  );
+
   const missingMobileSummary = completeReport();
   findGate(missingMobileSummary, 'mobile-smoke').stdout_tail = 'mobile smoke passed';
   assert.throws(
@@ -225,6 +233,14 @@ test('validateLocalGateReport rejects client smoke reports without product-flow 
   assert.throws(
     () => validateLocalGateReport(missingMobileMarker),
     /mobile-smoke output must include mobile_crypto_native_required_fail_closed=true/,
+  );
+
+  const missingMobileRuntimeZeroization = completeReport();
+  findGate(missingMobileRuntimeZeroization, 'mobile-smoke').stdout_tail = mobileSmokeProofOutput()
+    .replace('mobile_crypto_runtime_buffer_zeroization=true', 'mobile_crypto_runtime_buffer_zeroization=false');
+  assert.throws(
+    () => validateLocalGateReport(missingMobileRuntimeZeroization),
+    /mobile-smoke output must include mobile_crypto_runtime_buffer_zeroization=true/,
   );
 });
 
@@ -762,7 +778,7 @@ function terraformValidateProofOutput() {
 function webSmokeProofOutput() {
   return [
     'web api smoke proof: web_api_auth_routes=true, web_api_encrypted_journal=true, web_api_rooms_ws=true, web_runtime_strict_endpoint_guard=true',
-    'web crypto smoke proof: web_crypto_aes_gcm=true, web_crypto_unique_iv=true, web_crypto_associated_data=true, web_crypto_pbkdf2_600000=true, web_crypto_key_disposal=true',
+    'web crypto smoke proof: web_crypto_aes_gcm=true, web_crypto_unique_iv=true, web_crypto_associated_data=true, web_crypto_associated_data_input_guard=true, web_crypto_pbkdf2_600000=true, web_crypto_key_disposal=true, web_crypto_revoked_key_rejected=true, web_crypto_import_failure_zeroization=true',
   ].join('\n');
 }
 
@@ -785,7 +801,7 @@ function webBuildProofOutput() {
 function mobileSmokeProofOutput() {
   return [
     'mobile api smoke proof: mobile_api_auth_mfa=true, mobile_api_encrypted_journal=true, mobile_api_rooms_ws=true, mobile_runtime_native_required_guard=true',
-    'mobile crypto smoke proof: mobile_crypto_aes_gcm=true, mobile_crypto_associated_data=true, mobile_crypto_native_required_fail_closed=true, mobile_crypto_self_test_markers=true',
+    'mobile crypto smoke proof: mobile_crypto_aes_gcm=true, mobile_crypto_associated_data=true, mobile_crypto_associated_data_input_guard=true, mobile_crypto_unique_iv=true, mobile_crypto_runtime_buffer_zeroization=true, mobile_crypto_native_required_fail_closed=true, mobile_crypto_native_required_self_test_fail_closed=true, mobile_crypto_self_test_markers=true, mobile_crypto_revoked_key_rejected=true',
   ].join('\n');
 }
 
