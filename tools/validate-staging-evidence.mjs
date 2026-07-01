@@ -124,6 +124,9 @@ const mobilePlaintextZeroizedPattern = /\bplaintext_buffer_zeroized=true\b/i;
 const mobileBuildIDPattern = /\bmobile_build_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const mobileAssociatedDataSaltIDPattern = /\bassociated_data_salt_id=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b/i;
 const mobileAssociatedDataVersionPattern = /\bassociated_data_salt_version=([1-9][0-9]*)\b/i;
+const mobileDeviceOSPattern = /\bdevice_os=(android|ios)\b/i;
+const mobileDeviceModelPattern = /\bdevice_model=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const mobileAppRuntimePattern = /\bapp_runtime=installed-staging-app\b/i;
 const tlsCertHostnamePattern = /\bcert_hostname=([A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z0-9.-]+)\b/i;
 const tlsCertIssuerPattern = /\bcert_issuer=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const webSmokeUserIDPattern = /\buser_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
@@ -350,7 +353,7 @@ const rustSegmentMarkerRequirements = new Map([
 ]);
 const mobileSegmentMarkerRequirements = new Map([
   ['mobile-eas-or-device-run', ['staging artifact', 'eas', 'build', 'finished', 'android', 'ios', 'native device', 'installed app', 'release channel staging', 'expo profile staging', 'mobile_build_id=', 'distinct_mobile_artifacts=true', 'release_candidate=', 'service_version=']],
-  ['mobile-native-crypto-smoke', ['staging artifact', 'runJournalCryptoSelfTest', 'react-native-quick-crypto', 'native provider', 'native module loaded', 'provider status react-native-quick-crypto', 'provider=react-native-quick-crypto', 'native-required true', 'native_required=true', 'mobile_build_id=', 'AES-GCM', 'round-trip', 'unique_iv=true', 'unique IV', 'tamper rejected', 'associated data', 'wrong associated data rejected', 'associated_data_salt_id=', 'associated_data_salt_version=', 'non-extractable', 'provider-bound key', 'fallback-derived key rejected', 'key disposed', 'key_disposed=true', 'disposed handle rejected', 'disposed_handle_rejected=true', 'revoked_key_rejected=true', 'stale raw key rejected', 'passphrase wiped', 'passphrase buffer zeroized', 'passphrase_buffer_zeroized=true', 'salt wiped', 'salt buffer zeroized', 'salt_buffer_zeroized=true', 'plaintext cleared', 'plaintext buffer zeroized', 'plaintext_buffer_zeroized=true', 'distinct_mobile_artifacts=true', 'release_candidate=', 'service_version=']],
+  ['mobile-native-crypto-smoke', ['staging artifact', 'runJournalCryptoSelfTest', 'react-native-quick-crypto', 'native provider', 'native module loaded', 'provider status react-native-quick-crypto', 'provider=react-native-quick-crypto', 'native-required true', 'native_required=true', 'mobile_build_id=', 'device_os=', 'device_model=', 'app_runtime=installed-staging-app', 'installed staging app runtime', 'AES-GCM', 'round-trip', 'unique_iv=true', 'unique IV', 'tamper rejected', 'associated data', 'wrong associated data rejected', 'associated_data_salt_id=', 'associated_data_salt_version=', 'non-extractable', 'provider-bound key', 'fallback-derived key rejected', 'key disposed', 'key_disposed=true', 'disposed handle rejected', 'disposed_handle_rejected=true', 'revoked_key_rejected=true', 'stale raw key rejected', 'passphrase wiped', 'passphrase buffer zeroized', 'passphrase_buffer_zeroized=true', 'salt wiped', 'salt buffer zeroized', 'salt_buffer_zeroized=true', 'plaintext cleared', 'plaintext buffer zeroized', 'plaintext_buffer_zeroized=true', 'distinct_mobile_artifacts=true', 'release_candidate=', 'service_version=']],
   ['mobile-staging-config', ['staging artifact', 'EXPO_PUBLIC_API_BASE_URL', 'EXPO_PUBLIC_WS_BASE_URL', 'EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true', 'EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging', 'mobile_build_id=', 'https://', 'wss://', 'staging', 'distinct_mobile_artifacts=true', 'release_candidate=', 'service_version=']],
 ]);
 
@@ -1817,6 +1820,21 @@ function validateStrictReleaseItemEvidence(item, manifest) {
       cryptoSegment,
       mobileAssociatedDataVersionPattern,
       'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include positive associated_data_salt_version',
+    );
+    assert.match(
+      cryptoSegment,
+      mobileDeviceOSPattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include device_os=android|ios',
+    );
+    assert.match(
+      cryptoSegment,
+      mobileDeviceModelPattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include concrete device_model',
+    );
+    assert.match(
+      cryptoSegment,
+      mobileAppRuntimePattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include app_runtime=installed-staging-app',
     );
     const configSegment = findEvidenceSegment(evidence, 'mobile-staging-config');
     const apiBaseURL = configSegment.match(mobileAPIBaseURLPattern)?.[1] ?? '';

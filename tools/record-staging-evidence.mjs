@@ -266,6 +266,12 @@ const mobileAssociatedDataSaltIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
 const mobileAssociatedDataVersionPattern = /^[1-9][0-9]*$/;
 const mobileAssociatedDataSaltIDSummaryPattern = /\bassociated_data_salt_id=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b/i;
 const mobileAssociatedDataVersionSummaryPattern = /\bassociated_data_salt_version=([1-9][0-9]*)\b/i;
+const mobileDeviceOSPattern = /^(android|ios)$/i;
+const mobileDeviceModelPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
+const mobileAppRuntimePattern = /^installed-staging-app$/i;
+const mobileDeviceOSSummaryPattern = /\bdevice_os=(android|ios)\b/i;
+const mobileDeviceModelSummaryPattern = /\bdevice_model=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const mobileAppRuntimeSummaryPattern = /\bapp_runtime=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const tenantResourceIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const tenantOrgIDPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -412,7 +418,7 @@ const abuseConfigAssignmentKeys = [
 
 const requiredMobileProbeSummaryMarkers = new Map([
   ['mobile-eas-or-device-run', ['staging artifact', 'eas', 'build', 'finished', 'android', 'ios', 'native device', 'installed app', 'release channel staging', 'expo profile staging', 'distinct_mobile_artifacts=true']],
-  ['mobile-native-crypto-smoke', ['staging artifact', 'runJournalCryptoSelfTest', 'react-native-quick-crypto', 'native provider', 'native module loaded', 'provider status react-native-quick-crypto', 'provider=react-native-quick-crypto', 'native-required true', 'native_required=true', 'AES-GCM', 'round-trip', 'unique_iv=true', 'unique IV', 'tamper rejected', 'associated data', 'wrong associated data rejected', 'associated_data_salt_id=', 'associated_data_salt_version=', 'non-extractable', 'provider-bound key', 'fallback-derived key rejected', 'key disposed', 'key_disposed=true', 'disposed handle rejected', 'disposed_handle_rejected=true', 'revoked_key_rejected=true', 'stale raw key rejected', 'passphrase wiped', 'passphrase buffer zeroized', 'passphrase_buffer_zeroized=true', 'salt wiped', 'salt buffer zeroized', 'salt_buffer_zeroized=true', 'plaintext cleared', 'plaintext buffer zeroized', 'plaintext_buffer_zeroized=true', 'distinct_mobile_artifacts=true']],
+  ['mobile-native-crypto-smoke', ['staging artifact', 'runJournalCryptoSelfTest', 'react-native-quick-crypto', 'native provider', 'native module loaded', 'provider status react-native-quick-crypto', 'provider=react-native-quick-crypto', 'native-required true', 'native_required=true', 'device_os=', 'device_model=', 'app_runtime=installed-staging-app', 'installed staging app runtime', 'AES-GCM', 'round-trip', 'unique_iv=true', 'unique IV', 'tamper rejected', 'associated data', 'wrong associated data rejected', 'associated_data_salt_id=', 'associated_data_salt_version=', 'non-extractable', 'provider-bound key', 'fallback-derived key rejected', 'key disposed', 'key_disposed=true', 'disposed handle rejected', 'disposed_handle_rejected=true', 'revoked_key_rejected=true', 'stale raw key rejected', 'passphrase wiped', 'passphrase buffer zeroized', 'passphrase_buffer_zeroized=true', 'salt wiped', 'salt buffer zeroized', 'salt_buffer_zeroized=true', 'plaintext cleared', 'plaintext buffer zeroized', 'plaintext_buffer_zeroized=true', 'distinct_mobile_artifacts=true']],
   ['mobile-staging-config', ['staging artifact', 'EXPO_PUBLIC_API_BASE_URL', 'EXPO_PUBLIC_WS_BASE_URL', 'EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true', 'EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging', 'https://', 'wss://', 'staging', 'distinct_mobile_artifacts=true']],
 ]);
 
@@ -1668,6 +1674,9 @@ function validateMobileEvidence(report, manifest) {
       const plaintextZeroized = String(probe.plaintext_buffer_zeroized ?? '').trim();
       const associatedDataSaltID = String(probe.associated_data_salt_id ?? extractFirstMatch(summary, mobileAssociatedDataSaltIDSummaryPattern)).trim();
       const associatedDataVersion = String(probe.associated_data_salt_version ?? extractFirstMatch(summary, mobileAssociatedDataVersionSummaryPattern)).trim();
+      const deviceOS = String(probe.device_os ?? extractFirstMatch(summary, mobileDeviceOSSummaryPattern)).trim();
+      const deviceModel = String(probe.device_model ?? extractFirstMatch(summary, mobileDeviceModelSummaryPattern)).trim();
+      const appRuntime = String(probe.app_runtime ?? extractFirstMatch(summary, mobileAppRuntimeSummaryPattern)).trim();
       assert.match(mobileBuildID, mobileBuildIDPattern, 'mobile-native-crypto-smoke probe must include structured mobile_build_id');
       mobileBuildIDs.add(mobileBuildID);
       assert.match(summaryProvider, mobileNativeProviderPattern, 'mobile-native-crypto-smoke probe must include structured provider=react-native-quick-crypto');
@@ -1683,10 +1692,17 @@ function validateMobileEvidence(report, manifest) {
       assert.match(plaintextZeroized, mobileLifecycleTruePattern, 'mobile-native-crypto-smoke probe must include structured plaintext_buffer_zeroized=true');
       assert.match(associatedDataSaltID, mobileAssociatedDataSaltIDPattern, 'mobile-native-crypto-smoke probe must include structured associated_data_salt_id');
       assert.match(associatedDataVersion, mobileAssociatedDataVersionPattern, 'mobile-native-crypto-smoke probe must include positive structured associated_data_salt_version');
+      assert.match(deviceOS, mobileDeviceOSPattern, 'mobile-native-crypto-smoke probe must include structured device_os=android|ios');
+      assert.match(deviceModel, mobileDeviceModelPattern, 'mobile-native-crypto-smoke probe must include structured device_model');
+      assert.match(appRuntime, mobileAppRuntimePattern, 'mobile-native-crypto-smoke probe must include structured app_runtime=installed-staging-app');
       assertSummaryIncludesMarkers(probe.name, summary, [
         `mobile_build_id=${mobileBuildID}`,
         `provider=${provider}`,
         `native_required=${nativeRequired}`,
+        `device_os=${deviceOS}`,
+        `device_model=${deviceModel}`,
+        `app_runtime=${appRuntime}`,
+        'installed staging app runtime',
         `unique_iv=${uniqueIV}`,
         `key_disposed=${keyDisposed}`,
         `disposed_handle_rejected=${disposedHandleRejected}`,

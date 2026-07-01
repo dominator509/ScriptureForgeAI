@@ -2303,10 +2303,10 @@ test('validateManifest strict release rejects mobile native crypto proof borrowe
   item.evidence[0].result_summary = item.evidence[0].result_summary
     .replace(
       'mobile-staging-config staging artifact EXPO_PUBLIC_API_BASE_URL',
-      'mobile-staging-config staging artifact runJournalCryptoSelfTest react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true mobile_build_id=mobile-build-123 AES-GCM round-trip unique_iv=true unique IV tamper rejected associated data wrong associated data rejected associated_data_salt_id=journal:self-test:server-derived-salt associated_data_salt_version=1 non-extractable provider-bound key fallback-derived key rejected key disposed key_disposed=true disposed handle rejected disposed_handle_rejected=true revoked_key_rejected=true stale raw key rejected passphrase wiped passphrase buffer zeroized passphrase_buffer_zeroized=true salt wiped salt buffer zeroized salt_buffer_zeroized=true plaintext cleared plaintext buffer zeroized plaintext_buffer_zeroized=true EXPO_PUBLIC_API_BASE_URL',
+      'mobile-staging-config staging artifact runJournalCryptoSelfTest react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true mobile_build_id=mobile-build-123 device_os=ios device_model=iphone15pro app_runtime=installed-staging-app installed staging app runtime AES-GCM round-trip unique_iv=true unique IV tamper rejected associated data wrong associated data rejected associated_data_salt_id=journal:self-test:server-derived-salt associated_data_salt_version=1 non-extractable provider-bound key fallback-derived key rejected key disposed key_disposed=true disposed handle rejected disposed_handle_rejected=true revoked_key_rejected=true stale raw key rejected passphrase wiped passphrase buffer zeroized passphrase_buffer_zeroized=true salt wiped salt buffer zeroized salt_buffer_zeroized=true plaintext cleared plaintext buffer zeroized plaintext_buffer_zeroized=true EXPO_PUBLIC_API_BASE_URL',
     )
     .replace(
-      'mobile-native-crypto-smoke staging artifact runJournalCryptoSelfTest react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true mobile_build_id=mobile-build-123 AES-GCM round-trip unique_iv=true unique IV tamper rejected associated data wrong associated data rejected associated_data_salt_id=journal:self-test:server-derived-salt associated_data_salt_version=1 non-extractable provider-bound key fallback-derived key rejected key disposed key_disposed=true disposed handle rejected disposed_handle_rejected=true revoked_key_rejected=true stale raw key rejected passphrase wiped passphrase buffer zeroized passphrase_buffer_zeroized=true salt wiped salt buffer zeroized salt_buffer_zeroized=true plaintext cleared plaintext buffer zeroized plaintext_buffer_zeroized=true',
+      'mobile-native-crypto-smoke staging artifact runJournalCryptoSelfTest react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true mobile_build_id=mobile-build-123 device_os=ios device_model=iphone15pro app_runtime=installed-staging-app installed staging app runtime AES-GCM round-trip unique_iv=true unique IV tamper rejected associated data wrong associated data rejected associated_data_salt_id=journal:self-test:server-derived-salt associated_data_salt_version=1 non-extractable provider-bound key fallback-derived key rejected key disposed key_disposed=true disposed handle rejected disposed_handle_rejected=true revoked_key_rejected=true stale raw key rejected passphrase wiped passphrase buffer zeroized passphrase_buffer_zeroized=true salt wiped salt buffer zeroized salt_buffer_zeroized=true plaintext cleared plaintext buffer zeroized plaintext_buffer_zeroized=true',
       'mobile-native-crypto-smoke',
     );
 
@@ -2471,6 +2471,39 @@ test('validateManifest strict release rejects mobile crypto proof without concre
       find: 'associated_data_salt_version=1',
       replacement: 'associated_data_salt_version=0',
       expected: /CLIENT-MOBILE-001 mobile-native-crypto-smoke must include positive associated_data_salt_version/,
+    },
+  ]) {
+    const manifest = baseManifest({
+      releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+      statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+    });
+    const item = manifest.items.find((candidate) => candidate.id === 'CLIENT-MOBILE-001');
+    item.evidence[0].result_summary = item.evidence[0].result_summary
+      .replace(find, replacement);
+
+    assert.throws(
+      () => validateManifest(manifest, { strictRelease: true }),
+      expected,
+    );
+  }
+});
+
+test('validateManifest strict release rejects mobile native crypto proof without installed app runtime binding', () => {
+  for (const { find, replacement, expected } of [
+    {
+      find: 'device_os=ios',
+      replacement: 'device_os=',
+      expected: /CLIENT-MOBILE-001 mobile-native-crypto-smoke must include device_os=android\|ios/,
+    },
+    {
+      find: 'device_model=iphone15pro',
+      replacement: 'device_model=',
+      expected: /CLIENT-MOBILE-001 mobile-native-crypto-smoke must include concrete device_model/,
+    },
+    {
+      find: 'app_runtime=installed-staging-app',
+      replacement: 'app_runtime=node-smoke',
+      expected: /CLIENT-MOBILE-001 strict release evidence must include mobile markers on mobile-native-crypto-smoke/,
     },
   ]) {
     const manifest = baseManifest({
@@ -4327,7 +4360,7 @@ function passedEvidenceFor(id) {
       : id === 'RUST-GRPC-001'
         ? 'RUST-GRPC-001 rustprobe passed: rust-grpc-health staging artifact grpc health scriptureforge.engine.ScriptureEngine SERVING release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-rust-engine:0123456789abcdef0123456789abcdef01234567 deployment_environment=staging load_run_id=load-run-123; rust-metrics staging artifact scriptureforge_rust_engine_embedding_requests_total scriptureforge_rust_engine_embedding_failures_total scriptureforge_rust_engine_vector_search_requests_total scriptureforge_rust_engine_vector_search_failures_total Prometheus metrics rust_metrics_samples_verified=true rust_embedding_requests_positive=true rust_vector_search_requests_positive=true release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-rust-engine:0123456789abcdef0123456789abcdef01234567 deployment_environment=staging load_run_id=load-run-123 embedding_requests=1 vector_search_requests=1; api-rust-integration-metrics staging artifact Go API rust_engine vector_search success scriptureforge_dependency_operations_total scriptureforge_dependency_operation_duration_seconds_sum api_rust_metrics_samples_verified=true distinct_metrics_targets=true release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-rust-engine:0123456789abcdef0123456789abcdef01234567 deployment_environment=staging load_run_id=load-run-123 api_rust_vector_search_ops=1 api_rust_vector_search_seconds=0.042'
       : id === 'CLIENT-MOBILE-001'
-        ? 'CLIENT-MOBILE-001 mobileprobe passed: mobile-eas-or-device-run staging artifact eas build finished android ios native device installed app release channel staging expo profile staging mobile_build_id=mobile-build-123 platforms=android,ios release_channel=staging expo_profile=staging distinct_mobile_artifacts=true release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-mobile:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123; mobile-native-crypto-smoke staging artifact runJournalCryptoSelfTest react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true mobile_build_id=mobile-build-123 AES-GCM round-trip unique_iv=true unique IV tamper rejected associated data wrong associated data rejected associated_data_salt_id=journal:self-test:server-derived-salt associated_data_salt_version=1 non-extractable provider-bound key fallback-derived key rejected key disposed key_disposed=true disposed handle rejected disposed_handle_rejected=true revoked_key_rejected=true stale raw key rejected passphrase wiped passphrase buffer zeroized passphrase_buffer_zeroized=true salt wiped salt buffer zeroized salt_buffer_zeroized=true plaintext cleared plaintext buffer zeroized plaintext_buffer_zeroized=true distinct_mobile_artifacts=true release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-mobile:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123; mobile-staging-config staging artifact EXPO_PUBLIC_API_BASE_URL EXPO_PUBLIC_WS_BASE_URL EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging mobile_build_id=mobile-build-123 https:// wss:// staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai distinct_mobile_artifacts=true release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-mobile:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123'
+        ? 'CLIENT-MOBILE-001 mobileprobe passed: mobile-eas-or-device-run staging artifact eas build finished android ios native device installed app release channel staging expo profile staging mobile_build_id=mobile-build-123 platforms=android,ios release_channel=staging expo_profile=staging distinct_mobile_artifacts=true release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-mobile:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123; mobile-native-crypto-smoke staging artifact runJournalCryptoSelfTest react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true mobile_build_id=mobile-build-123 device_os=ios device_model=iphone15pro app_runtime=installed-staging-app installed staging app runtime AES-GCM round-trip unique_iv=true unique IV tamper rejected associated data wrong associated data rejected associated_data_salt_id=journal:self-test:server-derived-salt associated_data_salt_version=1 non-extractable provider-bound key fallback-derived key rejected key disposed key_disposed=true disposed handle rejected disposed_handle_rejected=true revoked_key_rejected=true stale raw key rejected passphrase wiped passphrase buffer zeroized passphrase_buffer_zeroized=true salt wiped salt buffer zeroized salt_buffer_zeroized=true plaintext cleared plaintext buffer zeroized plaintext_buffer_zeroized=true distinct_mobile_artifacts=true release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-mobile:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123; mobile-staging-config staging artifact EXPO_PUBLIC_API_BASE_URL EXPO_PUBLIC_WS_BASE_URL EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging mobile_build_id=mobile-build-123 https:// wss:// staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai distinct_mobile_artifacts=true release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-mobile:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123'
       : id === 'CLIENT-WEB-001'
         ? webClientSummary('0123456789abcdef0123456789abcdef01234567')
       : id === 'DATA-RLS-001'
