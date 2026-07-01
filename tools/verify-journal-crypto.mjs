@@ -15,7 +15,28 @@ const mobileJournalContainerPath = path.join(mobileRoot, 'src', 'components', 'S
 const mobileAPIPath = path.join(mobileRoot, 'src', 'lib', 'api.ts');
 const mobileCryptoSmokePath = path.join(mobileRoot, 'src', 'lib', 'crypto.smoke.mts');
 const mobileRequire = createRequire(path.join(mobileRoot, 'package.json'));
-const ts = mobileRequire('typescript');
+const packageRequirePaths = [
+  path.join(mobileRoot, 'package.json'),
+  path.join(repoRoot, 'web', 'package.json'),
+  path.join(repoRoot, 'package.json'),
+];
+
+function loadTypeScript() {
+  const resolutionErrors = [];
+  for (const packageJsonPath of packageRequirePaths) {
+    try {
+      return createRequire(packageJsonPath)('typescript');
+    } catch (error) {
+      if (error?.code !== 'MODULE_NOT_FOUND') {
+        throw error;
+      }
+      resolutionErrors.push(`${path.relative(repoRoot, packageJsonPath)}: ${error.message}`);
+    }
+  }
+  throw new Error(`typescript is required to verify journal crypto; install web or mobile dependencies first. ${resolutionErrors.join(' | ')}`);
+}
+
+const ts = loadTypeScript();
 
 export const journalCryptoProofMarkers = [
   'native_quick_crypto=true',
