@@ -5596,6 +5596,34 @@ test('recordEvidence rejects observability evidence without report load run ID',
   );
 });
 
+test('recordEvidence rejects alert observability evidence with only probe load run markers', () => {
+  const probeNames = [
+    'dashboard-import',
+    'alert-rules-loaded',
+    'alert-delivery-status',
+    'telemetry-retention-policy',
+  ];
+
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'OBS-ALERT-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        alert_name: 'ScriptureForgeHighErrorRate',
+        alert_receiver: 'staging-release',
+        evidence_items: ['OBS-ALERT-001'],
+        probes: observabilityProbeReportProbes(probeNames),
+      },
+      'artifacts/observabilityprobe.json',
+      'go run ./tools/observabilityprobe -probe-alerts',
+    ),
+    /observability report must include load_run_id/,
+  );
+});
+
 test('recordEvidence rejects observability evidence with mixed probe load run markers', () => {
   const probeNames = [
     'collector-otlp-config',
