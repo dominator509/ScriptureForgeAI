@@ -22,6 +22,7 @@ export const rustCargoRequiredTests = [
 
 export const rustCargoProofMarkers = [
   'rust_cargo_locked_test=true',
+  'rust_cargo_ambient_protoc_poisoned=true',
   'rust_protobuf_generated_types_test=true',
   'rust_protobuf_generated_grpc_test=true',
   'rust_vector_search_bounds_test=true',
@@ -79,9 +80,13 @@ export function runRustCargoGate({
   env = process.env,
 } = {}) {
   const args = rustCargoArgs();
+  const cargoEnv = {
+    ...env,
+    PROTOC: '__scriptureforge_invalid_ambient_protoc__',
+  };
   const result = spawnSyncImpl(bin, args, {
     cwd,
-    env,
+    env: cargoEnv,
     encoding: 'utf8',
     shell: false,
   });

@@ -46,6 +46,16 @@ test('validateRustProtobufSources rejects ambient PROTOC requirements', async ()
   );
 });
 
+test('validateRustProtobufSources rejects missing PROTOC rerun binding', async () => {
+  const sources = await loadRustProtobufSources();
+  sources.buildRs = sources.buildRs.replace('    println!("cargo:rerun-if-env-changed=PROTOC");\n', '');
+  assert.notEqual(sources.buildRs, (await loadRustProtobufSources()).buildRs, 'test fixture must remove PROTOC rerun binding');
+  assert.throws(
+    () => validateRustProtobufSources(sources),
+    /rerun when ambient PROTOC changes/,
+  );
+});
+
 test('validateRustProtobufSources rejects missing generated type coverage', async () => {
   const sources = await loadRustProtobufSources();
   sources.rustMain = sources.rustMain.replace('generated_protobuf_types_compile_and_round_trip', 'removed_generated_proto_test');

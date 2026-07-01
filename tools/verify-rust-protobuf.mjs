@@ -12,6 +12,7 @@ const defaultFiles = {
 export const rustProtobufProofMarkers = [
   'vendored_protoc=true',
   'ambient_protoc_not_required=true',
+  'ambient_protoc_rerun_bound=true',
   'generated_types_covered=true',
   'generated_grpc_client_server_covered=true',
   'proto_contract_covered=true',
@@ -55,6 +56,7 @@ export function validateRustProtobufSources(sources) {
   assert.ok(sources.cargoLock.includes('name = "sqlx-postgres"\nversion = "0.9.0"'), 'Rust lockfile must include sqlx-postgres 0.9.0');
 
   assert.ok(sources.buildRs.includes('protoc_bin_vendored::protoc_bin_path()'), 'build.rs must resolve vendored protoc');
+  assert.ok(sources.buildRs.includes('cargo:rerun-if-env-changed=PROTOC'), 'build.rs must rerun when ambient PROTOC changes so vendored protoc override remains tested');
   assert.ok(sources.buildRs.includes('std::env::set_var("PROTOC", protoc)'), 'build.rs must set PROTOC for tonic_build');
   assert.ok(!/Command::new\(\s*"protoc"\s*\)/.test(sources.buildRs), 'build.rs must not shell out to ambient protoc on PATH');
   assert.ok(!/which::which\(\s*"protoc"\s*\)/.test(sources.buildRs), 'build.rs must not discover ambient protoc on PATH');

@@ -55,6 +55,8 @@ test('runRustCargoGate emits proof markers after validating cargo output', () =>
   assert.equal(calls[0].command, 'cargo');
   assert.deepEqual(calls[0].args, rustCargoArgs());
   assert.equal(calls[0].options.env.CARGO_HOME, '.tools/cargo');
+  assert.equal(calls[0].options.env.PROTOC, '__scriptureforge_invalid_ambient_protoc__');
+  assert.match(result.output, /rust_cargo_ambient_protoc_poisoned=true/);
 });
 
 test('runRustCargoGate rejects successful cargo output without proof tests', () => {

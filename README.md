@@ -6,7 +6,7 @@ The audit remediation work targets the repo-current toolchain:
 
 - Go toolchain `1.24.3`
 - Node.js with `npm ci` run inside `web/`
-- Rust stable for `services/scripture-engine`; protobuf generation uses vendored `protoc` via Cargo build dependencies, and the verifier checks the checked-in lockfile for vendored platform packages, so a separate `protoc` binary is optional for local builds.
+- Rust stable for `services/scripture-engine`; protobuf generation uses vendored `protoc` via Cargo build dependencies, and the verifier checks the checked-in lockfile for vendored platform packages. The cargo gate deliberately poisons ambient `PROTOC`, so a separate `protoc` binary is optional for local builds.
 - Terraform `1.6+`
 
 Useful validation commands:

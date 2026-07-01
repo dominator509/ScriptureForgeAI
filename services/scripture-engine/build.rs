@@ -1,4 +1,5 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    println!("cargo:rerun-if-env-changed=PROTOC");
     let protoc = protoc_bin_vendored::protoc_bin_path()?;
     std::env::set_var("PROTOC", protoc);
     let manifest_dir = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR")?);
