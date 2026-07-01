@@ -3950,7 +3950,7 @@ test('validateManifest strict release rejects generic passed security signoff ev
 
   assert.throws(
     () => validateManifest(manifest, { strictRelease: true }),
-    /SEC-SIGNOFF-001 strict release evidence must include threat-model, dependency-risk, residual-risk, owner\/security approval, release signoff, and exact release_candidate markers/,
+    /SEC-SIGNOFF-001 strict release evidence must include durable security signoff artifact/,
   );
 });
 
@@ -3965,7 +3965,21 @@ test('validateManifest strict release rejects signoff evidence for a different r
 
   assert.throws(
     () => validateManifest(manifest, { strictRelease: true }),
-    /SEC-SIGNOFF-001 strict release evidence must include threat-model, dependency-risk, residual-risk, owner\/security approval, release signoff, and exact release_candidate markers/,
+    /SEC-SIGNOFF-001 strict release evidence must include durable security signoff artifact/,
+  );
+});
+
+test('validateManifest strict release rejects scratch security signoff artifact paths', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: () => 'passed',
+  });
+  const signoffItem = manifest.items.find((item) => item.id === 'SEC-SIGNOFF-001');
+  signoffItem.evidence[0].artifact = 'artifacts/release-signoff.txt';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /SEC-SIGNOFF-001 strict release evidence must include durable security signoff artifact/,
   );
 });
 
@@ -3979,7 +3993,7 @@ test('validateManifest strict release rejects placeholder security signoff evide
 
   assert.throws(
     () => validateManifest(manifest, { strictRelease: true }),
-    /SEC-SIGNOFF-001 strict release evidence must include threat-model, dependency-risk, residual-risk, owner\/security approval, release signoff, and exact release_candidate markers/,
+    /SEC-SIGNOFF-001 strict release evidence must include durable security signoff artifact/,
   );
 });
 

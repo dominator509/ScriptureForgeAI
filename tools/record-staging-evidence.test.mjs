@@ -10284,7 +10284,7 @@ test('recordManualEvidence marks one explicit manifest item as passed', () => {
   const updated = recordManualEvidence(
     manifest,
     'SEC-SIGNOFF-001',
-    'artifacts/release-signoff.txt',
+    'security/release-signoff.md',
     'security review signoff',
     'threat model approval complete; security/dependency_risk_register.md#DRR-001 dependency risk decision reviewed; residual risk review complete; owner/security approval recorded; release risk signoff approved; release_candidate=abc123',
     '2026-06-25T13:00:00Z',
@@ -10298,7 +10298,7 @@ test('recordManualEvidence marks one explicit manifest item as passed', () => {
   assert.equal(backup.status, 'pending_external');
 });
 
-test('recordManualEvidence rejects security signoff summaries without exact release candidate', () => {
+test('recordManualEvidence rejects security signoff from scratch artifacts', () => {
   assert.throws(
     () => recordManualEvidence(
       {
@@ -10307,6 +10307,23 @@ test('recordManualEvidence rejects security signoff summaries without exact rele
       },
       'SEC-SIGNOFF-001',
       'artifacts/release-signoff.txt',
+      'security review signoff',
+      'threat model approval complete; security/dependency_risk_register.md#DRR-001 dependency risk decision reviewed; residual risk review complete; owner/security approval recorded; release risk signoff approved; release_candidate=abc123',
+      '2026-06-25T13:00:00Z',
+    ),
+    /SEC-SIGNOFF-001 artifact must be a security signoff document path or HTTPS approval URL/,
+  );
+});
+
+test('recordManualEvidence rejects security signoff summaries without exact release candidate', () => {
+  assert.throws(
+    () => recordManualEvidence(
+      {
+        release_candidate: 'abc123',
+        items: [{ id: 'SEC-SIGNOFF-001', status: 'pending_external' }],
+      },
+      'SEC-SIGNOFF-001',
+      'security/release-signoff.md',
       'security review signoff',
       'threat model approval complete; security/dependency_risk_register.md#DRR-001 dependency risk decision reviewed; residual risk review complete; owner/security approval recorded; release risk signoff approved; release_candidate=oldsha',
       '2026-06-25T13:00:00Z',
@@ -10320,7 +10337,7 @@ test('recordManualEvidence rejects weak security signoff summaries', () => {
     () => recordManualEvidence(
       { release_candidate: 'abc123', items: [{ id: 'SEC-SIGNOFF-001', status: 'pending_external' }] },
       'SEC-SIGNOFF-001',
-      'artifacts/release-signoff.txt',
+      'security/release-signoff.md',
       'security review signoff',
       'owner and security approved release',
       '2026-06-25T13:00:00Z',

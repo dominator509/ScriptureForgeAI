@@ -2517,6 +2517,7 @@ function recordManualEvidence(manifest, itemID, artifact, command, summary, obse
   if (itemID === 'SEC-SIGNOFF-001') {
     const releaseCandidate = String(manifest.release_candidate ?? '').trim();
     assert.ok(releaseCandidate, `${itemID} manual evidence requires manifest release_candidate`);
+    assert.ok(isDurableSignoffArtifact(artifact), `${itemID} artifact must be a security signoff document path or HTTPS approval URL`);
     assertSummaryIncludesMarkers(itemID, summary, [
       ...requiredSecuritySignoffSummaryMarkers,
       `release_candidate=${releaseCandidate}`,
@@ -2535,6 +2536,22 @@ function recordManualEvidence(manifest, itemID, artifact, command, summary, obse
   }
   manifest.generated_at = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
   return manifest;
+}
+
+function isDurableSignoffArtifact(artifact) {
+  const value = String(artifact ?? '').trim();
+  if (/^https:\/\//i.test(value)) {
+    try {
+      const url = new URL(value);
+      return !isLocalOrPrivateTarget(url.href) && !isReservedPlaceholderTarget(value);
+    } catch {
+      return false;
+    }
+  }
+  const normalized = value.replaceAll('\\', '/').toLowerCase();
+  return normalized.startsWith('security/')
+    && normalized.endsWith('.md')
+    && /signoff|approval|release-risk|risk-signoff/.test(normalized);
 }
 
 function recordStatus(manifest, itemID, status, details) {

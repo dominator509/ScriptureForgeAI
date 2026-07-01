@@ -341,11 +341,11 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 1
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: 24d90cc201db506ed362084ec4c58b1e6f8096bc
+- expected_release_candidate: 94d05aefb6be3110ea499d7034ef2c17796f2936
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: 24d90cc201db506ed362084ec4c58b1e6f8096bc
+    - expected_release_candidate: 94d05aefb6be3110ea499d7034ef2c17796f2936
     - actual_release_candidate: ce96c283410756444a63b1345646fc69cf274d22
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
     - required: tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted
@@ -498,8 +498,8 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
     - required: Threat model review approval
     - required: security/dependency_risk_register.md#DRR-001 dependency risk decision
     - required: Residual risk review covering pending staging evidence, deployment, secrets, RLS, observability, load, rollback, and external-service blockers
-    - required: Owner/security approval record
-    - required: Release risk signoff record
+    - required: Owner/security approval record captured as a repo security/*.md signoff/approval document or HTTPS non-local approval artifact
+    - required: Release risk signoff record captured as a repo security/*.md signoff/approval document or HTTPS non-local approval artifact
     - required: record-staging-evidence SEC-SIGNOFF-001 summary markers: threat model approval, security/dependency_risk_register.md#DRR-001, dependency risk decision, residual risk review, owner/security approval, release risk signoff, and exact release_candidate=<manifest release_candidate>
 
 <!-- OBSIDIAN-STAGING-EVIDENCE-SNAPSHOT-END -->

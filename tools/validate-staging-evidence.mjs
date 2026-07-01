@@ -2496,13 +2496,25 @@ function validateStrictSignoffEvidence(item, manifest) {
     const artifactText = String(artifact.artifact ?? '').toLowerCase();
     const command = String(artifact.command_or_probe ?? '').toLowerCase();
     return !hasDisallowedStrictEvidenceMarker(`${command} ${artifactText} ${summary}`)
+      && isDurableSignoffArtifact(artifact.artifact)
       && requiredSignoffSummaryMarkers.every((marker) => summary.includes(marker.toLowerCase()))
       && summary.includes(releaseMarker);
   });
   assert.ok(
     hasSignoffEvidence,
-    `${item.id} strict release evidence must include threat-model, dependency-risk, residual-risk, owner/security approval, release signoff, and exact release_candidate markers`,
+    `${item.id} strict release evidence must include durable security signoff artifact, threat-model, dependency-risk, residual-risk, owner/security approval, release signoff, and exact release_candidate markers`,
   );
+}
+
+function isDurableSignoffArtifact(artifact) {
+  const value = String(artifact ?? '').trim();
+  if (/^https:\/\//i.test(value)) {
+    return isHTTPSNonLocalArtifact(value);
+  }
+  const normalized = value.replaceAll('\\', '/').toLowerCase();
+  return normalized.startsWith('security/')
+    && normalized.endsWith('.md')
+    && /signoff|approval|release-risk|risk-signoff/.test(normalized);
 }
 
 function isHTTPSNonLocalArtifact(value) {
