@@ -258,6 +258,7 @@ func probeArtifact(client *http.Client, name, target string, required []string) 
 		return result
 	}
 	applyStructuredProbeFields(&result, body)
+	required = requireStagingArtifactMarker(required)
 	if !containsAllFold(body, required) || containsAnyFold(body, forbiddenArtifactMarkers()) {
 		result.Passed = false
 		result.ResultSummary += "; artifact missing required markers or marked mock/placeholder"
@@ -420,6 +421,7 @@ func probeHTTPBody(client *http.Client, name, target string, required []string) 
 		return result
 	}
 	applyStructuredProbeFields(&result, body)
+	required = requireStagingArtifactMarker(required)
 	if !containsAllFold(body, required) || containsAnyFold(body, forbiddenArtifactMarkers()) {
 		result.Passed = false
 		result.ResultSummary += "; readiness/smoke markers missing or marked mock/placeholder"
@@ -436,6 +438,13 @@ func probeHTTPBody(client *http.Client, name, target string, required []string) 
 	}
 	result.ResultSummary += resilienceStructuredSummaryMarkers(result)
 	return result
+}
+
+func requireStagingArtifactMarker(required []string) []string {
+	withMarker := make([]string, 0, len(required)+1)
+	withMarker = append(withMarker, "staging artifact")
+	withMarker = append(withMarker, required...)
+	return withMarker
 }
 
 func fetch(client *http.Client, name, target string) (probeResult, string) {
