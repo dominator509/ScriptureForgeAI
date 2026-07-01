@@ -2297,6 +2297,7 @@ test('recordEvidence records production-grade Rust gRPC evidence', () => {
       release_candidate: 'abc123',
       service_version: 'scriptureforge-rust-engine:abc123',
       deployment_environment: 'staging',
+      load_run_id: 'rust-run-123',
       grpc_target: 'scriptureforge-rust-engine.staging.svc.cluster.local:50051',
       metrics_target: 'http://scriptureforge-rust-engine.staging.svc.cluster.local:9102/metrics',
       api_metrics_target: 'https://api.staging.scriptureforge.ai/metrics',
@@ -2336,6 +2337,36 @@ test('recordEvidence records production-grade Rust gRPC evidence', () => {
   assert.equal(updated.items[0].status, 'passed');
 });
 
+test('recordEvidence rejects Rust gRPC evidence without report load run identity', () => {
+  assert.throws(
+    () => recordEvidence(
+      {
+        release_candidate: 'abc123',
+        items: [{ id: 'RUST-GRPC-001', status: 'pending_external' }],
+      },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-rust-engine:abc123',
+        deployment_environment: 'staging',
+        grpc_target: 'scriptureforge-rust-engine.staging.svc.cluster.local:50051',
+        metrics_target: 'http://scriptureforge-rust-engine.staging.svc.cluster.local:9102/metrics',
+        api_metrics_target: 'https://api.staging.scriptureforge.ai/metrics',
+        evidence_items: ['RUST-GRPC-001'],
+        probes: [
+          rustProbe('rust-grpc-health', { target: 'scriptureforge-rust-engine.staging.svc.cluster.local:50051' }),
+          rustProbe('rust-metrics', { target: 'http://scriptureforge-rust-engine.staging.svc.cluster.local:9102/metrics' }),
+          rustProbe('api-rust-integration-metrics', { target: 'https://api.staging.scriptureforge.ai/metrics' }),
+        ],
+      },
+      'artifacts/rustprobe.json',
+      'go run ./tools/rustprobe',
+    ),
+    /RUST-GRPC-001 report must include load_run_id/,
+  );
+});
+
 test('recordEvidence rejects Rust gRPC evidence without structured positive metric samples', () => {
   assert.throws(
     () => recordEvidence(
@@ -2349,6 +2380,7 @@ test('recordEvidence rejects Rust gRPC evidence without structured positive metr
         release_candidate: 'abc123',
         service_version: 'scriptureforge-rust-engine:abc123',
         deployment_environment: 'staging',
+        load_run_id: 'rust-run-123',
         grpc_target: 'scriptureforge-rust-engine.staging.svc.cluster.local:50051',
         metrics_target: 'http://scriptureforge-rust-engine.staging.svc.cluster.local:9102/metrics',
         api_metrics_target: 'https://api.staging.scriptureforge.ai/metrics',
@@ -2379,6 +2411,7 @@ test('recordEvidence rejects Rust gRPC evidence for a different release candidat
         release_candidate: 'def456',
         service_version: 'scriptureforge-rust-engine:def456',
         deployment_environment: 'staging',
+        load_run_id: 'rust-run-123',
         grpc_target: 'scriptureforge-rust-engine.staging.svc.cluster.local:50051',
         metrics_target: 'http://scriptureforge-rust-engine.staging.svc.cluster.local:9102/metrics',
         api_metrics_target: 'https://api.staging.scriptureforge.ai/metrics',
@@ -2429,6 +2462,7 @@ test('recordEvidence rejects Rust gRPC evidence without deployment environment',
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-rust-engine:abc123',
+        load_run_id: 'rust-run-123',
         grpc_target: 'scriptureforge-rust-engine.staging.svc.cluster.local:50051',
         metrics_target: 'http://scriptureforge-rust-engine.staging.svc.cluster.local:9102/metrics',
         api_metrics_target: 'https://api.staging.scriptureforge.ai/metrics',
@@ -2474,6 +2508,7 @@ test('recordEvidence rejects Rust gRPC evidence without verified marker summarie
         release_candidate: 'abc123',
         service_version: 'scriptureforge-rust-engine:abc123',
         deployment_environment: 'staging',
+        load_run_id: 'rust-run-123',
         grpc_target: 'scriptureforge-rust-engine.staging.svc.cluster.local:50051',
         metrics_target: 'http://scriptureforge-rust-engine.staging.svc.cluster.local:9102/metrics',
         api_metrics_target: 'https://api.staging.scriptureforge.ai/metrics',
@@ -2519,6 +2554,7 @@ test('recordEvidence rejects Rust gRPC evidence without concrete metrics sample 
         release_candidate: 'abc123',
         service_version: 'scriptureforge-rust-engine:abc123',
         deployment_environment: 'staging',
+        load_run_id: 'rust-run-123',
         grpc_target: 'scriptureforge-rust-engine.staging.svc.cluster.local:50051',
         metrics_target: 'http://scriptureforge-rust-engine.staging.svc.cluster.local:9102/metrics',
         api_metrics_target: 'https://api.staging.scriptureforge.ai/metrics',
@@ -2564,6 +2600,7 @@ test('recordEvidence rejects Rust gRPC evidence without positive Rust request sa
         release_candidate: 'abc123',
         service_version: 'scriptureforge-rust-engine:abc123',
         deployment_environment: 'staging',
+        load_run_id: 'rust-run-123',
         grpc_target: 'scriptureforge-rust-engine.staging.svc.cluster.local:50051',
         metrics_target: 'http://scriptureforge-rust-engine.staging.svc.cluster.local:9102/metrics',
         api_metrics_target: 'https://api.staging.scriptureforge.ai/metrics',
@@ -2611,6 +2648,7 @@ test('recordEvidence rejects Rust gRPC evidence without staging artifact provena
         release_candidate: 'abc123',
         service_version: 'scriptureforge-rust-engine:abc123',
         deployment_environment: 'staging',
+        load_run_id: 'rust-run-123',
         grpc_target: 'scriptureforge-rust-engine.staging.svc.cluster.local:50051',
         metrics_target: 'http://scriptureforge-rust-engine.staging.svc.cluster.local:9102/metrics',
         api_metrics_target: 'https://api.staging.scriptureforge.ai/metrics',
@@ -2856,6 +2894,7 @@ test('recordEvidence rejects Rust gRPC evidence without failure-counter metrics'
         release_candidate: 'abc123',
         service_version: 'scriptureforge-rust-engine:abc123',
         deployment_environment: 'staging',
+        load_run_id: 'rust-run-123',
         grpc_target: 'scriptureforge-rust-engine.staging.svc.cluster.local:50051',
         metrics_target: 'http://scriptureforge-rust-engine.staging.svc.cluster.local:9102/metrics',
         api_metrics_target: 'https://api.staging.scriptureforge.ai/metrics',

@@ -1587,7 +1587,11 @@ function validateRustEvidence(report, manifest) {
   const probes = Array.isArray(report.probes) ? report.probes : [];
   const probesByName = new Map(probes.map((probe) => [probe.name, probe]));
   const health = probesByName.get('rust-grpc-health');
-  const reportLoadRunID = String(report.load_run_id ?? '').trim()
+  const explicitReportLoadRunID = String(report.load_run_id ?? '').trim();
+  if (String(manifest.release_candidate ?? '').trim()) {
+    assert.ok(explicitReportLoadRunID, 'RUST-GRPC-001 report must include load_run_id');
+  }
+  const reportLoadRunID = explicitReportLoadRunID
     || summaryMarkerValue(String(health?.result_summary ?? ''), 'load_run_id');
   assert.ok(reportLoadRunID, 'RUST-GRPC-001 report must include load_run_id');
   assert.ok(health, 'RUST-GRPC-001 report must include rust-grpc-health probe');
