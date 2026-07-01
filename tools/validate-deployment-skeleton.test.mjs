@@ -6,15 +6,17 @@ import {
   validatePlatformRuntimeConfig,
   validateTerraformReleaseInputGuards,
   validateTerraformSecretInputs,
+  validateTerraformStorageKMSInputs,
 } from './validate-deployment-skeleton.mjs';
 
 async function terraformSecretFixtures() {
-  const [variables, tfvarsExample, app] = await Promise.all([
+  const [variables, tfvarsExample, app, data] = await Promise.all([
     readFile('build/terraform/variables.tf', 'utf8'),
     readFile('build/terraform/terraform.tfvars.example', 'utf8'),
     readFile('build/terraform/app.tf', 'utf8'),
+    readFile('build/terraform/data.tf', 'utf8'),
   ]);
-  return { variables, tfvarsExample, app };
+  return { variables, tfvarsExample, app, data };
 }
 
 test('validatePlatformRuntimeConfig accepts the platform engine runtime guard', async () => {
@@ -94,6 +96,31 @@ test('validateTerraformImageDigestInputs rejects mutable image tag inputs', asyn
   assert.throws(
     () => validateTerraformImageDigestInputs(broken, tfvarsExample, app),
     /api_image must validate immutable sha256 image digests/,
+  );
+});
+
+test('validateTerraformStorageKMSInputs accepts current storage KMS wiring', async () => {
+  const { variables, tfvarsExample, data } = await terraformSecretFixtures();
+  assert.doesNotThrow(() => validateTerraformStorageKMSInputs(variables, tfvarsExample, data));
+});
+
+test('validateTerraformStorageKMSInputs rejects missing RDS customer-managed KMS wiring', async () => {
+  const { variables, tfvarsExample, data } = await terraformSecretFixtures();
+  const broken = data.replace('  kms_key_id             = var.database_kms_key_arn\n', '');
+  assert.notEqual(broken, data, 'test fixture must remove RDS KMS wiring');
+  assert.throws(
+    () => validateTerraformStorageKMSInputs(variables, tfvarsExample, broken),
+    /kms_key_id\s+= var\.database_kms_key_arn/,
+  );
+});
+
+test('validateTerraformStorageKMSInputs rejects weak Redis KMS input validation', async () => {
+  const { variables, tfvarsExample, data } = await terraformSecretFixtures();
+  const broken = variables.replace(' || can(regex("^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:alias/[A-Za-z0-9/_-]+$", var.redis_kms_key_arn))', '');
+  assert.notEqual(broken, variables, 'test fixture must weaken Redis KMS validation marker');
+  assert.throws(
+    () => validateTerraformStorageKMSInputs(broken, tfvarsExample, data),
+    /redis_kms_key_arn must validate customer-managed AWS KMS key or alias ARNs/,
   );
 });
 

@@ -18,6 +18,7 @@ export const deploymentSkeletonProofMarkers = [
   'hpa_pdb_rollout_safety=true',
   'root_database_url_absent=true',
   'immutable_workload_image_digests=true',
+  'customer_managed_storage_kms=true',
   'staging_input_placeholders_rejected=true',
 ];
 
@@ -120,6 +121,32 @@ export function validateTerraformImageDigestInputs(variables, tfvarsExample, app
   }
 }
 
+export function validateTerraformStorageKMSInputs(variables, tfvarsExample, data) {
+  for (const name of ['database_kms_key_arn', 'redis_kms_key_arn']) {
+    const block = terraformVariableBlock(variables, name);
+    assert.ok(
+      block.includes('arn:aws:kms:') && block.includes(':key/') && block.includes(':alias/'),
+      `${name} must validate customer-managed AWS KMS key or alias ARNs`,
+    );
+    assert.ok(
+      new RegExp(`${name}\\s*=\\s*"arn:aws:kms:[^"]+:(?:key|alias)/[^"]+"`).test(tfvarsExample),
+      `terraform.tfvars.example must document ${name} as a KMS key or alias ARN`,
+    );
+  }
+
+  requireIncludes(
+    data,
+    [
+      'storage_encrypted      = true',
+      'kms_key_id             = var.database_kms_key_arn',
+      'at_rest_encryption_enabled = true',
+      'transit_encryption_enabled = true',
+      'kms_key_id                 = var.redis_kms_key_arn',
+    ],
+    'terraform storage KMS wiring',
+  );
+}
+
 export function validateTerraformReleaseInputGuards(variables) {
   const serviceVersionBlock = terraformVariableBlock(variables, 'service_version');
   assert.ok(!/\bdefault\s*=/.test(serviceVersionBlock), 'service_version must not define a default value');
@@ -158,6 +185,8 @@ requireIncludes(
     'variable "database_backup_retention_days"',
     'variable "database_preferred_backup_window"',
     'variable "database_preferred_maintenance_window"',
+    'variable "database_kms_key_arn"',
+    'variable "redis_kms_key_arn"',
     'variable "api_resources"',
     'variable "rust_engine_resources"',
     'variable "web_resources"',
@@ -328,12 +357,15 @@ requireIncludes(
     'database_backup_retention_days',
     'database_preferred_backup_window',
     'database_preferred_maintenance_window',
+    'database_kms_key_arn',
+    'redis_kms_key_arn',
   ],
   'terraform.tfvars.example',
 );
 
 validateTerraformSecretInputs(variables, tfvarsExample, app);
 validateTerraformImageDigestInputs(variables, tfvarsExample, app);
+validateTerraformStorageKMSInputs(variables, tfvarsExample, data);
 validateTerraformReleaseInputGuards(variables);
 assert.ok(!tfvarsExample.includes('skip_final_snapshot = true'), 'tfvars example must not preserve production-hostile snapshot defaults');
 

@@ -23,6 +23,9 @@ api_image         = "123456789012.dkr.ecr.us-east-1.amazonaws.com/scriptureforge
 web_image         = "123456789012.dkr.ecr.us-east-1.amazonaws.com/scriptureforge-staging/web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 rust_engine_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/scriptureforge-staging/rust-engine@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 
+database_kms_key_arn = "arn:aws:kms:us-east-1:123456789012:alias/scriptureforge-staging-rds"
+redis_kms_key_arn    = "arn:aws:kms:us-east-1:123456789012:alias/scriptureforge-staging-redis"
+
 # Optional resource overrides. Start with defaults, then tune from staging load and memory data.
 # api_resources = {
 #   requests = { cpu = "250m", memory = "256Mi" }

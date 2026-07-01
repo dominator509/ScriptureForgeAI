@@ -68,6 +68,26 @@ variable "database_instance_class" {
   default     = "db.r6g.large"
 }
 
+variable "database_kms_key_arn" {
+  description = "Customer-managed AWS KMS key ARN used to encrypt the Aurora PostgreSQL cluster and snapshots."
+  type        = string
+
+  validation {
+    condition     = can(regex("^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key/[0-9a-fA-F-]+$", var.database_kms_key_arn)) || can(regex("^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:alias/[A-Za-z0-9/_-]+$", var.database_kms_key_arn))
+    error_message = "database_kms_key_arn must be a customer-managed AWS KMS key or alias ARN."
+  }
+}
+
+variable "redis_kms_key_arn" {
+  description = "Customer-managed AWS KMS key ARN used to encrypt the Redis replication group."
+  type        = string
+
+  validation {
+    condition     = can(regex("^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key/[0-9a-fA-F-]+$", var.redis_kms_key_arn)) || can(regex("^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:alias/[A-Za-z0-9/_-]+$", var.redis_kms_key_arn))
+    error_message = "redis_kms_key_arn must be a customer-managed AWS KMS key or alias ARN."
+  }
+}
+
 variable "database_backup_retention_days" {
   description = "Aurora PostgreSQL automated backup retention period in days."
   type        = number

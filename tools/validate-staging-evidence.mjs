@@ -297,7 +297,7 @@ const resilienceSegmentMarkerRequirements = new Map([
 ]);
 const terraformSegmentMarkerRequirements = new Map([
   ['terraform-remote-backend-init', ['staging artifact', 'terraform', 's3', 'backend', 'bucket', 'key', 'encrypt=true', 'kms_key_id=', 'versioning=enabled', 'dynamodb_table', 'successfully initialized', 'release_candidate=', 'service_version=', 'load_run_id=']],
-  ['terraform-staging-plan', ['staging artifact', 'Terraform', 'Plan:', 'aws_eks_cluster', 'aws_eks_node_group', 'aws_rds_cluster', 'aws_elasticache_replication_group', 'aws_ecr_repository', 'kubernetes_deployment', 'kubernetes_ingress_v1', 'kubernetes_horizontal_pod_autoscaler_v2', 'kubernetes_pod_disruption_budget_v1', 'kubernetes_manifest', 'aws_iam_role', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['terraform-staging-plan', ['staging artifact', 'Terraform', 'Plan:', 'aws_eks_cluster', 'aws_eks_node_group', 'aws_rds_cluster', 'aws_elasticache_replication_group', 'aws_ecr_repository', 'kubernetes_deployment', 'kubernetes_ingress_v1', 'kubernetes_horizontal_pod_autoscaler_v2', 'kubernetes_pod_disruption_budget_v1', 'kubernetes_manifest', 'aws_iam_role', 'kms_key_id', 'database_kms_key_arn', 'redis_kms_key_arn', 'release_candidate=', 'service_version=', 'load_run_id=']],
 ]);
 const terraformApplyOrApprovalSegmentMarkerSets = [
   ['staging artifact', 'Apply complete', 'Resources:', '0 destroyed', 'release_candidate=', 'service_version=', 'load_run_id=', 'distinct_terraform_artifacts=true'],
@@ -441,6 +441,9 @@ export const strictProbeFamilies = {
       'kubernetes_pod_disruption_budget_v1',
       'kubernetes_manifest',
       'aws_iam_role',
+      'kms_key_id',
+      'database_kms_key_arn',
+      'redis_kms_key_arn',
       'terraform-staging-apply-or-approval',
       'release_candidate',
       'service_version',

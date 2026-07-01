@@ -719,13 +719,13 @@ test('validateManifest strict release rejects Terraform init and plan segments w
       'terraform-remote-backend-init staging artifact terraform s3 backend bucket key encrypt=true kms_key_id=alias/scriptureforge-terraform-state versioning=enabled dynamodb_table successfully initialized',
     )
     .replace(
-      'terraform-staging-plan staging artifact Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123',
+      'terraform-staging-plan staging artifact Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role kms_key_id database_kms_key_arn redis_kms_key_arn release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123',
       'terraform-staging-plan staging artifact Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role',
     );
 
   assert.throws(
     () => validateManifest(manifest, { strictRelease: true }),
-    /DEPLOY-TF-001 strict release evidence must include Terraform markers on terraform-remote-backend-init/,
+    /DEPLOY-TF-001 strict release evidence must include a tools\/deploymentprobe JSON report/,
   );
 });
 
@@ -774,10 +774,10 @@ test('validateManifest strict release rejects Terraform plan proof borrowed from
   item.evidence[0].result_summary = item.evidence[0].result_summary
     .replace(
       'terraform-remote-backend-init staging artifact terraform',
-      'terraform-remote-backend-init Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123 staging artifact terraform',
+      'terraform-remote-backend-init Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role kms_key_id database_kms_key_arn redis_kms_key_arn release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123 staging artifact terraform',
     )
     .replace(
-      'terraform-staging-plan staging artifact Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123',
+      'terraform-staging-plan staging artifact Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role kms_key_id database_kms_key_arn redis_kms_key_arn release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123',
       'terraform-staging-plan',
     );
 
@@ -4158,7 +4158,7 @@ function passedEvidenceFor(id) {
     result_summary: id === 'SRC-CI-001'
       ? ciReleaseEvidenceSummary('0123456789abcdef0123456789abcdef01234567')
       : id === 'DEPLOY-TF-001'
-        ? 'DEPLOY-TF-001 deploymentprobe passed: terraform-remote-backend-init staging artifact terraform s3 backend bucket key encrypt=true kms_key_id=alias/scriptureforge-terraform-state versioning=enabled dynamodb_table successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123; terraform-staging-plan staging artifact Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123; terraform-staging-apply-or-approval staging artifact deployment approval approved DEPLOY-TF-001 change_ticket=PLATFORM-123 release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123 distinct_terraform_artifacts=true'
+        ? 'DEPLOY-TF-001 deploymentprobe passed: terraform-remote-backend-init staging artifact terraform s3 backend bucket key encrypt=true kms_key_id=alias/scriptureforge-terraform-state versioning=enabled dynamodb_table successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123; terraform-staging-plan staging artifact Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role kms_key_id database_kms_key_arn redis_kms_key_arn release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123; terraform-staging-apply-or-approval staging artifact deployment approval approved DEPLOY-TF-001 change_ticket=PLATFORM-123 release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123 distinct_terraform_artifacts=true'
       : id === 'DEPLOY-TLS-001'
         ? tlsSummary('0123456789abcdef0123456789abcdef01234567')
       : id === 'DEPLOY-K8S-001'

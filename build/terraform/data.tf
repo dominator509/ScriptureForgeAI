@@ -13,6 +13,7 @@ resource "aws_rds_cluster" "postgres" {
   db_subnet_group_name   = aws_db_subnet_group.storage.name
   vpc_security_group_ids = [aws_security_group.data.id]
   storage_encrypted      = true
+  kms_key_id             = var.database_kms_key_arn
 
   backup_retention_period      = var.database_backup_retention_days
   preferred_backup_window      = var.database_preferred_backup_window
@@ -53,6 +54,7 @@ resource "aws_elasticache_replication_group" "redis" {
   security_group_ids         = [aws_security_group.data.id]
   at_rest_encryption_enabled = true
   transit_encryption_enabled = true
+  kms_key_id                 = var.redis_kms_key_arn
 }
 
 data "aws_secretsmanager_secret" "jwt_secret_key" {
