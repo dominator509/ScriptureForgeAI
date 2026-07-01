@@ -625,8 +625,7 @@ function assertNoLocalTarget(report, id) {
 function validatePerformanceEvidence(report, manifest) {
   const evidenceItems = report.evidence_items ?? [];
   const performanceLoadRunIDs = new Set();
-  const reportLoadRunID = String(report.load_run_id ?? '').trim()
-    || summaryMarkerValue(String(report.result_summary ?? ''), 'load_run_id');
+  const reportLoadRunID = String(report.load_run_id ?? '').trim();
   for (const [id, target] of Object.entries(productionPerformanceTargets)) {
     if (!evidenceItems.includes(id)) {
       continue;
