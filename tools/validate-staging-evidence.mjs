@@ -1874,6 +1874,11 @@ function validateStrictReleaseItemEvidence(item, manifest) {
       mobileDeploymentEnvironmentPattern,
       'CLIENT-MOBILE-001 mobile-staging-config must include EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging',
     );
+    assertStrictMobileStructuredReport(evidence, {
+      easSegment,
+      cryptoSegment,
+      configSegment,
+    });
   }
   if (item.id === 'PERF-HTTP-001') {
     for (const [segment, markers] of httpPerformanceSegmentMarkerRequirements) {
@@ -2422,6 +2427,43 @@ function assertStrictRustStructuredReport(evidence, segments) {
   assert.equal(Number(report.vector_search_requests), Number(vectorSearchRequests), 'RUST-GRPC-001 structured report vector_search_requests must match rust-metrics marker');
   assert.equal(Number(report.api_rust_vector_search_ops), Number(apiRustVectorSearchOps), 'RUST-GRPC-001 structured report api_rust_vector_search_ops must match api-rust-integration-metrics marker');
   assert.equal(Number(report.api_rust_vector_search_seconds), Number(apiRustVectorSearchSeconds), 'RUST-GRPC-001 structured report api_rust_vector_search_seconds must match api-rust-integration-metrics marker');
+}
+
+function assertStrictMobileStructuredReport(evidence, segments) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.mobile_native_crypto_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    'CLIENT-MOBILE-001 strict release evidence must include exactly one structured mobile_native_crypto_proof report',
+  );
+  const report = structuredReports[0];
+  assert.equal(String(report.load_run_id ?? ''), summarySegmentCapture(segments.cryptoSegment, 'mobile-native-crypto-smoke', /\bload_run_id=([^\s,;]+)/i), 'CLIENT-MOBILE-001 structured report load_run_id must match crypto summary marker');
+  assert.equal(String(report.mobile_build_id ?? ''), summarySegmentCapture(segments.cryptoSegment, 'mobile-native-crypto-smoke', mobileBuildIDPattern), 'CLIENT-MOBILE-001 structured report mobile_build_id must match crypto summary marker');
+  assert.equal(String(report.mobile_build_id ?? ''), summarySegmentCapture(segments.easSegment, 'mobile-eas-or-device-run', mobileBuildIDPattern), 'CLIENT-MOBILE-001 structured report mobile_build_id must match EAS summary marker');
+  assert.equal(String(report.mobile_build_id ?? ''), summarySegmentCapture(segments.configSegment, 'mobile-staging-config', mobileBuildIDPattern), 'CLIENT-MOBILE-001 structured report mobile_build_id must match config summary marker');
+  assert.equal(String(report.platforms ?? ''), summarySegmentCapture(segments.easSegment, 'mobile-eas-or-device-run', /\bplatforms=([A-Za-z0-9_,.-]+)\b/i), 'CLIENT-MOBILE-001 structured report platforms must match EAS summary marker');
+  assert.equal(String(report.release_channel ?? ''), 'staging', 'CLIENT-MOBILE-001 structured report release_channel must be staging');
+  assert.equal(String(report.expo_profile ?? ''), 'staging', 'CLIENT-MOBILE-001 structured report expo_profile must be staging');
+  assert.equal(String(report.provider ?? ''), 'react-native-quick-crypto', 'CLIENT-MOBILE-001 structured report provider must be react-native-quick-crypto');
+  assert.equal(report.native_required, true, 'CLIENT-MOBILE-001 structured report native_required must be true');
+  assert.equal(report.unique_iv, true, 'CLIENT-MOBILE-001 structured report unique_iv must be true');
+  assert.equal(report.key_disposed, true, 'CLIENT-MOBILE-001 structured report key_disposed must be true');
+  assert.equal(report.disposed_handle_rejected, true, 'CLIENT-MOBILE-001 structured report disposed_handle_rejected must be true');
+  assert.equal(report.revoked_key_rejected, true, 'CLIENT-MOBILE-001 structured report revoked_key_rejected must be true');
+  assert.equal(report.passphrase_buffer_zeroized, true, 'CLIENT-MOBILE-001 structured report passphrase_buffer_zeroized must be true');
+  assert.equal(report.salt_buffer_zeroized, true, 'CLIENT-MOBILE-001 structured report salt_buffer_zeroized must be true');
+  assert.equal(report.plaintext_buffer_zeroized, true, 'CLIENT-MOBILE-001 structured report plaintext_buffer_zeroized must be true');
+  assert.equal(String(report.associated_data_salt_id ?? ''), summarySegmentCapture(segments.cryptoSegment, 'mobile-native-crypto-smoke', mobileAssociatedDataSaltIDPattern), 'CLIENT-MOBILE-001 structured report associated_data_salt_id must match crypto summary marker');
+  assert.equal(Number(report.associated_data_salt_version), Number(summarySegmentCapture(segments.cryptoSegment, 'mobile-native-crypto-smoke', mobileAssociatedDataVersionPattern)), 'CLIENT-MOBILE-001 structured report associated_data_salt_version must match crypto summary marker');
+  assert.equal(String(report.device_os ?? ''), summarySegmentCapture(segments.cryptoSegment, 'mobile-native-crypto-smoke', mobileDeviceOSPattern), 'CLIENT-MOBILE-001 structured report device_os must match crypto summary marker');
+  assert.equal(String(report.device_model ?? ''), summarySegmentCapture(segments.cryptoSegment, 'mobile-native-crypto-smoke', mobileDeviceModelPattern), 'CLIENT-MOBILE-001 structured report device_model must match crypto summary marker');
+  assert.equal(String(report.app_runtime ?? ''), 'installed-staging-app', 'CLIENT-MOBILE-001 structured report app_runtime must be installed-staging-app');
+  assert.equal(String(report.api_base_url ?? ''), segments.configSegment.match(mobileAPIBaseURLPattern)?.[1] ?? '', 'CLIENT-MOBILE-001 structured report api_base_url must match config summary marker');
+  assert.equal(String(report.ws_base_url ?? ''), segments.configSegment.match(mobileWSBaseURLPattern)?.[1] ?? '', 'CLIENT-MOBILE-001 structured report ws_base_url must match config summary marker');
+  assert.equal(report.require_native_crypto, true, 'CLIENT-MOBILE-001 structured report require_native_crypto must be true');
+  assert.equal(String(report.deployment_environment ?? ''), 'staging', 'CLIENT-MOBILE-001 structured report deployment_environment must be staging');
 }
 
 function assertStrictAIStructuredReport(evidence, segments) {

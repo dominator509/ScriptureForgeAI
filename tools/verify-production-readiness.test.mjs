@@ -968,6 +968,7 @@ function passedEvidenceFor(id, releaseCandidate = sha) {
     ...(id === 'ABUSE-LIMIT-001' ? { structured_report: abuseRateLimitStructuredReport() } : {}),
     ...(id === 'DATA-RLS-001' ? { structured_report: tenantRLSStructuredReport() } : {}),
     ...(id === 'RUST-GRPC-001' ? { structured_report: rustGRPCRuntimeStructuredReport() } : {}),
+    ...(id === 'CLIENT-MOBILE-001' ? { structured_report: mobileNativeCryptoStructuredReport() } : {}),
     ...(id === 'EXT-AI-001' ? { structured_report: aiGenerationAuditStructuredReport() } : {}),
     ...(id === 'EXT-ZOOM-001' ? { structured_report: zoomResilienceWebhookStructuredReport() } : {}),
     ...(id === 'PERF-HTTP-001' ? { structured_report: httpLoadThresholdStructuredReport() } : {}),
@@ -1170,6 +1171,36 @@ function rustGRPCRuntimeStructuredReport() {
       vector_search_requests: 1,
       api_rust_vector_search_ops: 1,
       api_rust_vector_search_seconds: 0.042,
+    },
+  };
+}
+
+function mobileNativeCryptoStructuredReport() {
+  return {
+    mobile_native_crypto_proof: {
+      mobile_build_id: 'mobile-build-123',
+      load_run_id: 'load-run-123',
+      platforms: 'android,ios',
+      release_channel: 'staging',
+      expo_profile: 'staging',
+      provider: 'react-native-quick-crypto',
+      native_required: true,
+      unique_iv: true,
+      key_disposed: true,
+      disposed_handle_rejected: true,
+      revoked_key_rejected: true,
+      passphrase_buffer_zeroized: true,
+      salt_buffer_zeroized: true,
+      plaintext_buffer_zeroized: true,
+      associated_data_salt_id: 'journal:self-test:server-derived-salt',
+      associated_data_salt_version: 1,
+      device_os: 'ios',
+      device_model: 'iphone15pro',
+      app_runtime: 'installed-staging-app',
+      api_base_url: 'https://api.staging.scriptureforge.ai',
+      ws_base_url: 'wss://api.staging.scriptureforge.ai',
+      require_native_crypto: true,
+      deployment_environment: 'staging',
     },
   };
 }

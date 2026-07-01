@@ -2775,6 +2775,9 @@ function structuredEvidenceForReport(itemID, report) {
   if (itemID === 'RUST-GRPC-001') {
     return structuredRustEvidenceForReport(report);
   }
+  if (itemID === 'CLIENT-MOBILE-001') {
+    return structuredMobileEvidenceForReport(report);
+  }
   if (itemID === 'PERF-HTTP-001') {
     return structuredHTTPLoadEvidenceForReport(report);
   }
@@ -2863,6 +2866,42 @@ function structuredRustEvidenceForReport(report) {
       vector_search_requests: Number(metrics.vector_search_requests),
       api_rust_vector_search_ops: Number(apiMetrics.api_rust_vector_search_ops),
       api_rust_vector_search_seconds: Number(apiMetrics.api_rust_vector_search_seconds),
+    },
+  };
+}
+
+function structuredMobileEvidenceForReport(report) {
+  const probes = Array.isArray(report.probes) ? report.probes : [];
+  const eas = probes.find((probe) => probe.name === 'mobile-eas-or-device-run') ?? {};
+  const crypto = probes.find((probe) => probe.name === 'mobile-native-crypto-smoke') ?? {};
+  const config = probes.find((probe) => probe.name === 'mobile-staging-config') ?? {};
+  const cryptoSummary = String(crypto.result_summary ?? '');
+  const configSummary = String(config.result_summary ?? '');
+  return {
+    mobile_native_crypto_proof: {
+      mobile_build_id: String(report.mobile_build_id ?? ''),
+      load_run_id: String(report.load_run_id ?? ''),
+      platforms: String(eas.platforms ?? ''),
+      release_channel: String(eas.release_channel ?? ''),
+      expo_profile: String(eas.expo_profile ?? ''),
+      provider: String(crypto.provider ?? extractFirstMatch(cryptoSummary, mobileNativeProviderSummaryPattern)),
+      native_required: String(crypto.native_required ?? extractFirstMatch(cryptoSummary, mobileNativeRequiredSummaryPattern)).toLowerCase() === 'true',
+      unique_iv: String(crypto.unique_iv ?? '').toLowerCase() === 'true',
+      key_disposed: String(crypto.key_disposed ?? '').toLowerCase() === 'true',
+      disposed_handle_rejected: String(crypto.disposed_handle_rejected ?? '').toLowerCase() === 'true',
+      revoked_key_rejected: String(crypto.revoked_key_rejected ?? '').toLowerCase() === 'true',
+      passphrase_buffer_zeroized: String(crypto.passphrase_buffer_zeroized ?? '').toLowerCase() === 'true',
+      salt_buffer_zeroized: String(crypto.salt_buffer_zeroized ?? '').toLowerCase() === 'true',
+      plaintext_buffer_zeroized: String(crypto.plaintext_buffer_zeroized ?? '').toLowerCase() === 'true',
+      associated_data_salt_id: String(crypto.associated_data_salt_id ?? extractFirstMatch(cryptoSummary, mobileAssociatedDataSaltIDSummaryPattern)),
+      associated_data_salt_version: Number(crypto.associated_data_salt_version ?? extractFirstMatch(cryptoSummary, mobileAssociatedDataVersionSummaryPattern)),
+      device_os: String(crypto.device_os ?? extractFirstMatch(cryptoSummary, mobileDeviceOSSummaryPattern)),
+      device_model: String(crypto.device_model ?? extractFirstMatch(cryptoSummary, mobileDeviceModelSummaryPattern)),
+      app_runtime: String(crypto.app_runtime ?? extractFirstMatch(cryptoSummary, mobileAppRuntimeSummaryPattern)),
+      api_base_url: String(config.api_base_url ?? extractFirstMatch(configSummary, mobileAPIBaseURLPattern)),
+      ws_base_url: String(config.ws_base_url ?? extractFirstMatch(configSummary, mobileWSBaseURLPattern)),
+      require_native_crypto: String(config.require_native_crypto ?? '').toLowerCase() === 'true',
+      deployment_environment: String(config.deployment_environment ?? '').toLowerCase(),
     },
   };
 }

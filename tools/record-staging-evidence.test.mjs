@@ -2087,6 +2087,33 @@ test('recordEvidence records production-grade mobile evidence', () => {
   );
 
   assert.equal(updated.items[0].status, 'passed');
+  assert.deepEqual(updated.items[0].evidence[0].structured_report, {
+    mobile_native_crypto_proof: {
+      mobile_build_id: 'mobile-build-123',
+      load_run_id: 'load-run-123',
+      platforms: 'android,ios',
+      release_channel: 'staging',
+      expo_profile: 'staging',
+      provider: 'react-native-quick-crypto',
+      native_required: true,
+      unique_iv: true,
+      key_disposed: true,
+      disposed_handle_rejected: true,
+      revoked_key_rejected: true,
+      passphrase_buffer_zeroized: true,
+      salt_buffer_zeroized: true,
+      plaintext_buffer_zeroized: true,
+      associated_data_salt_id: 'journal:self-test:server-derived-salt',
+      associated_data_salt_version: 1,
+      device_os: 'ios',
+      device_model: 'iphone15pro',
+      app_runtime: 'installed-staging-app',
+      api_base_url: 'https://api.staging.scriptureforge.ai',
+      ws_base_url: 'wss://api.staging.scriptureforge.ai',
+      require_native_crypto: true,
+      deployment_environment: 'staging',
+    },
+  });
 });
 
 test('recordEvidence rejects mobile evidence with only summary load run identity', () => {
