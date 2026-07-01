@@ -216,6 +216,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Load Artifact Alias Guard**: `tools/loadtest` canonicalizes performance artifact URLs before distinctness checks, so default-port, host-case, or query-order aliases cannot satisfy separate HTTP/WebSocket/Redis proof roles.
 - [x] **WebSocket Load Room Binding Guard**: `tools/loadtest`, the staging evidence recorder, and strict staging validation require WebSocket load summaries and reconnect/polling/Redis artifacts to carry the room identity (`ws_room_id`/`room_id=<id>`), so reconnect, polling fallback, and Redis sequence proof must bind to the same staged room as the load run.
 - [x] **WebSocket Load Exact Room Binding Guard**: `tools/loadtest`, the staging evidence recorder, and strict staging validation now reject `PERF-WS-001`/`DATA-REDIS-001` reports unless structured JSON `ws_room_id`, `ws_reconnect_room_id`, `ws_polling_room_id`, and `redis_telemetry_room_id` all match the exact room markers in the result summary, so reconnect, polling, and Redis proof cannot be stitched from another staged room.
+- [x] **WebSocket Load Sequence Range Guard**: The staging evidence recorder and strict-release validator now require `PERF-WS-001` to carry `ws_expected_events`, `ws_unique_sequences`, `ws_min_sequence=1`, `ws_max_sequence`, and `ws_polling_latest_sequence` as a coherent range, so a WebSocket throughput pass cannot omit or weaken contiguous sequence proof.
 - [x] **WebSocket Polling Latest Sequence Guard**: `tools/loadtest`, the staging evidence recorder, and strict staging validation require HTTP polling fallback evidence to include `ws_polling_latest_sequence=<ws_max_sequence>`, so fallback proof must show the state endpoint reached the final accepted WebSocket sequence for that staged room.
 - [x] **WebSocket Polling Artifact Minimum Sequence Guard**: `tools/loadtest` now parses the deployed HTTP polling fallback artifact's `latest_sequence=<n>` marker and rejects values below the 30,000-event production minimum, so a stale state endpoint artifact cannot satisfy `PERF-WS-001`/`DATA-REDIS-001` while the structured report claims full sequence coverage.
 - [x] **WebSocket Polling Artifact Sequence Marker Guard**: `tools/loadtest` emits `ws_polling_artifact_latest_sequence_validated=true`, and both the staging evidence recorder and strict manifest validator require it, so recorded `PERF-WS-001`/`DATA-REDIS-001` evidence must preserve proof that the polling artifact body passed the 30,000-sequence validation.
@@ -351,11 +352,11 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 1
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: 0f4b4c112e6043348d43a327aa9ec0865f49668b
+- expected_release_candidate: bee3f4945a6c5a47ec5828af0300681ac15ee092
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: 0f4b4c112e6043348d43a327aa9ec0865f49668b
+    - expected_release_candidate: bee3f4945a6c5a47ec5828af0300681ac15ee092
     - actual_release_candidate: ce96c283410756444a63b1345646fc69cf274d22
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
     - required: tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted

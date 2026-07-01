@@ -216,7 +216,7 @@ const httpPerformanceSegmentMarkerRequirements = new Map([
   ['verified markers', ['http_replica_artifact_verified', 'dependency_telemetry_artifact_verified', 'dependency_latency_artifact_verified=true', 'http_distinct_artifacts=true']],
 ]);
 const websocketPerformanceSegmentMarkerRequirements = new Map([
-  ['PERF-WS-001', ['staging artifact', 'profile=staging_websocket', 'min_rps=500', 'max_p99_ms=200', 'production_target_rps=500', 'production_target_p99_ms=200', 'production_min_duration_ms=60000', 'duration_ms>=60000', 'production_min_ws_events=30000', 'observed_rps=', 'observed_p99_ms=', 'threshold_pass=true', 'release_candidate=', 'service_version=', 'load_run_id=', 'ws_origin=https://', 'ws_room_id=', 'ws_reconnect_room_id=', 'ws_polling_room_id=', 'redis_telemetry_room_id=', 'ws_reconnect_sequence_continues=true', 'ws_authenticated=true', 'ws_expected_events=', 'ws_polling_latest_sequence=', 'ws_sequence_contiguous=true', 'ws_replica_count=']],
+  ['PERF-WS-001', ['staging artifact', 'profile=staging_websocket', 'min_rps=500', 'max_p99_ms=200', 'production_target_rps=500', 'production_target_p99_ms=200', 'production_min_duration_ms=60000', 'duration_ms>=60000', 'production_min_ws_events=30000', 'observed_rps=', 'observed_p99_ms=', 'threshold_pass=true', 'release_candidate=', 'service_version=', 'load_run_id=', 'ws_origin=https://', 'ws_room_id=', 'ws_reconnect_room_id=', 'ws_polling_room_id=', 'redis_telemetry_room_id=', 'ws_reconnect_sequence_continues=true', 'ws_authenticated=true', 'ws_expected_events=', 'ws_unique_sequences=', 'ws_min_sequence=1', 'ws_max_sequence=', 'ws_polling_latest_sequence=', 'ws_sequence_contiguous=true', 'ws_replica_count=']],
   ['verified markers', ['ws_replica_artifact_url=https://', 'ws_replica_artifact_verified', 'ws_reconnect_artifact_url=https://', 'ws_reconnect_artifact_verified', 'ws_reconnect_sequence_continues=true', 'ws_polling_artifact_url=https://', 'ws_polling_artifact_verified', 'ws_polling_artifact_latest_sequence_validated=true', 'ws_polling_artifact_latest_sequence_matches_run=true', 'redis_telemetry_artifact_url=https://', 'redis_telemetry_artifact_verified', 'ws_distinct_artifacts=true', 'room_broadcast_drops=0']],
 ]);
 const redisPerformanceSegmentMarkerRequirements = new Map([
@@ -1759,6 +1759,7 @@ function validateStrictReleaseItemEvidence(item, manifest) {
       minDurationMS: 60000,
       minWSEvents: 30000,
     });
+    assertStrictWebSocketSequenceNumbers(evidence, 'PERF-WS-001', 'PERF-WS-001', 30000);
   }
   if (item.id === 'DATA-REDIS-001') {
     for (const [segment, markers] of redisPerformanceSegmentMarkerRequirements) {
@@ -2352,20 +2353,24 @@ function assertStrictPerformanceNumbers(itemID, evidence, segment, { minRPS, max
 }
 
 function assertStrictRedisSequenceNumbers(evidence) {
-  const segmentText = findEvidenceSegment(evidence, 'DATA-REDIS-001');
-  assert.ok(segmentText, 'DATA-REDIS-001 strict release evidence must include a numeric Redis sequence segment');
-  const productionMinWSEvents = extractNumericMarker(segmentText, 'production_min_ws_events', 'DATA-REDIS-001');
-  const expectedEvents = extractNumericMarker(segmentText, 'ws_expected_events', 'DATA-REDIS-001');
-  const uniqueSequences = extractNumericMarker(segmentText, 'ws_unique_sequences', 'DATA-REDIS-001');
-  const minSequence = extractNumericMarker(segmentText, 'ws_min_sequence', 'DATA-REDIS-001');
-  const maxSequence = extractNumericMarker(segmentText, 'ws_max_sequence', 'DATA-REDIS-001');
-  const pollingLatestSequence = extractNumericMarker(segmentText, 'ws_polling_latest_sequence', 'DATA-REDIS-001');
-  assert.ok(productionMinWSEvents >= 30000, `DATA-REDIS-001 strict release production_min_ws_events ${productionMinWSEvents} is below required 30000`);
-  assert.ok(expectedEvents >= 30000, `DATA-REDIS-001 strict release ws_expected_events ${expectedEvents} is below required 30000`);
-  assert.equal(uniqueSequences, expectedEvents, 'DATA-REDIS-001 strict release unique sequence count must equal expected events');
-  assert.equal(minSequence, 1, 'DATA-REDIS-001 strict release minimum sequence must be 1');
-  assert.equal(maxSequence, expectedEvents, 'DATA-REDIS-001 strict release maximum sequence must equal expected events');
-  assert.equal(pollingLatestSequence, maxSequence, 'DATA-REDIS-001 strict release polling latest sequence must match maximum sequence');
+  assertStrictWebSocketSequenceNumbers(evidence, 'DATA-REDIS-001', 'DATA-REDIS-001', 30000);
+}
+
+function assertStrictWebSocketSequenceNumbers(evidence, itemID, segment, minExpectedEvents) {
+  const segmentText = findEvidenceSegment(evidence, segment);
+  assert.ok(segmentText, `${itemID} strict release evidence must include a numeric WebSocket sequence segment`);
+  const productionMinWSEvents = extractNumericMarker(segmentText, 'production_min_ws_events', itemID);
+  const expectedEvents = extractNumericMarker(segmentText, 'ws_expected_events', itemID);
+  const uniqueSequences = extractNumericMarker(segmentText, 'ws_unique_sequences', itemID);
+  const minSequence = extractNumericMarker(segmentText, 'ws_min_sequence', itemID);
+  const maxSequence = extractNumericMarker(segmentText, 'ws_max_sequence', itemID);
+  const pollingLatestSequence = extractNumericMarker(segmentText, 'ws_polling_latest_sequence', itemID);
+  assert.ok(productionMinWSEvents >= minExpectedEvents, `${itemID} strict release production_min_ws_events ${productionMinWSEvents} is below required ${minExpectedEvents}`);
+  assert.ok(expectedEvents >= minExpectedEvents, `${itemID} strict release ws_expected_events ${expectedEvents} is below required ${minExpectedEvents}`);
+  assert.equal(uniqueSequences, expectedEvents, `${itemID} strict release unique sequence count must equal expected events`);
+  assert.equal(minSequence, 1, `${itemID} strict release minimum sequence must be 1`);
+  assert.equal(maxSequence, expectedEvents, `${itemID} strict release maximum sequence must equal expected events`);
+  assert.equal(pollingLatestSequence, maxSequence, `${itemID} strict release polling latest sequence must match maximum sequence`);
 }
 
 function assertStrictKubernetesImageDigests(evidence) {

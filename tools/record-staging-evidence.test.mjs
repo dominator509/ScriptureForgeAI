@@ -8711,6 +8711,23 @@ test('recordEvidence rejects WebSocket performance evidence without distinct art
   );
 });
 
+test('recordEvidence rejects WebSocket performance evidence with inconsistent sequence cardinality', () => {
+  assert.throws(
+    () => recordEvidence(
+      {
+        items: [
+          { id: 'PERF-WS-001', status: 'pending_external' },
+          { id: 'DATA-REDIS-001', status: 'pending_external' },
+        ],
+      },
+      websocketPerformanceReport({ ws_unique_sequences: 29999 }),
+      'artifacts/load-ws.json',
+      'go run ./tools/loadtest -websocket',
+    ),
+    /PERF-WS-001 unique sequences must equal expected events/,
+  );
+});
+
 test('recordEvidence rejects WebSocket performance evidence with failed threshold summary', () => {
   assert.throws(
     () => recordEvidence(
@@ -9026,7 +9043,7 @@ test('recordEvidence rejects WebSocket performance evidence when polling latest 
       'artifacts/load-ws.json',
       'go run ./tools/loadtest -websocket',
     ),
-    /DATA-REDIS-001 polling latest sequence must equal maximum sequence/,
+    /PERF-WS-001 polling latest sequence must equal maximum sequence/,
   );
 });
 
@@ -9906,7 +9923,7 @@ test('recordEvidence rejects Redis sequencing evidence without contiguous sequen
     ws_reconnect_sequence_continues: true,
         ws_authenticated: true,
         ws_expected_events: 30000,
-        ws_unique_sequences: 399,
+        ws_unique_sequences: 30000,
         ws_min_sequence: 1,
         ws_max_sequence: 30000,
         ws_polling_latest_sequence: 30000,
