@@ -693,6 +693,7 @@ function validatePerformanceEvidence(report, manifest) {
     const wsRoomID = String(report.ws_room_id ?? '').trim();
     assert.match(wsRoomID, /\S/, 'DATA-REDIS-001 report must include ws_room_id');
     assertWebSocketArtifactRoomBinding(report, 'DATA-REDIS-001');
+    assert.equal(report.ws_reconnect_sequence_continues, true, 'DATA-REDIS-001 report must prove ws_reconnect_sequence_continues=true');
     assert.equal(report.ws_sequence_contiguous, true, 'DATA-REDIS-001 report must prove ws_sequence_contiguous=true');
     assert.equal(typeof report.ws_expected_events, 'number', 'DATA-REDIS-001 report must include ws_expected_events');
     assert.equal(typeof report.ws_unique_sequences, 'number', 'DATA-REDIS-001 report must include ws_unique_sequences');
@@ -735,6 +736,7 @@ function validatePerformanceEvidence(report, manifest) {
   }
   if (evidenceItems.includes('PERF-WS-001')) {
     assert.match(String(report.ws_room_id ?? ''), /\S/, 'PERF-WS-001 report must include ws_room_id');
+    assert.equal(report.ws_reconnect_sequence_continues, true, 'PERF-WS-001 report must prove ws_reconnect_sequence_continues=true');
     const replicaArtifactURL = String(report.ws_replica_artifact_url ?? '');
     assert.match(replicaArtifactURL, /^https:\/\//, 'PERF-WS-001 report must include HTTPS ws_replica_artifact_url');
     assertNonLocalOrPrivateTarget(replicaArtifactURL, `PERF-WS-001 ws_replica_artifact_url must not be local/self-test: ${replicaArtifactURL}`);

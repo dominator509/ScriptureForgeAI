@@ -56,53 +56,54 @@ type config struct {
 }
 
 type report struct {
-	Target                    string   `json:"target"`
-	Method                    string   `json:"method"`
-	EvidenceProfile           string   `json:"evidence_profile"`
-	DurationMS                int64    `json:"duration_ms"`
-	Concurrency               int      `json:"concurrency"`
-	Requests                  int      `json:"requests"`
-	Failures                  int      `json:"failures"`
-	RPS                       float64  `json:"rps"`
-	P50MS                     int64    `json:"p50_ms"`
-	P95MS                     int64    `json:"p95_ms"`
-	P99MS                     int64    `json:"p99_ms"`
-	MinRPS                    float64  `json:"min_rps,omitempty"`
-	MaxP99MS                  int64    `json:"max_p99_ms,omitempty"`
-	ProductionTargetRPS       float64  `json:"production_target_rps,omitempty"`
-	ProductionTargetP99MS     int64    `json:"production_target_p99_ms,omitempty"`
-	ProductionMinDurationMS   int64    `json:"production_min_duration_ms,omitempty"`
-	ProductionMinWSEvents     int      `json:"production_min_ws_events,omitempty"`
-	WSReplicaArtifactURL      string   `json:"ws_replica_artifact_url,omitempty"`
-	WSReconnectArtifactURL    string   `json:"ws_reconnect_artifact_url,omitempty"`
-	WSPollingArtifactURL      string   `json:"ws_polling_artifact_url,omitempty"`
-	RedisTelemetryArtifactURL string   `json:"redis_telemetry_artifact_url,omitempty"`
-	WSOrigin                  string   `json:"ws_origin,omitempty"`
-	WSRoomID                  string   `json:"ws_room_id,omitempty"`
-	WSReconnectRoomID         string   `json:"ws_reconnect_room_id,omitempty"`
-	WSPollingRoomID           string   `json:"ws_polling_room_id,omitempty"`
-	RedisTelemetryRoomID      string   `json:"redis_telemetry_room_id,omitempty"`
-	WSAuthenticated           bool     `json:"ws_authenticated,omitempty"`
-	HTTPReplicaArtifactURL    string   `json:"http_replica_artifact_url,omitempty"`
-	DependencyTelemetryURL    string   `json:"dependency_telemetry_artifact_url,omitempty"`
-	HTTPReplicaCount          int      `json:"http_replica_count,omitempty"`
-	WSReplicaCount            int      `json:"ws_replica_count,omitempty"`
-	DependencyPostgresP99MS   int      `json:"dependency_postgres_p99_ms,omitempty"`
-	DependencyRedisP99MS      int      `json:"dependency_redis_p99_ms,omitempty"`
-	RoomBroadcastDrops        *int     `json:"room_broadcast_drops,omitempty"`
-	ReleaseCandidate          string   `json:"release_candidate,omitempty"`
-	ServiceVersion            string   `json:"service_version,omitempty"`
-	LoadRunID                 string   `json:"load_run_id,omitempty"`
-	WSExpectedEvents          int      `json:"ws_expected_events,omitempty"`
-	WSUniqueSequences         int      `json:"ws_unique_sequences,omitempty"`
-	WSMinSequence             int64    `json:"ws_min_sequence,omitempty"`
-	WSMaxSequence             int64    `json:"ws_max_sequence,omitempty"`
-	WSPollingLatestSequence   int64    `json:"ws_polling_latest_sequence,omitempty"`
-	WSSequenceContiguous      bool     `json:"ws_sequence_contiguous,omitempty"`
-	ThresholdPass             bool     `json:"threshold_pass"`
-	ThresholdFailures         []string `json:"threshold_failures,omitempty"`
-	EvidenceItems             []string `json:"evidence_items,omitempty"`
-	ResultSummary             string   `json:"result_summary,omitempty"`
+	Target                       string   `json:"target"`
+	Method                       string   `json:"method"`
+	EvidenceProfile              string   `json:"evidence_profile"`
+	DurationMS                   int64    `json:"duration_ms"`
+	Concurrency                  int      `json:"concurrency"`
+	Requests                     int      `json:"requests"`
+	Failures                     int      `json:"failures"`
+	RPS                          float64  `json:"rps"`
+	P50MS                        int64    `json:"p50_ms"`
+	P95MS                        int64    `json:"p95_ms"`
+	P99MS                        int64    `json:"p99_ms"`
+	MinRPS                       float64  `json:"min_rps,omitempty"`
+	MaxP99MS                     int64    `json:"max_p99_ms,omitempty"`
+	ProductionTargetRPS          float64  `json:"production_target_rps,omitempty"`
+	ProductionTargetP99MS        int64    `json:"production_target_p99_ms,omitempty"`
+	ProductionMinDurationMS      int64    `json:"production_min_duration_ms,omitempty"`
+	ProductionMinWSEvents        int      `json:"production_min_ws_events,omitempty"`
+	WSReplicaArtifactURL         string   `json:"ws_replica_artifact_url,omitempty"`
+	WSReconnectArtifactURL       string   `json:"ws_reconnect_artifact_url,omitempty"`
+	WSPollingArtifactURL         string   `json:"ws_polling_artifact_url,omitempty"`
+	RedisTelemetryArtifactURL    string   `json:"redis_telemetry_artifact_url,omitempty"`
+	WSOrigin                     string   `json:"ws_origin,omitempty"`
+	WSRoomID                     string   `json:"ws_room_id,omitempty"`
+	WSReconnectRoomID            string   `json:"ws_reconnect_room_id,omitempty"`
+	WSPollingRoomID              string   `json:"ws_polling_room_id,omitempty"`
+	RedisTelemetryRoomID         string   `json:"redis_telemetry_room_id,omitempty"`
+	WSReconnectSequenceContinues bool     `json:"ws_reconnect_sequence_continues,omitempty"`
+	WSAuthenticated              bool     `json:"ws_authenticated,omitempty"`
+	HTTPReplicaArtifactURL       string   `json:"http_replica_artifact_url,omitempty"`
+	DependencyTelemetryURL       string   `json:"dependency_telemetry_artifact_url,omitempty"`
+	HTTPReplicaCount             int      `json:"http_replica_count,omitempty"`
+	WSReplicaCount               int      `json:"ws_replica_count,omitempty"`
+	DependencyPostgresP99MS      int      `json:"dependency_postgres_p99_ms,omitempty"`
+	DependencyRedisP99MS         int      `json:"dependency_redis_p99_ms,omitempty"`
+	RoomBroadcastDrops           *int     `json:"room_broadcast_drops,omitempty"`
+	ReleaseCandidate             string   `json:"release_candidate,omitempty"`
+	ServiceVersion               string   `json:"service_version,omitempty"`
+	LoadRunID                    string   `json:"load_run_id,omitempty"`
+	WSExpectedEvents             int      `json:"ws_expected_events,omitempty"`
+	WSUniqueSequences            int      `json:"ws_unique_sequences,omitempty"`
+	WSMinSequence                int64    `json:"ws_min_sequence,omitempty"`
+	WSMaxSequence                int64    `json:"ws_max_sequence,omitempty"`
+	WSPollingLatestSequence      int64    `json:"ws_polling_latest_sequence,omitempty"`
+	WSSequenceContiguous         bool     `json:"ws_sequence_contiguous,omitempty"`
+	ThresholdPass                bool     `json:"threshold_pass"`
+	ThresholdFailures            []string `json:"threshold_failures,omitempty"`
+	EvidenceItems                []string `json:"evidence_items,omitempty"`
+	ResultSummary                string   `json:"result_summary,omitempty"`
 }
 
 type loadResult struct {
@@ -127,15 +128,16 @@ var roomBroadcastDropsPattern = regexp.MustCompile(`(?i)\broom_broadcast_drops=(
 var roomIDPattern = regexp.MustCompile(`(?i)\broom_id=([^\s,;]+)\b`)
 
 type stagingArtifactEvidence struct {
-	HTTPReplicaCount      int
-	WSReplicaCount        int
-	PostgresP99MS         int
-	RedisP99MS            int
-	RoomBroadcastDrops    *int
-	PollingLatestSequence int
-	WSReconnectRoomID     string
-	WSPollingRoomID       string
-	RedisTelemetryRoomID  string
+	HTTPReplicaCount             int
+	WSReplicaCount               int
+	PostgresP99MS                int
+	RedisP99MS                   int
+	RoomBroadcastDrops           *int
+	PollingLatestSequence        int
+	WSReconnectRoomID            string
+	WSPollingRoomID              string
+	RedisTelemetryRoomID         string
+	WSReconnectSequenceContinues bool
 }
 
 func main() {
@@ -710,6 +712,7 @@ func validateStagingWebSocketArtifacts(client *http.Client, cfg config) (staging
 				return evidence, err
 			}
 			evidence.WSReconnectRoomID = roomID
+			evidence.WSReconnectSequenceContinues = true
 		}
 		if artifact.name == "ws-polling-artifact-url" {
 			roomID, err := parseRoomIDMarker(text, artifact.name, cfg.WSRoomID)
@@ -946,40 +949,41 @@ func buildReport(cfg config, elapsed time.Duration, load loadResult) report {
 		rps = float64(requests) / elapsedForMetrics.Seconds()
 	}
 	result := report{
-		Target:                    cfg.Target,
-		Method:                    cfg.Method,
-		EvidenceProfile:           evidenceProfileFor(cfg),
-		DurationMS:                durationMS,
-		Concurrency:               cfg.Concurrency,
-		Requests:                  requests,
-		Failures:                  load.failures,
-		RPS:                       rps,
-		P50MS:                     percentile(latencies, 0.50).Milliseconds(),
-		P95MS:                     percentile(latencies, 0.95).Milliseconds(),
-		P99MS:                     percentile(latencies, 0.99).Milliseconds(),
-		MinRPS:                    cfg.MinRPS,
-		MaxP99MS:                  cfg.MaxP99.Milliseconds(),
-		WSReplicaArtifactURL:      cfg.WSReplicaArtifactURL,
-		WSReconnectArtifactURL:    cfg.WSReconnectArtifactURL,
-		WSPollingArtifactURL:      cfg.WSPollingArtifactURL,
-		RedisTelemetryArtifactURL: cfg.RedisTelemetryArtifactURL,
-		WSOrigin:                  wsOriginForReport(cfg),
-		WSRoomID:                  wsRoomIDForReport(cfg),
-		WSReconnectRoomID:         cfg.ArtifactEvidence.WSReconnectRoomID,
-		WSPollingRoomID:           cfg.ArtifactEvidence.WSPollingRoomID,
-		RedisTelemetryRoomID:      cfg.ArtifactEvidence.RedisTelemetryRoomID,
-		WSAuthenticated:           cfg.WebSocket && strings.TrimSpace(cfg.WSToken) != "",
-		HTTPReplicaArtifactURL:    cfg.HTTPReplicaArtifactURL,
-		DependencyTelemetryURL:    cfg.DependencyTelemetryURL,
-		HTTPReplicaCount:          cfg.ArtifactEvidence.HTTPReplicaCount,
-		WSReplicaCount:            cfg.ArtifactEvidence.WSReplicaCount,
-		DependencyPostgresP99MS:   cfg.ArtifactEvidence.PostgresP99MS,
-		DependencyRedisP99MS:      cfg.ArtifactEvidence.RedisP99MS,
-		RoomBroadcastDrops:        cfg.ArtifactEvidence.RoomBroadcastDrops,
-		ReleaseCandidate:          strings.TrimSpace(cfg.ReleaseCandidate),
-		ServiceVersion:            strings.TrimSpace(cfg.ServiceVersion),
-		LoadRunID:                 strings.TrimSpace(cfg.LoadRunID),
-		EvidenceItems:             evidenceItemsFor(cfg),
+		Target:                       cfg.Target,
+		Method:                       cfg.Method,
+		EvidenceProfile:              evidenceProfileFor(cfg),
+		DurationMS:                   durationMS,
+		Concurrency:                  cfg.Concurrency,
+		Requests:                     requests,
+		Failures:                     load.failures,
+		RPS:                          rps,
+		P50MS:                        percentile(latencies, 0.50).Milliseconds(),
+		P95MS:                        percentile(latencies, 0.95).Milliseconds(),
+		P99MS:                        percentile(latencies, 0.99).Milliseconds(),
+		MinRPS:                       cfg.MinRPS,
+		MaxP99MS:                     cfg.MaxP99.Milliseconds(),
+		WSReplicaArtifactURL:         cfg.WSReplicaArtifactURL,
+		WSReconnectArtifactURL:       cfg.WSReconnectArtifactURL,
+		WSPollingArtifactURL:         cfg.WSPollingArtifactURL,
+		RedisTelemetryArtifactURL:    cfg.RedisTelemetryArtifactURL,
+		WSOrigin:                     wsOriginForReport(cfg),
+		WSRoomID:                     wsRoomIDForReport(cfg),
+		WSReconnectRoomID:            cfg.ArtifactEvidence.WSReconnectRoomID,
+		WSPollingRoomID:              cfg.ArtifactEvidence.WSPollingRoomID,
+		RedisTelemetryRoomID:         cfg.ArtifactEvidence.RedisTelemetryRoomID,
+		WSReconnectSequenceContinues: cfg.ArtifactEvidence.WSReconnectSequenceContinues,
+		WSAuthenticated:              cfg.WebSocket && strings.TrimSpace(cfg.WSToken) != "",
+		HTTPReplicaArtifactURL:       cfg.HTTPReplicaArtifactURL,
+		DependencyTelemetryURL:       cfg.DependencyTelemetryURL,
+		HTTPReplicaCount:             cfg.ArtifactEvidence.HTTPReplicaCount,
+		WSReplicaCount:               cfg.ArtifactEvidence.WSReplicaCount,
+		DependencyPostgresP99MS:      cfg.ArtifactEvidence.PostgresP99MS,
+		DependencyRedisP99MS:         cfg.ArtifactEvidence.RedisP99MS,
+		RoomBroadcastDrops:           cfg.ArtifactEvidence.RoomBroadcastDrops,
+		ReleaseCandidate:             strings.TrimSpace(cfg.ReleaseCandidate),
+		ServiceVersion:               strings.TrimSpace(cfg.ServiceVersion),
+		LoadRunID:                    strings.TrimSpace(cfg.LoadRunID),
+		EvidenceItems:                evidenceItemsFor(cfg),
 	}
 	result.ProductionTargetRPS, result.ProductionTargetP99MS = productionTargetFor(cfg)
 	if result.ProductionTargetRPS > 0 {
@@ -1061,7 +1065,7 @@ func resultSummaryFor(result report) string {
 	}
 	if result.EvidenceProfile == "staging_websocket" {
 		summary = fmt.Sprintf(
-			"%s production_min_ws_events=%d ws_origin=%s ws_room_id=%s ws_reconnect_room_id=%s ws_polling_room_id=%s redis_telemetry_room_id=%s ws_authenticated=%t ws_expected_events=%d ws_unique_sequences=%d ws_min_sequence=%d ws_max_sequence=%d ws_polling_latest_sequence=%d ws_sequence_contiguous=%t ws_replica_artifact_url=%s ws_reconnect_artifact_url=%s ws_polling_artifact_url=%s redis_telemetry_artifact_url=%s ws_replica_count=%d room_broadcast_drops=%d",
+			"%s production_min_ws_events=%d ws_origin=%s ws_room_id=%s ws_reconnect_room_id=%s ws_polling_room_id=%s redis_telemetry_room_id=%s ws_reconnect_sequence_continues=%t ws_authenticated=%t ws_expected_events=%d ws_unique_sequences=%d ws_min_sequence=%d ws_max_sequence=%d ws_polling_latest_sequence=%d ws_sequence_contiguous=%t ws_replica_artifact_url=%s ws_reconnect_artifact_url=%s ws_polling_artifact_url=%s redis_telemetry_artifact_url=%s ws_replica_count=%d room_broadcast_drops=%d",
 			summary,
 			result.ProductionMinWSEvents,
 			result.WSOrigin,
@@ -1069,6 +1073,7 @@ func resultSummaryFor(result report) string {
 			result.WSReconnectRoomID,
 			result.WSPollingRoomID,
 			result.RedisTelemetryRoomID,
+			result.WSReconnectSequenceContinues,
 			result.WSAuthenticated,
 			result.WSExpectedEvents,
 			result.WSUniqueSequences,
@@ -1107,6 +1112,7 @@ func resultSummaryFor(result report) string {
 			"ws_reconnect_room_id",
 			"ws_polling_room_id",
 			"redis_telemetry_room_id",
+			"ws_reconnect_sequence_continues=true",
 			"ws_authenticated=true",
 			"ws_expected_events",
 			"ws_polling_latest_sequence",
@@ -1114,7 +1120,6 @@ func resultSummaryFor(result report) string {
 			"ws_replica_artifact_verified",
 			"ws_reconnect_artifact_url",
 			"ws_reconnect_artifact_verified",
-			"ws_reconnect_sequence_continues=true",
 			"ws_polling_artifact_url",
 			"ws_polling_artifact_verified",
 			"ws_polling_artifact_latest_sequence_validated=true",
