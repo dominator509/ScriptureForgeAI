@@ -51,6 +51,7 @@ export function validateRLSSchema(migrationText, tableRLSTestText, handlerRLSTes
   for (const requiredHandlerProof of [
     'TestTenantScopedJournalHandlersEnforceRLS',
     'TestTenantScopedRoomActiveHandlerEnforcesRLS',
+    'TestTenantScopedRoomStateHandlerEnforcesRLS',
     'plaintext journal payload persisted %d rows, want 0',
     'plaintext ciphertext journal payload status',
     'journal table contains plaintext leak markers',
@@ -62,6 +63,10 @@ export function validateRLSSchema(migrationText, tableRLSTestText, handlerRLSTes
     'tenant A rooms',
     'tenant B rooms',
     'mismatched tenant/user rooms',
+    'cross-tenant room state status',
+    'cross-tenant room state reached polling store %d times, want 0',
+    'same-tenant room state status',
+    'same-tenant room state polling store calls = %d, want 1',
     'cross-tenant',
   ]) {
     assert.ok(

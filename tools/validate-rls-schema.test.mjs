@@ -101,6 +101,16 @@ test('validateRLSSchema rejects weakened handler-level journal assertions', asyn
   );
 });
 
+test('validateRLSSchema rejects weakened room-state handler RLS assertions', async () => {
+  const { migrationText, tableRLSTestText, handlerRLSTestText, portHandlerRLSTestText, aiAuditRLSTestText } = await fixtures();
+  const broken = handlerRLSTestText.replace('cross-tenant room state reached polling store %d times, want 0', 'cross-tenant room state polling store checked');
+  assert.notEqual(broken, handlerRLSTestText, 'test fixture must remove room-state store guard marker');
+  assert.throws(
+    () => validateRLSSchema(migrationText, tableRLSTestText, broken, portHandlerRLSTestText, aiAuditRLSTestText),
+    /cross-tenant room state reached polling store %d times, want 0/,
+  );
+});
+
 test('validateRLSSchema rejects missing ports tenant-isolation proof markers', async () => {
   const { migrationText, tableRLSTestText, handlerRLSTestText, portHandlerRLSTestText, aiAuditRLSTestText } = await fixtures();
   const broken = portHandlerRLSTestText.replace('TestSocketStreamIsTenantScoped', 'TestSocketStream');

@@ -4,12 +4,13 @@ import { resolve } from 'node:path';
 const isWindows = process.platform === 'win32';
 const defaultGoBin = isWindows ? '.\\.tools\\go\\bin\\go.exe' : './.tools/go/bin/go';
 
-export const rlsDBTestPattern = 'Test(TenantRLSCoversAllTenantTables|TenantScopedJournalHandlersEnforceRLS|TenantScopedRoomActiveHandlerEnforcesRLS|JournalHandlersHonorTenantIsolation|RoomHandlersHonorTenantIsolation|SocketStreamIsTenantScoped|AIRequestLogPersistsCitationsAndHonorsTenantRLS|GenerateCurriculumHandlerPersistsAuditRowsWithTenantRLS|AuthRegisterLoginRefreshRotationAndLogout|PrivilegedLoginRequiresAndVerifiesMFA|WorkspaceSwitchRequiresAuthenticatedOrgMatch|MFAEnrollAndVerifyFlowForPrivilegedUsers)';
+export const rlsDBTestPattern = 'Test(TenantRLSCoversAllTenantTables|TenantScopedJournalHandlersEnforceRLS|TenantScopedRoomActiveHandlerEnforcesRLS|TenantScopedRoomStateHandlerEnforcesRLS|JournalHandlersHonorTenantIsolation|RoomHandlersHonorTenantIsolation|SocketStreamIsTenantScoped|AIRequestLogPersistsCitationsAndHonorsTenantRLS|GenerateCurriculumHandlerPersistsAuditRowsWithTenantRLS|AuthRegisterLoginRefreshRotationAndLogout|PrivilegedLoginRequiresAndVerifiesMFA|WorkspaceSwitchRequiresAuthenticatedOrgMatch|MFAEnrollAndVerifyFlowForPrivilegedUsers)';
 
 export const rlsDBRequiredTests = [
   'TenantRLSCoversAllTenantTables',
   'TenantScopedJournalHandlersEnforceRLS',
   'TenantScopedRoomActiveHandlerEnforcesRLS',
+  'TenantScopedRoomStateHandlerEnforcesRLS',
   'JournalHandlersHonorTenantIsolation',
   'RoomHandlersHonorTenantIsolation',
   'SocketStreamIsTenantScoped',
@@ -56,6 +57,10 @@ export const rlsDBSemanticProofMarkers = [
   'room_handler_same_tenant_read_pass=true',
   'room_handler_cross_tenant_read_denied=true',
   'room_handler_cross_tenant_write_denied=true',
+  'room_state_handler_rls=true',
+  'room_state_handler_same_tenant_read_pass=true',
+  'room_state_handler_cross_tenant_read_denied=true',
+  'room_state_handler_cross_tenant_store_not_called=true',
   'room_create_tenant_override_denied=true',
   'websocket_tenant_scoping=true',
   'ai_audit_rls=true',

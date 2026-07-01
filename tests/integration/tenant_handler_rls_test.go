@@ -362,3 +362,55 @@ func TestTenantScopedRoomActiveHandlerEnforcesRLS(t *testing.T) {
 		t.Fatalf("mismatched tenant/user rooms = %#v, want none", mismatchedRooms)
 	}
 }
+
+func TestTenantScopedRoomStateHandlerEnforcesRLS(t *testing.T) {
+	db := openTenantIsolationDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	seedTenantFixtures(ctx, t, db)
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		cleanupTenantFixtures(cleanupCtx, t, db)
+	})
+
+	stateStore := &tenantRoomStateStore{}
+	handler := &ports.RoomHandler{
+		DB:           db,
+		StateManager: stateStore,
+	}
+
+	crossTenantRecorder := httptest.NewRecorder()
+	handler.RoomStateHandler(crossTenantRecorder, requestWithClaims(http.MethodGet, "/api/v1/rooms/state/"+tenantRoomA, nil, tenantUserB, tenantOrgB))
+	if crossTenantRecorder.Code != http.StatusForbidden {
+		t.Fatalf("cross-tenant room state status = %d body = %s, want 403", crossTenantRecorder.Code, crossTenantRecorder.Body.String())
+	}
+	if stateStore.calls != 0 {
+		t.Fatalf("cross-tenant room state reached polling store %d times, want 0", stateStore.calls)
+	}
+
+	sameTenantRecorder := httptest.NewRecorder()
+	handler.RoomStateHandler(sameTenantRecorder, requestWithClaims(http.MethodGet, "/api/v1/rooms/state/"+tenantRoomA, nil, tenantUserA, tenantOrgA))
+	if sameTenantRecorder.Code != http.StatusOK {
+		t.Fatalf("same-tenant room state status = %d body = %s, want 200", sameTenantRecorder.Code, sameTenantRecorder.Body.String())
+	}
+	if stateStore.calls != 1 {
+		t.Fatalf("same-tenant room state polling store calls = %d, want 1", stateStore.calls)
+	}
+	if body := sameTenantRecorder.Body.String(); !strings.Contains(body, tenantRoomA) || strings.Contains(body, tenantRoomB) {
+		t.Fatalf("same-tenant room state body = %s, want only tenant A room id", body)
+	}
+}
+
+type tenantRoomStateStore struct {
+	calls int
+}
+
+func (s *tenantRoomStateStore) SetRoomActiveState(context.Context, string, bool) error {
+	return nil
+}
+
+func (s *tenantRoomStateStore) GetLatestRoomEvent(_ context.Context, roomID string) (string, error) {
+	s.calls++
+	return `{"type":"state_sync","room_id":"` + roomID + `"}`, nil
+}
