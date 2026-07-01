@@ -2729,6 +2729,7 @@ function assertStrictTenantStructuredRLSReport(evidence) {
     'DATA-RLS-001 strict release evidence must include exactly one structured database_rls_context_proof report',
   );
   const report = structuredReports[0];
+  const summary = evidence.map((artifact) => String(artifact.result_summary ?? '')).join('; ');
   assert.match(String(report.owner_org_id ?? ''), tenantOrgIDValuePattern, 'DATA-RLS-001 structured report must include UUID owner_org_id');
   assert.match(String(report.blocked_org_id ?? ''), tenantOrgIDValuePattern, 'DATA-RLS-001 structured report must include UUID blocked_org_id');
   assert.notEqual(
@@ -2738,6 +2739,7 @@ function assertStrictTenantStructuredRLSReport(evidence) {
   );
   assert.ok(String(report.created_journal_id ?? '').trim(), 'DATA-RLS-001 structured report must include created_journal_id');
   assert.ok(String(report.created_room_id ?? '').trim(), 'DATA-RLS-001 structured report must include created_room_id');
+  assertStrictTenantStructuredIdentityBinding(report, summary);
   assert.equal(String(report.application_role ?? ''), 'scriptureforge_app', 'DATA-RLS-001 structured report application_role must be scriptureforge_app');
   assert.equal(String(report.row_security ?? ''), 'on', 'DATA-RLS-001 structured report row_security must be on');
   assert.equal(Number(report.rls_tables_verified), 9, 'DATA-RLS-001 structured report rls_tables_verified must be 9');
@@ -2749,6 +2751,39 @@ function assertStrictTenantStructuredRLSReport(evidence) {
     'DATA-RLS-001 structured report rls_table_names must match every tenant-scoped table',
   );
   assertStrictTenantStructuredTableOutcomes(report.rls_table_outcomes);
+}
+
+function assertStrictTenantStructuredIdentityBinding(report, summary) {
+  const dbSegment = findEvidenceSegment([{ result_summary: summary }], 'database-rls-context-proof');
+  assert.ok(dbSegment, 'DATA-RLS-001 structured report identity binding requires database-rls-context-proof segment');
+  const ownerMatch = dbSegment.match(tenantOwnerOrgIDPattern);
+  const blockedMatch = dbSegment.match(tenantBlockedOrgIDPattern);
+  assert.ok(ownerMatch, 'DATA-RLS-001 structured report identity binding requires summary app.current_org_id=<id>');
+  assert.ok(blockedMatch, 'DATA-RLS-001 structured report identity binding requires summary blocked_org_id=<id>');
+  assert.equal(
+    String(report.owner_org_id).toLowerCase(),
+    ownerMatch[1].toLowerCase(),
+    'DATA-RLS-001 structured report owner_org_id must match database-rls-context-proof app.current_org_id marker',
+  );
+  assert.equal(
+    String(report.blocked_org_id).toLowerCase(),
+    blockedMatch[1].toLowerCase(),
+    'DATA-RLS-001 structured report blocked_org_id must match database-rls-context-proof blocked_org_id marker',
+  );
+  const journalID = summarySegmentCapture(summary, 'owner-create-encrypted-journal', tenantJournalIDPattern);
+  const roomID = summarySegmentCapture(summary, 'owner-create-room', tenantRoomIDPattern);
+  assert.ok(journalID, 'DATA-RLS-001 structured report identity binding requires summary journal_id=<id>');
+  assert.ok(roomID, 'DATA-RLS-001 structured report identity binding requires summary room_id=<id>');
+  assert.equal(
+    String(report.created_journal_id),
+    journalID,
+    'DATA-RLS-001 structured report created_journal_id must match owner-create-encrypted-journal journal_id marker',
+  );
+  assert.equal(
+    String(report.created_room_id),
+    roomID,
+    'DATA-RLS-001 structured report created_room_id must match owner-create-room room_id marker',
+  );
 }
 
 function assertStrictTenantStructuredTableOutcomes(outcomes) {

@@ -673,6 +673,62 @@ test('validateManifest strict release rejects tenant RLS evidence with false str
   );
 });
 
+test('validateManifest strict release rejects tenant RLS structured owner org drift', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'DATA-RLS-001');
+  item.evidence[0].structured_report.database_rls_context_proof.owner_org_id = '33333333-3333-4333-8333-333333333333';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /DATA-RLS-001 structured report owner_org_id must match database-rls-context-proof app.current_org_id marker/,
+  );
+});
+
+test('validateManifest strict release rejects tenant RLS structured blocked org drift', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'DATA-RLS-001');
+  item.evidence[0].structured_report.database_rls_context_proof.blocked_org_id = '33333333-3333-4333-8333-333333333333';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /DATA-RLS-001 structured report blocked_org_id must match database-rls-context-proof blocked_org_id marker/,
+  );
+});
+
+test('validateManifest strict release rejects tenant RLS structured journal ID drift', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'DATA-RLS-001');
+  item.evidence[0].structured_report.database_rls_context_proof.created_journal_id = 'entry-drift';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /DATA-RLS-001 structured report created_journal_id must match owner-create-encrypted-journal journal_id marker/,
+  );
+});
+
+test('validateManifest strict release rejects tenant RLS structured room ID drift', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'DATA-RLS-001');
+  item.evidence[0].structured_report.database_rls_context_proof.created_room_id = 'room-drift';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /DATA-RLS-001 structured report created_room_id must match owner-create-room room_id marker/,
+  );
+});
+
 test('validateManifest strict release rejects Terraform deployment evidence without remote state and release markers', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
