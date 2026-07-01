@@ -89,6 +89,8 @@ function tenantRLSProbeReport(overridesByProbe = {}) {
     api_target: 'https://api.staging.scriptureforge.ai',
     owner_org_id: '11111111-1111-4111-8111-111111111111',
     blocked_org_id: '22222222-2222-4222-8222-222222222222',
+    created_journal_id: 'entry-1',
+    created_room_id: 'room-1',
     load_run_id: 'load-run-123',
     evidence_items: ['DATA-RLS-001'],
     probes: [
@@ -1110,6 +1112,8 @@ test('recordEvidence rejects tenant RLS evidence without API proof summaries', (
         api_target: 'https://api.staging.scriptureforge.ai',
         owner_org_id: '11111111-1111-4111-8111-111111111111',
         blocked_org_id: '22222222-2222-4222-8222-222222222222',
+        created_journal_id: 'entry-1',
+        created_room_id: 'room-1',
         load_run_id: 'load-run-123',
         evidence_items: ['DATA-RLS-001'],
         probes: [
@@ -1151,6 +1155,8 @@ test('recordEvidence rejects tenant RLS evidence without same-tenant journal lis
         api_target: 'https://api.staging.scriptureforge.ai',
         owner_org_id: '11111111-1111-4111-8111-111111111111',
         blocked_org_id: '22222222-2222-4222-8222-222222222222',
+        created_journal_id: 'entry-1',
+        created_room_id: 'room-1',
         load_run_id: 'load-run-123',
         evidence_items: ['DATA-RLS-001'],
         probes: [
@@ -1191,6 +1197,8 @@ test('recordEvidence rejects tenant RLS evidence without deployed API and DB pro
         api_target: 'http://localhost:8080',
         owner_org_id: '11111111-1111-4111-8111-111111111111',
         blocked_org_id: '22222222-2222-4222-8222-222222222222',
+        created_journal_id: 'entry-1',
+        created_room_id: 'room-1',
         load_run_id: 'load-run-123',
         evidence_items: ['DATA-RLS-001'],
         probes: [
@@ -1300,6 +1308,8 @@ test('recordEvidence rejects tenant RLS evidence without cross-tenant denial sta
         api_target: 'https://api.staging.scriptureforge.ai',
         owner_org_id: '11111111-1111-4111-8111-111111111111',
         blocked_org_id: '22222222-2222-4222-8222-222222222222',
+        created_journal_id: 'entry-1',
+        created_room_id: 'room-1',
         load_run_id: 'load-run-123',
         evidence_items: ['DATA-RLS-001'],
         probes: [
@@ -1341,6 +1351,8 @@ test('recordEvidence rejects tenant RLS evidence without all DB context markers'
         api_target: 'https://api.staging.scriptureforge.ai',
         owner_org_id: '11111111-1111-4111-8111-111111111111',
         blocked_org_id: '22222222-2222-4222-8222-222222222222',
+        created_journal_id: 'entry-1',
+        created_room_id: 'room-1',
         load_run_id: 'load-run-123',
         evidence_items: ['DATA-RLS-001'],
         probes: [
@@ -1435,6 +1447,8 @@ test('recordEvidence rejects tenant RLS evidence without staging artifact marker
         api_target: 'https://api.staging.scriptureforge.ai',
         owner_org_id: '11111111-1111-4111-8111-111111111111',
         blocked_org_id: '22222222-2222-4222-8222-222222222222',
+        created_journal_id: 'entry-1',
+        created_room_id: 'room-1',
         load_run_id: 'load-run-123',
         evidence_items: ['DATA-RLS-001'],
         probes: [
@@ -1482,6 +1496,36 @@ test('recordEvidence rejects tenant RLS evidence without structured journal ID',
       'go run ./tools/tenantprobe',
     ),
     /owner-read-created-journal probe must include structured journal_id/,
+  );
+});
+
+test('recordEvidence rejects tenant RLS evidence without report-level created journal ID', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DATA-RLS-001' }] },
+      {
+        ...tenantRLSProbeReport(),
+        created_journal_id: '',
+      },
+      'artifacts/tenantprobe.json',
+      'go run ./tools/tenantprobe',
+    ),
+    /DATA-RLS-001 report must include structured created_journal_id/,
+  );
+});
+
+test('recordEvidence rejects tenant RLS evidence with mismatched report-level created room ID', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DATA-RLS-001' }] },
+      {
+        ...tenantRLSProbeReport(),
+        created_room_id: 'room-2',
+      },
+      'artifacts/tenantprobe.json',
+      'go run ./tools/tenantprobe',
+    ),
+    /DATA-RLS-001 report created_room_id must match owner-create-room room_id/,
   );
 });
 

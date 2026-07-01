@@ -35,6 +35,8 @@ type report struct {
 	APITarget        string        `json:"api_target"`
 	OwnerOrgID       string        `json:"owner_org_id"`
 	BlockedOrgID     string        `json:"blocked_org_id"`
+	CreatedJournalID string        `json:"created_journal_id,omitempty"`
+	CreatedRoomID    string        `json:"created_room_id,omitempty"`
 	ReleaseCandidate string        `json:"release_candidate"`
 	ServiceVersion   string        `json:"service_version"`
 	LoadRunID        string        `json:"load_run_id"`
@@ -230,6 +232,8 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 		APITarget:        cfg.APIBase,
 		OwnerOrgID:       cfg.OwnerOrgID,
 		BlockedOrgID:     cfg.BlockedOrgID,
+		CreatedJournalID: created.ID,
+		CreatedRoomID:    room.ID,
 		ReleaseCandidate: cfg.ReleaseCandidate,
 		ServiceVersion:   cfg.ServiceVersion,
 		LoadRunID:        cfg.LoadRunID,

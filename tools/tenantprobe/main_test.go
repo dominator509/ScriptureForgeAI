@@ -255,6 +255,12 @@ func TestRunProvesOwnerReadAndBlockedDenial(t *testing.T) {
 	if decoded.LoadRunID != testLoadRunID {
 		t.Fatalf("tenant probe report did not preserve load_run_id: %q", decoded.LoadRunID)
 	}
+	if decoded.CreatedJournalID != "entry-1" {
+		t.Fatalf("tenant probe report did not preserve created_journal_id: %q", decoded.CreatedJournalID)
+	}
+	if decoded.CreatedRoomID != "room-1" {
+		t.Fatalf("tenant probe report did not preserve created_room_id: %q", decoded.CreatedRoomID)
+	}
 	requireProbe := func(name string) probeResult {
 		t.Helper()
 		for _, probe := range decoded.Probes {

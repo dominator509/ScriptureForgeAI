@@ -1346,6 +1346,10 @@ function validateTenantRLSEvidence(report, manifest) {
   assert.match(ownerOrgID, tenantOrgIDPattern, 'DATA-RLS-001 report must include UUID owner_org_id');
   assert.match(blockedOrgID, tenantOrgIDPattern, 'DATA-RLS-001 report must include UUID blocked_org_id');
   assert.notEqual(ownerOrgID.toLowerCase(), blockedOrgID.toLowerCase(), 'DATA-RLS-001 owner_org_id and blocked_org_id must be different');
+  const reportCreatedJournalID = String(report.created_journal_id ?? '').trim();
+  const reportCreatedRoomID = String(report.created_room_id ?? '').trim();
+  assert.match(reportCreatedJournalID, tenantResourceIDPattern, 'DATA-RLS-001 report must include structured created_journal_id');
+  assert.match(reportCreatedRoomID, tenantResourceIDPattern, 'DATA-RLS-001 report must include structured created_room_id');
   const reportReleaseMarkers = [];
   if (String(report.release_candidate ?? '').trim() || String(report.service_version ?? '').trim()) {
     reportReleaseMarkers.push(
@@ -1461,6 +1465,8 @@ function validateTenantRLSEvidence(report, manifest) {
     }
   }
   assert.equal(requiredProbes.size, 0, `DATA-RLS-001 report missing probes: ${[...requiredProbes].join(', ')}`);
+  assert.equal(reportCreatedJournalID, createdJournalID, 'DATA-RLS-001 report created_journal_id must match owner-create-encrypted-journal journal_id');
+  assert.equal(reportCreatedRoomID, createdRoomID, 'DATA-RLS-001 report created_room_id must match owner-create-room room_id');
   assertSingleProbeLoadRun('DATA-RLS-001', probeLoadRunIDs);
 }
 
