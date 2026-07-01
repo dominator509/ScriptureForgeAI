@@ -35,6 +35,18 @@ test('validateRustCargoOutput requires protobuf and runtime PASS lines', () => {
     () => validateRustCargoOutput(requiredRustPassOutput().replace('test result: ok.', 'test result: FAILED.')),
     /successful cargo test summary/,
   );
+  assert.throws(
+    () => validateRustCargoOutput(requiredRustPassOutput().replace('0 ignored', '1 ignored')),
+    /must not contain failed, ignored, measured, or filtered tests/,
+  );
+  assert.throws(
+    () => validateRustCargoOutput(requiredRustPassOutput().replace('0 filtered out', '1 filtered out')),
+    /must not contain failed, ignored, measured, or filtered tests/,
+  );
+  assert.throws(
+    () => validateRustCargoOutput(requiredRustPassOutput().replace('13 passed', '12 passed')),
+    /unit-test summary with at least 13 passed tests/,
+  );
 });
 
 test('runRustCargoGate emits proof markers after validating cargo output', () => {

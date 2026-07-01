@@ -71,6 +71,19 @@ export function validateRustCargoOutput(output) {
   if (!/test result: ok\./.test(output)) {
     throw new Error('rust-cargo-test output missing successful cargo test summary');
   }
+  const summaries = parseCargoTestSummaries(output);
+  if (summaries.length === 0) {
+    throw new Error('rust-cargo-test output missing parseable cargo test summary');
+  }
+  for (const summary of summaries) {
+    if (summary.failed > 0 || summary.ignored > 0 || summary.measured > 0 || summary.filteredOut > 0) {
+      throw new Error('rust-cargo-test output must not contain failed, ignored, measured, or filtered tests');
+    }
+  }
+  const unitSummary = summaries.find((summary) => summary.passed >= rustCargoRequiredTests.length);
+  if (!unitSummary) {
+    throw new Error(`rust-cargo-test output missing unit-test summary with at least ${rustCargoRequiredTests.length} passed tests`);
+  }
 }
 
 export function runRustCargoGate({
@@ -120,6 +133,21 @@ export function runRustCargoGate({
 
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function parseCargoTestSummaries(output) {
+  const summaries = [];
+  const pattern = /test result: ok\. (?<passed>\d+) passed; (?<failed>\d+) failed; (?<ignored>\d+) ignored; (?<measured>\d+) measured; (?<filteredOut>\d+) filtered out/g;
+  for (const match of output.matchAll(pattern)) {
+    summaries.push({
+      passed: Number(match.groups.passed),
+      failed: Number(match.groups.failed),
+      ignored: Number(match.groups.ignored),
+      measured: Number(match.groups.measured),
+      filteredOut: Number(match.groups.filteredOut),
+    });
+  }
+  return summaries;
 }
 
 async function main() {
