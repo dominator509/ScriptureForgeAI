@@ -26,7 +26,7 @@ export const gateDefinitions = [
   { id: 'rust-protobuf-validation', command: [nodeBin, 'tools/verify-rust-protobuf.mjs'] },
   { id: 'rust-cargo-test', command: [nodeBin, 'tools/run-rust-cargo-gate.mjs', '--bin', cargoBin], env: { CARGO_HOME: '.tools/cargo', RUSTUP_HOME: '.tools/rustup' } },
   { id: 'terraform-fmt', command: [nodeBin, 'tools/run-terraform-command.mjs', '--mode', 'fmt', '--bin', terraformBin] },
-  { id: 'terraform-init-validate', command: [nodeBin, 'tools/run-terraform-init.mjs', '--bin', terraformBin, '--arg', '-chdir=build/terraform', '--arg', 'init', '--arg', '-backend=false'] },
+  { id: 'terraform-init-validate', command: [nodeBin, 'tools/run-terraform-init.mjs', '--bin', terraformBin, '--arg', '-chdir=build/terraform', '--arg', 'init', '--arg', '-backend=false', '--arg', '-lockfile=readonly'] },
   { id: 'terraform-validate', command: [nodeBin, 'tools/run-terraform-command.mjs', '--mode', 'validate', '--bin', terraformBin] },
   { id: 'observability-validation', command: [nodeBin, 'tools/validate-observability.mjs'] },
   { id: 'rls-schema-validation', command: [nodeBin, 'tools/validate-rls-schema.mjs'] },

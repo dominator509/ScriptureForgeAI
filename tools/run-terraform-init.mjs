@@ -15,7 +15,7 @@ export function defaultTerraformBin(platformName = platform()) {
 }
 
 export function defaultTerraformInitArgs() {
-  return ['-chdir=build/terraform', 'init', '-backend=false'];
+  return ['-chdir=build/terraform', 'init', '-backend=false', '-lockfile=readonly'];
 }
 
 export function runTerraformInit({

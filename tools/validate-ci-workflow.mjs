@@ -72,7 +72,7 @@ export const requiredMarkers = [
   { id: 'rust-protobuf-validation', text: 'node tools/verify-rust-protobuf.mjs' },
   { id: 'rust-cargo-test', text: 'node tools/run-rust-cargo-gate.mjs --bin cargo' },
   { id: 'terraform-fmt', text: 'node tools/run-terraform-command.mjs --mode fmt --bin terraform' },
-  { id: 'terraform-init-wrapper', text: 'node tools/run-terraform-init.mjs --bin terraform --arg -chdir=build/terraform --arg init --arg -backend=false' },
+  { id: 'terraform-init-wrapper', text: 'node tools/run-terraform-init.mjs --bin terraform --arg -chdir=build/terraform --arg init --arg -backend=false --arg -lockfile=readonly' },
   { id: 'terraform-validate', text: 'node tools/run-terraform-command.mjs --mode validate --bin terraform' },
   { id: 'trufflehog', text: 'trufflesecurity/trufflehog' },
   { id: 'ci-source-control-clean', text: 'Verify Source Control Clean Before Release Evidence' },

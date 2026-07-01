@@ -32,10 +32,11 @@ describe('run-terraform-init', () => {
       '-chdir=build/terraform',
       '--arg=init',
       '-backend=false',
+      '-lockfile=readonly',
     ]), {
       bin: 'terraform',
       cwd: '.',
-      args: ['-chdir=build/terraform', 'init', '-backend=false'],
+      args: ['-chdir=build/terraform', 'init', '-backend=false', '-lockfile=readonly'],
     });
 
     assert.deepEqual(parseArgs([
@@ -44,17 +45,18 @@ describe('run-terraform-init', () => {
       '--arg=-chdir=build/terraform',
       '--arg=init',
       '--arg=-backend=false',
+      '--arg=-lockfile=readonly',
     ]), {
       bin: '.tools/terraform/terraform',
       cwd: '.',
-      args: ['-chdir=build/terraform', 'init', '-backend=false'],
+      args: ['-chdir=build/terraform', 'init', '-backend=false', '-lockfile=readonly'],
     });
 
     assert.throws(() => parseArgs(['--wat']), /unknown argument --wat/);
   });
 
   it('keeps the safe local backend-disabled init default', () => {
-    assert.deepEqual(defaultTerraformInitArgs(), ['-chdir=build/terraform', 'init', '-backend=false']);
+    assert.deepEqual(defaultTerraformInitArgs(), ['-chdir=build/terraform', 'init', '-backend=false', '-lockfile=readonly']);
     assert.equal(defaultTerraformBin('win32'), '.\\.tools\\terraform\\terraform.exe');
     assert.equal(defaultTerraformBin('linux'), './.tools/terraform/terraform');
   });
@@ -72,7 +74,7 @@ describe('run-terraform-init', () => {
     assert.equal(result.blocked, false);
     assert.deepEqual(result.markers, terraformInitProofMarkers);
     assert.equal(calls[0].command, './.tools/terraform/terraform');
-    assert.deepEqual(calls[0].args, ['-chdir=build/terraform', 'init', '-backend=false']);
+    assert.deepEqual(calls[0].args, ['-chdir=build/terraform', 'init', '-backend=false', '-lockfile=readonly']);
     assert.equal(calls[0].options.cwd, 'C:/dev/ScriptureForgeAI');
   });
 
@@ -81,13 +83,13 @@ describe('run-terraform-init', () => {
 
     const result = runTerraformInit({
       bin: 'terraform',
-      args: ['-chdir=build/terraform', 'init', '-backend=false', '-input=false'],
+      args: ['-chdir=build/terraform', 'init', '-backend=false', '-lockfile=readonly', '-input=false'],
       spawnSyncImpl,
     });
 
     assert.equal(result.exitCode, 0);
     assert.equal(calls[0].command, 'terraform');
-    assert.deepEqual(calls[0].args, ['-chdir=build/terraform', 'init', '-backend=false', '-input=false']);
+    assert.deepEqual(calls[0].args, ['-chdir=build/terraform', 'init', '-backend=false', '-lockfile=readonly', '-input=false']);
   });
 
   it('classifies registry/network outages as local blockers', () => {

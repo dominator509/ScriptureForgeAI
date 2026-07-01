@@ -208,7 +208,7 @@ jobs:
     - name: Validate Terraform
       run: |
         node tools/run-terraform-command.mjs --mode fmt --bin terraform
-        node tools/run-terraform-init.mjs --bin terraform --arg -chdir=build/terraform --arg init --arg -backend=false
+        node tools/run-terraform-init.mjs --bin terraform --arg -chdir=build/terraform --arg init --arg -backend=false --arg -lockfile=readonly
         node tools/run-terraform-command.mjs --mode validate --bin terraform
 
     - name: TruffleHog Secret Scanning
@@ -220,10 +220,10 @@ jobs:
 
     - name: Verify Source Control Clean Before Release Evidence
       run: |
-        git diff --quiet
-        git diff --cached --quiet
-        if [ -n "$(git status --short)" ]; then
+        if ! git diff --quiet || ! git diff --cached --quiet || [ -n "$(git status --short)" ]; then
           git status --short
+          git diff --name-status
+          git diff --cached --name-status
           exit 1
         fi
 
