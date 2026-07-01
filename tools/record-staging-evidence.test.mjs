@@ -1757,6 +1757,36 @@ test('recordEvidence records production-grade mobile evidence', () => {
   assert.equal(updated.items[0].status, 'passed');
 });
 
+test('recordEvidence rejects mobile evidence with only summary load run identity', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'CLIENT-MOBILE-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-mobile:abc123',
+        load_run_id: '',
+        evidence_items: ['CLIENT-MOBILE-001'],
+        probes: [
+          mobileEASProbe(),
+          {
+            name: 'mobile-native-crypto-smoke',
+            passed: true,
+            target: 'https://artifacts.staging.scriptureforge.ai/mobile/native-crypto-smoke.txt',
+            status_code: 200,
+            result_summary: mobileProbeMarkerSummaries['mobile-native-crypto-smoke'],
+          },
+          mobileConfigProbe(),
+        ],
+      },
+      'artifacts/mobileprobe.json',
+      'go run ./tools/mobileprobe',
+    ),
+    /CLIENT-MOBILE-001 report must include load_run_id/,
+  );
+});
+
 test('recordEvidence rejects mobile evidence without staging artifact provenance', () => {
   assert.throws(
     () => recordEvidence(
@@ -4326,6 +4356,63 @@ test('recordEvidence records production-grade TLS and web reachability evidence'
 
   assert.equal(updated.items[0].status, 'passed');
   assert.equal(updated.items[1].status, 'passed');
+});
+
+test('recordEvidence rejects TLS evidence with only summary load run identity', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DEPLOY-TLS-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-web:abc123',
+        load_run_id: '',
+        evidence_items: ['DEPLOY-TLS-001'],
+        api_target: 'https://api.staging.scriptureforge.ai',
+        dns_artifact_url: 'https://artifacts.staging.scriptureforge.ai/tls/dns.txt',
+        acm_artifact_url: 'https://artifacts.staging.scriptureforge.ai/tls/acm.txt',
+        probes: [
+          { name: 'api-live', passed: true, target: 'https://api.staging.scriptureforge.ai/live', status_code: 200, result_summary: stagingProbeMarkerSummaries['api-live'] },
+          { name: 'api-ready', passed: true, target: 'https://api.staging.scriptureforge.ai/ready', status_code: 200, result_summary: stagingProbeMarkerSummaries['api-ready'] },
+          { name: 'api-tls', passed: true, target: 'https://api.staging.scriptureforge.ai', tls_version: 'TLS1.3', cert_not_after: '2026-12-25T00:00:00Z', cert_hostname: 'api.staging.scriptureforge.ai', cert_issuer: 'Amazon_RSA_2048_M02', result_summary: stagingProbeMarkerSummaries['api-tls'] },
+          { name: 'api-http-redirect', passed: true, target: 'http://api.staging.scriptureforge.ai', status_code: 301, redirect_to: 'https://api.staging.scriptureforge.ai', result_summary: stagingProbeMarkerSummaries['api-http-redirect'] },
+        ],
+      },
+      'artifacts/stagingprobe.json',
+      'go run ./tools/stagingprobe -api-base=https://api.staging.scriptureforge.ai',
+    ),
+    /DEPLOY-TLS-001 report must include load_run_id/,
+  );
+});
+
+test('recordEvidence rejects web evidence with only summary load run identity', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'CLIENT-WEB-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-web:abc123',
+        load_run_id: '',
+        evidence_items: ['CLIENT-WEB-001'],
+        web_target: 'https://app.staging.scriptureforge.ai',
+        web_auth_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/auth-smoke.txt',
+        web_journal_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/journal-smoke.txt',
+        web_room_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/room-smoke.txt',
+        probes: [
+          { name: 'web-root', passed: true, target: 'https://app.staging.scriptureforge.ai', status_code: 200, result_summary: stagingProbeMarkerSummaries['web-root'] },
+          { name: 'web-tls', passed: true, target: 'https://app.staging.scriptureforge.ai', tls_version: 'TLS1.3', cert_not_after: '2026-12-25T00:00:00Z', cert_hostname: 'app.staging.scriptureforge.ai', cert_issuer: 'Amazon_RSA_2048_M02', result_summary: stagingProbeMarkerSummaries['web-tls'] },
+          { name: 'web-http-redirect', passed: true, target: 'http://app.staging.scriptureforge.ai', status_code: 301, redirect_to: 'https://app.staging.scriptureforge.ai', result_summary: stagingProbeMarkerSummaries['web-http-redirect'] },
+          ...webSmokeProbes('abc123', 'scriptureforge-web:abc123'),
+        ],
+      },
+      'artifacts/stagingprobe.json',
+      'go run ./tools/stagingprobe -web-base=https://app.staging.scriptureforge.ai',
+    ),
+    /CLIENT-WEB-001 report must include load_run_id/,
+  );
 });
 
 test('recordEvidence rejects TLS evidence without structured certificate hostname', () => {
