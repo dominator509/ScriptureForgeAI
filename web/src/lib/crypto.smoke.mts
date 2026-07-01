@@ -22,7 +22,22 @@ const webCryptoSmokeProofMarkers = [
   'web_crypto_pbkdf2_600000=true',
   'web_crypto_key_disposal=true',
   'web_crypto_revoked_key_rejected=true',
+  'web_crypto_import_failure_zeroization=true',
 ];
+
+function captureBuffer(value: BufferSource | undefined): Uint8Array | null {
+  if (!value) return null;
+  if (value instanceof Uint8Array) return value;
+  if (ArrayBuffer.isView(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  return new Uint8Array(value);
+}
+
+function assertZeroized(name: string, bytes: Uint8Array | null): void {
+  assert.ok(bytes, `${name} buffer was not captured`);
+  assert.ok(bytes.every(value => value === 0), `${name} buffer was not zeroized`);
+}
 
 beforeEach(() => {
   Object.defineProperty(globalThis, 'window', {
@@ -109,6 +124,49 @@ test('web journal key derivation rejects blank passphrase or server salt', async
     () => deriveIsolationKey('correct horse battery staple', '   '),
     /server salt material is required/i,
   );
+});
+
+test('web journal key derivation zeroizes passphrase when import fails', async () => {
+  const captured = {
+    passphrase: null as Uint8Array | null,
+  };
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {
+      crypto: {
+        subtle: {
+          importKey: async (
+            _format: KeyFormat,
+            keyData: BufferSource,
+            _algorithm: AlgorithmIdentifier,
+            _extractable: boolean,
+            _keyUsages: KeyUsage[],
+          ): Promise<CryptoKey> => {
+            captured.passphrase = captureBuffer(keyData);
+            throw new Error('synthetic importKey failure');
+          },
+          deriveKey: async (
+            _algorithm: Pbkdf2Params,
+            _baseKey: CryptoKey,
+            _derivedKeyAlgorithm: AlgorithmIdentifier,
+            _extractable: boolean,
+            _keyUsages: KeyUsage[],
+          ): Promise<CryptoKey> => {
+            throw new Error('deriveKey should not run after importKey failure');
+          },
+        },
+        getRandomValues: webcrypto.getRandomValues.bind(webcrypto),
+      },
+      atob: (value: string) => Buffer.from(value, 'base64').toString('binary'),
+      btoa: (value: string) => Buffer.from(value, 'binary').toString('base64'),
+    },
+  });
+
+  await assert.rejects(
+    () => deriveIsolationKey('import-failure-passphrase', 'journal:v1:import-failure-salt'),
+    /synthetic importKey failure/,
+  );
+  assertZeroized('passphrase', captured.passphrase);
 });
 
 test('web journal key handles dispose active key references', async () => {

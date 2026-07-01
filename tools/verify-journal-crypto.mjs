@@ -38,6 +38,7 @@ export const journalCryptoProofMarkers = [
   'buffer_zeroization=true',
   'runtime_buffer_zeroization=true',
   'import_failure_zeroization=true',
+  'web_import_failure_zeroization=true',
   'base64_decode_buffer_zeroization=true',
   'mobile_passphrase_derivation_failure_cleanup=true',
   'native_device_self_test_export=true',
@@ -154,6 +155,20 @@ if (
   deriveFunction.indexOf('wipeBytes(saltBytes)') < deriveFunction.indexOf('const keyMaterial = await provider.subtle.importKey')
 ) {
   throw new Error('mobile journal crypto must wipe passphrase and salt bytes even when importKey fails');
+}
+
+const webDeriveFunctionMatch = webCryptoSource.match(/export async function deriveIsolationKey[\s\S]*?\n}\n/);
+if (!webDeriveFunctionMatch) {
+  throw new Error('web journal crypto missing deriveIsolationKey implementation');
+}
+const webDeriveFunction = webDeriveFunctionMatch[0];
+if (
+  webDeriveFunction.indexOf('try {') === -1 ||
+  webDeriveFunction.indexOf('const keyMaterial = await window.crypto.subtle.importKey') < webDeriveFunction.indexOf('try {') ||
+  webDeriveFunction.indexOf('passphraseBytes.fill(0)') < webDeriveFunction.indexOf('const keyMaterial = await window.crypto.subtle.importKey') ||
+  webDeriveFunction.indexOf('saltBytes.fill(0)') < webDeriveFunction.indexOf('const keyMaterial = await window.crypto.subtle.importKey')
+) {
+  throw new Error('web journal crypto must wipe passphrase and salt bytes even when importKey fails');
 }
 
 const base64ToBufferMatch = source.match(/function base64ToBuffer[\s\S]*?\n}\n/);
@@ -273,6 +288,9 @@ for (const requiredWebCryptoSmokeSnippet of [
   'web_crypto_associated_data_input_guard=true',
   'JOURNAL_PBKDF2_ITERATIONS, 600000',
   'web journal key derivation rejects blank passphrase or server salt',
+  'web journal key derivation zeroizes passphrase when import fails',
+  'web_crypto_import_failure_zeroization=true',
+  'synthetic importKey failure',
   'non-extractable',
   'web journal key handles dispose active key references',
   'disposing a handle must revoke stale raw key references',

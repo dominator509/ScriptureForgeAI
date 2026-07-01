@@ -64,14 +64,14 @@ export async function deriveIsolationKey(passphrase: string, salt: string): Prom
     const passphraseBytes = encoder.encode(passphrase);
     const saltBytes = encoder.encode(salt);
 
-    const keyMaterial = await window.crypto.subtle.importKey(
-        "raw",
-        passphraseBytes,
-        { name: "PBKDF2" },
-        false,
-        ["deriveBits", "deriveKey"] as CryptoKeyUsage[]
-    );
     try {
+        const keyMaterial = await window.crypto.subtle.importKey(
+            "raw",
+            passphraseBytes,
+            { name: "PBKDF2" },
+            false,
+            ["deriveBits", "deriveKey"] as CryptoKeyUsage[]
+        );
         // Match the architecture's journal key-derivation work factor.
         const key = await window.crypto.subtle.deriveKey(
             {
