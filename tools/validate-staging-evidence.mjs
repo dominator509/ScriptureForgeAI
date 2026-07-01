@@ -296,7 +296,7 @@ const resilienceSegmentMarkerRequirements = new Map([
   ['restored-database-smoke', ['staging artifact', 'smoke passed', 'restored database', 'tenant', 'journal', 'auth', 'RLS', 'migration version', 'no plaintext journal', 'distinct_backup_artifacts=true', 'release_candidate=', 'service_version=', 'load_run_id=']],
 ]);
 const terraformSegmentMarkerRequirements = new Map([
-  ['terraform-remote-backend-init', ['staging artifact', 'terraform', 's3', 'backend', 'bucket', 'key', 'encrypt=true', 'dynamodb_table', 'successfully initialized', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['terraform-remote-backend-init', ['staging artifact', 'terraform', 's3', 'backend', 'bucket', 'key', 'encrypt=true', 'kms_key_id=', 'versioning=enabled', 'dynamodb_table', 'successfully initialized', 'release_candidate=', 'service_version=', 'load_run_id=']],
   ['terraform-staging-plan', ['staging artifact', 'Terraform', 'Plan:', 'aws_eks_cluster', 'aws_eks_node_group', 'aws_rds_cluster', 'aws_elasticache_replication_group', 'aws_ecr_repository', 'kubernetes_deployment', 'kubernetes_ingress_v1', 'kubernetes_horizontal_pod_autoscaler_v2', 'kubernetes_pod_disruption_budget_v1', 'kubernetes_manifest', 'aws_iam_role', 'release_candidate=', 'service_version=', 'load_run_id=']],
 ]);
 const terraformApplyOrApprovalSegmentMarkerSets = [
@@ -425,6 +425,8 @@ export const strictProbeFamilies = {
       'bucket',
       'key',
       'encrypt=true',
+      'kms_key_id=',
+      'versioning=enabled',
       'dynamodb_table',
       'terraform-staging-plan',
       'Plan:',

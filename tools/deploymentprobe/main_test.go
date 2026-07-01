@@ -46,7 +46,7 @@ func TestRunEmitsTerraformAndKubernetesEvidenceWhenArtifactsPass(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/tf-init":
-			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true dynamodb_table scriptureforge-locks successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 " + deploymentLoadRunMarker))
+			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true kms_key_id=alias/scriptureforge-terraform-state versioning=enabled dynamodb_table scriptureforge-locks successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 " + deploymentLoadRunMarker))
 		case "/tf-plan":
 			_, _ = w.Write([]byte("Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 " + deploymentLoadRunMarker))
 		case "/tf-apply":
@@ -80,7 +80,7 @@ func TestRunEmitsTerraformAndKubernetesEvidenceWhenArtifactsPass(t *testing.T) {
 		t.Fatalf("missing deployment evidence items: %+v", result.EvidenceItems)
 	}
 	expectedMarkers := map[string][]string{
-		"terraform-remote-backend-init":       {"staging artifact", "terraform", "s3", "backend", "bucket", "key", "encrypt=true", "dynamodb_table", "successfully initialized", "release_candidate=0123456789abcdef0123456789abcdef01234567", "service_version=2026.06.27.1", deploymentLoadRunMarker},
+		"terraform-remote-backend-init":       {"staging artifact", "terraform", "s3", "backend", "bucket", "key", "encrypt=true", "kms_key_id=", "versioning=enabled", "dynamodb_table", "successfully initialized", "release_candidate=0123456789abcdef0123456789abcdef01234567", "service_version=2026.06.27.1", deploymentLoadRunMarker},
 		"terraform-staging-plan":              {"staging artifact", "Terraform", "Plan:", "aws_eks_cluster", "aws_eks_node_group", "aws_rds_cluster", "aws_elasticache_replication_group", "aws_ecr_repository", "kubernetes_deployment", "kubernetes_ingress_v1", "kubernetes_horizontal_pod_autoscaler_v2", "kubernetes_pod_disruption_budget_v1", "kubernetes_manifest", "aws_iam_role", "release_candidate=0123456789abcdef0123456789abcdef01234567", "service_version=2026.06.27.1", deploymentLoadRunMarker},
 		"terraform-staging-apply-or-approval": {"staging artifact", "Apply complete", "Resources:", "0 destroyed", "release_candidate=0123456789abcdef0123456789abcdef01234567", "service_version=2026.06.27.1", deploymentLoadRunMarker, "distinct_terraform_artifacts=true"},
 		"kubernetes-rollout-status":           {"staging artifact", "namespace", "staging", "deployment", "scriptureforge-api", "scriptureforge-web", "scriptureforge-rust-engine", "successfully rolled out", "ready", "available", "release_candidate=0123456789abcdef0123456789abcdef01234567", "service_version=2026.06.27.1", deploymentLoadRunMarker},
@@ -184,7 +184,7 @@ func TestRunFailsWhenDeploymentArtifactsUseDifferentLoadRunID(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/tf-init":
-			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true dynamodb_table scriptureforge-locks successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 " + deploymentLoadRunMarker))
+			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true kms_key_id=alias/scriptureforge-terraform-state versioning=enabled dynamodb_table scriptureforge-locks successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 " + deploymentLoadRunMarker))
 		case "/tf-plan":
 			_, _ = w.Write([]byte("Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 " + deploymentLoadRunMarker))
 		case "/tf-apply":
@@ -209,7 +209,7 @@ func TestRunFailsWhenDeploymentArtifactsUseDifferentReleaseCandidate(t *testing.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/tf-init":
-			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true dynamodb_table scriptureforge-locks successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1"))
+			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true kms_key_id=alias/scriptureforge-terraform-state versioning=enabled dynamodb_table scriptureforge-locks successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1"))
 		case "/tf-plan":
 			_, _ = w.Write([]byte("Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1"))
 		case "/tf-apply":
@@ -236,7 +236,7 @@ func TestRunFailsWhenTerraformInitAndPlanOmitReleaseLinkage(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/tf-init":
-			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true dynamodb_table scriptureforge-locks successfully initialized"))
+			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true kms_key_id=alias/scriptureforge-terraform-state versioning=enabled dynamodb_table scriptureforge-locks successfully initialized"))
 		case "/tf-plan":
 			_, _ = w.Write([]byte("Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role"))
 		case "/tf-apply":
@@ -351,6 +351,31 @@ func TestRunFailsWhenTerraformInitUsesBackendFalse(t *testing.T) {
 	}
 }
 
+func TestRunFailsWhenTerraformInitOmitsKMSAndVersioningProof(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/tf-init":
+			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true dynamodb_table scriptureforge-locks successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 " + deploymentLoadRunMarker))
+		case "/tf-plan":
+			_, _ = w.Write([]byte("Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 " + deploymentLoadRunMarker))
+		case "/tf-apply":
+			_, _ = w.Write([]byte("Apply complete! Resources: 42 added, 0 changed, 0 destroyed. release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 " + deploymentLoadRunMarker))
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	cfg := stagingDeploymentConfig(time.Second)
+	cfg.ProbeKubernetes = false
+	err := runWithClient(cfg, &output, clientForHTTPServer(t, server))
+	if err == nil {
+		t.Fatalf("expected init artifact without KMS/versioning proof to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "terraform-remote-backend-init") {
+		t.Fatalf("report did not identify weak init artifact:\n%s", output.String())
+	}
+}
+
 func TestRunFailsWhenKubernetesResourcesMissingPDB(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -447,7 +472,7 @@ func TestRunAcceptsTerraformDeploymentApprovalInsteadOfApply(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/tf-init":
-			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true dynamodb_table scriptureforge-locks successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 " + deploymentLoadRunMarker))
+			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true kms_key_id=alias/scriptureforge-terraform-state versioning=enabled dynamodb_table scriptureforge-locks successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 " + deploymentLoadRunMarker))
 		case "/tf-plan":
 			_, _ = w.Write([]byte("Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1 " + deploymentLoadRunMarker))
 		case "/tf-approval":
@@ -489,7 +514,7 @@ func TestRunFailsWhenTerraformDeploymentApprovalOmitsChangeTicket(t *testing.T) 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/tf-init":
-			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true dynamodb_table scriptureforge-locks successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1"))
+			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true kms_key_id=alias/scriptureforge-terraform-state versioning=enabled dynamodb_table scriptureforge-locks successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1"))
 		case "/tf-plan":
 			_, _ = w.Write([]byte("Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1"))
 		case "/tf-approval":
@@ -515,7 +540,7 @@ func TestRunFailsWhenTerraformDeploymentApprovalOmitsChangeTicketID(t *testing.T
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/tf-init":
-			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true dynamodb_table scriptureforge-locks successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1"))
+			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true kms_key_id=alias/scriptureforge-terraform-state versioning=enabled dynamodb_table scriptureforge-locks successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1"))
 		case "/tf-plan":
 			_, _ = w.Write([]byte("Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1"))
 		case "/tf-approval":
@@ -541,7 +566,7 @@ func TestRunFailsWhenTerraformApplyOmitsReleaseLinkage(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/tf-init":
-			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true dynamodb_table scriptureforge-locks successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1"))
+			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true kms_key_id=alias/scriptureforge-terraform-state versioning=enabled dynamodb_table scriptureforge-locks successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1"))
 		case "/tf-plan":
 			_, _ = w.Write([]byte("Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1"))
 		case "/tf-apply":
@@ -566,7 +591,7 @@ func TestRunFailsWhenTerraformApplyOmitsZeroDestroyedProof(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/tf-init":
-			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true dynamodb_table scriptureforge-locks successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1"))
+			_, _ = w.Write([]byte("terraform backend s3 bucket scriptureforge-state key staging/terraform.tfstate encrypt=true kms_key_id=alias/scriptureforge-terraform-state versioning=enabled dynamodb_table scriptureforge-locks successfully initialized release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1"))
 		case "/tf-plan":
 			_, _ = w.Write([]byte("Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=2026.06.27.1"))
 		case "/tf-apply":

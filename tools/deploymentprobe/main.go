@@ -164,7 +164,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 	}
 	if cfg.ProbeTerraform {
 		probes = append(probes,
-			probeArtifact(client, "terraform-remote-backend-init", cfg.TerraformInitURL, append([]string{"terraform", "s3", "backend", "bucket", "key", "encrypt=true", "dynamodb_table", "successfully initialized"}, releaseMarkers...), []string{"-backend=false", "local backend"}),
+			probeArtifact(client, "terraform-remote-backend-init", cfg.TerraformInitURL, append([]string{"terraform", "s3", "backend", "bucket", "key", "encrypt=true", "kms_key_id=", "versioning=enabled", "dynamodb_table", "successfully initialized"}, releaseMarkers...), []string{"-backend=false", "local backend"}),
 			probeArtifact(client, "terraform-staging-plan", cfg.TerraformPlanURL, append([]string{"Terraform", "Plan:", "aws_eks_cluster", "aws_eks_node_group", "aws_rds_cluster", "aws_elasticache_replication_group", "aws_ecr_repository", "kubernetes_deployment", "kubernetes_ingress_v1", "kubernetes_horizontal_pod_autoscaler_v2", "kubernetes_pod_disruption_budget_v1", "kubernetes_manifest", "aws_iam_role"}, releaseMarkers...), nil),
 			probeArtifactAny(client, "terraform-staging-apply-or-approval", cfg.TerraformApplyURL, [][]string{
 				append([]string{"Apply complete", "Resources:", "0 destroyed"}, releaseMarkers...),
