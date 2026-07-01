@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -41,22 +42,26 @@ type report struct {
 }
 
 type probeResult struct {
-	Name                 string            `json:"name"`
-	Target               string            `json:"target"`
-	Passed               bool              `json:"passed"`
-	StatusCode           int               `json:"status_code,omitempty"`
-	LatencyMS            int64             `json:"latency_ms,omitempty"`
-	ChangeTicket         string            `json:"change_ticket,omitempty"`
-	TerraformStateKMSKey string            `json:"terraform_state_kms_key_id,omitempty"`
-	DatabaseKMSKeyARN    string            `json:"database_kms_key_arn,omitempty"`
-	RedisKMSKeyARN       string            `json:"redis_kms_key_arn,omitempty"`
-	ConcreteImageDigests int               `json:"concrete_image_digests,omitempty"`
-	WorkloadImageDigests int               `json:"workload_image_digests,omitempty"`
-	ImageDigests         map[string]string `json:"image_digests,omitempty"`
-	ResultSummary        string            `json:"result_summary"`
+	Name                    string            `json:"name"`
+	Target                  string            `json:"target"`
+	Passed                  bool              `json:"passed"`
+	StatusCode              int               `json:"status_code,omitempty"`
+	LatencyMS               int64             `json:"latency_ms,omitempty"`
+	ChangeTicket            string            `json:"change_ticket,omitempty"`
+	TerraformApplyAdded     *int              `json:"terraform_apply_added,omitempty"`
+	TerraformApplyChanged   *int              `json:"terraform_apply_changed,omitempty"`
+	TerraformApplyDestroyed *int              `json:"terraform_apply_destroyed,omitempty"`
+	TerraformStateKMSKey    string            `json:"terraform_state_kms_key_id,omitempty"`
+	DatabaseKMSKeyARN       string            `json:"database_kms_key_arn,omitempty"`
+	RedisKMSKeyARN          string            `json:"redis_kms_key_arn,omitempty"`
+	ConcreteImageDigests    int               `json:"concrete_image_digests,omitempty"`
+	WorkloadImageDigests    int               `json:"workload_image_digests,omitempty"`
+	ImageDigests            map[string]string `json:"image_digests,omitempty"`
+	ResultSummary           string            `json:"result_summary"`
 }
 
 var terraformApprovalTicketPattern = regexp.MustCompile(`(?i)\bchange[_ -]?ticket\s*[:=]\s*([A-Z][A-Z0-9]+-\d+)\b`)
+var terraformApplyResourcesPattern = regexp.MustCompile(`(?i)\bResources:\s*([0-9]+)\s+added,\s*([0-9]+)\s+changed,\s*([0-9]+)\s+destroyed\b`)
 var terraformStateKMSKeyPattern = regexp.MustCompile(`(?i)\bkms_key_id=(arn:aws:kms:[a-z0-9-]+:[0-9]{12}:(?:key/[a-f0-9-]{36}|alias/[A-Za-z0-9/_+=,.@-]+)|alias/[A-Za-z0-9/_+=,.@-]+)\b`)
 var terraformDatabaseKMSKeyARNPattern = regexp.MustCompile(`(?i)\bdatabase_kms_key_arn=(arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key/[a-f0-9-]{36})\b`)
 var terraformRedisKMSKeyARNPattern = regexp.MustCompile(`(?i)\bredis_kms_key_arn=(arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key/[a-f0-9-]{36})\b`)
@@ -242,11 +247,13 @@ func probeArtifactAny(client *http.Client, name, target string, acceptableRequir
 		changeTicket := approvalTicket(name, text)
 		matchedRequiredSet = appendApprovalTicketMarker(changeTicket, matchedRequiredSet)
 		matchedRequiredSet = appendTerraformKMSMarkers(name, text, matchedRequiredSet)
+		matchedRequiredSet = appendTerraformApplyCountMarkers(name, text, matchedRequiredSet)
 		matchedRequiredSet = appendKubernetesDigestMarker(name, text, matchedRequiredSet)
 		matchedRequiredSet = append(matchedRequiredSet, extraVerifiedMarkers...)
 		summary = fmt.Sprintf("%s; staging artifact; verified markers: %s", summary, strings.Join(matchedRequiredSet, ", "))
 		result := probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, ChangeTicket: changeTicket, ResultSummary: summary}
 		applyTerraformKMSFields(&result, text)
+		applyTerraformApplyCountFields(&result, text)
 		applyKubernetesDigestFields(&result, text)
 		return result
 	} else {
@@ -265,10 +272,14 @@ func evidenceSpecificMarkersValid(name, text string) bool {
 	if name == "kubernetes-workload-resources" {
 		return concreteImageDigestCount(text) >= 3 && len(kubernetesWorkloadDigestMarkers(text)) == len(kubernetesWorkloadImageDigests)
 	}
-	if name != "terraform-staging-apply-or-approval" || !containsAllFold(text, []string{"deployment approval", "approved", "DEPLOY-TF-001"}) {
+	if name != "terraform-staging-apply-or-approval" {
 		return true
 	}
-	return terraformApprovalTicketPattern.MatchString(text)
+	if containsAllFold(text, []string{"deployment approval", "approved", "DEPLOY-TF-001"}) {
+		return terraformApprovalTicketPattern.MatchString(text)
+	}
+	counts, ok := terraformApplyResourceCounts(text)
+	return ok && counts.Destroyed == 0
 }
 
 func appendTerraformKMSMarkers(name, text string, markers []string) []string {
@@ -322,6 +333,58 @@ func terraformDatabaseKMSKeyARN(text string) string {
 
 func terraformRedisKMSKeyARN(text string) string {
 	return extractFirstSubmatch(text, terraformRedisKMSKeyARNPattern)
+}
+
+type terraformApplyCounts struct {
+	Added     int
+	Changed   int
+	Destroyed int
+}
+
+func terraformApplyResourceCounts(text string) (terraformApplyCounts, bool) {
+	match := terraformApplyResourcesPattern.FindStringSubmatch(text)
+	if len(match) < 4 {
+		return terraformApplyCounts{}, false
+	}
+	added, err := strconv.Atoi(match[1])
+	if err != nil {
+		return terraformApplyCounts{}, false
+	}
+	changed, err := strconv.Atoi(match[2])
+	if err != nil {
+		return terraformApplyCounts{}, false
+	}
+	destroyed, err := strconv.Atoi(match[3])
+	if err != nil {
+		return terraformApplyCounts{}, false
+	}
+	return terraformApplyCounts{Added: added, Changed: changed, Destroyed: destroyed}, true
+}
+
+func appendTerraformApplyCountMarkers(name, text string, markers []string) []string {
+	if name != "terraform-staging-apply-or-approval" || containsAllFold(text, []string{"deployment approval", "approved", "DEPLOY-TF-001"}) {
+		return markers
+	}
+	counts, ok := terraformApplyResourceCounts(text)
+	if !ok {
+		return markers
+	}
+	markers = appendUniqueMarker(markers, fmt.Sprintf("terraform_apply_added=%d", counts.Added))
+	markers = appendUniqueMarker(markers, fmt.Sprintf("terraform_apply_changed=%d", counts.Changed))
+	return appendUniqueMarker(markers, fmt.Sprintf("terraform_apply_destroyed=%d", counts.Destroyed))
+}
+
+func applyTerraformApplyCountFields(result *probeResult, text string) {
+	if result.Name != "terraform-staging-apply-or-approval" || containsAllFold(text, []string{"deployment approval", "approved", "DEPLOY-TF-001"}) {
+		return
+	}
+	counts, ok := terraformApplyResourceCounts(text)
+	if !ok {
+		return
+	}
+	result.TerraformApplyAdded = &counts.Added
+	result.TerraformApplyChanged = &counts.Changed
+	result.TerraformApplyDestroyed = &counts.Destroyed
 }
 
 func extractFirstSubmatch(text string, pattern *regexp.Regexp) string {

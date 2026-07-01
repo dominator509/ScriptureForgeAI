@@ -688,6 +688,23 @@ test('validateManifest strict release rejects Terraform apply evidence without z
   );
 });
 
+test('validateManifest strict release rejects Terraform apply evidence without structured count markers', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'DEPLOY-TF-001');
+  item.evidence[0].result_summary = item.evidence[0].result_summary.replace(
+    'terraform-staging-apply-or-approval staging artifact deployment approval approved DEPLOY-TF-001 change_ticket=PLATFORM-123 release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123 distinct_terraform_artifacts=true',
+    'terraform-staging-apply-or-approval staging artifact Apply complete Resources: 42 added, 0 changed, 0 destroyed release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123 distinct_terraform_artifacts=true',
+  );
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /DEPLOY-TF-001 strict release evidence must include apply or approval markers on terraform-staging-apply-or-approval/,
+  );
+});
+
 test('validateManifest strict release rejects Terraform backend proof borrowed from plan segment', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',

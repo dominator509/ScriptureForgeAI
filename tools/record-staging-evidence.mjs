@@ -223,10 +223,11 @@ const requiredTerraformProbeSummaryMarkers = new Map([
 ]);
 
 const terraformApplyOrApprovalSummaryMarkerSets = [
-  ['staging artifact', 'Apply complete', 'Resources:', '0 destroyed', 'release_candidate', 'service_version', 'distinct_terraform_artifacts=true'],
+  ['staging artifact', 'Apply complete', 'Resources:', '0 destroyed', 'terraform_apply_added=', 'terraform_apply_changed=', 'terraform_apply_destroyed=0', 'release_candidate', 'service_version', 'distinct_terraform_artifacts=true'],
   ['staging artifact', 'deployment approval', 'approved', 'DEPLOY-TF-001', 'change_ticket=', 'release_candidate', 'service_version', 'distinct_terraform_artifacts=true'],
 ];
 const terraformApprovalChangeTicketPattern = /\bchange_ticket=[A-Z][A-Z0-9]+-\d+\b/;
+const terraformApplyCountPattern = /^[0-9]+$/;
 const terraformStateKMSKeyPattern = /^(?:arn:aws:kms:[a-z0-9-]+:[0-9]{12}:(?:key\/[a-f0-9-]{36}|alias\/[A-Za-z0-9/_+=,.@-]+)|alias\/[A-Za-z0-9/_+=,.@-]+)$/;
 const terraformStateKMSKeySummaryPattern = /\bkms_key_id=(arn:aws:kms:[a-z0-9-]+:[0-9]{12}:(?:key\/[a-f0-9-]{36}|alias\/[A-Za-z0-9/_+=,.@-]+)|alias\/[A-Za-z0-9/_+=,.@-]+)\b/i;
 const terraformStorageKMSKeyARNPattern = /^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key\/[a-f0-9-]{36}$/;
@@ -1357,6 +1358,18 @@ function validateTerraformEvidence(report, manifest) {
           summary.toLowerCase().includes(`change_ticket=${changeTicket}`.toLowerCase()),
           'terraform-staging-apply-or-approval deployment approval summary must match structured change_ticket',
         );
+      } else if (summaryIncludesAll(summary, ['Apply complete', 'Resources:'])) {
+        const added = String(probe.terraform_apply_added ?? '').trim();
+        const changed = String(probe.terraform_apply_changed ?? '').trim();
+        const destroyed = String(probe.terraform_apply_destroyed ?? '').trim();
+        assert.match(added, terraformApplyCountPattern, 'terraform-staging-apply-or-approval apply report must include structured terraform_apply_added');
+        assert.match(changed, terraformApplyCountPattern, 'terraform-staging-apply-or-approval apply report must include structured terraform_apply_changed');
+        assert.equal(destroyed, '0', 'terraform-staging-apply-or-approval apply report must include structured terraform_apply_destroyed=0');
+        assertSummaryIncludesMarkers(probe.name, summary, [
+          `terraform_apply_added=${added}`,
+          `terraform_apply_changed=${changed}`,
+          'terraform_apply_destroyed=0',
+        ]);
       }
     } else {
       assertSummaryIncludesMarkers(probe.name, summary, [...(requiredTerraformProbeSummaryMarkers.get(probe.name) ?? []), probeLoadRunMarker]);

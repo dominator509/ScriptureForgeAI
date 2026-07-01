@@ -297,6 +297,19 @@ function sslLabsProbe(overrides = {}) {
   };
 }
 
+function terraformApplyCompleteProbe(overrides = {}) {
+  return terraformApplyProbe(
+    'got HTTP 200; staging artifact; verified markers: Apply complete, Resources:, 0 destroyed, terraform_apply_added=42, terraform_apply_changed=0, terraform_apply_destroyed=0, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123, distinct_terraform_artifacts=true',
+    {
+      change_ticket: undefined,
+      terraform_apply_added: 42,
+      terraform_apply_changed: 0,
+      terraform_apply_destroyed: 0,
+      ...overrides,
+    },
+  );
+}
+
 const resilienceProbeMarkerSummaries = {
   'api-ready-before-rollback': 'got HTTP 200; staging artifact; verified markers: ready, service_version, deployment_environment, pre_rollback_version, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123; pre_rollback_version=release-1',
   'rollback-rollout-artifact': 'got HTTP 200; staging artifact; verified markers: rollout, undo, revision, previous_revision, target_revision, scriptureforge-api, successfully rolled out, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
@@ -5491,6 +5504,48 @@ test('recordEvidence rejects Terraform apply evidence without zero-destroy proof
       'go run ./tools/deploymentprobe -probe-terraform',
     ),
     /terraform-staging-apply-or-approval result_summary must include apply-complete or deployment-approval markers/,
+  );
+});
+
+test('recordEvidence rejects Terraform apply evidence without structured resource counts', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DEPLOY-TF-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        evidence_items: ['DEPLOY-TF-001'],
+        probes: [
+          { name: 'terraform-remote-backend-init', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/deploy/terraform-init.txt', status_code: 200, result_summary: deploymentProbeMarkerSummaries['terraform-remote-backend-init'] },
+          { name: 'terraform-staging-plan', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/deploy/terraform-plan.txt', status_code: 200, result_summary: deploymentProbeMarkerSummaries['terraform-staging-plan'] },
+          terraformApplyCompleteProbe({ terraform_apply_added: undefined }),
+        ],
+      },
+      'artifacts/deploymentprobe-terraform.json',
+      'go run ./tools/deploymentprobe -probe-terraform',
+    ),
+    /terraform-staging-apply-or-approval apply report must include structured terraform_apply_added/,
+  );
+});
+
+test('recordEvidence rejects Terraform apply evidence with mismatched structured resource count markers', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DEPLOY-TF-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        evidence_items: ['DEPLOY-TF-001'],
+        probes: [
+          { name: 'terraform-remote-backend-init', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/deploy/terraform-init.txt', status_code: 200, result_summary: deploymentProbeMarkerSummaries['terraform-remote-backend-init'] },
+          { name: 'terraform-staging-plan', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/deploy/terraform-plan.txt', status_code: 200, result_summary: deploymentProbeMarkerSummaries['terraform-staging-plan'] },
+          terraformApplyCompleteProbe({ terraform_apply_changed: 1 }),
+        ],
+      },
+      'artifacts/deploymentprobe-terraform.json',
+      'go run ./tools/deploymentprobe -probe-terraform',
+    ),
+    /terraform-staging-apply-or-approval result_summary must include verified marker terraform_apply_changed=1/,
   );
 });
 
