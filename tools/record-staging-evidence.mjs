@@ -1237,6 +1237,8 @@ function validateTenantRLSEvidence(report, manifest) {
     return;
   }
   assertReportReleaseMatchesManifest(report, manifest, 'DATA-RLS-001');
+  const reportLoadRunID = String(report.load_run_id ?? '').trim();
+  assert.ok(reportLoadRunID, 'DATA-RLS-001 report must include load_run_id');
   const ownerOrgID = String(report.owner_org_id ?? '').trim();
   const blockedOrgID = String(report.blocked_org_id ?? '').trim();
   assert.match(ownerOrgID, tenantOrgIDPattern, 'DATA-RLS-001 report must include UUID owner_org_id');
@@ -1247,6 +1249,7 @@ function validateTenantRLSEvidence(report, manifest) {
     reportReleaseMarkers.push(
       `release_candidate=${String(report.release_candidate ?? '').trim()}`,
       `service_version=${String(report.service_version ?? '').trim()}`,
+      `load_run_id=${reportLoadRunID}`,
     );
   }
   const apiTarget = String(report.api_target ?? '');
@@ -1269,6 +1272,7 @@ function validateTenantRLSEvidence(report, manifest) {
     'database-rls-context-proof',
   ]);
   const probes = Array.isArray(report.probes) ? report.probes : [];
+  const probeLoadRunIDs = new Set();
   assert.equal(probes.length, requiredProbes.size, 'DATA-RLS-001 report must include exactly the required tenant isolation probes');
   let createdJournalID = '';
   let createdRoomID = '';
@@ -1317,15 +1321,18 @@ function validateTenantRLSEvidence(report, manifest) {
           `DATA-RLS-001 database-rls-context-proof result_summary must include verified marker ${marker}`,
         );
       }
+      assertProbeLoadRunBinding(probe.name, summary, reportLoadRunID, probeLoadRunIDs);
     } else if (probe.name.includes('journal')) {
       assert.match(target, /^https:\/\//, `${probe.name} target must be an HTTPS deployed API URL`);
       assertNonLocalOrPrivateTarget(target, `${probe.name} target must not be local/self-test: ${target}`);
       assert.ok(target.startsWith(`${apiTarget}/api/v1/journal_entries`), `${probe.name} target must use the canonical journal endpoint`);
-      assertSummaryIncludesMarkers(probe.name, String(probe.result_summary ?? ''), [...(requiredTenantAPIProbeSummaryMarkers.get(probe.name) ?? []), ...reportReleaseMarkers]);
+      const summary = String(probe.result_summary ?? '');
+      assertProbeLoadRunBinding(probe.name, summary, reportLoadRunID, probeLoadRunIDs);
+      assertSummaryIncludesMarkers(probe.name, summary, [...(requiredTenantAPIProbeSummaryMarkers.get(probe.name) ?? []), ...reportReleaseMarkers]);
       if (probe.name !== 'blocked-journal-tenant-override-write-denied') {
         const journalID = String(probe.journal_id ?? '').trim();
         assert.match(journalID, tenantResourceIDPattern, `${probe.name} probe must include structured journal_id`);
-        assertSummaryIncludesMarkers(probe.name, String(probe.result_summary ?? ''), [`journal_id=${journalID}`]);
+        assertSummaryIncludesMarkers(probe.name, summary, [`journal_id=${journalID}`]);
         if (probe.name === 'owner-create-encrypted-journal') {
           createdJournalID = journalID;
         } else {
@@ -1336,11 +1343,13 @@ function validateTenantRLSEvidence(report, manifest) {
       assert.match(target, /^https:\/\//, `${probe.name} target must be an HTTPS deployed API URL`);
       assertNonLocalOrPrivateTarget(target, `${probe.name} target must not be local/self-test: ${target}`);
       assert.ok(target.startsWith(`${apiTarget}/api/v1/rooms/`), `${probe.name} target must use the canonical rooms endpoint`);
-      assertSummaryIncludesMarkers(probe.name, String(probe.result_summary ?? ''), [...(requiredTenantAPIProbeSummaryMarkers.get(probe.name) ?? []), ...reportReleaseMarkers]);
+      const summary = String(probe.result_summary ?? '');
+      assertProbeLoadRunBinding(probe.name, summary, reportLoadRunID, probeLoadRunIDs);
+      assertSummaryIncludesMarkers(probe.name, summary, [...(requiredTenantAPIProbeSummaryMarkers.get(probe.name) ?? []), ...reportReleaseMarkers]);
       if (probe.name !== 'blocked-room-tenant-override-write-denied') {
         const roomID = String(probe.room_id ?? '').trim();
         assert.match(roomID, tenantResourceIDPattern, `${probe.name} probe must include structured room_id`);
-        assertSummaryIncludesMarkers(probe.name, String(probe.result_summary ?? ''), [`room_id=${roomID}`]);
+        assertSummaryIncludesMarkers(probe.name, summary, [`room_id=${roomID}`]);
         if (probe.name === 'owner-create-room') {
           createdRoomID = roomID;
         } else {
@@ -1350,6 +1359,7 @@ function validateTenantRLSEvidence(report, manifest) {
     }
   }
   assert.equal(requiredProbes.size, 0, `DATA-RLS-001 report missing probes: ${[...requiredProbes].join(', ')}`);
+  assertSingleProbeLoadRun('DATA-RLS-001', probeLoadRunIDs);
 }
 
 function validateMobileEvidence(report, manifest) {
@@ -2219,9 +2229,12 @@ function validateAbuseEvidence(report, manifest) {
   assertReportReleaseMatchesManifest(report, manifest, 'ABUSE-LIMIT-001');
   assert.ok(String(report.release_candidate ?? '').trim(), 'ABUSE-LIMIT-001 report must include release_candidate');
   assert.ok(String(report.service_version ?? '').trim(), 'ABUSE-LIMIT-001 report must include service_version');
+  const reportLoadRunID = String(report.load_run_id ?? '').trim();
+  assert.ok(reportLoadRunID, 'ABUSE-LIMIT-001 report must include load_run_id');
   const reportReleaseMarkers = [
     `release_candidate=${String(report.release_candidate ?? '').trim()}`,
     `service_version=${String(report.service_version ?? '').trim()}`,
+    `load_run_id=${reportLoadRunID}`,
   ];
   const apiTarget = String(report.api_target ?? '');
   assert.match(apiTarget, /^https:\/\//, 'ABUSE-LIMIT-001 report must use HTTPS api_target');
@@ -2238,8 +2251,11 @@ function validateAbuseEvidence(report, manifest) {
     ['config_artifact_url', configArtifactURL],
   ]);
   assert.equal(report.config_artifact_verified, true, 'ABUSE-LIMIT-001 report must prove config_artifact_verified=true');
-  assertSummaryIncludesMarkers('ABUSE-LIMIT-001 config_artifact_summary', String(report.config_artifact_summary ?? ''), [...requiredAbuseConfigSummaryMarkers, ...reportReleaseMarkers]);
-  assertAbuseConfigAssignments(String(report.config_artifact_summary ?? ''));
+  const probeLoadRunIDs = new Set();
+  const configSummary = String(report.config_artifact_summary ?? '');
+  assertProbeLoadRunBinding('ABUSE-LIMIT-001 config_artifact_summary', configSummary, reportLoadRunID, probeLoadRunIDs);
+  assertSummaryIncludesMarkers('ABUSE-LIMIT-001 config_artifact_summary', configSummary, [...requiredAbuseConfigSummaryMarkers, ...reportReleaseMarkers]);
+  assertAbuseConfigAssignments(configSummary);
 
   const requiredProfiles = new Set([
     'auth-rate-limit',
@@ -2271,9 +2287,12 @@ function validateAbuseEvidence(report, manifest) {
     if (probe.name === 'websocket-rate-limit') {
       assert.equal(probe.websocket_upgrade, true, 'websocket-rate-limit must prove websocket_upgrade=true');
     }
-    assertSummaryIncludesMarkers(probe.name, String(probe.result_summary ?? ''), [...(requiredAbuseProbeSummaryMarkers.get(probe.name) ?? []), ...reportReleaseMarkers]);
+    const summary = String(probe.result_summary ?? '');
+    assertProbeLoadRunBinding(probe.name, summary, reportLoadRunID, probeLoadRunIDs);
+    assertSummaryIncludesMarkers(probe.name, summary, [...(requiredAbuseProbeSummaryMarkers.get(probe.name) ?? []), ...reportReleaseMarkers]);
   }
   assert.equal(requiredProfiles.size, 0, `ABUSE-LIMIT-001 report missing profiles: ${[...requiredProfiles].join(', ')}`);
+  assertSingleProbeLoadRun('ABUSE-LIMIT-001', probeLoadRunIDs);
 }
 
 function assertAbuseConfigAssignments(summary) {

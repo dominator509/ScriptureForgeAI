@@ -15,6 +15,7 @@ import (
 
 const abuseReleaseCandidate = "abc123"
 const abuseServiceVersion = "scriptureforge-api:abc123"
+const abuseLoadRunID = "abuse-load-run-123"
 
 func TestRunRequiresAPIBaseAndToken(t *testing.T) {
 	var output bytes.Buffer
@@ -97,6 +98,7 @@ func TestRunEmitsAbuseEvidenceWhenAllProfilesRateLimit(t *testing.T) {
 		ConfigArtifactURL: "https://abuse-artifacts.staging.scriptureforge.ai/abuse/config.txt",
 		ReleaseCandidate:  abuseReleaseCandidate,
 		ServiceVersion:    abuseServiceVersion,
+		LoadRunID:         abuseLoadRunID,
 		Attempts:          3,
 		Timeout:           time.Second,
 	}, &output, clientForTLSServer(t, server))
@@ -124,6 +126,9 @@ func TestRunEmitsAbuseEvidenceWhenAllProfilesRateLimit(t *testing.T) {
 	}
 	if result.ReleaseCandidate != abuseReleaseCandidate || result.ServiceVersion != abuseServiceVersion {
 		t.Fatalf("unexpected release identity: %+v", result)
+	}
+	if result.LoadRunID != abuseLoadRunID {
+		t.Fatalf("unexpected load run identity: %+v", result)
 	}
 	mu.Lock()
 	upgradeSeen := webSocketUpgradeSeen
@@ -155,7 +160,7 @@ func TestRunEmitsAbuseEvidenceWhenAllProfilesRateLimit(t *testing.T) {
 				t.Fatalf("probe %s result summary missing marker %q: %s", probe.Name, marker, probe.ResultSummary)
 			}
 		}
-		for _, marker := range []string{"release_candidate=" + abuseReleaseCandidate, "service_version=" + abuseServiceVersion} {
+		for _, marker := range []string{"release_candidate=" + abuseReleaseCandidate, "service_version=" + abuseServiceVersion, "load_run_id=" + abuseLoadRunID} {
 			if !strings.Contains(probe.ResultSummary, marker) {
 				t.Fatalf("probe %s result summary missing release marker %q: %s", probe.Name, marker, probe.ResultSummary)
 			}
@@ -193,6 +198,7 @@ func TestRunFailsWhenRateLimitHeadersAreMissing(t *testing.T) {
 		ConfigArtifactURL: "https://abuse-artifacts.staging.scriptureforge.ai/abuse/config.txt",
 		ReleaseCandidate:  abuseReleaseCandidate,
 		ServiceVersion:    abuseServiceVersion,
+		LoadRunID:         abuseLoadRunID,
 		Attempts:          2,
 		Timeout:           time.Second,
 	}, &output, clientForTLSServer(t, server))
@@ -201,6 +207,23 @@ func TestRunFailsWhenRateLimitHeadersAreMissing(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), `"threshold_pass": false`) {
 		t.Fatalf("failing report did not mark threshold false:\n%s", output.String())
+	}
+}
+
+func TestRunRequiresLoadRunID(t *testing.T) {
+	var output bytes.Buffer
+	err := runWithClient(config{
+		APIBase:           "https://api-abuse.staging.scriptureforge.ai",
+		BearerToken:       "token",
+		Origin:            "https://app-abuse.staging.scriptureforge.ai",
+		ConfigArtifactURL: "https://abuse-artifacts.staging.scriptureforge.ai/abuse/config.txt",
+		ReleaseCandidate:  abuseReleaseCandidate,
+		ServiceVersion:    abuseServiceVersion,
+		Attempts:          2,
+		Timeout:           time.Second,
+	}, &output, http.DefaultClient)
+	if err == nil || !strings.Contains(err.Error(), "load-run-id") {
+		t.Fatalf("expected load-run-id error, got %v", err)
 	}
 }
 
@@ -226,6 +249,7 @@ func TestRunFailsWhenRateLimitAppearsBeforeRepeatedAttempts(t *testing.T) {
 		ConfigArtifactURL: "https://abuse-artifacts.staging.scriptureforge.ai/abuse/config.txt",
 		ReleaseCandidate:  abuseReleaseCandidate,
 		ServiceVersion:    abuseServiceVersion,
+		LoadRunID:         abuseLoadRunID,
 		Attempts:          2,
 		Timeout:           time.Second,
 	}, &output, clientForTLSServer(t, server))
@@ -282,6 +306,7 @@ func TestRunFailsWhenRateLimitHeadersHaveWeakValues(t *testing.T) {
 				ConfigArtifactURL: "https://abuse-artifacts.staging.scriptureforge.ai/abuse/config.txt",
 				ReleaseCandidate:  abuseReleaseCandidate,
 				ServiceVersion:    abuseServiceVersion,
+				LoadRunID:         abuseLoadRunID,
 				Attempts:          2,
 				Timeout:           time.Second,
 			}, &output, clientForTLSServer(t, server))
@@ -314,6 +339,7 @@ func TestRunFailsWhenNoRateLimitObserved(t *testing.T) {
 		ConfigArtifactURL: "https://abuse-artifacts.staging.scriptureforge.ai/abuse/config.txt",
 		ReleaseCandidate:  abuseReleaseCandidate,
 		ServiceVersion:    abuseServiceVersion,
+		LoadRunID:         abuseLoadRunID,
 		Attempts:          2,
 		Timeout:           time.Second,
 	}, &output, clientForTLSServer(t, server))
@@ -338,6 +364,7 @@ func TestRunRequiresConfigArtifactURL(t *testing.T) {
 		Origin:           "https://app-abuse.staging.scriptureforge.ai",
 		ReleaseCandidate: abuseReleaseCandidate,
 		ServiceVersion:   abuseServiceVersion,
+		LoadRunID:        abuseLoadRunID,
 		Attempts:         2,
 		Timeout:          time.Second,
 	}, &output, clientForTLSServer(t, server))
@@ -363,6 +390,7 @@ func TestRunRequiresOriginForWebSocketProbe(t *testing.T) {
 		ConfigArtifactURL: "https://abuse-artifacts.staging.scriptureforge.ai/abuse/config.txt",
 		ReleaseCandidate:  abuseReleaseCandidate,
 		ServiceVersion:    abuseServiceVersion,
+		LoadRunID:         abuseLoadRunID,
 		Attempts:          2,
 		Timeout:           time.Second,
 	}, &output, clientForTLSServer(t, server))
@@ -386,6 +414,7 @@ func TestRunRejectsLocalEvidenceTargets(t *testing.T) {
 				ConfigArtifactURL: "https://abuse-artifacts.staging.scriptureforge.ai/abuse/config.txt",
 				ReleaseCandidate:  abuseReleaseCandidate,
 				ServiceVersion:    abuseServiceVersion,
+				LoadRunID:         abuseLoadRunID,
 				Attempts:          2,
 				Timeout:           time.Second,
 			},
@@ -400,6 +429,7 @@ func TestRunRejectsLocalEvidenceTargets(t *testing.T) {
 				ConfigArtifactURL: "https://abuse-artifacts.staging.scriptureforge.ai/abuse/config.txt",
 				ReleaseCandidate:  abuseReleaseCandidate,
 				ServiceVersion:    abuseServiceVersion,
+				LoadRunID:         abuseLoadRunID,
 				Attempts:          2,
 				Timeout:           time.Second,
 			},
@@ -414,6 +444,7 @@ func TestRunRejectsLocalEvidenceTargets(t *testing.T) {
 				ConfigArtifactURL: "https://abuse-artifacts.staging.scriptureforge.ai/abuse/config.txt",
 				ReleaseCandidate:  abuseReleaseCandidate,
 				ServiceVersion:    abuseServiceVersion,
+				LoadRunID:         abuseLoadRunID,
 				Attempts:          2,
 				Timeout:           time.Second,
 			},
@@ -428,6 +459,7 @@ func TestRunRejectsLocalEvidenceTargets(t *testing.T) {
 				ConfigArtifactURL: "https://abuse-artifacts.staging.scriptureforge.ai/abuse/config.txt",
 				ReleaseCandidate:  abuseReleaseCandidate,
 				ServiceVersion:    abuseServiceVersion,
+				LoadRunID:         abuseLoadRunID,
 				Attempts:          2,
 				Timeout:           time.Second,
 			},
@@ -442,6 +474,7 @@ func TestRunRejectsLocalEvidenceTargets(t *testing.T) {
 				ConfigArtifactURL: "https://abuse-artifacts.staging.scriptureforge.ai/abuse/config.txt",
 				ReleaseCandidate:  abuseReleaseCandidate,
 				ServiceVersion:    abuseServiceVersion,
+				LoadRunID:         abuseLoadRunID,
 				Attempts:          2,
 				Timeout:           time.Second,
 			},
@@ -456,6 +489,7 @@ func TestRunRejectsLocalEvidenceTargets(t *testing.T) {
 				ConfigArtifactURL: "https://[::1]/abuse/config.txt",
 				ReleaseCandidate:  abuseReleaseCandidate,
 				ServiceVersion:    abuseServiceVersion,
+				LoadRunID:         abuseLoadRunID,
 				Attempts:          2,
 				Timeout:           time.Second,
 			},
@@ -470,6 +504,7 @@ func TestRunRejectsLocalEvidenceTargets(t *testing.T) {
 				ConfigArtifactURL: "https://api-abuse.staging.scriptureforge.ai/abuse/config.txt",
 				ReleaseCandidate:  abuseReleaseCandidate,
 				ServiceVersion:    abuseServiceVersion,
+				LoadRunID:         abuseLoadRunID,
 				Attempts:          2,
 				Timeout:           time.Second,
 			},
@@ -484,6 +519,7 @@ func TestRunRejectsLocalEvidenceTargets(t *testing.T) {
 				ConfigArtifactURL: "https://api-abuse.staging.scriptureforge.ai./abuse/config.txt",
 				ReleaseCandidate:  abuseReleaseCandidate,
 				ServiceVersion:    abuseServiceVersion,
+				LoadRunID:         abuseLoadRunID,
 				Attempts:          2,
 				Timeout:           time.Second,
 			},
@@ -498,6 +534,7 @@ func TestRunRejectsLocalEvidenceTargets(t *testing.T) {
 				ConfigArtifactURL: "https://app-abuse.staging.scriptureforge.ai/abuse/config.txt",
 				ReleaseCandidate:  abuseReleaseCandidate,
 				ServiceVersion:    abuseServiceVersion,
+				LoadRunID:         abuseLoadRunID,
 				Attempts:          2,
 				Timeout:           time.Second,
 			},
@@ -512,6 +549,7 @@ func TestRunRejectsLocalEvidenceTargets(t *testing.T) {
 				ConfigArtifactURL: "https://app-abuse.staging.scriptureforge.ai./abuse/config.txt",
 				ReleaseCandidate:  abuseReleaseCandidate,
 				ServiceVersion:    abuseServiceVersion,
+				LoadRunID:         abuseLoadRunID,
 				Attempts:          2,
 				Timeout:           time.Second,
 			},
@@ -526,6 +564,7 @@ func TestRunRejectsLocalEvidenceTargets(t *testing.T) {
 				ConfigArtifactURL: "https://192.168.100.30/abuse/config.txt",
 				ReleaseCandidate:  abuseReleaseCandidate,
 				ServiceVersion:    abuseServiceVersion,
+				LoadRunID:         abuseLoadRunID,
 				Attempts:          2,
 				Timeout:           time.Second,
 			},
@@ -540,6 +579,7 @@ func TestRunRejectsLocalEvidenceTargets(t *testing.T) {
 				ConfigArtifactURL: "https://[::ffff:192.168.100.30]/abuse/config.txt",
 				ReleaseCandidate:  abuseReleaseCandidate,
 				ServiceVersion:    abuseServiceVersion,
+				LoadRunID:         abuseLoadRunID,
 				Attempts:          2,
 				Timeout:           time.Second,
 			},
@@ -554,6 +594,7 @@ func TestRunRejectsLocalEvidenceTargets(t *testing.T) {
 				ConfigArtifactURL: "https://abuse-artifacts.staging.scriptureforge.ai/abuse/config.txt",
 				ReleaseCandidate:  abuseReleaseCandidate,
 				ServiceVersion:    abuseServiceVersion,
+				LoadRunID:         abuseLoadRunID,
 				Attempts:          2,
 				Timeout:           time.Second,
 			},
@@ -568,6 +609,7 @@ func TestRunRejectsLocalEvidenceTargets(t *testing.T) {
 				ConfigArtifactURL: "https://abuse-artifacts.staging.scriptureforge.ai/abuse/config.txt",
 				ReleaseCandidate:  abuseReleaseCandidate,
 				ServiceVersion:    abuseServiceVersion,
+				LoadRunID:         abuseLoadRunID,
 				Attempts:          2,
 				Timeout:           time.Second,
 			},
@@ -582,6 +624,7 @@ func TestRunRejectsLocalEvidenceTargets(t *testing.T) {
 				ConfigArtifactURL: "https://abuse-artifacts.staging.test/abuse/config.txt",
 				ReleaseCandidate:  abuseReleaseCandidate,
 				ServiceVersion:    abuseServiceVersion,
+				LoadRunID:         abuseLoadRunID,
 				Attempts:          2,
 				Timeout:           time.Second,
 			},
@@ -596,6 +639,7 @@ func TestRunRejectsLocalEvidenceTargets(t *testing.T) {
 				ConfigArtifactURL: "https://abuse-artifacts.invalid/abuse/config.txt",
 				ReleaseCandidate:  abuseReleaseCandidate,
 				ServiceVersion:    abuseServiceVersion,
+				LoadRunID:         abuseLoadRunID,
 				Attempts:          2,
 				Timeout:           time.Second,
 			},
@@ -667,6 +711,7 @@ func TestRunRejectsWeakConfigArtifact(t *testing.T) {
 				ConfigArtifactURL: "https://abuse-artifacts.staging.scriptureforge.ai/abuse/config.txt",
 				ReleaseCandidate:  abuseReleaseCandidate,
 				ServiceVersion:    abuseServiceVersion,
+				LoadRunID:         abuseLoadRunID,
 				Attempts:          2,
 				Timeout:           time.Second,
 			}, &output, clientForTLSServer(t, server))
@@ -713,6 +758,7 @@ func validAbuseConfigArtifact() string {
 		"trusted headers: X-Forwarded-For X-Real-IP",
 		"release_candidate=" + abuseReleaseCandidate,
 		"service_version=" + abuseServiceVersion,
+		"load_run_id=" + abuseLoadRunID,
 	}, "\n")
 }
 

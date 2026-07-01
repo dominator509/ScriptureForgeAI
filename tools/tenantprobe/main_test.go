@@ -16,6 +16,7 @@ import (
 const (
 	testOwnerOrgID   = "11111111-1111-4111-8111-111111111111"
 	testBlockedOrgID = "22222222-2222-4222-8222-222222222222"
+	testLoadRunID    = "tenant-load-run-123"
 )
 
 func TestRunRequiresTokens(t *testing.T) {
@@ -42,6 +43,24 @@ func TestRunRequiresReleaseIdentity(t *testing.T) {
 	}
 }
 
+func TestRunRequiresLoadRunID(t *testing.T) {
+	var output bytes.Buffer
+	err := run(config{
+		APIBase:          "https://api-tenant.staging.scriptureforge.ai",
+		OwnerToken:       "owner-token",
+		BlockedToken:     "blocked-token",
+		OwnerOrgID:       testOwnerOrgID,
+		BlockedOrgID:     testBlockedOrgID,
+		DBRLSArtifactURL: "https://tenant-artifacts.staging.scriptureforge.ai/db-rls-proof",
+		ReleaseCandidate: "sha-tenant",
+		ServiceVersion:   "scriptureforge-api:sha-tenant",
+		Timeout:          time.Second,
+	}, &output)
+	if err == nil || !strings.Contains(err.Error(), "load-run-id") {
+		t.Fatalf("expected load-run-id error, got %v", err)
+	}
+}
+
 func TestRunRequiresDistinctTenantPair(t *testing.T) {
 	var output bytes.Buffer
 	err := run(config{
@@ -51,6 +70,7 @@ func TestRunRequiresDistinctTenantPair(t *testing.T) {
 		DBRLSArtifactURL: "https://tenant-artifacts.staging.scriptureforge.ai/db-rls-proof",
 		ReleaseCandidate: "sha-tenant",
 		ServiceVersion:   "scriptureforge-api:sha-tenant",
+		LoadRunID:        testLoadRunID,
 		Timeout:          time.Second,
 	}, &output)
 	if err == nil || !strings.Contains(err.Error(), "owner-org-id") {
@@ -84,6 +104,7 @@ func TestRunRequiresUUIDTenantPair(t *testing.T) {
 		DBRLSArtifactURL: "https://tenant-artifacts.staging.scriptureforge.ai/db-rls-proof",
 		ReleaseCandidate: "sha-tenant",
 		ServiceVersion:   "scriptureforge-api:sha-tenant",
+		LoadRunID:        testLoadRunID,
 		Timeout:          time.Second,
 	}
 
@@ -190,6 +211,7 @@ func TestRunProvesOwnerReadAndBlockedDenial(t *testing.T) {
 		DBRLSArtifactURL: "https://tenant-artifacts.staging.scriptureforge.ai/db-rls-proof",
 		ReleaseCandidate: "sha-tenant",
 		ServiceVersion:   "scriptureforge-api:sha-tenant",
+		LoadRunID:        testLoadRunID,
 		Timeout:          time.Second,
 	}, &output, clientForHTTPServer(t, server))
 	if err != nil {
@@ -230,12 +252,18 @@ func TestRunProvesOwnerReadAndBlockedDenial(t *testing.T) {
 	if decoded.OwnerOrgID != testOwnerOrgID || decoded.BlockedOrgID != testBlockedOrgID {
 		t.Fatalf("tenant probe report did not preserve tenant pair: owner=%q blocked=%q", decoded.OwnerOrgID, decoded.BlockedOrgID)
 	}
+	if decoded.LoadRunID != testLoadRunID {
+		t.Fatalf("tenant probe report did not preserve load_run_id: %q", decoded.LoadRunID)
+	}
 	requireProbe := func(name string) probeResult {
 		t.Helper()
 		for _, probe := range decoded.Probes {
 			if probe.Name == name {
 				if !probe.Passed {
 					t.Fatalf("%s did not pass: %+v", name, probe)
+				}
+				if !strings.Contains(probe.ResultSummary, "load_run_id="+testLoadRunID) {
+					t.Fatalf("%s summary did not bind to load_run_id: %s", name, probe.ResultSummary)
 				}
 				return probe
 			}
@@ -336,7 +364,7 @@ func TestRunFailsWhenTenantOverrideWritesAreAccepted(t *testing.T) {
 	defer server.Close()
 
 	var output bytes.Buffer
-	err := runWithClient(config{APIBase: "https://api-tenant.staging.scriptureforge.ai", OwnerToken: "owner-token", BlockedToken: "blocked-token", OwnerOrgID: testOwnerOrgID, BlockedOrgID: testBlockedOrgID, DBRLSArtifactURL: "https://tenant-artifacts.staging.scriptureforge.ai/db-rls-proof", ReleaseCandidate: "sha-tenant", ServiceVersion: "scriptureforge-api:sha-tenant", Timeout: time.Second}, &output, clientForHTTPServer(t, server))
+	err := runWithClient(config{APIBase: "https://api-tenant.staging.scriptureforge.ai", OwnerToken: "owner-token", BlockedToken: "blocked-token", OwnerOrgID: testOwnerOrgID, BlockedOrgID: testBlockedOrgID, DBRLSArtifactURL: "https://tenant-artifacts.staging.scriptureforge.ai/db-rls-proof", ReleaseCandidate: "sha-tenant", ServiceVersion: "scriptureforge-api:sha-tenant", LoadRunID: testLoadRunID, Timeout: time.Second}, &output, clientForHTTPServer(t, server))
 	if err == nil {
 		t.Fatalf("expected accepted tenant override writes to fail threshold:\n%s", output.String())
 	}
@@ -386,7 +414,7 @@ func TestRunFailsWhenOwnerListDoesNotReturnCreatedEntry(t *testing.T) {
 	defer server.Close()
 
 	var output bytes.Buffer
-	err := runWithClient(config{APIBase: "https://api-tenant.staging.scriptureforge.ai", OwnerToken: "owner-token", BlockedToken: "blocked-token", OwnerOrgID: testOwnerOrgID, BlockedOrgID: testBlockedOrgID, DBRLSArtifactURL: "https://tenant-artifacts.staging.scriptureforge.ai/db-rls-proof", ReleaseCandidate: "sha-tenant", ServiceVersion: "scriptureforge-api:sha-tenant", Timeout: time.Second}, &output, clientForHTTPServer(t, server))
+	err := runWithClient(config{APIBase: "https://api-tenant.staging.scriptureforge.ai", OwnerToken: "owner-token", BlockedToken: "blocked-token", OwnerOrgID: testOwnerOrgID, BlockedOrgID: testBlockedOrgID, DBRLSArtifactURL: "https://tenant-artifacts.staging.scriptureforge.ai/db-rls-proof", ReleaseCandidate: "sha-tenant", ServiceVersion: "scriptureforge-api:sha-tenant", LoadRunID: testLoadRunID, Timeout: time.Second}, &output, clientForHTTPServer(t, server))
 	if err == nil {
 		t.Fatalf("expected missing owner list visibility to fail threshold:\n%s", output.String())
 	}
@@ -420,7 +448,7 @@ func TestRunFailsWhenBlockedTokenCanReadEntry(t *testing.T) {
 	defer server.Close()
 
 	var output bytes.Buffer
-	err := runWithClient(config{APIBase: "https://api-tenant.staging.scriptureforge.ai", OwnerToken: "owner", BlockedToken: "blocked", OwnerOrgID: testOwnerOrgID, BlockedOrgID: testBlockedOrgID, DBRLSArtifactURL: "https://tenant-artifacts.staging.scriptureforge.ai/db-rls-proof", ReleaseCandidate: "sha-tenant", ServiceVersion: "scriptureforge-api:sha-tenant", Timeout: time.Second}, &output, clientForHTTPServer(t, server))
+	err := runWithClient(config{APIBase: "https://api-tenant.staging.scriptureforge.ai", OwnerToken: "owner", BlockedToken: "blocked", OwnerOrgID: testOwnerOrgID, BlockedOrgID: testBlockedOrgID, DBRLSArtifactURL: "https://tenant-artifacts.staging.scriptureforge.ai/db-rls-proof", ReleaseCandidate: "sha-tenant", ServiceVersion: "scriptureforge-api:sha-tenant", LoadRunID: testLoadRunID, Timeout: time.Second}, &output, clientForHTTPServer(t, server))
 	if err == nil {
 		t.Fatalf("expected cross-token read to fail threshold:\n%s", output.String())
 	}
@@ -515,6 +543,7 @@ func TestRunFailsWhenDBRLSArtifactMissingContextProof(t *testing.T) {
 		DBRLSArtifactURL: "https://tenant-artifacts.staging.scriptureforge.ai/db-rls-proof",
 		ReleaseCandidate: "sha-tenant",
 		ServiceVersion:   "scriptureforge-api:sha-tenant",
+		LoadRunID:        testLoadRunID,
 		Timeout:          time.Second,
 	}, &output, clientForHTTPServer(t, server))
 	if err == nil {
@@ -693,6 +722,7 @@ func TestDBRLSArtifactSummarizesVerifiedTenantScopedTables(t *testing.T) {
 		"same-tenant read visible",
 		"cross-tenant read hidden",
 		"cross-tenant write denied",
+		"load_run_id=" + testLoadRunID,
 	} {
 		if !strings.Contains(result.ResultSummary, marker) {
 			t.Fatalf("DB RLS proof summary missing marker %q: %s", marker, result.ResultSummary)
@@ -808,11 +838,11 @@ func TestDBRLSProofRequiresApplicationRole(t *testing.T) {
 }
 
 func fullDBRLSProofArtifact() string {
-	return `staging artifact current_user=scriptureforge_app non-superuser superuser=false bypassrls=false app.current_org_id set app.current_org_id=` + testOwnerOrgID + ` current_setting('app.current_org_id') blocked_org_id=` + testBlockedOrgID + ` row_security=on FORCE ROW LEVEL SECURITY rls_tables_verified=9 rls_forced_tables=9 rls_policy_scope=app.current_org_id organizations users scripture_texts refresh_tokens journal_entries live_rooms room_participants ai_request_logs citation_trails same-tenant read visible cross-tenant read hidden cross-tenant write denied release_candidate=sha-tenant service_version=scriptureforge-api:sha-tenant`
+	return `staging artifact current_user=scriptureforge_app non-superuser superuser=false bypassrls=false app.current_org_id set app.current_org_id=` + testOwnerOrgID + ` current_setting('app.current_org_id') blocked_org_id=` + testBlockedOrgID + ` row_security=on FORCE ROW LEVEL SECURITY rls_tables_verified=9 rls_forced_tables=9 rls_policy_scope=app.current_org_id organizations users scripture_texts refresh_tokens journal_entries live_rooms room_participants ai_request_logs citation_trails same-tenant read visible cross-tenant read hidden cross-tenant write denied release_candidate=sha-tenant service_version=scriptureforge-api:sha-tenant load_run_id=` + testLoadRunID
 }
 
 func probeDBRLSArtifactForTest(client *http.Client, target string) probeResult {
-	return probeDBRLSArtifact(client, target, "sha-tenant", "scriptureforge-api:sha-tenant", testOwnerOrgID, testBlockedOrgID)
+	return probeDBRLSArtifact(client, target, "sha-tenant", "scriptureforge-api:sha-tenant", testLoadRunID, testOwnerOrgID, testBlockedOrgID)
 }
 
 func clientForHTTPServer(t *testing.T, server *httptest.Server) *http.Client {

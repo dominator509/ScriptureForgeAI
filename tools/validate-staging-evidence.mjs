@@ -597,6 +597,7 @@ export const strictProbeFamilies = {
       'distinct_abuse_artifacts=true',
       'release_candidate',
       'service_version',
+      'load_run_id',
     ],
     extraSummaryOrArtifactIncludes: 'websocket upgrade',
   },
@@ -1370,6 +1371,7 @@ function validateStrictReleaseItemEvidence(item, manifest) {
     `${item.id} strict release evidence must include a tools/${requirement.commandIncludes} JSON report`,
   );
   if (item.id === 'DATA-RLS-001') {
+    const tenantLoadRunIDs = new Set();
     for (const [segment, markers] of tenantSegmentMarkerRequirements) {
       const missingSegmentMarkers = evidence.some((artifact) => {
         const summary = String(artifact.result_summary ?? '');
@@ -1381,7 +1383,11 @@ function validateStrictReleaseItemEvidence(item, manifest) {
         false,
         `DATA-RLS-001 strict release evidence must include tenant markers on ${segment}`,
       );
+      const loadRunID = summarySegmentCapture(findEvidenceSegment(evidence, segment), segment, /\bload_run_id=([^\s,;]+)/i);
+      assert.ok(loadRunID, `DATA-RLS-001 strict release evidence must include load_run_id on ${segment}`);
+      tenantLoadRunIDs.add(loadRunID);
     }
+    assert.equal(tenantLoadRunIDs.size, 1, 'DATA-RLS-001 strict release evidence load_run_id values must all match');
     assertStrictTenantOrgIDBinding(evidence);
     assertStrictTenantResourceIDBinding(evidence);
   }
@@ -1697,6 +1703,7 @@ function validateStrictReleaseItemEvidence(item, manifest) {
     assertStrictRedisSequenceNumbers(evidence);
   }
   if (item.id === 'ABUSE-LIMIT-001') {
+    const abuseLoadRunIDs = new Set();
     for (const [segment, markers] of abuseRateLimitSegmentMarkerRequirements) {
       const missingSegmentMarkers = evidence.some((artifact) => {
         const summary = String(artifact.result_summary ?? '');
@@ -1708,7 +1715,11 @@ function validateStrictReleaseItemEvidence(item, manifest) {
         false,
         `ABUSE-LIMIT-001 strict release evidence must include abuse markers on ${segment}`,
       );
+      const loadRunID = summarySegmentCapture(findEvidenceSegment(evidence, segment), segment, /\bload_run_id=([^\s,;]+)/i);
+      assert.ok(loadRunID, `ABUSE-LIMIT-001 strict release evidence must include load_run_id on ${segment}`);
+      abuseLoadRunIDs.add(loadRunID);
     }
+    assert.equal(abuseLoadRunIDs.size, 1, 'ABUSE-LIMIT-001 strict release evidence load_run_id values must all match');
     assertStrictAbuseAttempts(evidence);
     assertStrictAbuseRateLimitHeaders(evidence);
     assertStrictAbuseConfigAssignments(evidence);

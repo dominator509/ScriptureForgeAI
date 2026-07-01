@@ -24,6 +24,7 @@ type config struct {
 	ConfigArtifactURL string
 	ReleaseCandidate  string
 	ServiceVersion    string
+	LoadRunID         string
 	Attempts          int
 	Timeout           time.Duration
 }
@@ -37,6 +38,7 @@ type report struct {
 	ConfigArtifactSummary  string        `json:"config_artifact_summary"`
 	ReleaseCandidate       string        `json:"release_candidate"`
 	ServiceVersion         string        `json:"service_version"`
+	LoadRunID              string        `json:"load_run_id"`
 	ThresholdPass          bool          `json:"threshold_pass"`
 	Probes                 []probeResult `json:"probes"`
 	EvidenceItems          []string      `json:"evidence_items"`
@@ -85,6 +87,7 @@ func parseFlags() config {
 	flag.StringVar(&cfg.ConfigArtifactURL, "config-artifact-url", os.Getenv("STAGING_ABUSE_CONFIG_ARTIFACT_URL"), "redacted staging ABUSE_LIMIT_* configuration artifact URL")
 	flag.StringVar(&cfg.ReleaseCandidate, "release-candidate", os.Getenv("STAGING_RELEASE_CANDIDATE"), "exact git SHA or release candidate represented by this abuse evidence")
 	flag.StringVar(&cfg.ServiceVersion, "service-version", os.Getenv("STAGING_ABUSE_SERVICE_VERSION"), "exact API/service version represented by this abuse evidence")
+	flag.StringVar(&cfg.LoadRunID, "load-run-id", os.Getenv("STAGING_LOAD_RUN_ID"), "exact staging load run ID this abuse evidence is bound to")
 	flag.IntVar(&cfg.Attempts, "attempts", 35, "maximum attempts per profile; set above deployed ABUSE_LIMIT_* values")
 	flag.DurationVar(&cfg.Timeout, "timeout", 5*time.Second, "per-request timeout")
 	flag.Parse()
@@ -120,6 +123,10 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 	if cfg.ReleaseCandidate == "" || cfg.ServiceVersion == "" {
 		return errors.New("abuse proof requires release-candidate and service-version")
 	}
+	cfg.LoadRunID = strings.TrimSpace(cfg.LoadRunID)
+	if cfg.LoadRunID == "" {
+		return errors.New("abuse proof requires load-run-id")
+	}
 	apiBase, err := normalizeBaseURL(cfg.APIBase)
 	if err != nil {
 		return err
@@ -139,6 +146,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 	releaseMarkers := []string{
 		"release_candidate=" + cfg.ReleaseCandidate,
 		"service_version=" + cfg.ServiceVersion,
+		"load_run_id=" + cfg.LoadRunID,
 	}
 	configArtifactSummary, err := validateConfigArtifact(client, configArtifact, releaseMarkers)
 	if err != nil {
@@ -168,6 +176,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 		ConfigArtifactSummary:  configArtifactSummary + "; distinct_abuse_artifacts=true",
 		ReleaseCandidate:       cfg.ReleaseCandidate,
 		ServiceVersion:         cfg.ServiceVersion,
+		LoadRunID:              cfg.LoadRunID,
 		ThresholdPass:          true,
 		Probes:                 results,
 		EvidenceItems:          []string{"ABUSE-LIMIT-001"},
@@ -365,6 +374,7 @@ func runEndpointProbe(client *http.Client, apiBase string, cfg config, probe end
 				markers := append(abuseSummaryMarkers(probe),
 					"release_candidate="+cfg.ReleaseCandidate,
 					"service_version="+cfg.ServiceVersion,
+					"load_run_id="+cfg.LoadRunID,
 				)
 				result.ResultSummary += "; verified markers: " + strings.Join(markers, ", ")
 			}

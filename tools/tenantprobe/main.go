@@ -26,6 +26,7 @@ type config struct {
 	DBRLSArtifactURL string
 	ReleaseCandidate string
 	ServiceVersion   string
+	LoadRunID        string
 	Timeout          time.Duration
 }
 
@@ -36,6 +37,7 @@ type report struct {
 	BlockedOrgID     string        `json:"blocked_org_id"`
 	ReleaseCandidate string        `json:"release_candidate"`
 	ServiceVersion   string        `json:"service_version"`
+	LoadRunID        string        `json:"load_run_id"`
 	ThresholdPass    bool          `json:"threshold_pass"`
 	Probes           []probeResult `json:"probes"`
 	EvidenceItems    []string      `json:"evidence_items"`
@@ -117,6 +119,7 @@ func parseFlags() config {
 	flag.StringVar(&cfg.DBRLSArtifactURL, "db-rls-artifact-url", os.Getenv("STAGING_RLS_DB_PROOF_URL"), "redacted database/RLS proof artifact URL for current_user, app.current_org_id, and tenant table policies")
 	flag.StringVar(&cfg.ReleaseCandidate, "release-candidate", os.Getenv("RELEASE_CANDIDATE"), "exact release candidate Git SHA expected in staging RLS proof artifacts")
 	flag.StringVar(&cfg.ServiceVersion, "service-version", os.Getenv("SERVICE_VERSION"), "deployed service version marker expected in staging RLS proof artifacts")
+	flag.StringVar(&cfg.LoadRunID, "load-run-id", os.Getenv("STAGING_LOAD_RUN_ID"), "exact staging load run ID this tenant/RLS evidence is bound to")
 	flag.DurationVar(&cfg.Timeout, "timeout", 5*time.Second, "per-probe timeout")
 	flag.Parse()
 	return cfg
@@ -179,6 +182,10 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 	if cfg.ServiceVersion == "" {
 		return errors.New("-service-version or SERVICE_VERSION is required")
 	}
+	cfg.LoadRunID = strings.TrimSpace(cfg.LoadRunID)
+	if cfg.LoadRunID == "" {
+		return errors.New("-load-run-id or STAGING_LOAD_RUN_ID is required")
+	}
 	if client == nil {
 		client = &http.Client{Timeout: cfg.Timeout}
 	}
@@ -209,8 +216,8 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 		probes = append(probes, getRoomState(client, cfg.APIBase, cfg.OwnerToken, room.ID, "owner-room-state", http.StatusOK))
 		probes = append(probes, getRoomState(client, cfg.APIBase, cfg.BlockedToken, room.ID, "blocked-room-state-denied", http.StatusForbidden))
 	}
-	probes = append(probes, probeDBRLSArtifact(client, cfg.DBRLSArtifactURL, cfg.ReleaseCandidate, cfg.ServiceVersion, cfg.OwnerOrgID, cfg.BlockedOrgID))
-	appendReleaseMarkers(probes, cfg.ReleaseCandidate, cfg.ServiceVersion)
+	probes = append(probes, probeDBRLSArtifact(client, cfg.DBRLSArtifactURL, cfg.ReleaseCandidate, cfg.ServiceVersion, cfg.LoadRunID, cfg.OwnerOrgID, cfg.BlockedOrgID))
+	appendReleaseMarkers(probes, cfg.ReleaseCandidate, cfg.ServiceVersion, cfg.LoadRunID)
 
 	result := report{
 		ObservedAt:       time.Now().UTC().Format("2006-01-02T15:04:05Z"),
@@ -219,6 +226,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 		BlockedOrgID:     cfg.BlockedOrgID,
 		ReleaseCandidate: cfg.ReleaseCandidate,
 		ServiceVersion:   cfg.ServiceVersion,
+		LoadRunID:        cfg.LoadRunID,
 		ThresholdPass:    true,
 		Probes:           probes,
 		EvidenceItems:    []string{"DATA-RLS-001"},
@@ -240,7 +248,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 	return nil
 }
 
-func probeDBRLSArtifact(client *http.Client, target, releaseCandidate, serviceVersion, ownerOrgID, blockedOrgID string) probeResult {
+func probeDBRLSArtifact(client *http.Client, target, releaseCandidate, serviceVersion, loadRunID, ownerOrgID, blockedOrgID string) probeResult {
 	start := time.Now()
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, target, nil)
 	if err != nil {
@@ -255,7 +263,7 @@ func probeDBRLSArtifact(client *http.Client, target, releaseCandidate, serviceVe
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 256*1024))
 	text := string(body)
-	requiredMarkers := dbRLSMarkers(releaseCandidate, serviceVersion, ownerOrgID, blockedOrgID)
+	requiredMarkers := dbRLSMarkers(releaseCandidate, serviceVersion, loadRunID, ownerOrgID, blockedOrgID)
 	passed := resp.StatusCode >= 200 && resp.StatusCode < 300 && containsAllFold(text, requiredMarkers) && containsNoneFold(text, forbiddenDBRLSArtifactMarkers())
 	summary := fmt.Sprintf("database RLS proof returned HTTP %d in %dms", resp.StatusCode, latency)
 	if passed {
@@ -281,7 +289,7 @@ func probeDBRLSArtifact(client *http.Client, target, releaseCandidate, serviceVe
 	return result
 }
 
-func dbRLSMarkers(releaseCandidate, serviceVersion, ownerOrgID, blockedOrgID string) []string {
+func dbRLSMarkers(releaseCandidate, serviceVersion, loadRunID, ownerOrgID, blockedOrgID string) []string {
 	markers := append([]string{}, requiredDBRLSMarkers...)
 	markers = append(
 		markers,
@@ -289,12 +297,13 @@ func dbRLSMarkers(releaseCandidate, serviceVersion, ownerOrgID, blockedOrgID str
 		"blocked_org_id="+blockedOrgID,
 		"release_candidate="+releaseCandidate,
 		"service_version="+serviceVersion,
+		"load_run_id="+loadRunID,
 	)
 	return markers
 }
 
-func appendReleaseMarkers(probes []probeResult, releaseCandidate, serviceVersion string) {
-	releaseSummary := fmt.Sprintf("release_candidate=%s, service_version=%s", releaseCandidate, serviceVersion)
+func appendReleaseMarkers(probes []probeResult, releaseCandidate, serviceVersion, loadRunID string) {
+	releaseSummary := fmt.Sprintf("release_candidate=%s, service_version=%s, load_run_id=%s", releaseCandidate, serviceVersion, loadRunID)
 	for i := range probes {
 		if probes[i].Passed {
 			probes[i].ResultSummary = probes[i].ResultSummary + "; verified release markers: " + releaseSummary
