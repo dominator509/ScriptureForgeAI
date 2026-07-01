@@ -65,6 +65,7 @@ export const SecureJournalContainer: React.FC = () => {
               disposeJournalCryptoKey(previous);
               return null;
             });
+            setPassphrase('');
             setStatus(error.message);
           }
         });

@@ -39,6 +39,7 @@ export const journalCryptoProofMarkers = [
   'runtime_buffer_zeroization=true',
   'import_failure_zeroization=true',
   'base64_decode_buffer_zeroization=true',
+  'mobile_passphrase_derivation_failure_cleanup=true',
   'native_device_self_test_export=true',
   'native_device_self_test_markers=true',
   'native_required_self_test_fail_closed=true',
@@ -106,10 +107,16 @@ for (const requiredMobileLifecycleSnippet of [
   'preserveDerivedHandleOnPassphraseClear',
   'disposeJournalCryptoKey(previous);',
   'disposeJournalCryptoKey(derivedHandle);',
+  'setStatus(error.message);',
 ]) {
   if (!mobileJournalSource.includes(requiredMobileLifecycleSnippet)) {
     throw new Error(`mobile journal container missing lifecycle control: ${requiredMobileLifecycleSnippet}`);
   }
+}
+
+const mobileDerivationFailureCleanupPattern = /\.catch\(\(error: Error\) => \{[\s\S]*?setKeyHandle\(previous => \{[\s\S]*?disposeJournalCryptoKey\(previous\);[\s\S]*?return null;[\s\S]*?\}\);[\s\S]*?setPassphrase\(''\);[\s\S]*?setStatus\(error\.message\);[\s\S]*?\}\);/;
+if (!mobileDerivationFailureCleanupPattern.test(mobileJournalSource)) {
+  throw new Error('mobile journal container must clear passphrase state when key derivation fails');
 }
 
 for (const requiredLifecycleSnippet of [
