@@ -122,7 +122,7 @@
       "status": "pending_external",
       "description": "Redis-backed room sequencing is contiguous under deployed multi-client concurrency.",
       "required_evidence": [
-        "External WebSocket load report with DATA-REDIS-001 evidence item",
+        "External WebSocket load report with DATA-REDIS-001 evidence item and report-level load_run_id=<same load run>",
         "HTTPS Redis telemetry artifact from the same run",
         "Redis sequence ordering assertion output with no duplicate, skipped sequence, room-id mismatch, or room broadcast drop proof",
         "loadtest JSON ws_room_id matching exact ws_room_id=<id> result_summary marker, production_min_ws_events=30000, at least 30000 expected/unique/max/polled events, ws_polling_latest_sequence equal to ws_max_sequence, structured room_broadcast_drops=0 field/marker, plus result_summary marker list for WebSocket profile, authenticated HTTPS origin proof, staging artifact provenance, contiguous sequence fields, reconnect proof with ws_reconnect_sequence_continues=true, HTTP polling fallback proof, Redis telemetry artifact, redis_telemetry_artifact_verified marker, ws_polling_artifact_latest_sequence_validated=true marker, ws_polling_artifact_latest_sequence_matches_run=true marker, ws_distinct_artifacts=true marker, and room_broadcast_drops=0 marker"

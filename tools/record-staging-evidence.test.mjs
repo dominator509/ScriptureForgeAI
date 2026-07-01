@@ -9148,6 +9148,26 @@ test('recordEvidence rejects performance evidence without load run identity', ()
   );
 });
 
+test('recordEvidence rejects Redis load evidence without report load run identity', () => {
+  assert.throws(
+    () => recordEvidence(
+      {
+        items: [
+          { id: 'PERF-WS-001', status: 'pending_external' },
+          { id: 'DATA-REDIS-001', status: 'pending_external' },
+        ],
+      },
+      websocketPerformanceReport({
+        load_run_id: '',
+        result_summary: performanceReportSummaries.websocket,
+      }),
+      'artifacts/load-ws.json',
+      'go run ./tools/loadtest -websocket',
+    ),
+    /PERF-WS-001 report must include load_run_id/,
+  );
+});
+
 test('recordEvidence rejects mixed performance load run identities', () => {
   assert.throws(
     () => recordEvidence(
