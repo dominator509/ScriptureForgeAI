@@ -242,14 +242,17 @@ func TestLiveRoomReconnectReceivesFutureEventsAndPollingState(t *testing.T) {
 	defer server.Close()
 
 	initial := dialRoom(t, server.URL, "room-1", "reconnect")
+	waitForRoomSubscribers(t, hub, "room-1", 1)
 	if err := initial.Close(); err != nil {
 		t.Fatalf("close initial connection: %v", err)
 	}
+	waitForRoomSubscribers(t, hub, "room-1", 0)
 
 	reconnected := dialRoom(t, server.URL, "room-1", "reconnect")
 	defer reconnected.Close()
 	sender := dialRoom(t, server.URL, "room-1", "sender")
 	defer sender.Close()
+	waitForRoomSubscribers(t, hub, "room-1", 2)
 
 	if err := sender.WriteJSON(RoomEvent{Type: "focus", RoomID: "room-1", Payload: json.RawMessage(`{"verse":"Psalm 23:1"}`)}); err != nil {
 		t.Fatalf("write post-reconnect event: %v", err)
