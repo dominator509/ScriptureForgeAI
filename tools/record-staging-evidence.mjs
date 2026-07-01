@@ -252,6 +252,7 @@ const mobileDeploymentEnvironmentPattern = /^staging$/i;
 const mobileNativeProviderPattern = /^react-native-quick-crypto$/;
 const mobileNativeRequiredPattern = /^true$/i;
 const mobileUniqueIVPattern = /^true$/i;
+const mobileLifecycleTruePattern = /^true$/i;
 const mobileBuildIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const mobileBuildIDSummaryPattern = /\bmobile_build_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const mobileNativeProviderSummaryPattern = /\bprovider=([A-Za-z0-9_.:-]+)\b/i;
@@ -405,7 +406,7 @@ const abuseConfigAssignmentKeys = [
 
 const requiredMobileProbeSummaryMarkers = new Map([
   ['mobile-eas-or-device-run', ['staging artifact', 'eas', 'build', 'finished', 'android', 'ios', 'native device', 'installed app', 'release channel staging', 'expo profile staging', 'distinct_mobile_artifacts=true']],
-  ['mobile-native-crypto-smoke', ['staging artifact', 'runJournalCryptoSelfTest', 'react-native-quick-crypto', 'native provider', 'native module loaded', 'provider status react-native-quick-crypto', 'provider=react-native-quick-crypto', 'native-required true', 'native_required=true', 'AES-GCM', 'round-trip', 'unique_iv=true', 'unique IV', 'tamper rejected', 'associated data', 'wrong associated data rejected', 'associated_data_salt_id=', 'associated_data_salt_version=', 'non-extractable', 'provider-bound key', 'fallback-derived key rejected', 'key disposed', 'disposed handle rejected', 'revoked_key_rejected=true', 'stale raw key rejected', 'passphrase wiped', 'passphrase buffer zeroized', 'salt wiped', 'salt buffer zeroized', 'plaintext cleared', 'plaintext buffer zeroized', 'distinct_mobile_artifacts=true']],
+  ['mobile-native-crypto-smoke', ['staging artifact', 'runJournalCryptoSelfTest', 'react-native-quick-crypto', 'native provider', 'native module loaded', 'provider status react-native-quick-crypto', 'provider=react-native-quick-crypto', 'native-required true', 'native_required=true', 'AES-GCM', 'round-trip', 'unique_iv=true', 'unique IV', 'tamper rejected', 'associated data', 'wrong associated data rejected', 'associated_data_salt_id=', 'associated_data_salt_version=', 'non-extractable', 'provider-bound key', 'fallback-derived key rejected', 'key disposed', 'key_disposed=true', 'disposed handle rejected', 'disposed_handle_rejected=true', 'revoked_key_rejected=true', 'stale raw key rejected', 'passphrase wiped', 'passphrase buffer zeroized', 'passphrase_buffer_zeroized=true', 'salt wiped', 'salt buffer zeroized', 'salt_buffer_zeroized=true', 'plaintext cleared', 'plaintext buffer zeroized', 'plaintext_buffer_zeroized=true', 'distinct_mobile_artifacts=true']],
   ['mobile-staging-config', ['staging artifact', 'EXPO_PUBLIC_API_BASE_URL', 'EXPO_PUBLIC_WS_BASE_URL', 'EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true', 'EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging', 'https://', 'wss://', 'staging', 'distinct_mobile_artifacts=true']],
 ]);
 
@@ -1626,6 +1627,12 @@ function validateMobileEvidence(report, manifest) {
       const provider = String(probe.provider ?? summaryProvider).trim();
       const nativeRequired = String(probe.native_required ?? summaryNativeRequired).trim();
       const uniqueIV = String(probe.unique_iv ?? '').trim();
+      const keyDisposed = String(probe.key_disposed ?? '').trim();
+      const disposedHandleRejected = String(probe.disposed_handle_rejected ?? '').trim();
+      const revokedKeyRejected = String(probe.revoked_key_rejected ?? '').trim();
+      const passphraseZeroized = String(probe.passphrase_buffer_zeroized ?? '').trim();
+      const saltZeroized = String(probe.salt_buffer_zeroized ?? '').trim();
+      const plaintextZeroized = String(probe.plaintext_buffer_zeroized ?? '').trim();
       const associatedDataSaltID = String(probe.associated_data_salt_id ?? extractFirstMatch(summary, mobileAssociatedDataSaltIDSummaryPattern)).trim();
       const associatedDataVersion = String(probe.associated_data_salt_version ?? extractFirstMatch(summary, mobileAssociatedDataVersionSummaryPattern)).trim();
       assert.match(mobileBuildID, mobileBuildIDPattern, 'mobile-native-crypto-smoke probe must include structured mobile_build_id');
@@ -1635,6 +1642,12 @@ function validateMobileEvidence(report, manifest) {
       assert.match(provider, mobileNativeProviderPattern, 'mobile-native-crypto-smoke probe must include structured provider=react-native-quick-crypto');
       assert.match(nativeRequired, mobileNativeRequiredPattern, 'mobile-native-crypto-smoke probe must include structured native_required=true');
       assert.match(uniqueIV, mobileUniqueIVPattern, 'mobile-native-crypto-smoke probe must include structured unique_iv=true');
+      assert.match(keyDisposed, mobileLifecycleTruePattern, 'mobile-native-crypto-smoke probe must include structured key_disposed=true');
+      assert.match(disposedHandleRejected, mobileLifecycleTruePattern, 'mobile-native-crypto-smoke probe must include structured disposed_handle_rejected=true');
+      assert.match(revokedKeyRejected, mobileLifecycleTruePattern, 'mobile-native-crypto-smoke probe must include structured revoked_key_rejected=true');
+      assert.match(passphraseZeroized, mobileLifecycleTruePattern, 'mobile-native-crypto-smoke probe must include structured passphrase_buffer_zeroized=true');
+      assert.match(saltZeroized, mobileLifecycleTruePattern, 'mobile-native-crypto-smoke probe must include structured salt_buffer_zeroized=true');
+      assert.match(plaintextZeroized, mobileLifecycleTruePattern, 'mobile-native-crypto-smoke probe must include structured plaintext_buffer_zeroized=true');
       assert.match(associatedDataSaltID, mobileAssociatedDataSaltIDPattern, 'mobile-native-crypto-smoke probe must include structured associated_data_salt_id');
       assert.match(associatedDataVersion, mobileAssociatedDataVersionPattern, 'mobile-native-crypto-smoke probe must include positive structured associated_data_salt_version');
       assertSummaryIncludesMarkers(probe.name, summary, [
@@ -1642,6 +1655,12 @@ function validateMobileEvidence(report, manifest) {
         `provider=${provider}`,
         `native_required=${nativeRequired}`,
         `unique_iv=${uniqueIV}`,
+        `key_disposed=${keyDisposed}`,
+        `disposed_handle_rejected=${disposedHandleRejected}`,
+        `revoked_key_rejected=${revokedKeyRejected}`,
+        `passphrase_buffer_zeroized=${passphraseZeroized}`,
+        `salt_buffer_zeroized=${saltZeroized}`,
+        `plaintext_buffer_zeroized=${plaintextZeroized}`,
         `associated_data_salt_id=${associatedDataSaltID}`,
         `associated_data_salt_version=${associatedDataVersion}`,
       ]);

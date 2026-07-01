@@ -17,19 +17,25 @@ import (
 )
 
 var (
-	mobilePlatformsPattern             = regexp.MustCompile(`(?i)\bplatforms=([A-Za-z0-9_,.-]+)\b`)
-	mobileReleaseChannelPattern        = regexp.MustCompile(`(?i)\brelease_channel=([A-Za-z0-9_.:-]+)\b`)
-	mobileExpoProfilePattern           = regexp.MustCompile(`(?i)\bexpo_profile=([A-Za-z0-9_.:-]+)\b`)
-	mobileAPIBaseURLPattern            = regexp.MustCompile(`(?i)\bEXPO_PUBLIC_API_BASE_URL=(https://[^\s;,]+)\b`)
-	mobileWSBaseURLPattern             = regexp.MustCompile(`(?i)\bEXPO_PUBLIC_WS_BASE_URL=(wss://[^\s;,]+)\b`)
-	mobileRequireNativeCryptoPattern   = regexp.MustCompile(`(?i)\bEXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=(true|false)\b`)
-	mobileDeploymentEnvironmentPattern = regexp.MustCompile(`(?i)\bEXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=([A-Za-z0-9_.:-]+)\b`)
-	mobileProviderPattern              = regexp.MustCompile(`(?i)\bprovider=([A-Za-z0-9_.:-]+)\b`)
-	mobileNativeRequiredPattern        = regexp.MustCompile(`(?i)\bnative_required=(true|false)\b`)
-	mobileUniqueIVPattern              = regexp.MustCompile(`(?i)\bunique_iv=(true|false)\b`)
-	mobileBuildIDPattern               = regexp.MustCompile(`(?i)\bmobile_build_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
-	mobileAssociatedDataSaltIDPattern  = regexp.MustCompile(`(?i)\bassociated_data_salt_id=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b`)
-	mobileAssociatedDataVersionPattern = regexp.MustCompile(`(?i)\bassociated_data_salt_version=([1-9][0-9]*)\b`)
+	mobilePlatformsPattern              = regexp.MustCompile(`(?i)\bplatforms=([A-Za-z0-9_,.-]+)\b`)
+	mobileReleaseChannelPattern         = regexp.MustCompile(`(?i)\brelease_channel=([A-Za-z0-9_.:-]+)\b`)
+	mobileExpoProfilePattern            = regexp.MustCompile(`(?i)\bexpo_profile=([A-Za-z0-9_.:-]+)\b`)
+	mobileAPIBaseURLPattern             = regexp.MustCompile(`(?i)\bEXPO_PUBLIC_API_BASE_URL=(https://[^\s;,]+)\b`)
+	mobileWSBaseURLPattern              = regexp.MustCompile(`(?i)\bEXPO_PUBLIC_WS_BASE_URL=(wss://[^\s;,]+)\b`)
+	mobileRequireNativeCryptoPattern    = regexp.MustCompile(`(?i)\bEXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=(true|false)\b`)
+	mobileDeploymentEnvironmentPattern  = regexp.MustCompile(`(?i)\bEXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=([A-Za-z0-9_.:-]+)\b`)
+	mobileProviderPattern               = regexp.MustCompile(`(?i)\bprovider=([A-Za-z0-9_.:-]+)\b`)
+	mobileNativeRequiredPattern         = regexp.MustCompile(`(?i)\bnative_required=(true|false)\b`)
+	mobileUniqueIVPattern               = regexp.MustCompile(`(?i)\bunique_iv=(true|false)\b`)
+	mobileKeyDisposedPattern            = regexp.MustCompile(`(?i)\bkey_disposed=(true|false)\b`)
+	mobileDisposedHandleRejectedPattern = regexp.MustCompile(`(?i)\bdisposed_handle_rejected=(true|false)\b`)
+	mobileRevokedKeyRejectedPattern     = regexp.MustCompile(`(?i)\brevoked_key_rejected=(true|false)\b`)
+	mobilePassphraseZeroizedPattern     = regexp.MustCompile(`(?i)\bpassphrase_buffer_zeroized=(true|false)\b`)
+	mobileSaltZeroizedPattern           = regexp.MustCompile(`(?i)\bsalt_buffer_zeroized=(true|false)\b`)
+	mobilePlaintextZeroizedPattern      = regexp.MustCompile(`(?i)\bplaintext_buffer_zeroized=(true|false)\b`)
+	mobileBuildIDPattern                = regexp.MustCompile(`(?i)\bmobile_build_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
+	mobileAssociatedDataSaltIDPattern   = regexp.MustCompile(`(?i)\bassociated_data_salt_id=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b`)
+	mobileAssociatedDataVersionPattern  = regexp.MustCompile(`(?i)\bassociated_data_salt_version=([1-9][0-9]*)\b`)
 )
 
 type config struct {
@@ -54,25 +60,31 @@ type report struct {
 }
 
 type probeResult struct {
-	Name                  string `json:"name"`
-	Target                string `json:"target"`
-	Passed                bool   `json:"passed"`
-	StatusCode            int    `json:"status_code,omitempty"`
-	LatencyMS             int64  `json:"latency_ms,omitempty"`
-	Provider              string `json:"provider,omitempty"`
-	NativeRequired        *bool  `json:"native_required,omitempty"`
-	UniqueIV              *bool  `json:"unique_iv,omitempty"`
-	MobileBuildID         string `json:"mobile_build_id,omitempty"`
-	Platforms             string `json:"platforms,omitempty"`
-	ReleaseChannel        string `json:"release_channel,omitempty"`
-	ExpoProfile           string `json:"expo_profile,omitempty"`
-	APIBaseURL            string `json:"api_base_url,omitempty"`
-	WSBaseURL             string `json:"ws_base_url,omitempty"`
-	RequireNativeCrypto   string `json:"require_native_crypto,omitempty"`
-	DeploymentEnvironment string `json:"deployment_environment,omitempty"`
-	AssociatedDataSaltID  string `json:"associated_data_salt_id,omitempty"`
-	AssociatedDataVersion string `json:"associated_data_salt_version,omitempty"`
-	ResultSummary         string `json:"result_summary"`
+	Name                   string `json:"name"`
+	Target                 string `json:"target"`
+	Passed                 bool   `json:"passed"`
+	StatusCode             int    `json:"status_code,omitempty"`
+	LatencyMS              int64  `json:"latency_ms,omitempty"`
+	Provider               string `json:"provider,omitempty"`
+	NativeRequired         *bool  `json:"native_required,omitempty"`
+	UniqueIV               *bool  `json:"unique_iv,omitempty"`
+	KeyDisposed            *bool  `json:"key_disposed,omitempty"`
+	DisposedHandleRejected *bool  `json:"disposed_handle_rejected,omitempty"`
+	RevokedKeyRejected     *bool  `json:"revoked_key_rejected,omitempty"`
+	PassphraseZeroized     *bool  `json:"passphrase_buffer_zeroized,omitempty"`
+	SaltZeroized           *bool  `json:"salt_buffer_zeroized,omitempty"`
+	PlaintextZeroized      *bool  `json:"plaintext_buffer_zeroized,omitempty"`
+	MobileBuildID          string `json:"mobile_build_id,omitempty"`
+	Platforms              string `json:"platforms,omitempty"`
+	ReleaseChannel         string `json:"release_channel,omitempty"`
+	ExpoProfile            string `json:"expo_profile,omitempty"`
+	APIBaseURL             string `json:"api_base_url,omitempty"`
+	WSBaseURL              string `json:"ws_base_url,omitempty"`
+	RequireNativeCrypto    string `json:"require_native_crypto,omitempty"`
+	DeploymentEnvironment  string `json:"deployment_environment,omitempty"`
+	AssociatedDataSaltID   string `json:"associated_data_salt_id,omitempty"`
+	AssociatedDataVersion  string `json:"associated_data_salt_version,omitempty"`
+	ResultSummary          string `json:"result_summary"`
 }
 
 func main() {
@@ -147,7 +159,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 	}
 	probes := []probeResult{
 		probeArtifact(client, "mobile-eas-or-device-run", cfg.EASArtifactURL, append([]string{"staging artifact", "eas", "build", "finished", "android", "ios", "native device", "installed app", "release channel staging", "expo profile staging", "mobile_build_id="}, releaseMarkers...), []string{"development client only", "development client", "development build", "dev client", "debug client", "expo go", "simulator", "simulator only", "simulator run", "simulator validation", "emulator", "android emulator", "ios simulator", "remote debug", "mock", "placeholder", "dry-run", "local-only"}),
-		probeArtifact(client, "mobile-native-crypto-smoke", cfg.NativeCryptoSmokeURL, append([]string{"staging artifact", "runJournalCryptoSelfTest", "react-native-quick-crypto", "native provider", "native module loaded", "provider status react-native-quick-crypto", "provider=react-native-quick-crypto", "native-required true", "native_required=true", "mobile_build_id=", "AES-GCM", "round-trip", "unique_iv=true", "unique IV", "tamper rejected", "associated data", "wrong associated data rejected", "associated_data_salt_id=", "associated_data_salt_version=", "non-extractable", "provider-bound key", "fallback-derived key rejected", "key disposed", "disposed handle rejected", "revoked_key_rejected=true", "stale raw key rejected", "passphrase wiped", "passphrase buffer zeroized", "salt wiped", "salt buffer zeroized", "plaintext cleared", "plaintext buffer zeroized"}, releaseMarkers...), []string{"development client only", "development client", "development build", "dev client", "debug client", "expo go", "simulator", "simulator only", "simulator run", "simulator validation", "emulator", "android emulator", "ios simulator", "remote debug", "remote-debug", "node:webcrypto", "node webcrypto", "node crypto", "node.js crypto", "node crypto shim", "browser webcrypto", "global webcrypto", "globalthis.crypto", "crypto.subtle", "javascript fallback", "js fallback", "fallback webcrypto", "webcrypto fallback", "expo-crypto", "expo crypto", "placeholder", "mock", "local-only"}),
+		probeArtifact(client, "mobile-native-crypto-smoke", cfg.NativeCryptoSmokeURL, append([]string{"staging artifact", "runJournalCryptoSelfTest", "react-native-quick-crypto", "native provider", "native module loaded", "provider status react-native-quick-crypto", "provider=react-native-quick-crypto", "native-required true", "native_required=true", "mobile_build_id=", "AES-GCM", "round-trip", "unique_iv=true", "unique IV", "tamper rejected", "associated data", "wrong associated data rejected", "associated_data_salt_id=", "associated_data_salt_version=", "non-extractable", "provider-bound key", "fallback-derived key rejected", "key disposed", "key_disposed=true", "disposed handle rejected", "disposed_handle_rejected=true", "revoked_key_rejected=true", "stale raw key rejected", "passphrase wiped", "passphrase buffer zeroized", "passphrase_buffer_zeroized=true", "salt wiped", "salt buffer zeroized", "salt_buffer_zeroized=true", "plaintext cleared", "plaintext buffer zeroized", "plaintext_buffer_zeroized=true"}, releaseMarkers...), []string{"development client only", "development client", "development build", "dev client", "debug client", "expo go", "simulator", "simulator only", "simulator run", "simulator validation", "emulator", "android emulator", "ios simulator", "remote debug", "remote-debug", "node:webcrypto", "node webcrypto", "node crypto", "node.js crypto", "node crypto shim", "browser webcrypto", "global webcrypto", "globalthis.crypto", "crypto.subtle", "javascript fallback", "js fallback", "fallback webcrypto", "webcrypto fallback", "expo-crypto", "expo crypto", "placeholder", "mock", "local-only"}),
 		probeArtifact(client, "mobile-staging-config", cfg.StagingConfigProofURL, append([]string{"staging artifact", "EXPO_PUBLIC_API_BASE_URL", "EXPO_PUBLIC_WS_BASE_URL", "EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true", "EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging", "mobile_build_id=", "https://", "wss://", "staging"}, releaseMarkers...), []string{"localhost", "127.0.0.1", "10.", "172.16.", "192.168.", "169.254.", "0.0.0.0", "[::1]", "local-only", "https://api.scriptureforge.com", "wss://api.scriptureforge.com", "EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=false", "EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO = false", "EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=development", "EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=local"}),
 	}
 	enforceMobileBuildLinkage(probes)
@@ -215,6 +227,12 @@ func probeArtifact(client *http.Client, name, target string, required []string, 
 	mobileBuildID := ""
 	var nativeRequiredValue *bool
 	var uniqueIVValue *bool
+	var keyDisposedValue *bool
+	var disposedHandleRejectedValue *bool
+	var revokedKeyRejectedValue *bool
+	var passphraseZeroizedValue *bool
+	var saltZeroizedValue *bool
+	var plaintextZeroizedValue *bool
 	associatedDataSaltID := ""
 	associatedDataVersion := ""
 	if name == "mobile-eas-or-device-run" {
@@ -231,6 +249,12 @@ func probeArtifact(client *http.Client, name, target string, required []string, 
 		provider = extractMatch(text, mobileProviderPattern)
 		nativeRequired = extractMatch(text, mobileNativeRequiredPattern)
 		uniqueIV = extractMatch(text, mobileUniqueIVPattern)
+		keyDisposed := extractMatch(text, mobileKeyDisposedPattern)
+		disposedHandleRejected := extractMatch(text, mobileDisposedHandleRejectedPattern)
+		revokedKeyRejected := extractMatch(text, mobileRevokedKeyRejectedPattern)
+		passphraseZeroized := extractMatch(text, mobilePassphraseZeroizedPattern)
+		saltZeroized := extractMatch(text, mobileSaltZeroizedPattern)
+		plaintextZeroized := extractMatch(text, mobilePlaintextZeroizedPattern)
 		associatedDataSaltID = extractMatch(text, mobileAssociatedDataSaltIDPattern)
 		associatedDataVersion = extractMatch(text, mobileAssociatedDataVersionPattern)
 		if nativeRequired != "" {
@@ -241,7 +265,31 @@ func probeArtifact(client *http.Client, name, target string, required []string, 
 			value := uniqueIV == "true"
 			uniqueIVValue = &value
 		}
-		if mobileBuildID == "" || provider != "react-native-quick-crypto" || nativeRequired != "true" || uniqueIV != "true" || associatedDataSaltID == "" || associatedDataVersion == "" {
+		if keyDisposed != "" {
+			value := keyDisposed == "true"
+			keyDisposedValue = &value
+		}
+		if disposedHandleRejected != "" {
+			value := disposedHandleRejected == "true"
+			disposedHandleRejectedValue = &value
+		}
+		if revokedKeyRejected != "" {
+			value := revokedKeyRejected == "true"
+			revokedKeyRejectedValue = &value
+		}
+		if passphraseZeroized != "" {
+			value := passphraseZeroized == "true"
+			passphraseZeroizedValue = &value
+		}
+		if saltZeroized != "" {
+			value := saltZeroized == "true"
+			saltZeroizedValue = &value
+		}
+		if plaintextZeroized != "" {
+			value := plaintextZeroized == "true"
+			plaintextZeroizedValue = &value
+		}
+		if mobileBuildID == "" || provider != "react-native-quick-crypto" || nativeRequired != "true" || uniqueIV != "true" || keyDisposed != "true" || disposedHandleRejected != "true" || revokedKeyRejected != "true" || passphraseZeroized != "true" || saltZeroized != "true" || plaintextZeroized != "true" || associatedDataSaltID == "" || associatedDataVersion == "" {
 			passed = false
 		}
 	}
@@ -268,13 +316,17 @@ func probeArtifact(client *http.Client, name, target string, required []string, 
 			summary += fmt.Sprintf(", mobile_build_id=%s, platforms=%s, release_channel=%s, expo_profile=%s", mobileBuildID, platforms, releaseChannel, expoProfile)
 		}
 		if name == "mobile-native-crypto-smoke" {
-			summary += fmt.Sprintf(", mobile_build_id=%s, provider=%s, native_required=%s, unique_iv=%s, associated_data_salt_id=%s, associated_data_salt_version=%s", mobileBuildID, provider, nativeRequired, uniqueIV, associatedDataSaltID, associatedDataVersion)
+			summary += fmt.Sprintf(", mobile_build_id=%s, provider=%s, native_required=%s, unique_iv=%s, key_disposed=%t, disposed_handle_rejected=%t, revoked_key_rejected=%t, passphrase_buffer_zeroized=%t, salt_buffer_zeroized=%t, plaintext_buffer_zeroized=%t, associated_data_salt_id=%s, associated_data_salt_version=%s", mobileBuildID, provider, nativeRequired, uniqueIV, boolPointerValue(keyDisposedValue), boolPointerValue(disposedHandleRejectedValue), boolPointerValue(revokedKeyRejectedValue), boolPointerValue(passphraseZeroizedValue), boolPointerValue(saltZeroizedValue), boolPointerValue(plaintextZeroizedValue), associatedDataSaltID, associatedDataVersion)
 		}
 		if name == "mobile-staging-config" {
 			summary += fmt.Sprintf(", mobile_build_id=%s, EXPO_PUBLIC_API_BASE_URL=%s, EXPO_PUBLIC_WS_BASE_URL=%s, EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=%s, EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=%s", mobileBuildID, apiBaseURL, wsBaseURL, requireNativeCrypto, deploymentEnvironment)
 		}
 	}
-	return probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, Provider: provider, NativeRequired: nativeRequiredValue, UniqueIV: uniqueIVValue, MobileBuildID: mobileBuildID, Platforms: platforms, ReleaseChannel: releaseChannel, ExpoProfile: expoProfile, APIBaseURL: apiBaseURL, WSBaseURL: wsBaseURL, RequireNativeCrypto: requireNativeCrypto, DeploymentEnvironment: deploymentEnvironment, AssociatedDataSaltID: associatedDataSaltID, AssociatedDataVersion: associatedDataVersion, ResultSummary: summary}
+	return probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, Provider: provider, NativeRequired: nativeRequiredValue, UniqueIV: uniqueIVValue, KeyDisposed: keyDisposedValue, DisposedHandleRejected: disposedHandleRejectedValue, RevokedKeyRejected: revokedKeyRejectedValue, PassphraseZeroized: passphraseZeroizedValue, SaltZeroized: saltZeroizedValue, PlaintextZeroized: plaintextZeroizedValue, MobileBuildID: mobileBuildID, Platforms: platforms, ReleaseChannel: releaseChannel, ExpoProfile: expoProfile, APIBaseURL: apiBaseURL, WSBaseURL: wsBaseURL, RequireNativeCrypto: requireNativeCrypto, DeploymentEnvironment: deploymentEnvironment, AssociatedDataSaltID: associatedDataSaltID, AssociatedDataVersion: associatedDataVersion, ResultSummary: summary}
+}
+
+func boolPointerValue(value *bool) bool {
+	return value != nil && *value
 }
 
 func enforceMobileBuildLinkage(probes []probeResult) {

@@ -112,6 +112,12 @@ const mobileRequireNativeCryptoPattern = /\bEXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=tr
 const mobileDeploymentEnvironmentPattern = /\bEXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging\b/i;
 const mobileNativeProviderPattern = /\bprovider=([A-Za-z0-9_.:-]+)\b/i;
 const mobileNativeRequiredPattern = /\bnative_required=(true|false)\b/i;
+const mobileKeyDisposedPattern = /\bkey_disposed=true\b/i;
+const mobileDisposedHandleRejectedPattern = /\bdisposed_handle_rejected=true\b/i;
+const mobileRevokedKeyRejectedPattern = /\brevoked_key_rejected=true\b/i;
+const mobilePassphraseZeroizedPattern = /\bpassphrase_buffer_zeroized=true\b/i;
+const mobileSaltZeroizedPattern = /\bsalt_buffer_zeroized=true\b/i;
+const mobilePlaintextZeroizedPattern = /\bplaintext_buffer_zeroized=true\b/i;
 const mobileBuildIDPattern = /\bmobile_build_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const mobileAssociatedDataSaltIDPattern = /\bassociated_data_salt_id=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b/i;
 const mobileAssociatedDataVersionPattern = /\bassociated_data_salt_version=([1-9][0-9]*)\b/i;
@@ -340,7 +346,7 @@ const rustSegmentMarkerRequirements = new Map([
 ]);
 const mobileSegmentMarkerRequirements = new Map([
   ['mobile-eas-or-device-run', ['staging artifact', 'eas', 'build', 'finished', 'android', 'ios', 'native device', 'installed app', 'release channel staging', 'expo profile staging', 'mobile_build_id=', 'distinct_mobile_artifacts=true', 'release_candidate=', 'service_version=']],
-  ['mobile-native-crypto-smoke', ['staging artifact', 'runJournalCryptoSelfTest', 'react-native-quick-crypto', 'native provider', 'native module loaded', 'provider status react-native-quick-crypto', 'provider=react-native-quick-crypto', 'native-required true', 'native_required=true', 'mobile_build_id=', 'AES-GCM', 'round-trip', 'unique_iv=true', 'unique IV', 'tamper rejected', 'associated data', 'wrong associated data rejected', 'associated_data_salt_id=', 'associated_data_salt_version=', 'non-extractable', 'provider-bound key', 'fallback-derived key rejected', 'key disposed', 'disposed handle rejected', 'revoked_key_rejected=true', 'stale raw key rejected', 'passphrase wiped', 'passphrase buffer zeroized', 'salt wiped', 'salt buffer zeroized', 'plaintext cleared', 'plaintext buffer zeroized', 'distinct_mobile_artifacts=true', 'release_candidate=', 'service_version=']],
+  ['mobile-native-crypto-smoke', ['staging artifact', 'runJournalCryptoSelfTest', 'react-native-quick-crypto', 'native provider', 'native module loaded', 'provider status react-native-quick-crypto', 'provider=react-native-quick-crypto', 'native-required true', 'native_required=true', 'mobile_build_id=', 'AES-GCM', 'round-trip', 'unique_iv=true', 'unique IV', 'tamper rejected', 'associated data', 'wrong associated data rejected', 'associated_data_salt_id=', 'associated_data_salt_version=', 'non-extractable', 'provider-bound key', 'fallback-derived key rejected', 'key disposed', 'key_disposed=true', 'disposed handle rejected', 'disposed_handle_rejected=true', 'revoked_key_rejected=true', 'stale raw key rejected', 'passphrase wiped', 'passphrase buffer zeroized', 'passphrase_buffer_zeroized=true', 'salt wiped', 'salt buffer zeroized', 'salt_buffer_zeroized=true', 'plaintext cleared', 'plaintext buffer zeroized', 'plaintext_buffer_zeroized=true', 'distinct_mobile_artifacts=true', 'release_candidate=', 'service_version=']],
   ['mobile-staging-config', ['staging artifact', 'EXPO_PUBLIC_API_BASE_URL', 'EXPO_PUBLIC_WS_BASE_URL', 'EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true', 'EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging', 'mobile_build_id=', 'https://', 'wss://', 'staging', 'distinct_mobile_artifacts=true', 'release_candidate=', 'service_version=']],
 ]);
 
@@ -1741,6 +1747,36 @@ function validateStrictReleaseItemEvidence(item, manifest) {
     const nativeRequired = cryptoSegment.match(mobileNativeRequiredPattern)?.[1] ?? '';
     assert.equal(nativeProvider, 'react-native-quick-crypto', 'CLIENT-MOBILE-001 mobile-native-crypto-smoke must bind first provider marker to react-native-quick-crypto');
     assert.equal(nativeRequired, 'true', 'CLIENT-MOBILE-001 mobile-native-crypto-smoke must bind first native_required marker to true');
+    assert.match(
+      cryptoSegment,
+      mobileKeyDisposedPattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include key_disposed=true',
+    );
+    assert.match(
+      cryptoSegment,
+      mobileDisposedHandleRejectedPattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include disposed_handle_rejected=true',
+    );
+    assert.match(
+      cryptoSegment,
+      mobileRevokedKeyRejectedPattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include revoked_key_rejected=true',
+    );
+    assert.match(
+      cryptoSegment,
+      mobilePassphraseZeroizedPattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include passphrase_buffer_zeroized=true',
+    );
+    assert.match(
+      cryptoSegment,
+      mobileSaltZeroizedPattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include salt_buffer_zeroized=true',
+    );
+    assert.match(
+      cryptoSegment,
+      mobilePlaintextZeroizedPattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include plaintext_buffer_zeroized=true',
+    );
     assert.match(
       cryptoSegment,
       mobileAssociatedDataSaltIDPattern,
