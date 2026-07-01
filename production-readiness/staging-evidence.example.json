@@ -177,7 +177,7 @@
       "status": "pending_external",
       "description": "Deployed web app completes browser smoke flows against staging API and WebSocket endpoints.",
       "required_evidence": [
-        "tools/stagingprobe JSON report with CLIENT-WEB-001 evidence item, report-level load_run_id=<same load run>, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers",
+        "tools/stagingprobe JSON report with CLIENT-WEB-001 evidence item, report-level load_run_id=<same load run>, report-level web_user_id=<id> and web_organization_id=<id> matching all browser smoke segments, report-level web_journal_id=<id> and web_room_id=<id> matching journal/room browser smoke segments, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers",
         "HTTPS browser smoke artifact for login/register flow with concrete user_id and organization_id markers, distinct_web_artifacts=true, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers",
         "HTTPS browser smoke artifact for journal save/load flow proving encrypted payloads, plaintext absence, associated-data binding, wrong associated data rejection, concrete user_id, organization_id, and journal_id markers, distinct_web_artifacts=true, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers",
         "HTTPS browser smoke artifact for room create/select/WebSocket flow with concrete user_id, organization_id, and room_id markers, distinct_web_artifacts=true, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers",

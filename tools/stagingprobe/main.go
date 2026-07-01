@@ -41,20 +41,24 @@ type config struct {
 }
 
 type report struct {
-	ObservedAt       string        `json:"observed_at"`
-	APITarget        string        `json:"api_target,omitempty"`
-	WebTarget        string        `json:"web_target,omitempty"`
-	DNSArtifact      string        `json:"dns_artifact_url"`
-	ACMArtifact      string        `json:"acm_artifact_url"`
-	WebAuthSmoke     string        `json:"web_auth_smoke_url,omitempty"`
-	WebJournalSmoke  string        `json:"web_journal_smoke_url,omitempty"`
-	WebRoomSmoke     string        `json:"web_room_smoke_url,omitempty"`
-	ReleaseCandidate string        `json:"release_candidate,omitempty"`
-	ServiceVersion   string        `json:"service_version,omitempty"`
-	LoadRunID        string        `json:"load_run_id,omitempty"`
-	ThresholdPass    bool          `json:"threshold_pass"`
-	Probes           []probeResult `json:"probes"`
-	EvidenceItems    []string      `json:"evidence_items"`
+	ObservedAt        string        `json:"observed_at"`
+	APITarget         string        `json:"api_target,omitempty"`
+	WebTarget         string        `json:"web_target,omitempty"`
+	DNSArtifact       string        `json:"dns_artifact_url"`
+	ACMArtifact       string        `json:"acm_artifact_url"`
+	WebAuthSmoke      string        `json:"web_auth_smoke_url,omitempty"`
+	WebJournalSmoke   string        `json:"web_journal_smoke_url,omitempty"`
+	WebRoomSmoke      string        `json:"web_room_smoke_url,omitempty"`
+	WebUserID         string        `json:"web_user_id,omitempty"`
+	WebOrganizationID string        `json:"web_organization_id,omitempty"`
+	WebJournalID      string        `json:"web_journal_id,omitempty"`
+	WebRoomID         string        `json:"web_room_id,omitempty"`
+	ReleaseCandidate  string        `json:"release_candidate,omitempty"`
+	ServiceVersion    string        `json:"service_version,omitempty"`
+	LoadRunID         string        `json:"load_run_id,omitempty"`
+	ThresholdPass     bool          `json:"threshold_pass"`
+	Probes            []probeResult `json:"probes"`
+	EvidenceItems     []string      `json:"evidence_items"`
 }
 
 type probeResult struct {
@@ -216,22 +220,27 @@ func run(cfg config, output io.Writer) error {
 		evidenceItems = appendEvidenceItem(evidenceItems, "CLIENT-WEB-001")
 		cfg.WebBase = webBase
 	}
+	webUserID, webOrganizationID, webJournalID, webRoomID := linkedWebSmokeIDs(results)
 
 	result := report{
-		ObservedAt:       time.Now().UTC().Format("2006-01-02T15:04:05Z"),
-		APITarget:        cfg.APIBase,
-		WebTarget:        cfg.WebBase,
-		DNSArtifact:      dnsArtifact,
-		ACMArtifact:      acmArtifact,
-		WebAuthSmoke:     webAuthSmoke,
-		WebJournalSmoke:  webJournalSmoke,
-		WebRoomSmoke:     webRoomSmoke,
-		ReleaseCandidate: cfg.ReleaseCandidate,
-		ServiceVersion:   cfg.ServiceVersion,
-		LoadRunID:        cfg.LoadRunID,
-		ThresholdPass:    true,
-		Probes:           results,
-		EvidenceItems:    evidenceItems,
+		ObservedAt:        time.Now().UTC().Format("2006-01-02T15:04:05Z"),
+		APITarget:         cfg.APIBase,
+		WebTarget:         cfg.WebBase,
+		DNSArtifact:       dnsArtifact,
+		ACMArtifact:       acmArtifact,
+		WebAuthSmoke:      webAuthSmoke,
+		WebJournalSmoke:   webJournalSmoke,
+		WebRoomSmoke:      webRoomSmoke,
+		WebUserID:         webUserID,
+		WebOrganizationID: webOrganizationID,
+		WebJournalID:      webJournalID,
+		WebRoomID:         webRoomID,
+		ReleaseCandidate:  cfg.ReleaseCandidate,
+		ServiceVersion:    cfg.ServiceVersion,
+		LoadRunID:         cfg.LoadRunID,
+		ThresholdPass:     true,
+		Probes:            results,
+		EvidenceItems:     evidenceItems,
 	}
 	for _, probe := range results {
 		if !probe.Passed {
@@ -510,6 +519,45 @@ func enforceWebSmokeIdentityLinkage(results []probeResult) {
 		results[i].Passed = false
 		results[i].ResultSummary += "; web smoke user_id/organization_id did not match auth browser smoke"
 	}
+}
+
+func linkedWebSmokeIDs(results []probeResult) (string, string, string, string) {
+	userID := ""
+	organizationID := ""
+	journalID := ""
+	roomID := ""
+	for i := range results {
+		if !results[i].Passed {
+			continue
+		}
+		switch results[i].Name {
+		case "web-auth-browser-smoke":
+			userID = results[i].UserID
+			organizationID = results[i].OrganizationID
+		case "web-journal-browser-smoke":
+			if userID != "" && (results[i].UserID != userID || results[i].OrganizationID != organizationID) {
+				return "", "", "", ""
+			}
+			if userID == "" {
+				userID = results[i].UserID
+				organizationID = results[i].OrganizationID
+			}
+			journalID = results[i].JournalID
+		case "web-room-browser-smoke":
+			if userID != "" && (results[i].UserID != userID || results[i].OrganizationID != organizationID) {
+				return "", "", "", ""
+			}
+			if userID == "" {
+				userID = results[i].UserID
+				organizationID = results[i].OrganizationID
+			}
+			roomID = results[i].RoomID
+		}
+	}
+	if userID == "" || organizationID == "" || journalID == "" || roomID == "" {
+		return "", "", "", ""
+	}
+	return userID, organizationID, journalID, roomID
 }
 
 func probePostJSON(client *http.Client, name, target string, body []byte, headers map[string]string, expectedStatus int) probeResult {

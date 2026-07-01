@@ -183,6 +183,16 @@ function webSmokeProbes(releaseCandidate = '', serviceVersion = '', overridesByP
   ];
 }
 
+function webSmokeReportIDs(overrides = {}) {
+  return {
+    web_user_id: 'user-staging',
+    web_organization_id: 'org-staging',
+    web_journal_id: 'journal-staging',
+    web_room_id: 'room-staging',
+    ...overrides,
+  };
+}
+
 const securityProbeMarkerSummaries = {
   'irsa-service-account': 'got HTTP 200; verified markers: staging artifact, namespace=staging, service_account=scriptureforge-api, role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets, eks.amazonaws.com/role-arn, scriptureforge, trust policy, sts:AssumeRoleWithWebIdentity, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
   'secret-provider-class': 'got HTTP 200; verified markers: staging artifact, namespace=staging, service_account=scriptureforge-api, role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets, SecretProviderClass, secrets-store.csi.k8s.io, provider, aws, objects, objectName, objectType, secretsmanager, objectAlias, jmesPath, secretObjects, type, Opaque, DATABASE_URL, JWT_SECRET_KEY, OPENAI_API_KEY, ZOOM_WEBHOOK_SECRET_TOKEN, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
@@ -747,6 +757,7 @@ test('recordEvidence marks referenced manifest items as passed with artifact det
     web_auth_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/auth-smoke.txt',
     web_journal_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/journal-smoke.txt',
     web_room_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/room-smoke.txt',
+    ...webSmokeReportIDs(),
     probes: [
       { name: 'web-root', passed: true, target: 'https://app.staging.scriptureforge.ai', status_code: 200, result_summary: stagingProbeMarkerSummaries['web-root'] },
       { name: 'web-tls', passed: true, target: 'https://app.staging.scriptureforge.ai', tls_version: 'TLS1.3', cert_not_after: '2026-12-25T00:00:00Z', cert_hostname: 'app.staging.scriptureforge.ai', cert_issuer: 'Amazon_RSA_2048_M02', result_summary: stagingProbeMarkerSummaries['web-tls'] },
@@ -997,6 +1008,7 @@ test('recordEvidence rejects web client evidence without browser smoke artifacts
         load_run_id: 'load-run-123',
         evidence_items: ['CLIENT-WEB-001'],
         web_target: 'https://app.staging.scriptureforge.ai',
+        ...webSmokeReportIDs(),
         probes: [
           { name: 'web-root', passed: true, target: 'https://app.staging.scriptureforge.ai', status_code: 200, result_summary: stagingProbeMarkerSummaries['web-root'] },
           { name: 'web-tls', passed: true, target: 'https://app.staging.scriptureforge.ai', tls_version: 'TLS1.3', cert_not_after: '2026-12-25T00:00:00Z', cert_hostname: 'app.staging.scriptureforge.ai', cert_issuer: 'Amazon_RSA_2048_M02', result_summary: stagingProbeMarkerSummaries['web-tls'] },
@@ -1023,6 +1035,7 @@ test('recordEvidence rejects web client evidence with reused browser smoke artif
         web_auth_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/auth-smoke.txt',
         web_journal_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/auth-smoke.txt',
         web_room_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/room-smoke.txt',
+        ...webSmokeReportIDs(),
         probes: [
           { name: 'web-root', passed: true, target: 'https://app.staging.scriptureforge.ai', status_code: 200, result_summary: stagingProbeMarkerSummaries['web-root'] },
           { name: 'web-tls', passed: true, target: 'https://app.staging.scriptureforge.ai', tls_version: 'TLS1.3', cert_not_after: '2026-12-25T00:00:00Z', cert_hostname: 'app.staging.scriptureforge.ai', cert_issuer: 'Amazon_RSA_2048_M02', result_summary: stagingProbeMarkerSummaries['web-tls'] },
@@ -1619,6 +1632,7 @@ test('recordEvidence rejects web client evidence without browser smoke marker su
         web_auth_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/auth-smoke.txt',
         web_journal_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/journal-smoke.txt',
         web_room_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/room-smoke.txt',
+        ...webSmokeReportIDs(),
         probes: [
           { name: 'web-root', passed: true, target: 'https://app.staging.scriptureforge.ai', status_code: 200, result_summary: stagingProbeMarkerSummaries['web-root'] },
           { name: 'web-tls', passed: true, target: 'https://app.staging.scriptureforge.ai', tls_version: 'TLS1.3', cert_not_after: '2026-12-25T00:00:00Z', cert_hostname: 'app.staging.scriptureforge.ai', cert_issuer: 'Amazon_RSA_2048_M02', result_summary: stagingProbeMarkerSummaries['web-tls'] },
@@ -1653,6 +1667,7 @@ test('recordEvidence rejects web client evidence without per-smoke distinct arti
         web_auth_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/auth-smoke.txt',
         web_journal_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/journal-smoke.txt',
         web_room_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/room-smoke.txt',
+        ...webSmokeReportIDs(),
         probes: [
           { name: 'web-root', passed: true, target: 'https://app.staging.scriptureforge.ai', status_code: 200, result_summary: stagingProbeMarkerSummaries['web-root'] },
           { name: 'web-tls', passed: true, target: 'https://app.staging.scriptureforge.ai', tls_version: 'TLS1.3', cert_not_after: '2026-12-25T00:00:00Z', cert_hostname: 'app.staging.scriptureforge.ai', cert_issuer: 'Amazon_RSA_2048_M02', result_summary: stagingProbeMarkerSummaries['web-tls'] },
@@ -1687,6 +1702,7 @@ test('recordEvidence rejects web client smoke evidence with hardcoded production
         web_auth_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/auth-smoke.txt',
         web_journal_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/journal-smoke.txt',
         web_room_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/room-smoke.txt',
+        ...webSmokeReportIDs(),
         probes: [
           { name: 'web-root', passed: true, target: 'https://app.staging.scriptureforge.ai', status_code: 200, result_summary: stagingProbeMarkerSummaries['web-root'] },
           { name: 'web-tls', passed: true, target: 'https://app.staging.scriptureforge.ai', tls_version: 'TLS1.3', cert_not_after: '2026-12-25T00:00:00Z', cert_hostname: 'app.staging.scriptureforge.ai', cert_issuer: 'Amazon_RSA_2048_M02', result_summary: stagingProbeMarkerSummaries['web-tls'] },
@@ -1723,6 +1739,7 @@ test('recordEvidence rejects web client evidence without structured browser smok
         web_auth_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/auth-smoke.txt',
         web_journal_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/journal-smoke.txt',
         web_room_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/room-smoke.txt',
+        ...webSmokeReportIDs(),
         probes: [
           { name: 'web-root', passed: true, target: 'https://app.staging.scriptureforge.ai', status_code: 200, result_summary: stagingProbeMarkerSummaries['web-root'] },
           { name: 'web-tls', passed: true, target: 'https://app.staging.scriptureforge.ai', tls_version: 'TLS1.3', cert_not_after: '2026-12-25T00:00:00Z', cert_hostname: 'app.staging.scriptureforge.ai', cert_issuer: 'Amazon_RSA_2048_M02', result_summary: stagingProbeMarkerSummaries['web-tls'] },
@@ -1752,6 +1769,7 @@ test('recordEvidence rejects web client evidence with mismatched browser smoke u
         web_auth_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/auth-smoke.txt',
         web_journal_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/journal-smoke.txt',
         web_room_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/room-smoke.txt',
+        ...webSmokeReportIDs(),
         probes: [
           { name: 'web-root', passed: true, target: 'https://app.staging.scriptureforge.ai', status_code: 200, result_summary: stagingProbeMarkerSummaries['web-root'] },
           { name: 'web-tls', passed: true, target: 'https://app.staging.scriptureforge.ai', tls_version: 'TLS1.3', cert_not_after: '2026-12-25T00:00:00Z', cert_hostname: 'app.staging.scriptureforge.ai', cert_issuer: 'Amazon_RSA_2048_M02', result_summary: stagingProbeMarkerSummaries['web-tls'] },
@@ -1767,7 +1785,35 @@ test('recordEvidence rejects web client evidence with mismatched browser smoke u
       'artifacts/stagingprobe.json',
       'go run ./tools/stagingprobe',
     ),
-    /web-room-browser-smoke user_id must match web-auth-browser-smoke/,
+    /web-room-browser-smoke user_id must match report web_user_id/,
+  );
+});
+
+test('recordEvidence rejects web client evidence with mismatched report smoke identity', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'CLIENT-WEB-001' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        load_run_id: 'load-run-123',
+        evidence_items: ['CLIENT-WEB-001'],
+        web_target: 'https://app.staging.scriptureforge.ai',
+        web_auth_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/auth-smoke.txt',
+        web_journal_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/journal-smoke.txt',
+        web_room_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/room-smoke.txt',
+        ...webSmokeReportIDs({ web_room_id: 'room-other' }),
+        probes: [
+          { name: 'web-root', passed: true, target: 'https://app.staging.scriptureforge.ai', status_code: 200, result_summary: stagingProbeMarkerSummaries['web-root'] },
+          { name: 'web-tls', passed: true, target: 'https://app.staging.scriptureforge.ai', tls_version: 'TLS1.3', cert_not_after: '2026-12-25T00:00:00Z', cert_hostname: 'app.staging.scriptureforge.ai', cert_issuer: 'Amazon_RSA_2048_M02', result_summary: stagingProbeMarkerSummaries['web-tls'] },
+          { name: 'web-http-redirect', passed: true, target: 'http://app.staging.scriptureforge.ai', status_code: 301, redirect_to: 'https://app.staging.scriptureforge.ai', result_summary: stagingProbeMarkerSummaries['web-http-redirect'] },
+          ...webSmokeProbes(),
+        ],
+      },
+      'artifacts/stagingprobe.json',
+      'go run ./tools/stagingprobe',
+    ),
+    /web-room-browser-smoke room_id must match report web_room_id/,
   );
 });
 
@@ -4434,6 +4480,7 @@ test('recordEvidence records production-grade TLS and web reachability evidence'
       web_auth_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/auth-smoke.txt',
       web_journal_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/journal-smoke.txt',
       web_room_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/room-smoke.txt',
+      ...webSmokeReportIDs(),
       probes: [
         { name: 'api-live', passed: true, target: 'https://api.staging.scriptureforge.ai/live', status_code: 200, result_summary: stagingProbeMarkerSummaries['api-live'] },
         { name: 'api-ready', passed: true, target: 'https://api.staging.scriptureforge.ai/ready', status_code: 200, result_summary: stagingProbeMarkerSummaries['api-ready'] },
@@ -4496,6 +4543,7 @@ test('recordEvidence rejects web evidence with only summary load run identity', 
         web_auth_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/auth-smoke.txt',
         web_journal_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/journal-smoke.txt',
         web_room_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/room-smoke.txt',
+        ...webSmokeReportIDs(),
         probes: [
           { name: 'web-root', passed: true, target: 'https://app.staging.scriptureforge.ai', status_code: 200, result_summary: stagingProbeMarkerSummaries['web-root'] },
           { name: 'web-tls', passed: true, target: 'https://app.staging.scriptureforge.ai', tls_version: 'TLS1.3', cert_not_after: '2026-12-25T00:00:00Z', cert_hostname: 'app.staging.scriptureforge.ai', cert_issuer: 'Amazon_RSA_2048_M02', result_summary: stagingProbeMarkerSummaries['web-tls'] },
@@ -4684,6 +4732,7 @@ test('recordEvidence rejects TLS and web reports without verified marker summari
         web_auth_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/auth-smoke.txt',
         web_journal_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/journal-smoke.txt',
         web_room_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/room-smoke.txt',
+        ...webSmokeReportIDs(),
         probes: [
           { name: 'api-live', passed: true, target: 'https://api.staging.scriptureforge.ai/live', status_code: 200, result_summary: 'got HTTP 200; verified markers: load_run_id=load-run-123' },
           { name: 'api-ready', passed: true, target: 'https://api.staging.scriptureforge.ai/ready', status_code: 200, result_summary: stagingProbeMarkerSummaries['api-ready'] },

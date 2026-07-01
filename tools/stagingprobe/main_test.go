@@ -195,6 +195,26 @@ func TestEnforceWebSmokeIdentityLinkageRejectsMismatchedJournalOrRoom(t *testing
 	}
 }
 
+func TestLinkedWebSmokeIDsRequireOneBrowserSmokeIdentity(t *testing.T) {
+	userID, organizationID, journalID, roomID := linkedWebSmokeIDs([]probeResult{
+		{Name: "web-auth-browser-smoke", Passed: true, UserID: "user-staging", OrganizationID: "org-staging"},
+		{Name: "web-journal-browser-smoke", Passed: true, UserID: "user-staging", OrganizationID: "org-staging", JournalID: "journal-staging"},
+		{Name: "web-room-browser-smoke", Passed: true, UserID: "user-staging", OrganizationID: "org-staging", RoomID: "room-staging"},
+	})
+	if userID != "user-staging" || organizationID != "org-staging" || journalID != "journal-staging" || roomID != "room-staging" {
+		t.Fatalf("unexpected linked web smoke IDs: user=%q org=%q journal=%q room=%q", userID, organizationID, journalID, roomID)
+	}
+
+	userID, organizationID, journalID, roomID = linkedWebSmokeIDs([]probeResult{
+		{Name: "web-auth-browser-smoke", Passed: true, UserID: "user-staging", OrganizationID: "org-staging"},
+		{Name: "web-journal-browser-smoke", Passed: true, UserID: "user-staging", OrganizationID: "org-staging", JournalID: "journal-staging"},
+		{Name: "web-room-browser-smoke", Passed: true, UserID: "user-other", OrganizationID: "org-staging", RoomID: "room-staging"},
+	})
+	if userID != "" || organizationID != "" || journalID != "" || roomID != "" {
+		t.Fatalf("mismatched web smoke identity should not be reportable: user=%q org=%q journal=%q room=%q", userID, organizationID, journalID, roomID)
+	}
+}
+
 func TestProbeArtifactContainsRejectsMarkerLightOrMockArtifacts(t *testing.T) {
 	for _, tc := range []struct {
 		name string

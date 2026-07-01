@@ -1261,6 +1261,14 @@ function validateWebClientEvidence(report, manifest) {
   assertReportReleaseMatchesManifest(report, manifest, 'CLIENT-WEB-001');
   const reportLoadRunID = String(report.load_run_id ?? '').trim();
   assert.ok(reportLoadRunID, 'CLIENT-WEB-001 report must include load_run_id');
+  const reportWebUserID = String(report.web_user_id ?? '').trim();
+  const reportWebOrganizationID = String(report.web_organization_id ?? '').trim();
+  const reportWebJournalID = String(report.web_journal_id ?? '').trim();
+  const reportWebRoomID = String(report.web_room_id ?? '').trim();
+  assert.match(reportWebUserID, tenantResourceIDPattern, 'CLIENT-WEB-001 report must include structured web_user_id');
+  assert.match(reportWebOrganizationID, tenantResourceIDPattern, 'CLIENT-WEB-001 report must include structured web_organization_id');
+  assert.match(reportWebJournalID, tenantResourceIDPattern, 'CLIENT-WEB-001 report must include structured web_journal_id');
+  assert.match(reportWebRoomID, tenantResourceIDPattern, 'CLIENT-WEB-001 report must include structured web_room_id');
   const reportReleaseMarkers = [];
   if (String(report.release_candidate ?? '').trim() || String(report.service_version ?? '').trim()) {
     reportReleaseMarkers.push(
@@ -1315,15 +1323,19 @@ function validateWebClientEvidence(report, manifest) {
     assert.match(userID, tenantResourceIDPattern, `${probeName} probe must include structured user_id`);
     assert.match(organizationID, tenantResourceIDPattern, `${probeName} probe must include structured organization_id`);
     assertSummaryIncludesMarkers(probeName, String(probe.result_summary ?? ''), [`user_id=${userID}`, `organization_id=${organizationID}`]);
+    assert.equal(userID, reportWebUserID, `${probeName} user_id must match report web_user_id`);
+    assert.equal(organizationID, reportWebOrganizationID, `${probeName} organization_id must match report web_organization_id`);
     if (probeName === 'web-journal-browser-smoke') {
       const journalID = String(probe.journal_id ?? '').trim();
       assert.match(journalID, tenantResourceIDPattern, `${probeName} probe must include structured journal_id`);
       assertSummaryIncludesMarkers(probeName, String(probe.result_summary ?? ''), [`journal_id=${journalID}`]);
+      assert.equal(journalID, reportWebJournalID, `${probeName} journal_id must match report web_journal_id`);
     }
     if (probeName === 'web-room-browser-smoke') {
       const roomID = String(probe.room_id ?? '').trim();
       assert.match(roomID, tenantResourceIDPattern, `${probeName} probe must include structured room_id`);
       assertSummaryIncludesMarkers(probeName, String(probe.result_summary ?? ''), [`room_id=${roomID}`]);
+      assert.equal(roomID, reportWebRoomID, `${probeName} room_id must match report web_room_id`);
     }
   }
   const authProbe = probesByName.get('web-auth-browser-smoke');
