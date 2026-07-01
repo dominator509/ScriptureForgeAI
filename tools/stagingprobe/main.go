@@ -31,6 +31,7 @@ type config struct {
 	WebRoomSmokeURL    string
 	ReleaseCandidate   string
 	ServiceVersion     string
+	LoadRunID          string
 	Timeout            time.Duration
 	ProbeZoom          bool
 	ZoomWebhookSecret  string
@@ -50,6 +51,7 @@ type report struct {
 	WebRoomSmoke     string        `json:"web_room_smoke_url,omitempty"`
 	ReleaseCandidate string        `json:"release_candidate,omitempty"`
 	ServiceVersion   string        `json:"service_version,omitempty"`
+	LoadRunID        string        `json:"load_run_id,omitempty"`
 	ThresholdPass    bool          `json:"threshold_pass"`
 	Probes           []probeResult `json:"probes"`
 	EvidenceItems    []string      `json:"evidence_items"`
@@ -99,6 +101,7 @@ func parseFlags() config {
 	flag.StringVar(&cfg.WebRoomSmokeURL, "web-room-smoke-url", os.Getenv("STAGING_WEB_ROOM_SMOKE_URL"), "HTTPS browser smoke artifact proving web room create/select/WebSocket against staging")
 	flag.StringVar(&cfg.ReleaseCandidate, "release-candidate", os.Getenv("RELEASE_CANDIDATE"), "exact release candidate Git SHA expected in deployed web smoke artifacts")
 	flag.StringVar(&cfg.ServiceVersion, "service-version", os.Getenv("SERVICE_VERSION"), "deployed service version marker expected in deployed web smoke artifacts")
+	flag.StringVar(&cfg.LoadRunID, "load-run-id", os.Getenv("STAGING_LOAD_RUN_ID"), "exact staging load run ID this TLS/web evidence is bound to")
 	flag.DurationVar(&cfg.Timeout, "timeout", 5*time.Second, "per-probe timeout")
 	flag.BoolVar(&cfg.ProbeZoom, "probe-zoom", false, "probe Zoom webhook invalid-signature denial; add -zoom-webhook-secret to also send signed no-op and endpoint.url_validation webhook probes")
 	flag.StringVar(&cfg.ZoomWebhookSecret, "zoom-webhook-secret", os.Getenv("ZOOM_WEBHOOK_SECRET_TOKEN"), "Zoom webhook secret token for optional signed no-op webhook probe")
@@ -162,13 +165,17 @@ func run(cfg config, output io.Writer) error {
 	}
 	cfg.ReleaseCandidate = strings.TrimSpace(cfg.ReleaseCandidate)
 	cfg.ServiceVersion = strings.TrimSpace(cfg.ServiceVersion)
+	cfg.LoadRunID = strings.TrimSpace(cfg.LoadRunID)
 	if cfg.ReleaseCandidate == "" {
 		return errors.New("-release-candidate or RELEASE_CANDIDATE is required for TLS/web evidence")
 	}
 	if cfg.ServiceVersion == "" {
 		return errors.New("-service-version or SERVICE_VERSION is required for TLS/web evidence")
 	}
-	releaseMarkers := releaseMarkers(cfg.ReleaseCandidate, cfg.ServiceVersion)
+	if cfg.LoadRunID == "" {
+		return errors.New("-load-run-id or STAGING_LOAD_RUN_ID is required for TLS/web evidence")
+	}
+	releaseMarkers := releaseMarkers(cfg.ReleaseCandidate, cfg.ServiceVersion, cfg.LoadRunID)
 
 	client := &http.Client{Timeout: cfg.Timeout}
 	results := make([]probeResult, 0, 6)
@@ -221,6 +228,7 @@ func run(cfg config, output io.Writer) error {
 		WebRoomSmoke:     webRoomSmoke,
 		ReleaseCandidate: cfg.ReleaseCandidate,
 		ServiceVersion:   cfg.ServiceVersion,
+		LoadRunID:        cfg.LoadRunID,
 		ThresholdPass:    true,
 		Probes:           results,
 		EvidenceItems:    evidenceItems,
@@ -243,8 +251,8 @@ func run(cfg config, output io.Writer) error {
 	return nil
 }
 
-func releaseMarkers(releaseCandidate, serviceVersion string) []string {
-	return []string{"release_candidate=" + releaseCandidate, "service_version=" + serviceVersion}
+func releaseMarkers(releaseCandidate, serviceVersion, loadRunID string) []string {
+	return []string{"release_candidate=" + releaseCandidate, "service_version=" + serviceVersion, "load_run_id=" + loadRunID}
 }
 
 func normalizeBaseURL(raw string) (string, error) {

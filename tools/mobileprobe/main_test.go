@@ -14,12 +14,13 @@ import (
 
 const mobileReleaseCandidate = "abc123"
 const mobileServiceVersion = "scriptureforge-mobile:abc123"
-const mobileReleaseMarkersText = " release_candidate=" + mobileReleaseCandidate + " service_version=" + mobileServiceVersion
+const mobileLoadRunID = "load-run-123"
+const mobileReleaseMarkersText = " release_candidate=" + mobileReleaseCandidate + " service_version=" + mobileServiceVersion + " load_run_id=" + mobileLoadRunID
 
 var requiredMobileProbeSummaryMarkers = map[string][]string{
-	"mobile-eas-or-device-run":   {"staging artifact", "eas", "build", "finished", "android", "ios", "native device", "installed app", "release channel staging", "expo profile staging", "platforms=android,ios", "release_channel=staging", "expo_profile=staging", "release_candidate=" + mobileReleaseCandidate, "service_version=" + mobileServiceVersion, "distinct_mobile_artifacts=true"},
-	"mobile-native-crypto-smoke": {"staging artifact", "react-native-quick-crypto", "native provider", "native module loaded", "provider status react-native-quick-crypto", "native-required true", "AES-GCM", "round-trip", "unique_iv=true", "unique IV", "tamper rejected", "associated data", "wrong associated data rejected", "associated_data_salt_id=", "associated_data_salt_version=", "non-extractable", "provider-bound key", "fallback-derived key rejected", "key disposed", "disposed handle rejected", "revoked_key_rejected=true", "stale raw key rejected", "passphrase wiped", "passphrase buffer zeroized", "salt wiped", "salt buffer zeroized", "plaintext cleared", "plaintext buffer zeroized", "release_candidate=" + mobileReleaseCandidate, "service_version=" + mobileServiceVersion, "distinct_mobile_artifacts=true"},
-	"mobile-staging-config":      {"staging artifact", "EXPO_PUBLIC_API_BASE_URL", "EXPO_PUBLIC_WS_BASE_URL", "EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true", "EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging", "https://", "wss://", "staging", "EXPO_PUBLIC_API_BASE_URL=https://api.staging.example", "EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example", "release_candidate=" + mobileReleaseCandidate, "service_version=" + mobileServiceVersion, "distinct_mobile_artifacts=true"},
+	"mobile-eas-or-device-run":   {"staging artifact", "eas", "build", "finished", "android", "ios", "native device", "installed app", "release channel staging", "expo profile staging", "platforms=android,ios", "release_channel=staging", "expo_profile=staging", "release_candidate=" + mobileReleaseCandidate, "service_version=" + mobileServiceVersion, "load_run_id=" + mobileLoadRunID, "distinct_mobile_artifacts=true"},
+	"mobile-native-crypto-smoke": {"staging artifact", "react-native-quick-crypto", "native provider", "native module loaded", "provider status react-native-quick-crypto", "native-required true", "AES-GCM", "round-trip", "unique_iv=true", "unique IV", "tamper rejected", "associated data", "wrong associated data rejected", "associated_data_salt_id=", "associated_data_salt_version=", "non-extractable", "provider-bound key", "fallback-derived key rejected", "key disposed", "disposed handle rejected", "revoked_key_rejected=true", "stale raw key rejected", "passphrase wiped", "passphrase buffer zeroized", "salt wiped", "salt buffer zeroized", "plaintext cleared", "plaintext buffer zeroized", "release_candidate=" + mobileReleaseCandidate, "service_version=" + mobileServiceVersion, "load_run_id=" + mobileLoadRunID, "distinct_mobile_artifacts=true"},
+	"mobile-staging-config":      {"staging artifact", "EXPO_PUBLIC_API_BASE_URL", "EXPO_PUBLIC_WS_BASE_URL", "EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true", "EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging", "https://", "wss://", "staging", "EXPO_PUBLIC_API_BASE_URL=https://api.staging.example", "EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example", "release_candidate=" + mobileReleaseCandidate, "service_version=" + mobileServiceVersion, "load_run_id=" + mobileLoadRunID, "distinct_mobile_artifacts=true"},
 }
 
 func stagingMobileConfig(timeout time.Duration) config {
@@ -29,6 +30,7 @@ func stagingMobileConfig(timeout time.Duration) config {
 		StagingConfigProofURL: "https://mobile-artifacts.staging.scriptureforge.ai/mobile/config",
 		ReleaseCandidate:      mobileReleaseCandidate,
 		ServiceVersion:        mobileServiceVersion,
+		LoadRunID:             mobileLoadRunID,
 		Timeout:               timeout,
 	}
 }
@@ -38,6 +40,16 @@ func TestRunRequiresAllArtifacts(t *testing.T) {
 	err := run(config{Timeout: time.Second}, &output)
 	if err == nil || !strings.Contains(err.Error(), "mobile proof requires") {
 		t.Fatalf("expected artifact requirement error, got %v", err)
+	}
+}
+
+func TestRunRequiresLoadRunID(t *testing.T) {
+	cfg := stagingMobileConfig(time.Second)
+	cfg.LoadRunID = ""
+	var output bytes.Buffer
+	err := run(cfg, &output)
+	if err == nil || !strings.Contains(err.Error(), "load-run-id") {
+		t.Fatalf("expected load-run-id requirement error, got %v", err)
 	}
 }
 
@@ -104,6 +116,9 @@ func TestRunEmitsMobileEvidenceWhenArtifactsPass(t *testing.T) {
 	}
 	if result.ReleaseCandidate != mobileReleaseCandidate || result.ServiceVersion != mobileServiceVersion {
 		t.Fatalf("unexpected release identity: %+v", result)
+	}
+	if result.LoadRunID != mobileLoadRunID {
+		t.Fatalf("unexpected load run ID: %+v", result)
 	}
 	assertProbeSummariesIncludeMarkers(t, result.Probes, requiredMobileProbeSummaryMarkers)
 	cryptoProbe := findProbe(t, result.Probes, "mobile-native-crypto-smoke")

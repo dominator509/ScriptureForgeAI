@@ -465,6 +465,7 @@ export const strictProbeFamilies = {
       'web-http-redirect',
       'release_candidate',
       'service_version',
+      'load_run_id=',
     ],
   },
   'DEPLOY-K8S-001': {
@@ -673,6 +674,7 @@ export const strictProbeFamilies = {
       'distinct_db_rls_artifact=true',
       'release_candidate=',
       'service_version=',
+      'load_run_id=',
     ],
   },
   'DATA-REDIS-001': {
@@ -843,6 +845,7 @@ export const strictProbeFamilies = {
       'organization_id=',
       'release_candidate=',
       'service_version=',
+      'load_run_id=',
       'web-journal-browser-smoke',
       'journal',
       'encrypted',
@@ -917,6 +920,7 @@ export const strictProbeFamilies = {
       'wss://',
       'staging',
       'distinct_mobile_artifacts=true',
+      'load_run_id=',
     ],
   },
   'EXT-ZOOM-001': {
@@ -1382,6 +1386,7 @@ function validateStrictReleaseItemEvidence(item, manifest) {
     assertStrictTenantResourceIDBinding(evidence);
   }
   if (item.id === 'DEPLOY-TLS-001') {
+    const tlsLoadRunIDs = new Set();
     for (const [segment, markers] of tlsSegmentMarkerRequirements) {
       const missingSegmentMarkers = evidence.some((artifact) => {
         const summary = String(artifact.result_summary ?? '');
@@ -1393,10 +1398,15 @@ function validateStrictReleaseItemEvidence(item, manifest) {
         false,
         `DEPLOY-TLS-001 strict release evidence must include TLS/web markers on ${segment}`,
       );
+      const loadRunID = summarySegmentCapture(findEvidenceSegment(evidence, segment), segment, /\bload_run_id=([^\s,;]+)/i);
+      assert.ok(loadRunID, `DEPLOY-TLS-001 strict release evidence must include load_run_id on ${segment}`);
+      tlsLoadRunIDs.add(loadRunID);
     }
+    assert.equal(tlsLoadRunIDs.size, 1, 'DEPLOY-TLS-001 strict release evidence load_run_id values must all match');
     assertStrictTLSCertificateIdentity(evidence, 'DEPLOY-TLS-001', ['api-tls', 'web-tls']);
   }
   if (item.id === 'CLIENT-WEB-001') {
+    const webLoadRunIDs = new Set();
     for (const [segment, markers] of webClientSegmentMarkerRequirements) {
       const missingSegmentMarkers = evidence.some((artifact) => {
         const summary = String(artifact.result_summary ?? '');
@@ -1408,7 +1418,11 @@ function validateStrictReleaseItemEvidence(item, manifest) {
         false,
         `CLIENT-WEB-001 strict release evidence must include web client markers on ${segment}`,
       );
+      const loadRunID = summarySegmentCapture(findEvidenceSegment(evidence, segment), segment, /\bload_run_id=([^\s,;]+)/i);
+      assert.ok(loadRunID, `CLIENT-WEB-001 strict release evidence must include load_run_id on ${segment}`);
+      webLoadRunIDs.add(loadRunID);
     }
+    assert.equal(webLoadRunIDs.size, 1, 'CLIENT-WEB-001 strict release evidence load_run_id values must all match');
     assertStrictTLSCertificateIdentity(evidence, 'CLIENT-WEB-001', ['web-tls']);
     assertStrictWebSmokeIdentityLinkage(evidence);
   }
@@ -1576,6 +1590,7 @@ function validateStrictReleaseItemEvidence(item, manifest) {
     assert.equal(new Set(rustLoadRunIDs).size, 1, 'RUST-GRPC-001 strict release evidence load_run_id values must all match');
   }
   if (item.id === 'CLIENT-MOBILE-001') {
+    const mobileLoadRunIDs = new Set();
     for (const [segment, markers] of mobileSegmentMarkerRequirements) {
       const missingSegmentMarkers = evidence.some((artifact) => {
         const summary = String(artifact.result_summary ?? '');
@@ -1587,7 +1602,11 @@ function validateStrictReleaseItemEvidence(item, manifest) {
         false,
         `CLIENT-MOBILE-001 strict release evidence must include mobile markers on ${segment}`,
       );
+      const loadRunID = summarySegmentCapture(findEvidenceSegment(evidence, segment), segment, /\bload_run_id=([^\s,;]+)/i);
+      assert.ok(loadRunID, `CLIENT-MOBILE-001 strict release evidence must include load_run_id on ${segment}`);
+      mobileLoadRunIDs.add(loadRunID);
     }
+    assert.equal(mobileLoadRunIDs.size, 1, 'CLIENT-MOBILE-001 strict release evidence load_run_id values must all match');
     const easSegment = findEvidenceSegment(evidence, 'mobile-eas-or-device-run');
     assert.match(
       easSegment,

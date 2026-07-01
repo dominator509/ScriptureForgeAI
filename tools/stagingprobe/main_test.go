@@ -17,10 +17,12 @@ import (
 
 const stagingProbeReleaseCandidate = "abc123"
 const stagingProbeServiceVersion = "scriptureforge-api:abc123"
+const stagingProbeLoadRunID = "load-run-123"
 
 var stagingProbeReleaseMarkers = []string{
 	"release_candidate=" + stagingProbeReleaseCandidate,
 	"service_version=" + stagingProbeServiceVersion,
+	"load_run_id=" + stagingProbeLoadRunID,
 }
 
 func TestNormalizeBaseURLRequiresHTTPS(t *testing.T) {
@@ -230,6 +232,7 @@ func TestRunProducesFailingReportWhenProbeFails(t *testing.T) {
 		ACMArtifactURL:   "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
 		ReleaseCandidate: stagingProbeReleaseCandidate,
 		ServiceVersion:   stagingProbeServiceVersion,
+		LoadRunID:        stagingProbeLoadRunID,
 		Timeout:          50 * time.Millisecond,
 	}, &output)
 	if err == nil {
@@ -263,6 +266,7 @@ func TestStagingProbeDoesNotEmitKubernetesEvidenceItem(t *testing.T) {
 		ACMArtifactURL:   "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
 		ReleaseCandidate: stagingProbeReleaseCandidate,
 		ServiceVersion:   stagingProbeServiceVersion,
+		LoadRunID:        stagingProbeLoadRunID,
 		Timeout:          50 * time.Millisecond,
 	}, &output)
 	if err == nil {
@@ -288,6 +292,7 @@ func TestStagingProbeDoesNotEmitDedicatedExternalServiceEvidenceItems(t *testing
 		ACMArtifactURL:    "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
 		ReleaseCandidate:  stagingProbeReleaseCandidate,
 		ServiceVersion:    stagingProbeServiceVersion,
+		LoadRunID:         stagingProbeLoadRunID,
 		ProbeZoom:         true,
 		ProbeAI:           true,
 		AIBearerToken:     "staging-token",
@@ -333,6 +338,7 @@ func TestRunIncludesWebSmokeArtifactsInReport(t *testing.T) {
 		WebRoomSmokeURL:    "https://staging-artifacts.staging.scriptureforge.ai/web/room-smoke.txt",
 		ReleaseCandidate:   "sha-web",
 		ServiceVersion:     "scriptureforge-web:sha-web",
+		LoadRunID:          stagingProbeLoadRunID,
 		Timeout:            50 * time.Millisecond,
 	}, &output)
 	if err == nil {
@@ -351,6 +357,9 @@ func TestRunIncludesWebSmokeArtifactsInReport(t *testing.T) {
 	if result.ReleaseCandidate != "sha-web" || result.ServiceVersion != "scriptureforge-web:sha-web" {
 		t.Fatalf("web staging probe omitted release identity: %+v", result)
 	}
+	if result.LoadRunID != stagingProbeLoadRunID {
+		t.Fatalf("web staging probe omitted load run ID: %+v", result)
+	}
 }
 
 func TestRunRejectsDuplicateWebSmokeArtifactURLs(t *testing.T) {
@@ -364,6 +373,7 @@ func TestRunRejectsDuplicateWebSmokeArtifactURLs(t *testing.T) {
 		WebRoomSmokeURL:    "https://staging-artifacts.staging.scriptureforge.ai/web/room-smoke.txt",
 		ReleaseCandidate:   "sha-web",
 		ServiceVersion:     "scriptureforge-web:sha-web",
+		LoadRunID:          stagingProbeLoadRunID,
 		Timeout:            50 * time.Millisecond,
 	}, &output)
 	if err == nil || !strings.Contains(err.Error(), "web browser smoke artifacts must be distinct") {
@@ -379,6 +389,7 @@ func TestRunRejectsCanonicalDuplicateTLSArtifactURLs(t *testing.T) {
 		ACMArtifactURL:   "https://staging-artifacts.staging.scriptureforge.ai/tls/shared-proof.txt?a=1&b=2#certificate",
 		ReleaseCandidate: stagingProbeReleaseCandidate,
 		ServiceVersion:   stagingProbeServiceVersion,
+		LoadRunID:        stagingProbeLoadRunID,
 		Timeout:          50 * time.Millisecond,
 	}, &output)
 	if err == nil || !strings.Contains(err.Error(), "TLS artifacts must be distinct") {
@@ -397,6 +408,7 @@ func TestRunRejectsCanonicalDuplicateWebSmokeArtifactURLs(t *testing.T) {
 		WebRoomSmokeURL:    "https://staging-artifacts.staging.scriptureforge.ai/web/room-smoke.txt",
 		ReleaseCandidate:   "sha-web",
 		ServiceVersion:     "scriptureforge-web:sha-web",
+		LoadRunID:          stagingProbeLoadRunID,
 		Timeout:            50 * time.Millisecond,
 	}, &output)
 	if err == nil || !strings.Contains(err.Error(), "web browser smoke artifacts must be distinct") {
@@ -428,6 +440,21 @@ func TestRunRequiresReleaseIdentityForTLSAndWebEvidence(t *testing.T) {
 	}, &output)
 	if err == nil || !strings.Contains(err.Error(), "release-candidate") {
 		t.Fatalf("expected release-candidate error for web evidence, got %v", err)
+	}
+}
+
+func TestRunRequiresLoadRunIDForTLSAndWebEvidence(t *testing.T) {
+	var output bytes.Buffer
+	err := run(config{
+		APIBase:          "https://api.staging.scriptureforge.ai",
+		DNSArtifactURL:   "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt",
+		ACMArtifactURL:   "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+		ReleaseCandidate: stagingProbeReleaseCandidate,
+		ServiceVersion:   stagingProbeServiceVersion,
+		Timeout:          time.Second,
+	}, &output)
+	if err == nil || !strings.Contains(err.Error(), "load-run-id") {
+		t.Fatalf("expected load-run-id error for TLS evidence, got %v", err)
 	}
 }
 
@@ -500,6 +527,7 @@ func TestRunRejectsLocalBaseAndArtifactTargets(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var output bytes.Buffer
+			tc.cfg.LoadRunID = stagingProbeLoadRunID
 			err := run(tc.cfg, &output)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("expected %q validation error, got %v", tc.want, err)

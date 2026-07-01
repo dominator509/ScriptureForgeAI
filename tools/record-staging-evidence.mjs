@@ -786,9 +786,12 @@ function validateTLSEvidence(report, manifest) {
     return;
   }
   assertReportReleaseMatchesManifest(report, manifest, 'DEPLOY-TLS-001');
+  const reportLoadRunID = String(report.load_run_id ?? '').trim();
+  assert.ok(reportLoadRunID, 'DEPLOY-TLS-001 report must include load_run_id');
   const reportReleaseMarkers = [
     `release_candidate=${String(report.release_candidate ?? '').trim()}`,
     `service_version=${String(report.service_version ?? '').trim()}`,
+    `load_run_id=${reportLoadRunID}`,
   ];
   for (const [field, label] of [
     ['dns_artifact_url', 'DNS'],
@@ -804,6 +807,7 @@ function validateTLSEvidence(report, manifest) {
   ]);
   const probes = Array.isArray(report.probes) ? report.probes : [];
   const probesByName = new Map(probes.map((probe) => [probe.name, probe]));
+  const probeLoadRunIDs = new Set();
   const apiTarget = String(report.api_target ?? '');
   const webTarget = String(report.web_target ?? '');
   assert.ok(apiTarget || webTarget, 'DEPLOY-TLS-001 report must include api_target or web_target');
@@ -822,6 +826,13 @@ function validateTLSEvidence(report, manifest) {
     assertTLSProbe(probesByName, 'web-tls', webTarget, reportReleaseMarkers);
     assertRedirectProbe(probesByName, 'web-http-redirect', reportReleaseMarkers);
   }
+  for (const probe of probes) {
+    const summary = String(probe.result_summary ?? '');
+    if (summary.includes('release_candidate=') || summary.includes('load_run_id=')) {
+      assertProbeLoadRunBinding(probe.name, summary, reportLoadRunID, probeLoadRunIDs);
+    }
+  }
+  assertSingleProbeLoadRun('DEPLOY-TLS-001', probeLoadRunIDs);
 }
 
 function assertHTTPProbe(probesByName, name, expectedTarget, expectedStatus, extraMarkers = []) {
@@ -1144,14 +1155,18 @@ function validateWebClientEvidence(report, manifest) {
     return;
   }
   assertReportReleaseMatchesManifest(report, manifest, 'CLIENT-WEB-001');
+  const reportLoadRunID = String(report.load_run_id ?? '').trim();
+  assert.ok(reportLoadRunID, 'CLIENT-WEB-001 report must include load_run_id');
   const reportReleaseMarkers = [];
   if (String(report.release_candidate ?? '').trim() || String(report.service_version ?? '').trim()) {
     reportReleaseMarkers.push(
       `release_candidate=${String(report.release_candidate ?? '').trim()}`,
       `service_version=${String(report.service_version ?? '').trim()}`,
+      `load_run_id=${reportLoadRunID}`,
     );
   }
   const probes = Array.isArray(report.probes) ? report.probes : [];
+  const probeLoadRunIDs = new Set();
   const webRoot = probes.find((probe) => probe.name === 'web-root');
   assert.ok(webRoot, 'CLIENT-WEB-001 report must include web-root probe');
   assert.equal(webRoot.passed, true, 'web-root must pass');
@@ -1188,7 +1203,9 @@ function validateWebClientEvidence(report, manifest) {
     assert.equal(probe.status_code, 200, `${probeName} must return HTTP 200`);
     assert.equal(String(probe.target ?? ''), expectedTarget, `${probeName} target must match its smoke artifact URL`);
     assertSummaryExcludesMarkers(probeName, String(probe.result_summary ?? ''), forbiddenWebSmokeProbeSummaryMarkers);
-    assertSummaryIncludesMarkers(probeName, String(probe.result_summary ?? ''), [...(requiredWebSmokeProbeSummaryMarkers.get(probeName) ?? []), ...reportReleaseMarkers]);
+    const summary = String(probe.result_summary ?? '');
+    assertProbeLoadRunBinding(probeName, summary, reportLoadRunID, probeLoadRunIDs);
+    assertSummaryIncludesMarkers(probeName, summary, [...(requiredWebSmokeProbeSummaryMarkers.get(probeName) ?? []), ...reportReleaseMarkers]);
     const userID = String(probe.user_id ?? '').trim();
     const organizationID = String(probe.organization_id ?? '').trim();
     assert.match(userID, tenantResourceIDPattern, `${probeName} probe must include structured user_id`);
@@ -1211,6 +1228,7 @@ function validateWebClientEvidence(report, manifest) {
     assert.equal(String(probe.user_id ?? ''), String(authProbe.user_id ?? ''), `${probeName} user_id must match web-auth-browser-smoke`);
     assert.equal(String(probe.organization_id ?? ''), String(authProbe.organization_id ?? ''), `${probeName} organization_id must match web-auth-browser-smoke`);
   }
+  assertSingleProbeLoadRun('CLIENT-WEB-001', probeLoadRunIDs);
 }
 
 function validateTenantRLSEvidence(report, manifest) {
@@ -1340,9 +1358,12 @@ function validateMobileEvidence(report, manifest) {
     return;
   }
   assertReportReleaseMatchesManifest(report, manifest, 'CLIENT-MOBILE-001');
+  const reportLoadRunID = String(report.load_run_id ?? '').trim();
+  assert.ok(reportLoadRunID, 'CLIENT-MOBILE-001 report must include load_run_id');
   const reportReleaseMarkers = [
     `release_candidate=${String(report.release_candidate ?? '').trim()}`,
     `service_version=${String(report.service_version ?? '').trim()}`,
+    `load_run_id=${reportLoadRunID}`,
   ];
   const requiredProbes = new Set([
     'mobile-eas-or-device-run',
@@ -1350,6 +1371,7 @@ function validateMobileEvidence(report, manifest) {
     'mobile-staging-config',
   ]);
   const probes = Array.isArray(report.probes) ? report.probes : [];
+  const probeLoadRunIDs = new Set();
   assert.equal(probes.length, requiredProbes.size, 'CLIENT-MOBILE-001 report must include exactly the required mobile probes');
   for (const probe of probes) {
     assert.ok(requiredProbes.delete(probe.name), `CLIENT-MOBILE-001 report includes unexpected or duplicate probe ${probe.name}`);
@@ -1359,6 +1381,7 @@ function validateMobileEvidence(report, manifest) {
     assert.match(target, /^https:\/\//, `${probe.name} target must be an HTTPS artifact URL`);
     assertNonLocalOrPrivateTarget(target, `${probe.name} target must not be local/self-test: ${target}`);
     const summary = String(probe.result_summary ?? '');
+    assertProbeLoadRunBinding(probe.name, summary, reportLoadRunID, probeLoadRunIDs);
     assertSummaryIncludesMarkers(probe.name, summary, [...(requiredMobileProbeSummaryMarkers.get(probe.name) ?? []), ...reportReleaseMarkers]);
     assertSummaryExcludesMarkers(probe.name, summary, forbiddenMobileProbeSummaryMarkers);
     if (probe.name === 'mobile-eas-or-device-run') {
@@ -1412,6 +1435,7 @@ function validateMobileEvidence(report, manifest) {
   assertSummaryIncludesMarkers('CLIENT-MOBILE-001', probes.map((probe) => String(probe.result_summary ?? '')).join(' '), [
     'distinct_mobile_artifacts=true',
   ]);
+  assertSingleProbeLoadRun('CLIENT-MOBILE-001', probeLoadRunIDs);
 }
 
 function validateRustEvidence(report, manifest) {

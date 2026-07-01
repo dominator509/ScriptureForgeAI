@@ -36,6 +36,7 @@ type config struct {
 	StagingConfigProofURL string
 	ReleaseCandidate      string
 	ServiceVersion        string
+	LoadRunID             string
 	Timeout               time.Duration
 }
 
@@ -44,6 +45,7 @@ type report struct {
 	ThresholdPass    bool          `json:"threshold_pass"`
 	ReleaseCandidate string        `json:"release_candidate"`
 	ServiceVersion   string        `json:"service_version"`
+	LoadRunID        string        `json:"load_run_id"`
 	Probes           []probeResult `json:"probes"`
 	EvidenceItems    []string      `json:"evidence_items"`
 }
@@ -83,6 +85,7 @@ func parseFlags() config {
 	flag.StringVar(&cfg.StagingConfigProofURL, "staging-config-proof-url", os.Getenv("STAGING_MOBILE_CONFIG_PROOF_URL"), "mobile staging API/WS config proof artifact URL")
 	flag.StringVar(&cfg.ReleaseCandidate, "release-candidate", os.Getenv("STAGING_RELEASE_CANDIDATE"), "exact git SHA or release candidate represented by this mobile evidence")
 	flag.StringVar(&cfg.ServiceVersion, "service-version", os.Getenv("STAGING_MOBILE_SERVICE_VERSION"), "exact mobile app/service version represented by this evidence")
+	flag.StringVar(&cfg.LoadRunID, "load-run-id", os.Getenv("STAGING_LOAD_RUN_ID"), "exact staging load run ID this mobile evidence is bound to")
 	flag.DurationVar(&cfg.Timeout, "timeout", 5*time.Second, "per-probe timeout")
 	flag.Parse()
 	return cfg
@@ -101,8 +104,12 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 	}
 	cfg.ReleaseCandidate = strings.TrimSpace(cfg.ReleaseCandidate)
 	cfg.ServiceVersion = strings.TrimSpace(cfg.ServiceVersion)
+	cfg.LoadRunID = strings.TrimSpace(cfg.LoadRunID)
 	if cfg.ReleaseCandidate == "" || cfg.ServiceVersion == "" {
 		return errors.New("mobile proof requires release-candidate and service-version")
+	}
+	if cfg.LoadRunID == "" {
+		return errors.New("mobile proof requires load-run-id")
 	}
 	var err error
 	cfg.EASArtifactURL, err = normalizeArtifactURL(cfg.EASArtifactURL, "eas-artifact-url")
@@ -131,6 +138,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 	releaseMarkers := []string{
 		"release_candidate=" + cfg.ReleaseCandidate,
 		"service_version=" + cfg.ServiceVersion,
+		"load_run_id=" + cfg.LoadRunID,
 	}
 	probes := []probeResult{
 		probeArtifact(client, "mobile-eas-or-device-run", cfg.EASArtifactURL, append([]string{"staging artifact", "eas", "build", "finished", "android", "ios", "native device", "installed app", "release channel staging", "expo profile staging"}, releaseMarkers...), []string{"development client only", "development client", "development build", "dev client", "debug client", "expo go", "simulator", "simulator only", "simulator run", "simulator validation", "emulator", "android emulator", "ios simulator", "remote debug", "mock", "placeholder", "dry-run", "local-only"}),
@@ -143,6 +151,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 		ThresholdPass:    true,
 		ReleaseCandidate: cfg.ReleaseCandidate,
 		ServiceVersion:   cfg.ServiceVersion,
+		LoadRunID:        cfg.LoadRunID,
 		Probes:           probes,
 		EvidenceItems:    []string{"CLIENT-MOBILE-001"},
 	}
