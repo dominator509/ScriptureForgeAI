@@ -104,8 +104,8 @@ const productionPerformanceTargets = {
 
 const requiredPerformanceSummaryMarkers = {
   'PERF-HTTP-001': ['staging_http', 'https://', 'min_rps', '5000', 'max_p99_ms', '200', 'production_target_rps=5000', 'production_target_p99_ms=200', 'production_min_duration_ms=60000', 'duration_ms>=60000', 'observed_rps', 'observed_p99_ms', 'threshold_pass=true', 'release_candidate', 'service_version', 'load_run_id=', 'http_replica_artifact_url', 'http_replica_artifact_verified', 'http_replica_count=', 'dependency_telemetry_artifact_url', 'dependency_telemetry_artifact_verified', 'dependency_latency_artifact_verified=true', 'dependency_postgres_p99_ms=', 'dependency_redis_p99_ms='],
-  'PERF-WS-001': ['staging artifact', 'staging_websocket', 'wss://', 'min_rps', '500', 'max_p99_ms', '200', 'production_target_rps=500', 'production_target_p99_ms=200', 'production_min_duration_ms=60000', 'duration_ms>=60000', 'production_min_ws_events=30000', 'observed_rps', 'observed_p99_ms', 'threshold_pass=true', 'release_candidate', 'service_version', 'load_run_id=', 'ws_sequence_contiguous=true', 'ws_origin=https://', 'ws_room_id=', 'ws_user_id=', 'ws_organization_id=', 'ws_reconnect_room_id=', 'ws_polling_room_id=', 'redis_telemetry_room_id=', 'ws_authenticated=true', 'ws_expected_events', 'ws_unique_sequences', 'ws_min_sequence', 'ws_max_sequence', 'ws_polling_latest_sequence', 'ws_replica_artifact_url=https://', 'ws_replica_artifact_verified', 'ws_replica_count=', 'ws_reconnect_artifact_url=https://', 'ws_reconnect_artifact_verified', 'ws_reconnect_sequence_continues=true', 'ws_polling_artifact_url=https://', 'ws_polling_artifact_verified', 'ws_polling_artifact_latest_sequence_validated=true', 'ws_polling_artifact_latest_sequence_matches_run=true', 'redis_telemetry_artifact_url=https://', 'redis_telemetry_artifact_verified', 'ws_distinct_artifacts=true', 'room_broadcast_drops=0'],
-  'DATA-REDIS-001': ['staging artifact', 'staging_websocket', 'release_candidate', 'service_version', 'load_run_id=', 'ws_room_id=', 'ws_user_id=', 'ws_organization_id=', 'ws_reconnect_room_id=', 'ws_polling_room_id=', 'redis_telemetry_room_id=', 'ws_sequence_contiguous=true', 'production_min_ws_events=30000', 'ws_expected_events', 'ws_unique_sequences', 'ws_min_sequence', 'ws_max_sequence', 'ws_polling_latest_sequence', 'ws_polling_artifact_url=https://', 'ws_polling_artifact_latest_sequence_validated=true', 'ws_polling_artifact_latest_sequence_matches_run=true', 'redis_telemetry_artifact_url=https://', 'redis_telemetry_artifact_verified', 'ws_distinct_artifacts=true', 'room_broadcast_drops=0'],
+  'PERF-WS-001': ['staging artifact', 'staging_websocket', 'wss://', 'min_rps', '500', 'max_p99_ms', '200', 'production_target_rps=500', 'production_target_p99_ms=200', 'production_min_duration_ms=60000', 'duration_ms>=60000', 'production_min_ws_events=30000', 'observed_rps', 'observed_p99_ms', 'threshold_pass=true', 'release_candidate', 'service_version', 'load_run_id=', 'ws_sequence_contiguous=true', 'ws_origin=https://', 'ws_room_id=', 'ws_user_id=', 'ws_organization_id=', 'ws_reconnect_room_id=', 'ws_polling_room_id=', 'redis_telemetry_room_id=', 'ws_authenticated=true', 'ws_expected_events', 'ws_unique_sequences', 'ws_min_sequence', 'ws_max_sequence', 'ws_polling_latest_sequence', 'ws_polling_artifact_latest_sequence', 'ws_replica_artifact_url=https://', 'ws_replica_artifact_verified', 'ws_replica_count=', 'ws_reconnect_artifact_url=https://', 'ws_reconnect_artifact_verified', 'ws_reconnect_sequence_continues=true', 'ws_polling_artifact_url=https://', 'ws_polling_artifact_verified', 'ws_polling_artifact_latest_sequence_validated=true', 'ws_polling_artifact_latest_sequence_matches_run=true', 'redis_telemetry_artifact_url=https://', 'redis_telemetry_artifact_verified', 'ws_distinct_artifacts=true', 'room_broadcast_drops=0'],
+  'DATA-REDIS-001': ['staging artifact', 'staging_websocket', 'release_candidate', 'service_version', 'load_run_id=', 'ws_room_id=', 'ws_user_id=', 'ws_organization_id=', 'ws_reconnect_room_id=', 'ws_polling_room_id=', 'redis_telemetry_room_id=', 'ws_sequence_contiguous=true', 'production_min_ws_events=30000', 'ws_expected_events', 'ws_unique_sequences', 'ws_min_sequence', 'ws_max_sequence', 'ws_polling_latest_sequence', 'ws_polling_artifact_latest_sequence', 'ws_polling_artifact_url=https://', 'ws_polling_artifact_latest_sequence_validated=true', 'ws_polling_artifact_latest_sequence_matches_run=true', 'redis_telemetry_artifact_url=https://', 'redis_telemetry_artifact_verified', 'ws_distinct_artifacts=true', 'room_broadcast_drops=0'],
 };
 
 const forbiddenPerformanceSummaryMarkers = [
@@ -700,12 +700,14 @@ function validatePerformanceEvidence(report, manifest) {
       const wsMinSequence = reportNumericValue(report, 'ws_min_sequence');
       const wsMaxSequence = reportNumericValue(report, 'ws_max_sequence');
       const wsPollingLatestSequence = reportNumericValue(report, 'ws_polling_latest_sequence');
+      const wsPollingArtifactLatestSequence = reportNumericValue(report, 'ws_polling_artifact_latest_sequence');
       assert.ok(productionMinWSEvents >= target.minExpectedEvents, `${id} production_min_ws_events ${productionMinWSEvents} is below required ${target.minExpectedEvents}`);
       assert.ok(wsExpectedEvents >= target.minExpectedEvents, `${id} ws_expected_events ${wsExpectedEvents} is below required ${target.minExpectedEvents}`);
       assert.equal(wsUniqueSequences, wsExpectedEvents, `${id} unique sequences must equal expected events`);
       assert.equal(wsMinSequence, 1, `${id} minimum sequence must be 1`);
       assert.equal(wsMaxSequence, wsExpectedEvents, `${id} maximum sequence must equal expected events`);
       assert.equal(wsPollingLatestSequence, wsMaxSequence, `${id} polling latest sequence must equal maximum sequence`);
+      assert.equal(wsPollingArtifactLatestSequence, wsMaxSequence, `${id} polling artifact latest sequence must equal maximum sequence`);
       const origin = String(report.ws_origin ?? '');
       assert.match(origin, /^https:\/\//, `${id} report must include HTTPS ws_origin`);
       assertNonLocalOrPrivateTarget(origin, `${id} ws_origin must not be local/self-test: ${origin}`);
@@ -738,15 +740,18 @@ function validatePerformanceEvidence(report, manifest) {
     assert.equal(typeof report.ws_min_sequence, 'number', 'DATA-REDIS-001 report must include ws_min_sequence');
     assert.equal(typeof report.ws_max_sequence, 'number', 'DATA-REDIS-001 report must include ws_max_sequence');
     assert.equal(typeof report.ws_polling_latest_sequence, 'number', 'DATA-REDIS-001 report must include ws_polling_latest_sequence');
+    assert.equal(typeof report.ws_polling_artifact_latest_sequence, 'number', 'DATA-REDIS-001 report must include ws_polling_artifact_latest_sequence');
     assert.ok(report.ws_expected_events > 0, 'DATA-REDIS-001 ws_expected_events must be positive');
     assert.equal(report.ws_unique_sequences, report.ws_expected_events, 'DATA-REDIS-001 unique sequences must equal expected events');
     assert.equal(report.ws_min_sequence, 1, 'DATA-REDIS-001 minimum sequence must be 1');
     assert.equal(report.ws_max_sequence, report.ws_expected_events, 'DATA-REDIS-001 maximum sequence must equal expected events');
     assert.equal(report.ws_polling_latest_sequence, report.ws_max_sequence, 'DATA-REDIS-001 polling latest sequence must equal maximum sequence');
+    assert.equal(report.ws_polling_artifact_latest_sequence, report.ws_max_sequence, 'DATA-REDIS-001 polling artifact latest sequence must equal maximum sequence');
     const roomBroadcastDrops = reportNumericValue(report, 'room_broadcast_drops');
     assert.equal(roomBroadcastDrops, 0, 'DATA-REDIS-001 room_broadcast_drops must equal 0');
     assertSummaryIncludesMarkers('DATA-REDIS-001 polling fallback', String(report.result_summary ?? ''), [
       `ws_polling_latest_sequence=${report.ws_max_sequence}`,
+      `ws_polling_artifact_latest_sequence=${report.ws_max_sequence}`,
     ]);
     assertSummaryIncludesMarkers('DATA-REDIS-001 room binding', String(report.result_summary ?? ''), [
       `ws_room_id=${wsRoomID}`,

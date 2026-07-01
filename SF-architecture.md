@@ -123,7 +123,7 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
     *   `POST /api/webhooks/zoom`
 *   **Data Entities:** `LiveRoom`, `RoomParticipant`, `RealtimeStateEvent`, `AttendanceLog`.
 *   **Security Considerations:** Token authorization inside the initial WebSocket upgrade handshake. Socket identifiers must match active database user accounts. `ALLOWED_WS_ORIGINS` is required in staging and production; if it is missing under `DEPLOYMENT_ENVIRONMENT=staging|production|prod`, WebSocket upgrades fail closed instead of accepting localhost/no-origin fallbacks.
-*   **Failure Modes & Logic Risks:** State race conditions (multiple users updating fields or chat states concurrently). Mitigation relies on processing mutations through single-threaded Redis Lua scripts, achieving lockstep linear event tracking. Production evidence for live rooms must prove authenticated WSS load, contiguous Redis sequencing, reconnect behavior, and HTTP polling fallback against the same staged room state, with separate artifacts for replica distribution, reconnect, polling fallback, and Redis telemetry proof.
+*   **Failure Modes & Logic Risks:** State race conditions (multiple users updating fields or chat states concurrently). Mitigation relies on processing mutations through single-threaded Redis Lua scripts, achieving lockstep linear event tracking. Production evidence for live rooms must prove authenticated WSS load, contiguous Redis sequencing, reconnect behavior, and HTTP polling fallback against the same staged room state, with separate artifacts for replica distribution, reconnect, polling fallback, and Redis telemetry proof; polling fallback evidence must preserve the parsed artifact `latest_sequence` as structured `ws_polling_artifact_latest_sequence` matching the run's maximum accepted sequence.
 
 ---
 
@@ -621,7 +621,7 @@ resource "aws_rds_cluster" "storage_backend_postgres" {
 - [ ] Row-Level Security (RLS) policies are active and verified across all PostgreSQL tables.
 - [ ] Database storage components apply static encryption using AWS KMS keys.
 - [ ] Production API endpoints score an A+ ranking under SSL Labs cryptographic evaluations.
-- [ ] Load testing profiles confirm sustainable performance at 5,000 requests per second while keeping P99 latency figures below 200ms, with WebSocket evidence also proving authenticated WSS origin behavior, Redis sequence ordering, reconnect behavior, HTTP polling fallback, and distinct replica/reconnect/polling/Redis telemetry artifacts.
+- [ ] Load testing profiles confirm sustainable performance at 5,000 requests per second while keeping P99 latency figures below 200ms, with WebSocket evidence also proving authenticated WSS origin behavior, Redis sequence ordering, reconnect behavior, HTTP polling fallback whose structured artifact latest sequence matches the run maximum sequence, and distinct replica/reconnect/polling/Redis telemetry artifacts.
 - [ ] Zero-Knowledge client encryption tests show clean client memory space teardowns without tracking key fragments in background processes.
 - [ ] Automated rate limit policies reject requests when traffic limits pass design parameters.
 - [ ] OpenTelemetry dashboards successfully trace transactions across all service layers.

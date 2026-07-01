@@ -103,6 +103,7 @@ type report struct {
 	WSMinSequence                int64    `json:"ws_min_sequence,omitempty"`
 	WSMaxSequence                int64    `json:"ws_max_sequence,omitempty"`
 	WSPollingLatestSequence      int64    `json:"ws_polling_latest_sequence,omitempty"`
+	WSPollingArtifactSequence    int      `json:"ws_polling_artifact_latest_sequence,omitempty"`
 	WSSequenceContiguous         bool     `json:"ws_sequence_contiguous,omitempty"`
 	ThresholdPass                bool     `json:"threshold_pass"`
 	ThresholdFailures            []string `json:"threshold_failures,omitempty"`
@@ -1063,6 +1064,7 @@ func buildReport(cfg config, elapsed time.Duration, load loadResult) report {
 		result.WSExpectedEvents = cfg.Concurrency * cfg.WSEventsPerClient
 		result.WSUniqueSequences, result.WSMinSequence, result.WSMaxSequence, result.WSSequenceContiguous = sequenceStats(load.sequences, result.WSExpectedEvents)
 		result.WSPollingLatestSequence = result.WSMaxSequence
+		result.WSPollingArtifactSequence = cfg.ArtifactEvidence.PollingLatestSequence
 	}
 	thresholdFailures := thresholdFailuresFor(cfg, result, load, latencies)
 	if cfg.WebSocket || cfg.WebSocketSelfTest {
@@ -1132,7 +1134,7 @@ func resultSummaryFor(result report) string {
 	}
 	if result.EvidenceProfile == "staging_websocket" {
 		summary = fmt.Sprintf(
-			"%s production_min_ws_events=%d ws_origin=%s ws_room_id=%s ws_user_id=%s ws_organization_id=%s ws_reconnect_room_id=%s ws_polling_room_id=%s redis_telemetry_room_id=%s ws_reconnect_sequence_continues=%t ws_authenticated=%t ws_expected_events=%d ws_unique_sequences=%d ws_min_sequence=%d ws_max_sequence=%d ws_polling_latest_sequence=%d ws_sequence_contiguous=%t ws_replica_artifact_url=%s ws_reconnect_artifact_url=%s ws_polling_artifact_url=%s redis_telemetry_artifact_url=%s ws_replica_count=%d room_broadcast_drops=%d",
+			"%s production_min_ws_events=%d ws_origin=%s ws_room_id=%s ws_user_id=%s ws_organization_id=%s ws_reconnect_room_id=%s ws_polling_room_id=%s redis_telemetry_room_id=%s ws_reconnect_sequence_continues=%t ws_authenticated=%t ws_expected_events=%d ws_unique_sequences=%d ws_min_sequence=%d ws_max_sequence=%d ws_polling_latest_sequence=%d ws_polling_artifact_latest_sequence=%d ws_sequence_contiguous=%t ws_replica_artifact_url=%s ws_reconnect_artifact_url=%s ws_polling_artifact_url=%s redis_telemetry_artifact_url=%s ws_replica_count=%d room_broadcast_drops=%d",
 			summary,
 			result.ProductionMinWSEvents,
 			result.WSOrigin,
@@ -1149,6 +1151,7 @@ func resultSummaryFor(result report) string {
 			result.WSMinSequence,
 			result.WSMaxSequence,
 			result.WSPollingLatestSequence,
+			result.WSPollingArtifactSequence,
 			result.WSSequenceContiguous,
 			result.WSReplicaArtifactURL,
 			result.WSReconnectArtifactURL,
@@ -1187,6 +1190,7 @@ func resultSummaryFor(result report) string {
 			"ws_authenticated=true",
 			"ws_expected_events",
 			"ws_polling_latest_sequence",
+			"ws_polling_artifact_latest_sequence",
 			"ws_replica_artifact_url",
 			"ws_replica_artifact_verified",
 			"ws_reconnect_artifact_url",

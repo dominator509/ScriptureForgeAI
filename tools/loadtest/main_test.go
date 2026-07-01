@@ -195,6 +195,7 @@ func TestStagingWebSocketReportIncludesProductionTargetAndEvidenceIDs(t *testing
 			WSPollingRoomID:              "staging-room",
 			RedisTelemetryRoomID:         "staging-room",
 			WSReconnectSequenceContinues: true,
+			PollingLatestSequence:        productionMinWSEvents,
 			RoomBroadcastDrops:           intPtr(0),
 		},
 	}
@@ -214,10 +215,10 @@ func TestStagingWebSocketReportIncludesProductionTargetAndEvidenceIDs(t *testing
 	if result.WSOrigin != "https://app-load.staging.scriptureforge.ai" || !result.WSAuthenticated {
 		t.Fatalf("staging websocket auth/origin metadata = %+v", result)
 	}
-	if result.WSExpectedEvents != productionMinWSEvents || result.WSPollingLatestSequence != result.WSMaxSequence {
-		t.Fatalf("staging websocket polling latest sequence = %d, want max sequence %d", result.WSPollingLatestSequence, result.WSMaxSequence)
+	if result.WSExpectedEvents != productionMinWSEvents || result.WSPollingLatestSequence != result.WSMaxSequence || result.WSPollingArtifactSequence != int(result.WSMaxSequence) {
+		t.Fatalf("staging websocket polling latest sequence = %d and artifact sequence = %d, want max sequence %d", result.WSPollingLatestSequence, result.WSPollingArtifactSequence, result.WSMaxSequence)
 	}
-	if !containsAllSummaryMarkers(result.ResultSummary, "staging artifact", "staging_websocket", "wss://", "min_rps", "500", "max_p99_ms", "200", "production_target_rps=500", "production_target_p99_ms=200", "production_min_duration_ms=60000", "duration_ms>=60000", "production_min_ws_events=30000", "observed_rps", "observed_p99_ms", "release_candidate", "service_version", "load_run_id=load-run-123", "ws_sequence_contiguous=true", "ws_origin=https://", "ws_room_id=staging-room", "ws_reconnect_room_id=staging-room", "ws_polling_room_id=staging-room", "redis_telemetry_room_id=staging-room", "ws_reconnect_sequence_continues=true", "ws_authenticated=true", "ws_expected_events=30000", "ws_polling_latest_sequence=30000", "ws_replica_artifact_url=https://load-artifacts.staging.scriptureforge.ai/load/ws-replicas.txt", "ws_replica_artifact_verified", "ws_reconnect_artifact_url=https://load-artifacts.staging.scriptureforge.ai/load/ws-reconnect.txt", "ws_reconnect_artifact_verified", "ws_reconnect_sequence_continues=true", "ws_polling_artifact_url=https://load-artifacts.staging.scriptureforge.ai/load/ws-polling.txt", "ws_polling_artifact_verified", "ws_polling_artifact_latest_sequence_validated=true", "ws_polling_artifact_latest_sequence_matches_run=true", "redis_telemetry_artifact_url=https://load-artifacts.staging.scriptureforge.ai/load/redis-telemetry.txt", "redis_telemetry_artifact_verified", "ws_distinct_artifacts=true", "room_broadcast_drops=0") {
+	if !containsAllSummaryMarkers(result.ResultSummary, "staging artifact", "staging_websocket", "wss://", "min_rps", "500", "max_p99_ms", "200", "production_target_rps=500", "production_target_p99_ms=200", "production_min_duration_ms=60000", "duration_ms>=60000", "production_min_ws_events=30000", "observed_rps", "observed_p99_ms", "release_candidate", "service_version", "load_run_id=load-run-123", "ws_sequence_contiguous=true", "ws_origin=https://", "ws_room_id=staging-room", "ws_reconnect_room_id=staging-room", "ws_polling_room_id=staging-room", "redis_telemetry_room_id=staging-room", "ws_reconnect_sequence_continues=true", "ws_authenticated=true", "ws_expected_events=30000", "ws_polling_latest_sequence=30000", "ws_polling_artifact_latest_sequence=30000", "ws_replica_artifact_url=https://load-artifacts.staging.scriptureforge.ai/load/ws-replicas.txt", "ws_replica_artifact_verified", "ws_reconnect_artifact_url=https://load-artifacts.staging.scriptureforge.ai/load/ws-reconnect.txt", "ws_reconnect_artifact_verified", "ws_reconnect_sequence_continues=true", "ws_polling_artifact_url=https://load-artifacts.staging.scriptureforge.ai/load/ws-polling.txt", "ws_polling_artifact_verified", "ws_polling_artifact_latest_sequence_validated=true", "ws_polling_artifact_latest_sequence_matches_run=true", "redis_telemetry_artifact_url=https://load-artifacts.staging.scriptureforge.ai/load/redis-telemetry.txt", "redis_telemetry_artifact_verified", "ws_distinct_artifacts=true", "room_broadcast_drops=0") {
 		t.Fatalf("staging websocket summary omitted verified markers: %s", result.ResultSummary)
 	}
 

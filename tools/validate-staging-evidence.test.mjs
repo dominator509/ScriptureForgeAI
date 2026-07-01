@@ -3906,6 +3906,21 @@ test('validateManifest strict release rejects WebSocket load evidence without po
   );
 });
 
+test('validateManifest strict release rejects WebSocket load evidence when polling artifact sequence lags max sequence', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'PERF-WS-001');
+  item.evidence[0].result_summary = item.evidence[0].result_summary
+    .replace('ws_polling_artifact_latest_sequence=30000', 'ws_polling_artifact_latest_sequence=29999');
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /PERF-WS-001 strict release polling artifact latest sequence must match maximum sequence/,
+  );
+});
+
 test('validateManifest strict release rejects WebSocket load evidence without polling artifact sequence validation marker', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
@@ -4083,6 +4098,21 @@ test('validateManifest strict release rejects Redis sequence evidence when polli
   assert.throws(
     () => validateManifest(manifest, { strictRelease: true }),
     /DATA-REDIS-001 strict release polling latest sequence must match maximum sequence/,
+  );
+});
+
+test('validateManifest strict release rejects Redis sequence evidence when polling artifact state lags max sequence', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'DATA-REDIS-001');
+  item.evidence[0].result_summary = item.evidence[0].result_summary
+    .replace('ws_polling_artifact_latest_sequence=30000', 'ws_polling_artifact_latest_sequence=29999');
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /DATA-REDIS-001 strict release polling artifact latest sequence must match maximum sequence/,
   );
 });
 
@@ -4432,9 +4462,9 @@ function passedEvidenceFor(id) {
       : id === 'PERF-HTTP-001'
         ? 'PERF-HTTP-001 profile=staging_http min_rps=5000 max_p99_ms=200 production_target_rps=5000 production_target_p99_ms=200 production_min_duration_ms=60000 observed_rps=5200 observed_p99_ms=180 duration_ms=60000 duration_ms>=60000 threshold_pass=true http_replica_count=2 dependency_postgres_p99_ms=32 dependency_redis_p99_ms=18 release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123; verified markers: http_replica_artifact_verified, http_replica_count=2, dependency_telemetry_artifact_verified, dependency_latency_artifact_verified=true, dependency_postgres_p99_ms=32, dependency_redis_p99_ms=18, http_distinct_artifacts=true'
       : id === 'PERF-WS-001'
-        ? 'PERF-WS-001 staging artifact profile=staging_websocket min_rps=500 max_p99_ms=200 production_target_rps=500 production_target_p99_ms=200 production_min_duration_ms=60000 production_min_ws_events=30000 duration_ms=60000 duration_ms>=60000 observed_rps=620 observed_p99_ms=140 ws_expected_events=30000 ws_unique_sequences=30000 ws_min_sequence=1 ws_max_sequence=30000 threshold_pass=true release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123 ws_origin=https://web.staging.scriptureforge.ai ws_room_id=room-1 ws_user_id=user-1 ws_organization_id=org-1 ws_reconnect_room_id=room-1 ws_polling_room_id=room-1 redis_telemetry_room_id=room-1 ws_reconnect_sequence_continues=true ws_authenticated=true ws_polling_latest_sequence=30000 ws_sequence_contiguous=true ws_replica_count=2 room_broadcast_drops=0; verified markers: staging artifact, ws_replica_artifact_url=https://artifacts.staging.scriptureforge.ai/load/ws-replicas.txt, ws_replica_artifact_verified, ws_replica_count=2, ws_reconnect_artifact_url=https://artifacts.staging.scriptureforge.ai/load/ws-reconnect.txt, ws_reconnect_artifact_verified, ws_reconnect_sequence_continues=true, ws_polling_artifact_url=https://artifacts.staging.scriptureforge.ai/load/ws-polling.txt, ws_polling_artifact_verified, ws_polling_artifact_latest_sequence_validated=true, ws_polling_artifact_latest_sequence_matches_run=true, redis_telemetry_artifact_url=https://artifacts.staging.scriptureforge.ai/load/redis-telemetry.txt, redis_telemetry_artifact_verified, ws_distinct_artifacts=true, room_broadcast_drops=0'
+        ? 'PERF-WS-001 staging artifact profile=staging_websocket min_rps=500 max_p99_ms=200 production_target_rps=500 production_target_p99_ms=200 production_min_duration_ms=60000 production_min_ws_events=30000 duration_ms=60000 duration_ms>=60000 observed_rps=620 observed_p99_ms=140 ws_expected_events=30000 ws_unique_sequences=30000 ws_min_sequence=1 ws_max_sequence=30000 threshold_pass=true release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123 ws_origin=https://web.staging.scriptureforge.ai ws_room_id=room-1 ws_user_id=user-1 ws_organization_id=org-1 ws_reconnect_room_id=room-1 ws_polling_room_id=room-1 redis_telemetry_room_id=room-1 ws_reconnect_sequence_continues=true ws_authenticated=true ws_polling_latest_sequence=30000 ws_polling_artifact_latest_sequence=30000 ws_sequence_contiguous=true ws_replica_count=2 room_broadcast_drops=0; verified markers: staging artifact, ws_replica_artifact_url=https://artifacts.staging.scriptureforge.ai/load/ws-replicas.txt, ws_replica_artifact_verified, ws_replica_count=2, ws_reconnect_artifact_url=https://artifacts.staging.scriptureforge.ai/load/ws-reconnect.txt, ws_reconnect_artifact_verified, ws_reconnect_sequence_continues=true, ws_polling_artifact_url=https://artifacts.staging.scriptureforge.ai/load/ws-polling.txt, ws_polling_artifact_verified, ws_polling_artifact_latest_sequence_validated=true, ws_polling_artifact_latest_sequence_matches_run=true, redis_telemetry_artifact_url=https://artifacts.staging.scriptureforge.ai/load/redis-telemetry.txt, redis_telemetry_artifact_verified, ws_distinct_artifacts=true, room_broadcast_drops=0'
       : id === 'DATA-REDIS-001'
-        ? 'DATA-REDIS-001 staging artifact profile=staging_websocket release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123 ws_room_id=room-1 ws_user_id=user-1 ws_organization_id=org-1 ws_reconnect_room_id=room-1 ws_polling_room_id=room-1 redis_telemetry_room_id=room-1 ws_reconnect_sequence_continues=true production_min_ws_events=30000 ws_sequence_contiguous=true ws_expected_events=30000 ws_unique_sequences=30000 ws_min_sequence=1 ws_max_sequence=30000 ws_polling_latest_sequence=30000 ws_polling_artifact_url=https://artifacts.staging.scriptureforge.ai/load/ws-polling.txt redis_telemetry_artifact_url=https://artifacts.staging.scriptureforge.ai/load/redis-telemetry.txt; verified markers: staging artifact, ws_polling_artifact_url=https://artifacts.staging.scriptureforge.ai/load/ws-polling.txt, redis_telemetry_artifact_verified, ws_polling_artifact_latest_sequence_validated=true, ws_polling_artifact_latest_sequence_matches_run=true, ws_distinct_artifacts=true, room_broadcast_drops=0'
+        ? 'DATA-REDIS-001 staging artifact profile=staging_websocket release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123 ws_room_id=room-1 ws_user_id=user-1 ws_organization_id=org-1 ws_reconnect_room_id=room-1 ws_polling_room_id=room-1 redis_telemetry_room_id=room-1 ws_reconnect_sequence_continues=true production_min_ws_events=30000 ws_sequence_contiguous=true ws_expected_events=30000 ws_unique_sequences=30000 ws_min_sequence=1 ws_max_sequence=30000 ws_polling_latest_sequence=30000 ws_polling_artifact_latest_sequence=30000 ws_polling_artifact_url=https://artifacts.staging.scriptureforge.ai/load/ws-polling.txt redis_telemetry_artifact_url=https://artifacts.staging.scriptureforge.ai/load/redis-telemetry.txt; verified markers: staging artifact, ws_polling_artifact_url=https://artifacts.staging.scriptureforge.ai/load/ws-polling.txt, redis_telemetry_artifact_verified, ws_polling_artifact_latest_sequence_validated=true, ws_polling_artifact_latest_sequence_matches_run=true, ws_distinct_artifacts=true, room_broadcast_drops=0'
       : id === 'SEC-SIGNOFF-001'
         ? 'threat model approval complete; security/dependency_risk_register.md#DRR-001 dependency risk decision reviewed; residual risk review complete; owner/security approval recorded; release risk signoff approved; signoff_artifact_verified=true; release_candidate=0123456789abcdef0123456789abcdef01234567'
       : `${id} passed`,
