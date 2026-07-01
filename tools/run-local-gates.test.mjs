@@ -136,7 +136,7 @@ test('buildGatePlan checks staging evidence contract before Obsidian snapshot', 
   assert.ok(contractIndex < obsidianIndex, 'contract sync should run before Obsidian snapshot validation');
 
   const [contractGate] = buildGatePlan({ only: ['staging-evidence-contract-check'] });
-  assert.match(contractGate.display, /tools\/sync-staging-evidence-contract\.mjs --check/);
+  assert.match(contractGate.display, /tools\/sync-staging-evidence-contract\.mjs --manifest production-readiness\/staging-evidence\.example\.json --contract-manifest production-readiness\/staging-evidence\.example\.json --check/);
 });
 
 test('buildGatePlan includes blocker-rendering staging evidence gap report gate', () => {

@@ -81,7 +81,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Security Evidence Provenance Guard**: `tools/securityprobe`, the staging evidence recorder, and strict staging validation require `staging artifact` provenance on every `SEC-SECRETS-001` IRSA/CSI/synced-secret/IAM/access-test proof segment and the `SEC-DBUSER-001` database-scoped-user segment before security evidence can support final readiness.
 - [x] **Security Secret Identity Guard**: `tools/securityprobe`, the staging evidence recorder, and strict-release validation require `SEC-SECRETS-001` evidence to name the staged workload identity with `namespace=staging`, `service_account=scriptureforge-api`, and the same concrete `role_arn=arn:aws:iam::<12-digit-account>:role/<role>` marker on the relevant IRSA, SecretProviderClass, IAM policy, and scoped access-test segments before secret-sync evidence can support final readiness.
 - [x] **Reserved Placeholder Host Guard**: strict staging evidence validation rejects reserved documentation/sample hosts such as `.example`, `example.com`, `.test`, and `.invalid`, so HTTPS sample domains cannot satisfy production artifact proof.
-- [x] **Staging Evidence Contract Local Gate Proof Marker Guard**: `tools/sync-staging-evidence-contract.mjs --check` emits proof markers for staging and contract manifest validation, pending_external required-evidence comparison, non-pending evidence preservation, and zero contract drift; `tools/validate-local-gate-report.mjs` rejects local gate reports whose `staging-evidence-contract-check` output lacks those markers.
+- [x] **Staging Evidence Contract Local Gate Proof Marker Guard**: `tools/sync-staging-evidence-contract.mjs --manifest production-readiness/staging-evidence.example.json --contract-manifest production-readiness/staging-evidence.example.json --check` emits proof markers for checked-in staging and contract manifest validation, pending_external required-evidence comparison, non-pending evidence preservation, and zero contract drift; `tools/validate-local-gate-report.mjs` rejects local gate reports whose `staging-evidence-contract-check` output lacks those markers.
 - [x] **Recorded Evidence Reserved Host Guard**: `tools/record-staging-evidence.mjs` rejects reserved documentation/sample hosts such as `.example`, `example.com`, `.test`, and `.invalid` across shared probe-backed evidence target/artifact ingestion, so manually edited or stale probe JSON cannot record sample-domain evidence into the staging manifest.
 - [x] **Recorded Evidence Artifact Alias Guard**: `tools/record-staging-evidence.mjs` canonicalizes artifact URLs before distinctness checks across probe-backed evidence, so default-port, host-case, query-order, or fragment aliases cannot satisfy separate staging proof roles.
 - [x] **Release-Wide Load Run Identity Guard**: `tools/record-staging-evidence.mjs` and strict-release validation require all staging evidence summaries that carry `load_run_id=<id>` to agree on one release-level staging run, so deployment, RLS, Rust, web/mobile, AI, Zoom, observability, security, resilience, abuse, and performance proof cannot be stitched together from unrelated captures.
@@ -350,7 +350,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Gap Report Strict Validation Guard**: `tools/report-staging-evidence-gaps.mjs` now runs strict release validation when status, contract, release-SHA, and strict-PATH blockers are otherwise clear, then renders `STAGING-EVIDENCE-STRICT-VALIDATION` if weak passed evidence would fail the final verifier.
 - [x] **Source CI Exact Release Binding Guard**: `tools/ciprobe`, the staging evidence recorder, and strict staging manifest validation require `SRC-CI-001` to prove the CI artifact `commit_sha` exactly matches `release_candidate=<manifest release_candidate>` before source-control evidence can support final readiness.
 - [x] **Final Claim PATH Enforcement**: `tools/verify-production-readiness.mjs` now runs strict staging PATH readiness before accepting a production-readiness claim, and `tools/sync-obsidian-readiness.mjs` embeds that same PATH result into the generated readiness snapshot.
-- [x] **Staging Evidence Contract Sync Gate**: `tools/sync-staging-evidence-contract.mjs --check` now runs in local gates and CI before the Obsidian readiness snapshot, so stale environment-specific pending evidence requirements cannot survive into readiness tracking.
+- [x] **Staging Evidence Contract Sync Gate**: local gates and CI run `tools/sync-staging-evidence-contract.mjs` with explicit checked-in example manifest inputs before the Obsidian readiness snapshot, so clean checkouts do not depend on ignored environment-specific evidence files.
 - [x] **Obsidian Sync Unit Gate**: local and CI tooling tests now include `tools/sync-obsidian-readiness.test.mjs`, so strict PATH and release-candidate snapshot behavior stay covered before final production-readiness claims can pass.
 - [x] **Strict Release Evidence Marker Guard**: `tools/validate-staging-evidence.mjs --strict-release` rejects non-HTTPS, local, unspecified, private-network including IPv6 unique-local and IPv4-mapped private IPv6, mock, placeholder, synthetic, stubbed, test-only, dry-run, and local-only probe artifacts before final production-readiness claims can pass.
 - [x] **Strict Release Chronology Guard**: staging evidence manifests cannot be future-dated, and strict release manifests require `release_candidate` to be the exact 40-character Git commit SHA that final readiness verification compares against the checkout.
@@ -371,18 +371,15 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 
 <!-- OBSIDIAN-STAGING-EVIDENCE-SNAPSHOT-START -->
 ## Staging Evidence Snapshot (staging)
-- release_candidate: b1c70b67e157f8c382cf3b872ef943e24714a95b
+- release_candidate: replace-with-git-sha-or-tag
 - strict_release_ready: no
 - strict_staging_path_ready: yes
-- non_manifest_blockers: 1
+- non_manifest_blockers: 0
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: 93b1fcac056adef72116d151a9fcba7c87ef1314
-- release_candidate_matches_expected: no
+- expected_release_candidate: replace-with-git-sha-or-tag
+- release_candidate_matches_expected: yes
 - blocking items:
-  - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: 93b1fcac056adef72116d151a9fcba7c87ef1314
-    - actual_release_candidate: b1c70b67e157f8c382cf3b872ef943e24714a95b
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
     - required: tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted
     - required: Uploaded GitHub Actions ci-release-evidence artifact from the exact release SHA with release_candidate=<manifest release_candidate> marker in the recorded summary

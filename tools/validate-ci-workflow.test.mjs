@@ -305,11 +305,27 @@ test('validateCIWorkflow rejects missing secret hygiene validator test coverage'
 
 test('validateCIWorkflow rejects missing staging evidence contract sync check', async () => {
   const text = await readFile('.github/workflows/security.yml', 'utf8');
-  const broken = text.replace('node tools/sync-staging-evidence-contract.mjs --check', 'node tools/sync-obsidian-readiness.mjs --check');
+  const broken = text.replace(
+    'node tools/sync-staging-evidence-contract.mjs --manifest production-readiness/staging-evidence.example.json --contract-manifest production-readiness/staging-evidence.example.json --check',
+    'node tools/sync-staging-evidence-contract.mjs --check',
+  );
   assert.notEqual(broken, text, 'fixture workflow must include staging evidence contract sync check');
   assert.throws(
     () => validateCIWorkflow(broken),
     /staging-evidence-contract-check/,
+  );
+});
+
+test('validateCIWorkflow rejects implicit Obsidian readiness snapshot inputs', async () => {
+  const text = await readFile('.github/workflows/security.yml', 'utf8');
+  const broken = text.replace(
+    'node tools/sync-obsidian-readiness.mjs --manifest production-readiness/staging-evidence.example.json --contract-manifest production-readiness/staging-evidence.example.json --expected-release-candidate replace-with-git-sha-or-tag --check',
+    'node tools/sync-obsidian-readiness.mjs --check',
+  );
+  assert.notEqual(broken, text, 'fixture workflow must include explicit Obsidian readiness snapshot inputs');
+  assert.throws(
+    () => validateCIWorkflow(broken),
+    /obsidian-readiness-snapshot-check/,
   );
 });
 

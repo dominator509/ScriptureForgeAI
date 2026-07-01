@@ -139,10 +139,10 @@ jobs:
       run: node tools/validate-serena-obsidian.mjs
 
     - name: Validate Staging Evidence Contract Sync
-      run: node tools/sync-staging-evidence-contract.mjs --check
+      run: node tools/sync-staging-evidence-contract.mjs --manifest production-readiness/staging-evidence.example.json --contract-manifest production-readiness/staging-evidence.example.json --check
 
     - name: Validate Obsidian Production Readiness Snapshot
-      run: node tools/sync-obsidian-readiness.mjs --check
+      run: node tools/sync-obsidian-readiness.mjs --manifest production-readiness/staging-evidence.example.json --contract-manifest production-readiness/staging-evidence.example.json --expected-release-candidate replace-with-git-sha-or-tag --check
 
     - name: Test Staging Evidence Validator
       run: node --test tools/validate-staging-evidence.test.mjs
