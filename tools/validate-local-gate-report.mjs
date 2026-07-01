@@ -10,7 +10,7 @@ import { deploymentSkeletonProofMarkers } from './validate-deployment-skeleton.m
 import { journalCryptoProofMarkers } from './verify-journal-crypto.mjs';
 import { observabilityProofMarkers } from './validate-observability.mjs';
 import { gateDefinitions } from './run-local-gates.mjs';
-import { npmAuditProofMarkers } from './run-npm-audit.mjs';
+import { npmAuditCompletedMarkers } from './run-npm-audit.mjs';
 import { terraformFmtProofMarkers, terraformValidateProofMarkers } from './run-terraform-command.mjs';
 import { terraformInitProofMarkers } from './run-terraform-init.mjs';
 import { rlsDBProofMarkers } from './run-rls-db-integration.mjs';
@@ -198,7 +198,8 @@ export function validateLocalGateReport(report, {
     if (result.id === 'web-audit' || result.id === 'mobile-audit') {
       const output = `${result.stdout_tail}\n${result.stderr_tail}`;
       assert.match(output, /npm audit gate validated:/, `${result.id} output must include the npm audit proof summary`);
-      for (const marker of npmAuditProofMarkers) {
+      assert.ok(!output.includes('npm_audit_network_blocked=true'), `${result.id} output must not be a network-blocked npm audit row`);
+      for (const marker of npmAuditCompletedMarkers) {
         assert.ok(output.includes(marker), `${result.id} output must include ${marker}`);
       }
       if (result.id === 'web-audit') {

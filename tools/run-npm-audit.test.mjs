@@ -4,6 +4,8 @@ import { describe, it } from 'node:test';
 import {
   isNetworkBlocked,
   npmAuditProofMarkers,
+  npmAuditCompletedMarkers,
+  npmAuditNetworkBlockedMarkers,
   parseArgs,
   quoteShellArg,
   resolveAuditCommand,
@@ -56,7 +58,7 @@ describe('run-npm-audit', () => {
 
     assert.equal(result.exitCode, 0);
     assert.equal(result.blocked, false);
-    assert.deepEqual(result.markers, npmAuditProofMarkers);
+    assert.deepEqual(result.markers, npmAuditCompletedMarkers);
     assert.deepEqual(calls[0].args, ['audit', '--audit-level=moderate']);
     assert.equal(calls[0].options.cwd, 'web');
   });
@@ -90,6 +92,7 @@ describe('run-npm-audit', () => {
     assert.equal(result.exitCode, 0);
     assert.equal(result.blocked, true);
     assert.match(result.output, /currently unreachable/);
+    assert.deepEqual(result.markers, npmAuditNetworkBlockedMarkers);
   });
 
   it('falls back through cmd.exe when Windows command shims cannot be spawned directly', () => {

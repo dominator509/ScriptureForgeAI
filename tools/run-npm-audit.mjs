@@ -9,6 +9,16 @@ export const npmAuditProofMarkers = [
   'windows_cmd_fallback=true',
 ];
 
+export const npmAuditCompletedMarkers = [
+  ...npmAuditProofMarkers,
+  'npm_audit_completed=true',
+];
+
+export const npmAuditNetworkBlockedMarkers = [
+  ...npmAuditProofMarkers,
+  'npm_audit_network_blocked=true',
+];
+
 export function resolveAuditCommand({ bin = 'npm', platformName = platform() } = {}) {
   return platformName === 'win32' && bin === 'npm' ? 'npm.cmd' : bin;
 }
@@ -72,7 +82,7 @@ export function runNpmAudit({
   const exitCode = child.status ?? 1;
 
   if (exitCode === 0) {
-    return { exitCode: 0, output, blocked: false, markers: npmAuditProofMarkers };
+    return { exitCode: 0, output, blocked: false, markers: npmAuditCompletedMarkers };
   }
 
   if (isNetworkBlocked(output)) {
@@ -80,7 +90,7 @@ export function runNpmAudit({
       exitCode: 0,
       output: 'npm audit is currently unreachable from this environment; marked as blocked for local reproducibility.',
       blocked: true,
-      markers: npmAuditProofMarkers,
+      markers: npmAuditNetworkBlockedMarkers,
     };
   }
 

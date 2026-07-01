@@ -267,6 +267,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Local Gate Chronology Guard**: local gate reports cannot be future-dated; `tools/validate-local-gate-report.mjs` rejects `observed_at` values after the validation date before final readiness verification can use them.
 - [x] **Local Gate Command Drift Guard**: `tools/validate-local-gate-report.mjs` requires every recorded gate command to match the canonical `tools/run-local-gates.mjs` definition, so stale or weakened local gate rows cannot satisfy final readiness.
 - [x] **Audit/Init Local Gate Proof Marker Guard**: `tools/run-npm-audit.mjs` and `tools/run-terraform-init.mjs` emit machine-checkable proof summaries, and `tools/validate-local-gate-report.mjs` rejects local gate reports whose web/mobile npm audit or Terraform init rows omit severity/backend/network-classification markers.
+- [x] **NPM Audit Completion Marker Guard**: `tools/run-npm-audit.mjs` emits `npm_audit_completed=true` only for completed audit runs and `npm_audit_network_blocked=true` for registry/network blocker rows; `tools/validate-local-gate-report.mjs` rejects network-blocked npm audit rows for release-grade local reports, so dependency audit evidence cannot be satisfied by an unreachable registry.
 - [x] **Client Smoke Local Gate Proof Marker Guard**: web and mobile API/crypto smoke tests emit product-flow and crypto proof summaries for auth, encrypted journal payloads, room/WebSocket setup, strict endpoint guards, AES-GCM, associated data, PBKDF2, key disposal, and native-required mobile fail-closed behavior; `tools/validate-local-gate-report.mjs` rejects web/mobile smoke rows missing those markers.
 - [x] **RLS DB Gate Fail-Closed Guard**: the current local matrix includes `rls-db-integration` via `tools/run-rls-db-integration-docker.mjs` with `REQUIRE_DATABASE_URL=true`, and local gate report validation rejects skipped gates plus weakened RLS gate commands so DB-backed tenant/RLS proof cannot be satisfied by skip-capable or generic test rows.
 - [x] **RLS DB Report Proof Marker Guard**: `tools/run-rls-db-integration.mjs` emits a compact `rls-db-integration proof:` summary only after the DB-backed tenant/RLS tests pass, and `tools/validate-local-gate-report.mjs` now requires that summary to include table RLS, journal handler RLS, room active handler RLS, journal/room tenant isolation, socket tenant scoping, AI request log/citation RLS, and generated curriculum audit RLS markers before a local gate report can support readiness.
@@ -365,11 +366,11 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 1
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: d5d4d85322806eb37dbf04d3570c5bf35e3c373d
+- expected_release_candidate: 0f0d1ff9500934372c0ee4683aea943bda9cc7dd
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: d5d4d85322806eb37dbf04d3570c5bf35e3c373d
+    - expected_release_candidate: 0f0d1ff9500934372c0ee4683aea943bda9cc7dd
     - actual_release_candidate: ce96c283410756444a63b1345646fc69cf274d22
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
     - required: tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted

@@ -10,7 +10,7 @@ import { deploymentSkeletonProofMarkers } from './validate-deployment-skeleton.m
 import { journalCryptoProofMarkers } from './verify-journal-crypto.mjs';
 import { observabilityProofMarkers } from './validate-observability.mjs';
 import { gateDefinitions } from './run-local-gates.mjs';
-import { npmAuditProofMarkers } from './run-npm-audit.mjs';
+import { npmAuditCompletedMarkers, npmAuditNetworkBlockedMarkers } from './run-npm-audit.mjs';
 import { rustCargoProofMarkers } from './run-rust-cargo-gate.mjs';
 import { terraformFmtProofMarkers, terraformValidateProofMarkers } from './run-terraform-command.mjs';
 import { terraformInitProofMarkers } from './run-terraform-init.mjs';
@@ -189,10 +189,17 @@ test('validateLocalGateReport rejects npm audit gates without proof markers', ()
 
   const missingMobileMarker = completeReport();
   findGate(missingMobileMarker, 'mobile-audit').stdout_tail = npmAuditProofOutput()
-    .replace('audit_level_enforced=true', 'audit_level_enforced=false');
+    .replace('npm_audit_completed=true', 'npm_audit_completed=false');
   assert.throws(
     () => validateLocalGateReport(missingMobileMarker),
-    /mobile-audit output must include audit_level_enforced=true/,
+    /mobile-audit output must include npm_audit_completed=true/,
+  );
+
+  const networkBlockedAudit = completeReport();
+  findGate(networkBlockedAudit, 'web-audit').stdout_tail = `npm audit gate validated: ${npmAuditNetworkBlockedMarkers.join(', ')}`;
+  assert.throws(
+    () => validateLocalGateReport(networkBlockedAudit),
+    /web-audit output must not be a network-blocked npm audit row/,
   );
 });
 
@@ -784,7 +791,7 @@ function goProbeProofOutput() {
 }
 
 function npmAuditProofOutput() {
-  return `npm audit gate validated: ${npmAuditProofMarkers.join(', ')}`;
+  return `npm audit gate validated: ${npmAuditCompletedMarkers.join(', ')}`;
 }
 
 function terraformInitProofOutput() {
