@@ -92,18 +92,33 @@ variable "database_preferred_maintenance_window" {
 }
 
 variable "api_image" {
-  description = "Container image for the Go API service."
+  description = "Immutable container image digest for the Go API service."
   type        = string
+
+  validation {
+    condition     = can(regex("@sha256:[0-9a-f]{64}$", var.api_image))
+    error_message = "api_image must be pinned to an immutable sha256 digest, for example repository/scriptureforge-api@sha256:<64 lowercase hex chars>."
+  }
 }
 
 variable "web_image" {
-  description = "Container image for the Next.js web service."
+  description = "Immutable container image digest for the Next.js web service."
   type        = string
+
+  validation {
+    condition     = can(regex("@sha256:[0-9a-f]{64}$", var.web_image))
+    error_message = "web_image must be pinned to an immutable sha256 digest, for example repository/scriptureforge-web@sha256:<64 lowercase hex chars>."
+  }
 }
 
 variable "rust_engine_image" {
-  description = "Container image for the Rust gRPC scripture engine."
+  description = "Immutable container image digest for the Rust gRPC scripture engine."
   type        = string
+
+  validation {
+    condition     = can(regex("@sha256:[0-9a-f]{64}$", var.rust_engine_image))
+    error_message = "rust_engine_image must be pinned to an immutable sha256 digest, for example repository/scriptureforge-rust-engine@sha256:<64 lowercase hex chars>."
+  }
 }
 
 variable "api_resources" {

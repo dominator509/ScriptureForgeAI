@@ -19,9 +19,9 @@ web_hostname = "app.staging.scriptureforge.example"
 ingress_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/00000000-0000-0000-0000-000000000000"
 ingress_ssl_policy      = "ELBSecurityPolicy-TLS13-1-2-2021-06"
 
-api_image         = "123456789012.dkr.ecr.us-east-1.amazonaws.com/scriptureforge-staging/api:replace-with-digest"
-web_image         = "123456789012.dkr.ecr.us-east-1.amazonaws.com/scriptureforge-staging/web:replace-with-digest"
-rust_engine_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/scriptureforge-staging/rust-engine:replace-with-digest"
+api_image         = "123456789012.dkr.ecr.us-east-1.amazonaws.com/scriptureforge-staging/api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+web_image         = "123456789012.dkr.ecr.us-east-1.amazonaws.com/scriptureforge-staging/web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+rust_engine_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/scriptureforge-staging/rust-engine@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 
 # Optional resource overrides. Start with defaults, then tune from staging load and memory data.
 # api_resources = {

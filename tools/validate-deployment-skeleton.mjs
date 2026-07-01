@@ -17,6 +17,7 @@ export const deploymentSkeletonProofMarkers = [
   'otel_runtime_wiring=true',
   'hpa_pdb_rollout_safety=true',
   'root_database_url_absent=true',
+  'immutable_workload_image_digests=true',
 ];
 
 async function readTerraform(name) {
@@ -94,6 +95,28 @@ export function validateTerraformSecretInputs(variables, tfvarsExample, app) {
   assert.ok(!app.includes('aws_rds_cluster.postgres.master_password'), 'workload manifests must not read the RDS root password');
   assert.ok(!app.includes('aws_rds_cluster.postgres.master_username'), 'workload manifests must not construct a root database URL');
   assert.ok(!app.includes('postgres://'), 'workload manifests must source DATABASE_URL from Secrets Manager, not inline PostgreSQL URLs');
+}
+
+export function validateTerraformImageDigestInputs(variables, tfvarsExample, app) {
+  for (const name of ['api_image', 'web_image', 'rust_engine_image']) {
+    const block = terraformVariableBlock(variables, name);
+    assert.ok(
+      block.includes('@sha256:[0-9a-f]{64}$'),
+      `${name} must validate immutable sha256 image digests`,
+    );
+    assert.ok(
+      new RegExp(`${name}\\s*=\\s*"[^"]+@sha256:[0-9a-f]{64}"`).test(tfvarsExample),
+      `terraform.tfvars.example must document ${name} as an immutable sha256 image digest`,
+    );
+  }
+
+  for (const requiredImageReference of [
+    'image = var.api_image',
+    'image = var.web_image',
+    'image = var.rust_engine_image',
+  ]) {
+    assert.ok(app.includes(requiredImageReference), `workload manifest missing ${requiredImageReference}`);
+  }
 }
 
 requireIncludes(
@@ -285,6 +308,7 @@ requireIncludes(
 );
 
 validateTerraformSecretInputs(variables, tfvarsExample, app);
+validateTerraformImageDigestInputs(variables, tfvarsExample, app);
 assert.ok(!tfvarsExample.includes('skip_final_snapshot = true'), 'tfvars example must not preserve production-hostile snapshot defaults');
 
 validatePlatformRuntimeConfig(platformMain);

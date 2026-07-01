@@ -86,6 +86,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Performance Load Run Identity Guard**: the staging evidence recorder and strict-release validation require `PERF-HTTP-001`, `PERF-WS-001`, and `DATA-REDIS-001` evidence to share one concrete report-level `load_run_id`, so HTTP throughput, WebSocket fan-out, and Redis sequence proof cannot be stitched together from unrelated staging load runs or summary-only markers.
 - [x] **Kubernetes Rollout Release Binding Guard**: `tools/deploymentprobe`, the staging evidence recorder, and strict-release validation require `kubernetes-rollout-status` proof to carry exact `release_candidate` and `service_version` markers, so stale rollout output cannot be paired with current workload resource evidence.
 - [x] **Deployment Report Run Identity Guard**: `tools/record-staging-evidence.mjs` now rejects release-bound `DEPLOY-TF-001` and `DEPLOY-K8S-001` probe reports unless the report itself carries `load_run_id`, preventing hand-edited deployment reports from relying only on per-segment run markers.
+- [x] **Terraform Immutable Image Input Guard**: Terraform API, web, and Rust workload image variables now require immutable `@sha256:<digest>` references, `terraform.tfvars.example` documents digest-pinned ECR inputs, and `tools/validate-deployment-skeleton.mjs` emits `immutable_workload_image_digests=true` only when those release-bound image input validations and workload references remain wired.
 - [x] **Rust Report Run Identity Guard**: `tools/record-staging-evidence.mjs` now rejects `RUST-GRPC-001` probe reports unless the report itself carries `load_run_id`, preventing hand-edited Rust health/metrics reports from relying only on per-segment run markers.
 - [x] **WebSocket Polling Sequence Match Guard**: `tools/loadtest`, the staging evidence recorder, and strict staging validation require WebSocket HTTP polling fallback evidence to prove `latest_sequence` matches the exact expected run sequence, preserving `ws_polling_artifact_latest_sequence_matches_run=true` alongside the structured `ws_polling_latest_sequence=ws_max_sequence` proof before `PERF-WS-001` or `DATA-REDIS-001` can support readiness.
 - [x] **WebSocket Reconnect Continuity Guard**: `tools/loadtest`, the staging evidence recorder, and strict staging validation now require reconnect evidence to carry `ws_reconnect_sequence_continues=true`, so an acceptance-only reconnect artifact cannot satisfy `PERF-WS-001`.
@@ -349,11 +350,11 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 1
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: 64846216005b9a1c06e0d34d22f44f11b9d10257
+- expected_release_candidate: e12afb9955b3f78e5979ef30392d4ca689e7cf73
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: 64846216005b9a1c06e0d34d22f44f11b9d10257
+    - expected_release_candidate: e12afb9955b3f78e5979ef30392d4ca689e7cf73
     - actual_release_candidate: ce96c283410756444a63b1345646fc69cf274d22
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
     - required: tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
+  validateTerraformImageDigestInputs,
   validatePlatformRuntimeConfig,
   validateTerraformSecretInputs,
 } from './validate-deployment-skeleton.mjs';
@@ -77,5 +78,20 @@ test('validateTerraformSecretInputs rejects workload root database URL construct
   assert.throws(
     () => validateTerraformSecretInputs(variables, tfvarsExample, broken),
     /workload manifests must not read the RDS root password/,
+  );
+});
+
+test('validateTerraformImageDigestInputs accepts current immutable workload image wiring', async () => {
+  const { variables, tfvarsExample, app } = await terraformSecretFixtures();
+  assert.doesNotThrow(() => validateTerraformImageDigestInputs(variables, tfvarsExample, app));
+});
+
+test('validateTerraformImageDigestInputs rejects mutable image tag inputs', async () => {
+  const { variables, tfvarsExample, app } = await terraformSecretFixtures();
+  const broken = variables.replace('@sha256:[0-9a-f]{64}$', ':[A-Za-z0-9._-]+$');
+  assert.notEqual(broken, variables, 'test fixture must remove the API immutable digest validation');
+  assert.throws(
+    () => validateTerraformImageDigestInputs(broken, tfvarsExample, app),
+    /api_image must validate immutable sha256 image digests/,
   );
 });
