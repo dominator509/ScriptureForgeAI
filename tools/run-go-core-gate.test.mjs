@@ -5,6 +5,7 @@ import {
   goArgsForMode,
   goTestProofMarkers,
   goTestRequiredAbuseTests,
+  goTestRequiredObservabilityTests,
   goTestRequiredWebSocketTests,
   goVetProofMarkers,
   parseArgs,
@@ -83,6 +84,18 @@ test('validateGoTestOutput requires mounted abuse route PASS lines', () => {
   );
 });
 
+test('validateGoTestOutput requires observability trace and metrics PASS lines', () => {
+  assert.doesNotThrow(() => validateGoTestOutput(requiredGoTestPassOutput()));
+  assert.throws(
+    () => validateGoTestOutput(requiredGoTestPassOutput().replace('--- PASS: TestMetricsHandlerServesPrometheusText', '--- SKIP: TestMetricsHandlerServesPrometheusText')),
+    /skipped: TestMetricsHandlerServesPrometheusText/,
+  );
+  assert.throws(
+    () => validateGoTestOutput(requiredGoTestPassOutput().replace('--- PASS: TestObserveDependencyFromContextAddsTraceSpan', '--- RUN: TestObserveDependencyFromContextAddsTraceSpan')),
+    /missing PASS lines: TestObserveDependencyFromContextAddsTraceSpan/,
+  );
+});
+
 test('runGoCoreGate rejects successful go test output without required WebSocket proof', () => {
   const result = runGoCoreGate({
     mode: 'test',
@@ -107,6 +120,19 @@ test('runGoCoreGate rejects successful go test output without required abuse rou
 
   assert.equal(result.exitCode, 1);
   assert.match(result.output, /go-test-gate missing required abuse\/rate-limit route proof/);
+});
+
+test('runGoCoreGate rejects successful go test output without required observability proof', () => {
+  const result = runGoCoreGate({
+    mode: 'test',
+    bin: 'go',
+    spawnSyncImpl() {
+      return { status: 0, stdout: requiredWebSocketPassOutput() + requiredAbusePassOutput(), stderr: '' };
+    },
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /go-test-gate missing required observability trace\/metrics proof/);
 });
 
 test('runGoCoreGate runs go vet with static-analysis proof markers', () => {
@@ -145,6 +171,10 @@ function requiredAbusePassOutput() {
   return `${goTestRequiredAbuseTests.map((testName) => `--- PASS: ${testName} (0.00s)`).join('\n')}\nok scriptureforge/cmd/platform-engine\n`;
 }
 
+function requiredObservabilityPassOutput() {
+  return `${goTestRequiredObservabilityTests.map((testName) => `--- PASS: ${testName} (0.00s)`).join('\n')}\nok scriptureforge/internal/domain/observability\n`;
+}
+
 function requiredGoTestPassOutput() {
-  return `${requiredWebSocketPassOutput()}${requiredAbusePassOutput()}`;
+  return `${requiredWebSocketPassOutput()}${requiredAbusePassOutput()}${requiredObservabilityPassOutput()}`;
 }

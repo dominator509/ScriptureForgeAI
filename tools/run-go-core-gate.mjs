@@ -23,6 +23,10 @@ export const goTestProofMarkers = [
   'abuse_websocket_route_limit_test=true',
   'abuse_ai_route_limit_test=true',
   'abuse_legacy_auth_alias_bucket_test=true',
+  'observability_trace_id_tests_passed=true',
+  'observability_metrics_endpoint_tests_passed=true',
+  'observability_dependency_span_tests_passed=true',
+  'observability_profile_metric_tests_passed=true',
   'repo_go_toolchain=true',
 ];
 
@@ -64,6 +68,24 @@ export const goTestRequiredAbuseTests = [
   'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/rooms_active',
   'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/rooms_state_polling',
   'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/websocket_stream',
+];
+
+export const goTestRequiredObservabilityTests = [
+  'TestMiddlewareAddsTraceIDStructuredLogAndMetrics',
+  'TestMiddlewareProvidesObserverForDependencyMetrics',
+  'TestMiddlewarePreservesInboundTraceIDAndNormalizesIDs',
+  'TestMiddlewarePropagatesW3CTraceparent',
+  'TestMiddlewareBindsOTelSpanToAcceptedXTraceID',
+  'TestMiddlewareFallsBackToXTraceIDWhenTraceparentInvalid',
+  'TestMiddlewareRejectsInvalidXTraceIDAndGeneratorFallbacks',
+  'TestMetricsHandlerServesPrometheusText',
+  'TestMetricsHandlerRestrictsMethods',
+  'TestMiddlewareDoesNotRecordMetricsScrapes',
+  'TestMiddlewarePreservesStreamingResponseWriterCapabilities',
+  'TestObserveDependencyAddsLowCardinalityMetrics',
+  'TestObserveDependencyFromContextAddsTraceSpan',
+  'TestMockDependencyStatusIsError',
+  'TestArchitectureMetricProfilesExposeWebSocketAndAIInference',
 ];
 
 export const goVetProofMarkers = [
@@ -139,12 +161,16 @@ export function runGoCoreGate({
 export function validateGoTestOutput(output) {
   const websocket = collectMissingGoTests(output, goTestRequiredWebSocketTests);
   const abuse = collectMissingGoTests(output, goTestRequiredAbuseTests);
+  const observability = collectMissingGoTests(output, goTestRequiredObservabilityTests);
   const errors = [];
   if (websocket.skipped.length > 0 || websocket.missing.length > 0) {
     errors.push(`WebSocket production-behavior proof (${formatMissingDetails(websocket)})`);
   }
   if (abuse.skipped.length > 0 || abuse.missing.length > 0) {
     errors.push(`abuse/rate-limit route proof (${formatMissingDetails(abuse)})`);
+  }
+  if (observability.skipped.length > 0 || observability.missing.length > 0) {
+    errors.push(`observability trace/metrics proof (${formatMissingDetails(observability)})`);
   }
   if (errors.length > 0) {
     throw new Error(`go-test-gate missing required ${errors.join('; ')}`);
