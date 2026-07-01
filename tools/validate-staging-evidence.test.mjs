@@ -629,6 +629,50 @@ test('validateManifest strict release rejects tenant DB proof without distinct a
   );
 });
 
+test('validateManifest strict release rejects tenant RLS evidence without structured DB proof', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'DATA-RLS-001');
+  delete item.evidence[0].structured_report;
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /DATA-RLS-001 strict release evidence must include exactly one structured database_rls_context_proof report/,
+  );
+});
+
+test('validateManifest strict release rejects tenant RLS evidence with incomplete structured table outcomes', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'DATA-RLS-001');
+  const proof = item.evidence[0].structured_report.database_rls_context_proof;
+  proof.rls_table_outcomes = proof.rls_table_outcomes.filter((outcome) => outcome.table !== 'journal_entries');
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /DATA-RLS-001 structured report must include rls_table_outcomes for every tenant-scoped table/,
+  );
+});
+
+test('validateManifest strict release rejects tenant RLS evidence with false structured table outcome', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'DATA-RLS-001');
+  const proof = item.evidence[0].structured_report.database_rls_context_proof;
+  proof.rls_table_outcomes.find((outcome) => outcome.table === 'journal_entries').write_denied = false;
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /DATA-RLS-001 structured report journal_entries must include write_denied=true/,
+  );
+});
+
 test('validateManifest strict release rejects Terraform deployment evidence without remote state and release markers', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
@@ -4468,6 +4512,7 @@ function passedEvidenceFor(id) {
       : id === 'SEC-SIGNOFF-001'
         ? 'threat model approval complete; security/dependency_risk_register.md#DRR-001 dependency risk decision reviewed; residual risk review complete; owner/security approval recorded; release risk signoff approved; signoff_artifact_verified=true; release_candidate=0123456789abcdef0123456789abcdef01234567'
       : `${id} passed`,
+    ...(id === 'DATA-RLS-001' ? { structured_report: tenantRLSStructuredReport() } : {}),
   };
 }
 
@@ -4529,6 +4574,14 @@ function tenantRLSSummary(releaseCandidate) {
 }
 
 function tenantRLSTableOutcomeMarkers() {
+  return tenantRLSTableNames().flatMap((table) => [
+    `rls_table_${table}_same_visible=true`,
+    `rls_table_${table}_cross_hidden=true`,
+    `rls_table_${table}_write_denied=true`,
+  ]).join(' ');
+}
+
+function tenantRLSTableNames() {
   return [
     'organizations',
     'users',
@@ -4539,11 +4592,30 @@ function tenantRLSTableOutcomeMarkers() {
     'room_participants',
     'ai_request_logs',
     'citation_trails',
-  ].flatMap((table) => [
-    `rls_table_${table}_same_visible=true`,
-    `rls_table_${table}_cross_hidden=true`,
-    `rls_table_${table}_write_denied=true`,
-  ]).join(' ');
+  ];
+}
+
+function tenantRLSStructuredReport() {
+  return {
+    database_rls_context_proof: {
+      owner_org_id: '11111111-1111-4111-8111-111111111111',
+      blocked_org_id: '22222222-2222-4222-8222-222222222222',
+      created_journal_id: 'entry-1',
+      created_room_id: 'room-1',
+      application_role: 'scriptureforge_app',
+      row_security: 'on',
+      rls_tables_verified: 9,
+      rls_forced_tables: 9,
+      rls_policy_scope: 'app.current_org_id',
+      rls_table_names: tenantRLSTableNames(),
+      rls_table_outcomes: tenantRLSTableNames().map((table) => ({
+        table,
+        same_visible: true,
+        cross_hidden: true,
+        write_denied: true,
+      })),
+    },
+  };
 }
 
 function webClientSummary(releaseCandidate) {

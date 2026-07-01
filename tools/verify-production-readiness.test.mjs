@@ -965,6 +965,7 @@ function passedEvidenceFor(id, releaseCandidate = sha) {
       ? 'security/release-risk-signoff.md'
       : `https://artifacts.staging.scriptureforge.ai/${probe}.json`,
     result_summary: strictEvidenceSummary(id, releaseCandidate),
+    ...(id === 'DATA-RLS-001' ? { structured_report: tenantRLSStructuredReport() } : {}),
   };
 }
 
@@ -1069,17 +1070,7 @@ function strictEvidenceSummary(id, releaseCandidate = sha) {
 
 function tenantRLSSummary(releaseCandidate) {
   const release = `release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123`;
-  const rlsTables = [
-    'organizations',
-    'users',
-    'scripture_texts',
-    'refresh_tokens',
-    'journal_entries',
-    'live_rooms',
-    'room_participants',
-    'ai_request_logs',
-    'citation_trails',
-  ];
+  const rlsTables = tenantRLSTableNames();
   const rlsTableOutcomes = rlsTables
     .flatMap((table) => [
       `rls_table_${table}_same_visible=true`,
@@ -1102,6 +1093,43 @@ function tenantRLSSummary(releaseCandidate) {
     'blocked-room-state-denied cross-tenant room state denied created room state hidden room_id=room-1',
     `database-rls-context-proof staging artifact current_user=scriptureforge_app non-superuser superuser=false bypassrls=false app.current_org_id app.current_org_id=11111111-1111-4111-8111-111111111111 current_setting('app.current_org_id') blocked_org_id=22222222-2222-4222-8222-222222222222 row_security=on FORCE ROW LEVEL SECURITY rls_tables_verified=9 rls_forced_tables=9 rls_table_names=${rlsTables.join(',')} rls_policy_scope=app.current_org_id ${rlsTables.join(' ')} ${rlsTableOutcomes} same-tenant read visible cross-tenant read hidden cross-tenant write denied auth_refresh_session_rls=true auth_mfa_rls=true workspace_switch_tenant_match=true privileged_mfa_enrollment_rls=true ai_audit_rls=true generated_curriculum_audit_rls=true distinct_db_rls_artifact=true`,
   ].map((segment) => `${segment} ${release}`).join('; ');
+}
+
+function tenantRLSStructuredReport() {
+  return {
+    database_rls_context_proof: {
+      owner_org_id: '11111111-1111-4111-8111-111111111111',
+      blocked_org_id: '22222222-2222-4222-8222-222222222222',
+      created_journal_id: 'journal-1',
+      created_room_id: 'room-1',
+      application_role: 'scriptureforge_app',
+      row_security: 'on',
+      rls_tables_verified: 9,
+      rls_forced_tables: 9,
+      rls_policy_scope: 'app.current_org_id',
+      rls_table_names: tenantRLSTableNames(),
+      rls_table_outcomes: tenantRLSTableNames().map((table) => ({
+        table,
+        same_visible: true,
+        cross_hidden: true,
+        write_denied: true,
+      })),
+    },
+  };
+}
+
+function tenantRLSTableNames() {
+  return [
+    'organizations',
+    'users',
+    'scripture_texts',
+    'refresh_tokens',
+    'journal_entries',
+    'live_rooms',
+    'room_participants',
+    'ai_request_logs',
+    'citation_trails',
+  ];
 }
 
 function webClientSummary(releaseCandidate) {

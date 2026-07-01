@@ -2751,16 +2751,49 @@ function recordEvidence(manifest, report, artifact, command) {
     item.evidence ??= [];
     const alreadyRecorded = item.evidence.some((entry) => entry.artifact === artifact && entry.command_or_probe === command);
     if (!alreadyRecorded) {
+      const structuredReport = structuredEvidenceForReport(id, report);
       item.evidence.push({
         observed_at: report.observed_at,
         command_or_probe: command,
         artifact,
         result_summary: summarizeProbeReport(report),
+        ...(structuredReport ? { structured_report: structuredReport } : {}),
       });
     }
   }
   manifest.generated_at = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
   return manifest;
+}
+
+function structuredEvidenceForReport(itemID, report) {
+  if (itemID !== 'DATA-RLS-001') {
+    return null;
+  }
+  const dbProof = (Array.isArray(report.probes) ? report.probes : [])
+    .find((probe) => probe.name === 'database-rls-context-proof');
+  assert.ok(dbProof, 'DATA-RLS-001 structured evidence requires database-rls-context-proof probe');
+  return {
+    database_rls_context_proof: {
+      owner_org_id: String(report.owner_org_id ?? ''),
+      blocked_org_id: String(report.blocked_org_id ?? ''),
+      created_journal_id: String(report.created_journal_id ?? ''),
+      created_room_id: String(report.created_room_id ?? ''),
+      application_role: String(dbProof.application_role ?? ''),
+      row_security: String(dbProof.row_security ?? ''),
+      rls_tables_verified: Number(dbProof.rls_tables_verified),
+      rls_forced_tables: Number(dbProof.rls_forced_tables),
+      rls_policy_scope: String(dbProof.rls_policy_scope ?? ''),
+      rls_table_names: Array.isArray(dbProof.rls_table_names) ? [...dbProof.rls_table_names] : [],
+      rls_table_outcomes: Array.isArray(dbProof.rls_table_outcomes)
+        ? dbProof.rls_table_outcomes.map((outcome) => ({
+          table: String(outcome?.table ?? ''),
+          same_visible: outcome?.same_visible === true,
+          cross_hidden: outcome?.cross_hidden === true,
+          write_denied: outcome?.write_denied === true,
+        }))
+        : [],
+    },
+  };
 }
 
 function recordManualEvidence(manifest, itemID, artifact, command, summary, observedAt, options = {}) {

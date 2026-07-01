@@ -1269,6 +1269,11 @@ test('recordEvidence records production-grade tenant RLS evidence', () => {
   );
 
   assert.equal(updated.items[0].status, 'passed');
+  const structuredProof = updated.items[0].evidence[0].structured_report.database_rls_context_proof;
+  assert.equal(structuredProof.application_role, 'scriptureforge_app');
+  assert.equal(structuredProof.row_security, 'on');
+  assert.deepEqual(structuredProof.rls_table_names, tenantRLSTableNames);
+  assert.deepEqual(structuredProof.rls_table_outcomes, tenantRLSTableOutcomes());
 });
 
 test('recordEvidence rejects tenant RLS evidence with only summary load run identity', () => {

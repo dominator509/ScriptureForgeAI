@@ -135,6 +135,7 @@ const webSmokeJournalIDPattern = /\bjournal_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i
 const webSmokeRoomIDPattern = /\broom_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const tenantOwnerOrgIDPattern = /\bapp\.current_org_id=([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\b/i;
 const tenantBlockedOrgIDPattern = /\bblocked_org_id=([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\b/i;
+const tenantOrgIDValuePattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const tenantJournalIDPattern = /\bjournal_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const tenantRoomIDPattern = /\broom_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const aiSegmentMarkerRequirements = new Map([
@@ -215,6 +216,14 @@ const tenantSegmentMarkerRequirements = new Map([
 ]);
 
 function tenantTableOutcomeMarkers() {
+  return tenantTableNames().flatMap((table) => [
+    `rls_table_${table}_same_visible=true`,
+    `rls_table_${table}_cross_hidden=true`,
+    `rls_table_${table}_write_denied=true`,
+  ]);
+}
+
+function tenantTableNames() {
   return [
     'organizations',
     'users',
@@ -225,11 +234,7 @@ function tenantTableOutcomeMarkers() {
     'room_participants',
     'ai_request_logs',
     'citation_trails',
-  ].flatMap((table) => [
-    `rls_table_${table}_same_visible=true`,
-    `rls_table_${table}_cross_hidden=true`,
-    `rls_table_${table}_write_denied=true`,
-  ]);
+  ];
 }
 
 const tlsSegmentMarkerRequirements = new Map([
@@ -1508,6 +1513,7 @@ function validateStrictReleaseItemEvidence(item, manifest) {
     assert.equal(tenantLoadRunIDs.size, 1, 'DATA-RLS-001 strict release evidence load_run_id values must all match');
     assertStrictTenantOrgIDBinding(evidence);
     assertStrictTenantResourceIDBinding(evidence);
+    assertStrictTenantStructuredRLSReport(evidence);
   }
   if (item.id === 'DEPLOY-TLS-001') {
     const tlsLoadRunIDs = new Set();
@@ -2711,6 +2717,54 @@ function assertStrictTenantResourceIDBinding(evidence) {
     1,
     'DATA-RLS-001 strict release room_id values must match across created room list/state/blocked segments',
   );
+}
+
+function assertStrictTenantStructuredRLSReport(evidence) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.database_rls_context_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    'DATA-RLS-001 strict release evidence must include exactly one structured database_rls_context_proof report',
+  );
+  const report = structuredReports[0];
+  assert.match(String(report.owner_org_id ?? ''), tenantOrgIDValuePattern, 'DATA-RLS-001 structured report must include UUID owner_org_id');
+  assert.match(String(report.blocked_org_id ?? ''), tenantOrgIDValuePattern, 'DATA-RLS-001 structured report must include UUID blocked_org_id');
+  assert.notEqual(
+    String(report.owner_org_id).toLowerCase(),
+    String(report.blocked_org_id).toLowerCase(),
+    'DATA-RLS-001 structured report owner_org_id and blocked_org_id must differ',
+  );
+  assert.ok(String(report.created_journal_id ?? '').trim(), 'DATA-RLS-001 structured report must include created_journal_id');
+  assert.ok(String(report.created_room_id ?? '').trim(), 'DATA-RLS-001 structured report must include created_room_id');
+  assert.equal(String(report.application_role ?? ''), 'scriptureforge_app', 'DATA-RLS-001 structured report application_role must be scriptureforge_app');
+  assert.equal(String(report.row_security ?? ''), 'on', 'DATA-RLS-001 structured report row_security must be on');
+  assert.equal(Number(report.rls_tables_verified), 9, 'DATA-RLS-001 structured report rls_tables_verified must be 9');
+  assert.equal(Number(report.rls_forced_tables), 9, 'DATA-RLS-001 structured report rls_forced_tables must be 9');
+  assert.equal(String(report.rls_policy_scope ?? ''), 'app.current_org_id', 'DATA-RLS-001 structured report rls_policy_scope must be app.current_org_id');
+  assert.deepEqual(
+    report.rls_table_names,
+    tenantTableNames(),
+    'DATA-RLS-001 structured report rls_table_names must match every tenant-scoped table',
+  );
+  assertStrictTenantStructuredTableOutcomes(report.rls_table_outcomes);
+}
+
+function assertStrictTenantStructuredTableOutcomes(outcomes) {
+  assert.ok(Array.isArray(outcomes), 'DATA-RLS-001 structured report must include rls_table_outcomes array');
+  assert.equal(
+    outcomes.length,
+    tenantTableNames().length,
+    'DATA-RLS-001 structured report must include rls_table_outcomes for every tenant-scoped table',
+  );
+  for (const table of tenantTableNames()) {
+    const outcome = outcomes.find((candidate) => String(candidate?.table ?? '') === table);
+    assert.ok(outcome, `DATA-RLS-001 structured report missing rls_table_outcomes entry for ${table}`);
+    assert.equal(outcome.same_visible, true, `DATA-RLS-001 structured report ${table} must include same_visible=true`);
+    assert.equal(outcome.cross_hidden, true, `DATA-RLS-001 structured report ${table} must include cross_hidden=true`);
+    assert.equal(outcome.write_denied, true, `DATA-RLS-001 structured report ${table} must include write_denied=true`);
+  }
 }
 
 function assertNoStrictSecretLeaks(evidence) {

@@ -91,7 +91,7 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
     *   `POST /api/auth/login` (compatibility alias)
 *   **Data Entities:** `User`, `Organization`, `Workspace`, `Session`, `RefreshToken`.
 *   **Security Considerations:** Cryptographic salt hashing via Argon2id. Multi-factor authentication (MFA) via TOTP protocols is structurally mandatory for `Tenant_Admin` and `Super_Admin` actors.
-*   **Failure Modes & Logic Risks:** Tenant bleeding (cross-tenant visibility via corrupted workspace session swapping). Mitigation involves appending `organization_id` implicitly to all database queries via an authenticated context wrapper, completely isolating it from direct client parameters. The authenticated organization context must be validated as a UUID before setting transaction-local `app.current_org_id` for Postgres RLS.
+*   **Failure Modes & Logic Risks:** Tenant bleeding (cross-tenant visibility via corrupted workspace session swapping). Mitigation involves appending `organization_id` implicitly to all database queries via an authenticated context wrapper, completely isolating it from direct client parameters. The authenticated organization context must be validated as a UUID before setting transaction-local `app.current_org_id` for Postgres RLS. Production RLS evidence must preserve a structured manifest proof of exact tenant table names plus same-tenant-visible, cross-tenant-hidden, and write-denied outcomes for every tenant-scoped table.
 
 ### 5.2 Role-Based Access Control (RBAC) & Permissions
 *   **Purpose:** Granular data verification engine ensuring exact feature execution based on user clearance levels.
@@ -618,7 +618,7 @@ resource "aws_rds_cluster" "storage_backend_postgres" {
 
 ## 19. Production Readiness Checklist
 
-- [ ] Row-Level Security (RLS) policies are active and verified across all PostgreSQL tables.
+- [ ] Row-Level Security (RLS) policies are active and verified across all PostgreSQL tables, with structured staging manifest proof for every tenant-scoped table outcome.
 - [ ] Database storage components apply static encryption using AWS KMS keys.
 - [ ] Production API endpoints score an A+ ranking under SSL Labs cryptographic evaluations.
 - [ ] Load testing profiles confirm sustainable performance at 5,000 requests per second while keeping P99 latency figures below 200ms, with WebSocket evidence also proving authenticated WSS origin behavior, Redis sequence ordering, reconnect behavior, HTTP polling fallback whose structured artifact latest sequence matches the run maximum sequence, and distinct replica/reconnect/polling/Redis telemetry artifacts.
