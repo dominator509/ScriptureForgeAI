@@ -447,6 +447,38 @@ func TestLiveRoomFanOutDeliversEveryAcceptedEventToEverySubscriber(t *testing.T)
 	}
 }
 
+func TestLiveRoomDisconnectCleansSubscriberAndActiveConnectionMetric(t *testing.T) {
+	store := &fakeRoomEventStore{}
+	hub := NewRoomHub()
+	observer := observability.NewObserver(observability.Options{})
+	socket := &SocketConnection{
+		StateManager: store,
+		Hub:          hub,
+		MembershipValidator: func(r *http.Request, claims *auth.TokenClaims, roomID string) bool {
+			return roomID == "room-1" && claims.OrganizationID == "org-1" && claims.UserID != ""
+		},
+	}
+	server := httptest.NewServer(observer.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims := &auth.TokenClaims{UserID: "user-" + r.URL.Query().Get("client"), OrganizationID: "org-1", Role: "member"}
+		socket.HandleLiveRoom(w, r.WithContext(context.WithValue(r.Context(), auth.ContextKeyUser, claims)))
+	})))
+	defer server.Close()
+
+	conn := dialRoom(t, server.URL, "room-1", "disconnect")
+	waitForRoomSubscribers(t, hub, "room-1", 1)
+	if metrics := observer.Snapshot(); !strings.Contains(metrics, `websocket_active_connections_count 1`) {
+		t.Fatalf("active websocket metric after connect missing:\n%s", metrics)
+	}
+
+	if err := conn.Close(); err != nil {
+		t.Fatalf("close websocket client: %v", err)
+	}
+	waitForRoomSubscribers(t, hub, "room-1", 0)
+	if metrics := observer.Snapshot(); !strings.Contains(metrics, `websocket_active_connections_count 0`) {
+		t.Fatalf("active websocket metric after disconnect missing:\n%s", metrics)
+	}
+}
+
 func TestLiveRoomInitializesSharedHubWhenNotConfigured(t *testing.T) {
 	store := &fakeRoomEventStore{}
 	socket := &SocketConnection{

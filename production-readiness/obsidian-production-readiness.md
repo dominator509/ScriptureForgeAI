@@ -190,6 +190,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Local WebSocket Origin Fail-Closed Guard**: `DEPLOYMENT_ENVIRONMENT=staging|production|prod` now rejects WebSocket upgrades when `ALLOWED_WS_ORIGINS` is missing or when configured/requested origins are insecure, local/private, or reserved documentation/sample hosts; localhost/no-origin fallback is limited to local development/test shells.
 - [x] **Local WebSocket State Manager Fail-Closed Guard**: room creation, WebSocket stream upgrades, and HTTP polling fallback return controlled `503` errors when Redis-backed room state management is not configured, preventing partial room creation, unsequenced streams, or polling panics.
 - [x] **Local WebSocket Concurrent Broadcast Proof**: handler-level room stream tests now prove multiple connected senders can write concurrently, accepted events receive contiguous sequences, every active subscriber receives every accepted event in sequence order, and Redis append plus WebSocket broadcast metrics count accepted fan-out without drops. `SocketConnection` serializes append-plus-broadcast so accepted sequence assignment and fan-out order cannot diverge under concurrent senders.
+- [x] **Local WebSocket Disconnect Cleanup Guard**: handler-level room stream tests now prove a disconnected client unsubscribes from the room hub and decrements `websocket_active_connections_count` back to zero, and `tools/run-go-core-gate.mjs` requires the cleanup PASS line before emitting `go-test-gate` proof.
 - [x] **Local WebSocket Lagging Subscriber Guard**: `RoomHub` evicts full subscriber queues and the room stream records `dependency="websocket", operation="room_broadcast", status="dropped"` metrics so fan-out pressure is observable instead of silently losing participant broadcasts.
 - [x] **WebSocket Load No-Drop Evidence Guard**: `tools/loadtest` and strict staging evidence validation now require Redis/WebSocket load evidence to include `room_broadcast_drops=0`, so contiguous sequence proof cannot mask dropped room broadcasts during staging fan-out tests.
 - [x] **WebSocket Load Placeholder Host Guard**: `tools/loadtest` rejects reserved documentation/sample HTTP/WSS targets, WebSocket origins, and load artifact hosts such as `.example`, `example.com`, `.test`, and `.invalid` before emitting staging HTTP/WebSocket load evidence.
@@ -335,11 +336,11 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 1
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: b41f5780d4844738ea536b3ac62c92e46e176fba
+- expected_release_candidate: 3e74cc3fdc1738304260c310da27eaedc9bff891
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: b41f5780d4844738ea536b3ac62c92e46e176fba
+    - expected_release_candidate: 3e74cc3fdc1738304260c310da27eaedc9bff891
     - actual_release_candidate: ce96c283410756444a63b1345646fc69cf274d22
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
     - required: tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted
