@@ -84,7 +84,6 @@ function tenantRLSProbeReport(overridesByProbe = {}) {
     owner_org_id: '11111111-1111-4111-8111-111111111111',
     blocked_org_id: '22222222-2222-4222-8222-222222222222',
     load_run_id: 'load-run-123',
-    load_run_id: 'load-run-123',
     evidence_items: ['DATA-RLS-001'],
     probes: [
       probe('owner-create-encrypted-journal', { target: 'https://api.staging.scriptureforge.ai/api/v1/journal_entries', status_code: 201 }),
@@ -5139,6 +5138,7 @@ test('recordEvidence records production-grade observability evidence', () => {
       service_version: 'scriptureforge-api:abc123',
       alert_name: 'ScriptureForgeHighErrorRate',
       alert_receiver: 'staging-release',
+      load_run_id: 'load-run-123',
       evidence_items: ['OBS-OTEL-001', 'OBS-ALERT-001'],
       probes: observabilityProbeReportProbes(probeNames),
     },
@@ -5173,6 +5173,7 @@ test('recordEvidence rejects observability evidence without probe load run marke
         role: 'admin',
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-OTEL-001'],
         probes: observabilityProbeReportProbes(probeNames, (name) => (
           name === 'collector-otlp-config'
@@ -5184,6 +5185,39 @@ test('recordEvidence rejects observability evidence without probe load run marke
       'go run ./tools/observabilityprobe -probe-otel',
     ),
     /collector-otlp-config result_summary must include verified marker load_run_id=/,
+  );
+});
+
+test('recordEvidence rejects observability evidence without report load run ID', () => {
+  const probeNames = [
+    'collector-otlp-config',
+    'api-prometheus-metrics',
+    'rust-prometheus-metrics',
+    'trace-backend-search',
+    'log-backend-trace-correlation',
+  ];
+
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'OBS-OTEL-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        trace_id: observabilityTraceID,
+        observed_route: '/api/v1/ai/generate/study',
+        http_method: 'POST',
+        tenant_id: 'org-staging',
+        user_id: 'user-staging',
+        role: 'admin',
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['OBS-OTEL-001'],
+        probes: observabilityProbeReportProbes(probeNames),
+      },
+      'artifacts/observabilityprobe.json',
+      'go run ./tools/observabilityprobe -probe-otel',
+    ),
+    /observability report must include load_run_id/,
   );
 });
 
@@ -5210,6 +5244,7 @@ test('recordEvidence rejects observability evidence with mixed probe load run ma
         role: 'admin',
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-OTEL-001'],
         probes: observabilityProbeReportProbes(probeNames, (name) => (
           name === 'log-backend-trace-correlation'
@@ -5220,7 +5255,7 @@ test('recordEvidence rejects observability evidence with mixed probe load run ma
       'artifacts/observabilityprobe.json',
       'go run ./tools/observabilityprobe -probe-otel',
     ),
-    /observability report probe result_summary load_run_id values must all match/,
+    /log-backend-trace-correlation result_summary load_run_id must match report load_run_id/,
   );
 });
 
@@ -5247,6 +5282,7 @@ test('recordEvidence rejects observability evidence without staging artifact pro
       role: 'admin',
       release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-OTEL-001'],
         probes: probeNames.map((name) => ({
           name,
@@ -5288,6 +5324,7 @@ test('recordEvidence rejects observability log evidence without exact structured
         role: 'admin',
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-OTEL-001'],
         probes: observabilityProbeReportProbes(probeNames, (name) => (name === 'log-backend-trace-correlation' ? {
           result_summary: observabilityProbeMarkerSummaries[name].replace('tenant_id=org-staging', 'tenant_id=org-other'),
@@ -5315,6 +5352,7 @@ test('recordEvidence rejects observability evidence with placeholder trace IDs',
         role: 'admin',
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-OTEL-001'],
         probes: [
           { name: 'collector-otlp-config', passed: true, target: 'https://observability.staging.scriptureforge.ai/collector', status_code: 200, result_summary: observabilityProbeMarkerSummaries['collector-otlp-config'] },
@@ -5355,6 +5393,7 @@ test('recordEvidence rejects observability evidence for a different release cand
         service_version: 'scriptureforge-api:def456',
         alert_name: 'ScriptureForgeHighErrorRate',
         alert_receiver: 'staging-release',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-OTEL-001', 'OBS-ALERT-001'],
         probes: observabilityProbeReportProbes(probeNames, (name) => ({
           result_summary: observabilityProbeMarkerSummaries[name]
@@ -5391,6 +5430,7 @@ test('recordEvidence rejects observability evidence with duplicate OTEL artifact
         role: 'admin',
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-OTEL-001'],
         probes: observabilityProbeReportProbes(probeNames, (name) => ({
           target: name === 'log-backend-trace-correlation'
@@ -5422,6 +5462,7 @@ test('recordEvidence rejects observability evidence with duplicate alert artifac
         service_version: 'scriptureforge-api:abc123',
         alert_name: 'ScriptureForgeHighErrorRate',
         alert_receiver: 'staging-release',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-ALERT-001'],
         probes: observabilityProbeReportProbes(probeNames, (name) => ({
           target: name === 'telemetry-retention-policy'
@@ -5451,6 +5492,7 @@ test('recordEvidence rejects observability evidence without tenant-aware log mar
         role: 'admin',
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-OTEL-001'],
         probes: [
           { name: 'collector-otlp-config', passed: true, target: 'https://observability.staging.scriptureforge.ai/collector', status_code: 200, result_summary: observabilityProbeMarkerSummaries['collector-otlp-config'] },
@@ -5484,6 +5526,7 @@ test('recordEvidence rejects observability evidence with mismatched trace ID sum
         role: 'admin',
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-OTEL-001'],
         probes: [
           { name: 'collector-otlp-config', passed: true, target: 'https://observability.staging.scriptureforge.ai/collector', status_code: 200, result_summary: observabilityProbeMarkerSummaries['collector-otlp-config'] },
@@ -5517,6 +5560,7 @@ test('recordEvidence rejects observability trace evidence without structured pro
         role: 'admin',
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-OTEL-001'],
         probes: observabilityProbeReportProbes([
           'collector-otlp-config',
@@ -5548,6 +5592,7 @@ test('recordEvidence rejects observability log evidence with mismatched structur
         role: 'admin',
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-OTEL-001'],
         probes: observabilityProbeReportProbes([
           'collector-otlp-config',
@@ -5587,6 +5632,7 @@ test('recordEvidence rejects observability evidence without verified marker summ
         service_version: 'scriptureforge-api:abc123',
         alert_name: 'ScriptureForgeHighErrorRate',
         alert_receiver: 'staging-release',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-OTEL-001', 'OBS-ALERT-001'],
         probes: observabilityProbeReportProbes(Object.keys(observabilityProbeMarkerSummaries), (name) => ({
           result_summary: name === 'alert-delivery-status'
@@ -5612,6 +5658,7 @@ test('recordEvidence rejects observability alert delivery evidence without struc
         service_version: 'scriptureforge-api:abc123',
         alert_name: 'ScriptureForgeHighErrorRate',
         alert_receiver: 'staging-release',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-ALERT-001'],
         probes: observabilityProbeReportProbes([
           'dashboard-import',
@@ -5638,6 +5685,7 @@ test('recordEvidence rejects observability alert delivery evidence without struc
         service_version: 'scriptureforge-api:abc123',
         alert_name: 'ScriptureForgeHighErrorRate',
         alert_receiver: 'staging-release',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-ALERT-001'],
         probes: observabilityProbeReportProbes([
           'dashboard-import',
@@ -5664,6 +5712,7 @@ test('recordEvidence rejects observability alert delivery evidence with mismatch
         service_version: 'scriptureforge-api:abc123',
         alert_name: 'ScriptureForgeHighErrorRate',
         alert_receiver: 'staging-release',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-ALERT-001'],
         probes: observabilityProbeReportProbes([
           'dashboard-import',
@@ -5690,6 +5739,7 @@ test('recordEvidence rejects observability alert delivery contradiction markers'
         service_version: 'scriptureforge-api:abc123',
         alert_name: 'ScriptureForgeHighErrorRate',
         alert_receiver: 'staging-release',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-ALERT-001'],
         probes: [
           { name: 'dashboard-import', passed: true, target: 'https://grafana.staging.scriptureforge.ai/d/scriptureforge', status_code: 200, result_summary: observabilityProbeMarkerSummaries['dashboard-import'] },
@@ -5720,6 +5770,7 @@ test('recordEvidence rejects observability evidence without trace route and meth
         role: 'admin',
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-OTEL-001'],
         probes: [
           { name: 'collector-otlp-config', passed: true, target: 'https://observability.staging.scriptureforge.ai/collector', status_code: 200, result_summary: observabilityProbeMarkerSummaries['collector-otlp-config'] },
@@ -5751,6 +5802,7 @@ test('recordEvidence rejects observability evidence without Rust failure counter
         role: 'admin',
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-OTEL-001'],
         probes: [
           { name: 'collector-otlp-config', passed: true, target: 'https://observability.staging.scriptureforge.ai/collector', status_code: 200, result_summary: observabilityProbeMarkerSummaries['collector-otlp-config'] },
@@ -5788,6 +5840,7 @@ test('recordEvidence rejects observability evidence without API Rust dependency 
         role: 'admin',
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-OTEL-001'],
         probes: [
           { name: 'collector-otlp-config', passed: true, target: 'https://observability.staging.scriptureforge.ai/collector', status_code: 200, result_summary: observabilityProbeMarkerSummaries['collector-otlp-config'] },
@@ -5825,6 +5878,7 @@ test('recordEvidence rejects observability evidence without architecture metric 
         role: 'admin',
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-OTEL-001'],
         probes: [
           { name: 'collector-otlp-config', passed: true, target: 'https://observability.staging.scriptureforge.ai/collector', status_code: 200, result_summary: observabilityProbeMarkerSummaries['collector-otlp-config'] },
@@ -5858,6 +5912,7 @@ test('recordEvidence rejects observability evidence without full alert-rule cove
         service_version: 'scriptureforge-api:abc123',
         alert_name: 'ScriptureForgeHighErrorRate',
         alert_receiver: 'staging-release',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-ALERT-001'],
         probes: [
           { name: 'dashboard-import', passed: true, target: 'https://grafana.staging.scriptureforge.ai/d/scriptureforge', status_code: 200, result_summary: observabilityProbeMarkerSummaries['dashboard-import'] },
@@ -5888,6 +5943,7 @@ test('recordEvidence rejects observability evidence without trace-scoped backend
         role: 'admin',
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-OTEL-001'],
         probes: [
           { name: 'collector-otlp-config', passed: true, target: 'https://observability.staging.scriptureforge.ai/collector', status_code: 200, result_summary: observabilityProbeMarkerSummaries['collector-otlp-config'] },
@@ -5919,6 +5975,7 @@ test('recordEvidence rejects observability evidence from local telemetry surface
         role: 'admin',
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['OBS-OTEL-001'],
         probes: [
           { name: 'collector-otlp-config', passed: true, target: 'https://observability.staging.scriptureforge.ai/collector', status_code: 200, result_summary: observabilityProbeMarkerSummaries['collector-otlp-config'] },

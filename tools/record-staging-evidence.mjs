@@ -1809,18 +1809,20 @@ function validateObservabilityEvidence(report, manifest) {
   }
   assert.ok(String(report.release_candidate ?? '').trim(), 'observability report must include release_candidate');
   assert.ok(String(report.service_version ?? '').trim(), 'observability report must include service_version');
+  const reportLoadRunID = String(report.load_run_id ?? '').trim();
+  assert.ok(reportLoadRunID, 'observability report must include load_run_id');
   const probes = Array.isArray(report.probes) ? report.probes : [];
   assert.equal(probes.length, requiredProbes.size, 'observability report must include exactly the required probes for requested evidence items');
   const reportReleaseMarkers = [
     `release_candidate=${String(report.release_candidate ?? '').trim()}`,
     `service_version=${String(report.service_version ?? '').trim()}`,
+    `load_run_id=${reportLoadRunID}`,
   ];
   const observedProbes = new Map();
   const otelArtifactTargets = [];
   const alertArtifactTargets = [];
   const otelProbeNames = new Set(['collector-otlp-config', 'api-prometheus-metrics', 'rust-prometheus-metrics', 'trace-backend-search', 'log-backend-trace-correlation']);
   const alertProbeNames = new Set(['dashboard-import', 'alert-rules-loaded', 'alert-delivery-status', 'telemetry-retention-policy']);
-  const reportLoadRunID = String(report.load_run_id ?? '').trim();
   const probeLoadRunIDs = new Set();
   for (const probe of probes) {
     assert.ok(requiredProbes.delete(probe.name), `observability report includes unexpected or duplicate probe ${probe.name}`);

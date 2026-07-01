@@ -765,6 +765,7 @@ export const strictProbeFamilies = {
       'trace_id',
       'release_candidate',
       'service_version',
+      'load_run_id',
       'deployment_environment',
       'tenant_id=',
       'user_id=',
@@ -817,6 +818,7 @@ export const strictProbeFamilies = {
       'distinct_alert_artifacts=true',
       'release_candidate',
       'service_version',
+      'load_run_id',
     ],
   },
   'CLIENT-WEB-001': {
