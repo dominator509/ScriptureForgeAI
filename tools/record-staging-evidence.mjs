@@ -202,6 +202,7 @@ const requiredSecuritySignoffSummaryMarkers = [
   'residual risk review',
   'owner/security approval',
   'release risk signoff',
+  'signoff_artifact_verified=true',
   'release_candidate=',
 ];
 
@@ -2611,7 +2612,7 @@ function recordEvidence(manifest, report, artifact, command) {
   return manifest;
 }
 
-function recordManualEvidence(manifest, itemID, artifact, command, summary, observedAt) {
+function recordManualEvidence(manifest, itemID, artifact, command, summary, observedAt, options = {}) {
   assert.ok(!probeBackedEvidenceItems.has(itemID), `${itemID} must be recorded from its dedicated probe report, not manual --item-id mode`);
   assert.match(observedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, 'observedAt must be ISO UTC without milliseconds');
   assert.ok(summary.trim().length > 0, 'summary must not be empty');
@@ -2621,6 +2622,14 @@ function recordManualEvidence(manifest, itemID, artifact, command, summary, obse
     const releaseCandidate = String(manifest.release_candidate ?? '').trim();
     assert.ok(releaseCandidate, `${itemID} manual evidence requires manifest release_candidate`);
     assert.ok(isDurableSignoffArtifact(artifact), `${itemID} artifact must be a security signoff document path or HTTPS approval URL`);
+    if (isRepoLocalSignoffArtifact(artifact)) {
+      const artifactText = String(options.artifactText ?? '');
+      assert.ok(artifactText.trim().length > 0, `${itemID} local signoff artifact must be read and non-empty`);
+      assertSummaryIncludesMarkers(itemID, artifactText, [
+        ...requiredSecuritySignoffSummaryMarkers,
+        `release_candidate=${releaseCandidate}`,
+      ]);
+    }
     assertSummaryIncludesMarkers(itemID, summary, [
       ...requiredSecuritySignoffSummaryMarkers,
       `release_candidate=${releaseCandidate}`,
@@ -2655,6 +2664,11 @@ function isDurableSignoffArtifact(artifact) {
   return normalized.startsWith('security/')
     && normalized.endsWith('.md')
     && /signoff|approval|release-risk|risk-signoff/.test(normalized);
+}
+
+function isRepoLocalSignoffArtifact(artifact) {
+  const value = String(artifact ?? '').trim();
+  return !/^https:\/\//i.test(value) && isDurableSignoffArtifact(value);
 }
 
 function recordStatus(manifest, itemID, status, details) {
@@ -2725,7 +2739,10 @@ async function main() {
       });
     } else {
       const observedAt = args['observed-at'] ?? new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-      updated = recordManualEvidence(manifest, args['item-id'], args.artifact, args.command, args.summary, observedAt);
+      const artifactText = args['item-id'] === 'SEC-SIGNOFF-001' && isRepoLocalSignoffArtifact(args.artifact)
+        ? await readFile(args.artifact, 'utf8')
+        : undefined;
+      updated = recordManualEvidence(manifest, args['item-id'], args.artifact, args.command, args.summary, observedAt, { artifactText });
     }
     recordedCount = 1;
   }

@@ -4,6 +4,10 @@ import test from 'node:test';
 import { parseArgs, recordEvidence, recordManualEvidence, recordStatus, summarizeProbeReport } from './record-staging-evidence.mjs';
 import { ciReleaseEvidenceProofMarkers } from './write-ci-release-evidence.mjs';
 
+function securitySignoffSummary(releaseCandidate) {
+  return `threat model approval complete; security/dependency_risk_register.md#DRR-001 dependency risk decision reviewed; residual risk review complete; owner/security approval recorded; release risk signoff approved; signoff_artifact_verified=true; release_candidate=${releaseCandidate}`;
+}
+
 const tenantRLSMarkerSummary = [
   'staging artifact',
   'current_user=scriptureforge_app',
@@ -10668,8 +10672,9 @@ test('recordManualEvidence marks one explicit manifest item as passed', () => {
     'SEC-SIGNOFF-001',
     'security/release-signoff.md',
     'security review signoff',
-    'threat model approval complete; security/dependency_risk_register.md#DRR-001 dependency risk decision reviewed; residual risk review complete; owner/security approval recorded; release risk signoff approved; release_candidate=abc123',
+    securitySignoffSummary('abc123'),
     '2026-06-25T13:00:00Z',
+    { artifactText: securitySignoffSummary('abc123') },
   );
 
   const signoff = updated.items.find((item) => item.id === 'SEC-SIGNOFF-001');
@@ -10690,10 +10695,45 @@ test('recordManualEvidence rejects security signoff from scratch artifacts', () 
       'SEC-SIGNOFF-001',
       'artifacts/release-signoff.txt',
       'security review signoff',
-      'threat model approval complete; security/dependency_risk_register.md#DRR-001 dependency risk decision reviewed; residual risk review complete; owner/security approval recorded; release risk signoff approved; release_candidate=abc123',
+      securitySignoffSummary('abc123'),
       '2026-06-25T13:00:00Z',
     ),
     /SEC-SIGNOFF-001 artifact must be a security signoff document path or HTTPS approval URL/,
+  );
+});
+
+test('recordManualEvidence rejects local security signoff paths without verified document text', () => {
+  assert.throws(
+    () => recordManualEvidence(
+      {
+        release_candidate: 'abc123',
+        items: [{ id: 'SEC-SIGNOFF-001', status: 'pending_external' }],
+      },
+      'SEC-SIGNOFF-001',
+      'security/release-signoff.md',
+      'security review signoff',
+      securitySignoffSummary('abc123'),
+      '2026-06-25T13:00:00Z',
+    ),
+    /SEC-SIGNOFF-001 local signoff artifact must be read and non-empty/,
+  );
+});
+
+test('recordManualEvidence rejects local security signoff files without required markers', () => {
+  assert.throws(
+    () => recordManualEvidence(
+      {
+        release_candidate: 'abc123',
+        items: [{ id: 'SEC-SIGNOFF-001', status: 'pending_external' }],
+      },
+      'SEC-SIGNOFF-001',
+      'security/release-signoff.md',
+      'security review signoff',
+      securitySignoffSummary('abc123'),
+      '2026-06-25T13:00:00Z',
+      { artifactText: 'owner approved release_candidate=abc123' },
+    ),
+    /SEC-SIGNOFF-001 result_summary must include verified marker threat model approval/,
   );
 });
 
@@ -10707,8 +10747,9 @@ test('recordManualEvidence rejects security signoff summaries without exact rele
       'SEC-SIGNOFF-001',
       'security/release-signoff.md',
       'security review signoff',
-      'threat model approval complete; security/dependency_risk_register.md#DRR-001 dependency risk decision reviewed; residual risk review complete; owner/security approval recorded; release risk signoff approved; release_candidate=oldsha',
+      securitySignoffSummary('oldsha'),
       '2026-06-25T13:00:00Z',
+      { artifactText: securitySignoffSummary('abc123') },
     ),
     /SEC-SIGNOFF-001 result_summary must include verified marker release_candidate=abc123/,
   );
@@ -10723,6 +10764,7 @@ test('recordManualEvidence rejects weak security signoff summaries', () => {
       'security review signoff',
       'owner and security approved release',
       '2026-06-25T13:00:00Z',
+      { artifactText: securitySignoffSummary('abc123') },
     ),
     /SEC-SIGNOFF-001 result_summary must include verified marker threat model approval/,
   );

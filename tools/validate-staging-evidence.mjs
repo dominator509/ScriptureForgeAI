@@ -1171,6 +1171,7 @@ const requiredSignoffSummaryMarkers = [
   'residual risk review',
   'owner/security approval',
   'release risk signoff',
+  'signoff_artifact_verified=true',
   'release_candidate=',
 ];
 
