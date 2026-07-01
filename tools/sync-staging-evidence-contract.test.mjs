@@ -22,8 +22,18 @@ function manifest(items) {
     environment: 'staging',
     release_candidate: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     generated_at: '2026-06-28T00:00:00Z',
-    items: requiredIds.map((id) => itemById.get(id) ?? item(id, 'pending_external', [`${id} proof`])),
+    items: requiredIds.map((id) => itemById.get(id) ?? item(id, 'pending_external', defaultRequiredEvidence(id))),
   };
+}
+
+function defaultRequiredEvidence(id) {
+  if (id === 'SEC-SIGNOFF-001') {
+    return [
+      'Owner/security approval record captured as a content-verified repo security/*.md signoff/approval document or HTTPS non-local approval artifact',
+      'signoff_artifact_verified=true',
+    ];
+  }
+  return [`${id} proof`];
 }
 
 test('parseArgs accepts manifest and contract paths', () => {
