@@ -11125,6 +11125,36 @@ test('recordManualEvidence rejects weak security signoff summaries', () => {
   );
 });
 
+test('recordManualEvidence rejects non-production security signoff summaries', () => {
+  assert.throws(
+    () => recordManualEvidence(
+      { release_candidate: 'abc123', items: [{ id: 'SEC-SIGNOFF-001', status: 'pending_external' }] },
+      'SEC-SIGNOFF-001',
+      'security/release-signoff.md',
+      'security review signoff',
+      `${securitySignoffSummary('abc123')}; local-only rehearsal approval`,
+      '2026-06-25T13:00:00Z',
+      { artifactText: securitySignoffSummary('abc123') },
+    ),
+    /SEC-SIGNOFF-001 result_summary must not include forbidden marker local-only/,
+  );
+});
+
+test('recordManualEvidence rejects non-production local security signoff documents', () => {
+  assert.throws(
+    () => recordManualEvidence(
+      { release_candidate: 'abc123', items: [{ id: 'SEC-SIGNOFF-001', status: 'pending_external' }] },
+      'SEC-SIGNOFF-001',
+      'security/release-signoff.md',
+      'security review signoff',
+      securitySignoffSummary('abc123'),
+      '2026-06-25T13:00:00Z',
+      { artifactText: `${securitySignoffSummary('abc123')}; dry-run signoff` },
+    ),
+    /SEC-SIGNOFF-001 result_summary must not include forbidden marker dry-run/,
+  );
+});
+
 test('recordManualEvidence rejects probe-backed production evidence items', () => {
   assert.throws(
     () => recordManualEvidence(

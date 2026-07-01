@@ -206,6 +206,17 @@ const requiredSecuritySignoffSummaryMarkers = [
   'release_candidate=',
 ];
 
+const forbiddenSecuritySignoffSummaryMarkers = [
+  'placeholder',
+  'mock',
+  'dry-run',
+  'dry run',
+  'local-only',
+  'synthetic',
+  'stubbed',
+  'test-only',
+];
+
 const requiredTerraformProbeSummaryMarkers = new Map([
   ['terraform-remote-backend-init', ['staging artifact', 'terraform', 's3', 'backend', 'bucket', 'key', 'encrypt=true', 'kms_key_id=', 'versioning=enabled', 'dynamodb_table', 'successfully initialized', 'release_candidate=', 'service_version=']],
   ['terraform-staging-plan', ['staging artifact', 'Terraform', 'Plan:', 'aws_eks_cluster', 'aws_eks_node_group', 'aws_rds_cluster', 'aws_elasticache_replication_group', 'aws_ecr_repository', 'kubernetes_deployment', 'kubernetes_ingress_v1', 'kubernetes_horizontal_pod_autoscaler_v2', 'kubernetes_pod_disruption_budget_v1', 'kubernetes_manifest', 'aws_iam_role', 'kms_key_id', 'database_kms_key_arn', 'redis_kms_key_arn', 'release_candidate=', 'service_version=']],
@@ -2734,11 +2745,13 @@ function recordManualEvidence(manifest, itemID, artifact, command, summary, obse
         ...requiredSecuritySignoffSummaryMarkers,
         `release_candidate=${releaseCandidate}`,
       ]);
+      assertSummaryExcludesMarkers(itemID, artifactText, forbiddenSecuritySignoffSummaryMarkers);
     }
     assertSummaryIncludesMarkers(itemID, summary, [
       ...requiredSecuritySignoffSummaryMarkers,
       `release_candidate=${releaseCandidate}`,
     ]);
+    assertSummaryExcludesMarkers(itemID, summary, forbiddenSecuritySignoffSummaryMarkers);
   }
   item.status = 'passed';
   item.evidence ??= [];
