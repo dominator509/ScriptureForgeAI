@@ -7,6 +7,7 @@ import {
   goTestRequiredAbuseTests,
   goTestRequiredObservabilityTests,
   goTestRequiredWebSocketTests,
+  goTestRequiredZoomTests,
   goVetProofMarkers,
   parseArgs,
   runGoCoreGate,
@@ -96,6 +97,18 @@ test('validateGoTestOutput requires observability trace and metrics PASS lines',
   );
 });
 
+test('validateGoTestOutput requires Zoom resilience and webhook PASS lines', () => {
+  assert.doesNotThrow(() => validateGoTestOutput(requiredGoTestPassOutput()));
+  assert.throws(
+    () => validateGoTestOutput(requiredGoTestPassOutput().replace('--- PASS: TestCreateMeetingFallsBackAndOpensCircuitAfterTimeouts', '--- SKIP: TestCreateMeetingFallsBackAndOpensCircuitAfterTimeouts')),
+    /skipped: TestCreateMeetingFallsBackAndOpensCircuitAfterTimeouts/,
+  );
+  assert.throws(
+    () => validateGoTestOutput(requiredGoTestPassOutput().replace('--- PASS: TestZoomWebhookMapsMeetingToRoomAndIsDuplicateSafe', '--- RUN: TestZoomWebhookMapsMeetingToRoomAndIsDuplicateSafe')),
+    /missing PASS lines: TestZoomWebhookMapsMeetingToRoomAndIsDuplicateSafe/,
+  );
+});
+
 test('runGoCoreGate rejects successful go test output without required WebSocket proof', () => {
   const result = runGoCoreGate({
     mode: 'test',
@@ -133,6 +146,19 @@ test('runGoCoreGate rejects successful go test output without required observabi
 
   assert.equal(result.exitCode, 1);
   assert.match(result.output, /go-test-gate missing required observability trace\/metrics proof/);
+});
+
+test('runGoCoreGate rejects successful go test output without required Zoom proof', () => {
+  const result = runGoCoreGate({
+    mode: 'test',
+    bin: 'go',
+    spawnSyncImpl() {
+      return { status: 0, stdout: requiredWebSocketPassOutput() + requiredAbusePassOutput() + requiredObservabilityPassOutput(), stderr: '' };
+    },
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /go-test-gate missing required Zoom resilience\/webhook proof/);
 });
 
 test('runGoCoreGate runs go vet with static-analysis proof markers', () => {
@@ -175,6 +201,10 @@ function requiredObservabilityPassOutput() {
   return `${goTestRequiredObservabilityTests.map((testName) => `--- PASS: ${testName} (0.00s)`).join('\n')}\nok scriptureforge/internal/domain/observability\n`;
 }
 
+function requiredZoomPassOutput() {
+  return `${goTestRequiredZoomTests.map((testName) => `--- PASS: ${testName} (0.00s)`).join('\n')}\nok scriptureforge/internal/adapters/integration_zoom\n`;
+}
+
 function requiredGoTestPassOutput() {
-  return `${requiredWebSocketPassOutput()}${requiredAbusePassOutput()}${requiredObservabilityPassOutput()}`;
+  return `${requiredWebSocketPassOutput()}${requiredAbusePassOutput()}${requiredObservabilityPassOutput()}${requiredZoomPassOutput()}`;
 }

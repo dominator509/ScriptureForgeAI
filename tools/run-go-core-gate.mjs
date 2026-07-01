@@ -27,6 +27,12 @@ export const goTestProofMarkers = [
   'observability_metrics_endpoint_tests_passed=true',
   'observability_dependency_span_tests_passed=true',
   'observability_profile_metric_tests_passed=true',
+  'zoom_resilience_tests_passed=true',
+  'zoom_timeout_fallback_test=true',
+  'zoom_retry_circuit_test=true',
+  'zoom_webhook_signature_test=true',
+  'zoom_webhook_duplicate_idempotency_test=true',
+  'zoom_webhook_room_mapping_test=true',
   'repo_go_toolchain=true',
 ];
 
@@ -86,6 +92,27 @@ export const goTestRequiredObservabilityTests = [
   'TestObserveDependencyFromContextAddsTraceSpan',
   'TestMockDependencyStatusIsError',
   'TestArchitectureMetricProfilesExposeWebSocketAndAIInference',
+];
+
+export const goTestRequiredZoomTests = [
+  'TestCreateMeetingFallsBackAndOpensCircuitAfterTimeouts',
+  'TestCreateMeetingRetriesTransientZoomFailure',
+  'TestCreateMeetingFallsBackAndOpensCircuitAfterMeetingTimeouts',
+  'TestCreateMeetingUsesOfflineFallbackWhenCredentialsMissing',
+  'TestCreateMeetingDoesNotUseAmbientTestModeMockWhenCredentialsMissing',
+  'TestGetMeetingStatusEmitsZoomDependencyMetric',
+  'TestZoomWebhookRejectsInvalidSignature',
+  'TestZoomWebhookRejectsStaleSignedDelivery',
+  'TestZoomWebhookMapsMeetingToRoomAndIsDuplicateSafe',
+  'TestZoomWebhookConcurrentDuplicateDoesNotRepeatRoomLookup',
+  'TestZoomWebhookDoesNotMutateStateWhenMeetingMappingIsMissing',
+  'TestZoomWebhookDoesNotFallbackToMeetingIDWhenMappingFails',
+  'TestZoomWebhookDoesNotConsumeDeliveryIDWhenMappingFails',
+  'TestZoomWebhookDoesNotConsumeDeliveryIDWhenStateMutationFails',
+  'TestZoomWebhookProcessesDistinctTrackedDeliveries',
+  'TestZoomWebhookURLValidationReturnsEncryptedTokenWithoutStateMutation',
+  'TestZoomWebhookDeliveryCacheIsBounded',
+  'TestZoomWebhookEndedEventUpdatesMappedRoomInactive',
 ];
 
 export const goVetProofMarkers = [
@@ -162,6 +189,7 @@ export function validateGoTestOutput(output) {
   const websocket = collectMissingGoTests(output, goTestRequiredWebSocketTests);
   const abuse = collectMissingGoTests(output, goTestRequiredAbuseTests);
   const observability = collectMissingGoTests(output, goTestRequiredObservabilityTests);
+  const zoom = collectMissingGoTests(output, goTestRequiredZoomTests);
   const errors = [];
   if (websocket.skipped.length > 0 || websocket.missing.length > 0) {
     errors.push(`WebSocket production-behavior proof (${formatMissingDetails(websocket)})`);
@@ -171,6 +199,9 @@ export function validateGoTestOutput(output) {
   }
   if (observability.skipped.length > 0 || observability.missing.length > 0) {
     errors.push(`observability trace/metrics proof (${formatMissingDetails(observability)})`);
+  }
+  if (zoom.skipped.length > 0 || zoom.missing.length > 0) {
+    errors.push(`Zoom resilience/webhook proof (${formatMissingDetails(zoom)})`);
   }
   if (errors.length > 0) {
     throw new Error(`go-test-gate missing required ${errors.join('; ')}`);
