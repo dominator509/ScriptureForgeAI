@@ -4459,6 +4459,29 @@ test('recordEvidence rejects Terraform deployment evidence with mixed probe load
   );
 });
 
+test('recordEvidence rejects Terraform deployment evidence without report load run identity', () => {
+  assert.throws(
+    () => recordEvidence(
+      { release_candidate: 'abc123', items: [{ id: 'DEPLOY-TF-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['DEPLOY-TF-001'],
+        probes: [
+          { name: 'terraform-remote-backend-init', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/deploy/terraform-init.txt', status_code: 200, result_summary: deploymentProbeMarkerSummaries['terraform-remote-backend-init'] },
+          { name: 'terraform-staging-plan', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/deploy/terraform-plan.txt', status_code: 200, result_summary: deploymentProbeMarkerSummaries['terraform-staging-plan'] },
+          terraformApplyProbe(),
+        ],
+      },
+      'artifacts/deploymentprobe-terraform.json',
+      'go run ./tools/deploymentprobe -probe-terraform',
+    ),
+    /DEPLOY-TF-001 report must include load_run_id/,
+  );
+});
+
 test('recordEvidence rejects deployment probe reports for a different release candidate', () => {
   assert.throws(
     () => recordEvidence(
@@ -4471,6 +4494,7 @@ test('recordEvidence rejects deployment probe reports for a different release ca
         threshold_pass: true,
         release_candidate: 'def456',
         service_version: 'scriptureforge-api:def456',
+        load_run_id: 'load-run-123',
         evidence_items: ['DEPLOY-TF-001'],
         probes: [
           { name: 'terraform-remote-backend-init', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/deploy/terraform-init.txt', status_code: 200, result_summary: deploymentProbeMarkerSummaries['terraform-remote-backend-init'] },
@@ -4620,6 +4644,7 @@ test('recordEvidence rejects Terraform init and plan evidence without release li
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['DEPLOY-TF-001'],
         probes: [
           {
@@ -4863,6 +4888,38 @@ test('recordEvidence rejects Kubernetes deployment evidence with mixed probe loa
       'go run ./tools/deploymentprobe -probe-kubernetes',
     ),
     /DEPLOY-K8S-001 probe result_summary load_run_id values must all match/,
+  );
+});
+
+test('recordEvidence rejects Kubernetes deployment evidence without report load run identity', () => {
+  assert.throws(
+    () => recordEvidence(
+      { release_candidate: 'abc123', items: [{ id: 'DEPLOY-K8S-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['DEPLOY-K8S-001'],
+        probes: [
+          {
+            name: 'kubernetes-rollout-status',
+            passed: true,
+            target: 'https://artifacts.staging.scriptureforge.ai/deploy/kubectl-rollout-status.txt',
+            result_summary: deploymentProbeMarkerSummaries['kubernetes-rollout-status'],
+          },
+          {
+            name: 'kubernetes-workload-resources',
+            passed: true,
+            target: 'https://artifacts.staging.scriptureforge.ai/deploy/kubectl-resources.txt',
+            result_summary: deploymentProbeMarkerSummaries['kubernetes-workload-resources'],
+          },
+        ],
+      },
+      'artifacts/deploymentprobe-k8s.json',
+      'go run ./tools/deploymentprobe -probe-kubernetes',
+    ),
+    /DEPLOY-K8S-001 report must include load_run_id/,
   );
 });
 

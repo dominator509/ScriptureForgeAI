@@ -1025,6 +1025,9 @@ function validateKubernetesEvidence(report, manifest) {
   }
   assertReportReleaseMatchesManifest(report, manifest, 'DEPLOY-K8S-001');
   const reportLoadRunID = String(report.load_run_id ?? '').trim();
+  if (String(manifest.release_candidate ?? '').trim()) {
+    assert.ok(reportLoadRunID, 'DEPLOY-K8S-001 report must include load_run_id');
+  }
   const probeLoadRunIDs = new Set();
   const probes = Array.isArray(report.probes) ? report.probes : [];
   const probesByName = new Map(probes.map((probe) => [probe.name, probe]));
@@ -1189,6 +1192,9 @@ function validateTerraformEvidence(report, manifest) {
   }
   assertReportReleaseMatchesManifest(report, manifest, 'DEPLOY-TF-001');
   const reportLoadRunID = String(report.load_run_id ?? '').trim();
+  if (String(manifest.release_candidate ?? '').trim()) {
+    assert.ok(reportLoadRunID, 'DEPLOY-TF-001 report must include load_run_id');
+  }
   const probeLoadRunIDs = new Set();
   const requiredProbes = new Set([
     'terraform-remote-backend-init',
