@@ -112,7 +112,7 @@ export async function syncObsidianReadiness({
   validateManifest(manifest, { strictRelease: false });
   const summary = summarizeGaps(manifest, {
     expectedReleaseCandidate,
-    strictPathReport: pathReportBuilder({ strictStaging: true }),
+    strictPathReport: pathReportBuilder({ strictStaging: true, ci: process.env.CI === 'true' }),
     contractManifest,
   });
   const snapshotBody = normalizeSnapshotText(formatObsidian(summary));
