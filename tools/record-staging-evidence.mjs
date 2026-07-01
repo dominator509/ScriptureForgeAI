@@ -1781,6 +1781,9 @@ function validateAIEvidence(report, manifest) {
   let citationVerificationID = '';
   let auditCitationID = '';
   const reportLoadRunID = String(report.load_run_id ?? '').trim();
+  if (String(manifest.release_candidate ?? '').trim()) {
+    assert.ok(reportLoadRunID, 'EXT-AI-001 report must include load_run_id');
+  }
   const probeLoadRunIDs = new Set();
   for (const probe of probes) {
     assert.ok(requiredProbes.delete(probe.name), `EXT-AI-001 report includes unexpected or duplicate probe ${probe.name}`);

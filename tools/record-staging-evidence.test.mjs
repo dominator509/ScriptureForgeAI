@@ -3664,6 +3664,7 @@ test('recordEvidence records production-grade AI evidence', () => {
       threshold_pass: true,
       release_candidate: 'abc123',
       service_version: 'scriptureforge-api:abc123',
+      load_run_id: 'load-run-123',
       evidence_items: ['EXT-AI-001'],
       probes: aiProbeReportProbes(probeNames),
     },
@@ -3672,6 +3673,29 @@ test('recordEvidence records production-grade AI evidence', () => {
   );
 
   assert.equal(updated.items[0].status, 'passed');
+});
+
+test('recordEvidence rejects AI evidence without report load run identity', () => {
+  const probeNames = Object.keys(aiProbeMarkerSummaries);
+  assert.throws(
+    () => recordEvidence(
+      {
+        release_candidate: 'abc123',
+        items: [{ id: 'EXT-AI-001', status: 'pending_external' }],
+      },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['EXT-AI-001'],
+        probes: aiProbeReportProbes(probeNames),
+      },
+      'artifacts/aiprobe.json',
+      'go run ./tools/aiprobe',
+    ),
+    /EXT-AI-001 report must include load_run_id/,
+  );
 });
 
 test('recordEvidence rejects mixed release load run identities across evidence families', () => {
@@ -3699,6 +3723,7 @@ test('recordEvidence rejects mixed release load run identities across evidence f
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-456',
         evidence_items: ['EXT-AI-001'],
         probes: aiProbeReportProbes(probeNames, (name) => ({
           result_summary: aiProbeMarkerSummaries[name].replaceAll('load_run_id=load-run-123', 'load_run_id=load-run-456'),
@@ -3724,6 +3749,7 @@ test('recordEvidence rejects AI evidence without probe load run markers', () => 
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['EXT-AI-001'],
         probes: aiProbeReportProbes(probeNames, (name) => (
           name === 'ai-provider-config'
@@ -3751,6 +3777,7 @@ test('recordEvidence rejects AI evidence with mixed probe load run markers', () 
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['EXT-AI-001'],
         probes: aiProbeReportProbes(probeNames, (name) => (
           name === 'ai-audit-persistence'
@@ -3761,7 +3788,7 @@ test('recordEvidence rejects AI evidence with mixed probe load run markers', () 
       'artifacts/aiprobe.json',
       'go run ./tools/aiprobe',
     ),
-    /EXT-AI-001 probe result_summary load_run_id values must all match/,
+    /ai-audit-persistence result_summary load_run_id must match report load_run_id/,
   );
 });
 
@@ -3778,6 +3805,7 @@ test('recordEvidence rejects AI provider evidence without structured config valu
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['EXT-AI-001'],
         probes: aiProbeReportProbes(probeNames, (name) => (
           name === 'ai-provider-config'
@@ -3805,6 +3833,7 @@ test('recordEvidence rejects AI evidence for a different release candidate', () 
         threshold_pass: true,
         release_candidate: 'def456',
         service_version: 'scriptureforge-api:def456',
+        load_run_id: 'load-run-123',
         evidence_items: ['EXT-AI-001'],
         probes: aiProbeReportProbes(probeNames, (name) => ({
           result_summary: aiProbeMarkerSummaries[name]
