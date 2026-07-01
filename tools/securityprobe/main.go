@@ -58,6 +58,7 @@ type probeResult struct {
 	PrivilegedOperationDenied *bool    `json:"privileged_operation_denied,omitempty"`
 	AppGrantsVerified         *bool    `json:"app_grants_verified,omitempty"`
 	AppGrantTables            int      `json:"app_grant_tables,omitempty"`
+	AppGrantTableNames        []string `json:"app_grant_table_names,omitempty"`
 	AppGrants                 []string `json:"app_grants,omitempty"`
 	ResultSummary             string   `json:"result_summary"`
 }
@@ -320,7 +321,7 @@ func probeDatabaseUser(databaseURL string, timeout time.Duration, releaseMarkers
 		return failedProbe("database-scoped-user", "redacted-database-url", grantErr.Error())
 	}
 	passed := currentUser == principal && !isPrivilegedPrincipal(currentUser) && !isSuperuser && !canBypassRLS && !canCreateRole && !canCreateDB && privilegedOperationDenied && appGrantsVerified
-	summary := fmt.Sprintf("connected as %q in %dms; current_user=%s superuser=%t bypassrls=%t createrole=%t createdb=%t privileged_operation_denied=%t app_grants_verified=%t app_grant_tables=%d app_grants=%s; verified markers: staging artifact, %s", currentUser, latency, currentUser, isSuperuser, canBypassRLS, canCreateRole, canCreateDB, privilegedOperationDenied, appGrantsVerified, len(requiredApplicationGrantTables), strings.Join(requiredApplicationGrantPrivileges, ","), strings.Join(releaseMarkers, ", "))
+	summary := fmt.Sprintf("connected as %q in %dms; current_user=%s superuser=%t bypassrls=%t createrole=%t createdb=%t privileged_operation_denied=%t app_grants_verified=%t app_grant_tables=%d app_grant_table_names=%s app_grants=%s; verified markers: staging artifact, %s", currentUser, latency, currentUser, isSuperuser, canBypassRLS, canCreateRole, canCreateDB, privilegedOperationDenied, appGrantsVerified, len(requiredApplicationGrantTables), strings.Join(requiredApplicationGrantTables, ","), strings.Join(requiredApplicationGrantPrivileges, ","), strings.Join(releaseMarkers, ", "))
 	return probeResult{
 		Name:                      "database-scoped-user",
 		Target:                    "redacted-database-url",
@@ -334,6 +335,7 @@ func probeDatabaseUser(databaseURL string, timeout time.Duration, releaseMarkers
 		PrivilegedOperationDenied: boolPtr(privilegedOperationDenied),
 		AppGrantsVerified:         boolPtr(appGrantsVerified),
 		AppGrantTables:            len(requiredApplicationGrantTables),
+		AppGrantTableNames:        requiredApplicationGrantTables,
 		AppGrants:                 requiredApplicationGrantPrivileges,
 		ResultSummary:             summary,
 	}

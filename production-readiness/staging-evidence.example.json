@@ -83,7 +83,7 @@
       "description": "DATABASE_URL uses a scoped application database user rather than the RDS root user.",
       "required_evidence": [
         "tools/securityprobe -probe-db-user JSON report with SEC-DBUSER-001 evidence item, staging artifact provenance on database-scoped-user, and exact release_candidate=<manifest release_candidate> plus service_version markers",
-        "Redacted DATABASE_URL principal proof with staging artifact provenance, connected as scriptureforge_app, superuser=false, bypassrls=false, createrole=false, createdb=false, app_grants_verified=true, app_grant_tables=9, app_grants=SELECT,INSERT,UPDATE,DELETE, exact release_candidate=<manifest release_candidate>, and service_version markers",
+        "Redacted DATABASE_URL principal proof with staging artifact provenance, connected as scriptureforge_app, superuser=false, bypassrls=false, createrole=false, createdb=false, app_grants_verified=true, app_grant_tables=9, app_grant_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails, app_grants=SELECT,INSERT,UPDATE,DELETE, exact release_candidate=<manifest release_candidate>, and service_version markers",
         "Database grants for app role across organizations, users, scripture_texts, refresh_tokens, journal_entries, live_rooms, room_participants, ai_request_logs, and citation_trails",
         "Denied privileged operation probe with privileged_operation_denied=true"
       ]

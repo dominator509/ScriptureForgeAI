@@ -278,7 +278,7 @@ const strictSecretLeakMarkers = [
   '-----begin',
 ];
 const dbUserSegmentMarkerRequirements = new Map([
-  ['database-scoped-user', ['staging artifact', 'connected as', 'scriptureforge_app', 'current_user=scriptureforge_app', 'superuser=false', 'bypassrls=false', 'createrole=false', 'createdb=false', 'privileged_operation_denied=true', 'app_grants_verified=true', 'app_grant_tables=9', 'app_grants=SELECT,INSERT,UPDATE,DELETE', 'release_candidate=', 'service_version=']],
+  ['database-scoped-user', ['staging artifact', 'connected as', 'scriptureforge_app', 'current_user=scriptureforge_app', 'superuser=false', 'bypassrls=false', 'createrole=false', 'createdb=false', 'privileged_operation_denied=true', 'app_grants_verified=true', 'app_grant_tables=9', 'app_grant_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails', 'app_grants=SELECT,INSERT,UPDATE,DELETE', 'release_candidate=', 'service_version=']],
 ]);
 const dbUserPrincipalBindingPattern = /database-scoped-user(?=[^;]*connected as "?scriptureforge_app"?)(?=[^;]*current_user=scriptureforge_app)/i;
 const resilienceSegmentMarkerRequirements = new Map([
@@ -570,6 +570,7 @@ export const strictProbeFamilies = {
       'privileged_operation_denied=true',
       'app_grants_verified=true',
       'app_grant_tables=9',
+      'app_grant_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails',
       'app_grants=SELECT,INSERT,UPDATE,DELETE',
       'release_candidate',
       'service_version',

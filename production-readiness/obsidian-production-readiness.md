@@ -328,11 +328,11 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 1
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: f21d68ccc29ef4637d22d27882655b82e460db91
+- expected_release_candidate: ddc7716bbaf5e69b72cf7ccd16ffee93df38c926
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: f21d68ccc29ef4637d22d27882655b82e460db91
+    - expected_release_candidate: ddc7716bbaf5e69b72cf7ccd16ffee93df38c926
     - actual_release_candidate: ce96c283410756444a63b1345646fc69cf274d22
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
     - required: tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted
@@ -373,7 +373,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
     - required: securityprobe result_summary marker list for each secret/IRSA artifact probe, including staging artifact provenance, workload identity markers with one matching concrete IAM role ARN, AWS object-sync, synced-secret redaction and owner/managed markers, exact release_candidate=<manifest release_candidate>, service_version markers, and distinct_secret_artifacts=true; non-HTTPS, reserved example/test/invalid hosts, local, loopback, private-network, unspecified, link-local, mismatched workload role ARNs, postgres://, postgresql://, plaintext DSN, base64-encoded DSN/API-key data, sk-, client_secret:, webhook_secret:, password:, stringData, -----BEGIN, API key, private key, and secret-value artifacts or result summaries are not accepted
   - SEC-DBUSER-001 [pending_external]: DATABASE_URL uses a scoped application database user rather than the RDS root user.
     - required: tools/securityprobe -probe-db-user JSON report with SEC-DBUSER-001 evidence item, staging artifact provenance on database-scoped-user, and exact release_candidate=<manifest release_candidate> plus service_version markers
-    - required: Redacted DATABASE_URL principal proof with staging artifact provenance, connected as scriptureforge_app, superuser=false, bypassrls=false, createrole=false, createdb=false, app_grants_verified=true, app_grant_tables=9, app_grants=SELECT,INSERT,UPDATE,DELETE, exact release_candidate=<manifest release_candidate>, and service_version markers
+    - required: Redacted DATABASE_URL principal proof with staging artifact provenance, connected as scriptureforge_app, superuser=false, bypassrls=false, createrole=false, createdb=false, app_grants_verified=true, app_grant_tables=9, app_grant_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails, app_grants=SELECT,INSERT,UPDATE,DELETE, exact release_candidate=<manifest release_candidate>, and service_version markers
     - required: Database grants for app role across organizations, users, scripture_texts, refresh_tokens, journal_entries, live_rooms, room_participants, ai_request_logs, and citation_trails
     - required: Denied privileged operation probe with privileged_operation_denied=true
   - ABUSE-LIMIT-001 [pending_external]: Auth, account-scoped login, AI, journal, room, and WebSocket abuse limits are observed through real staging ingress behavior.

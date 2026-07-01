@@ -2673,8 +2673,8 @@ test('validateManifest strict release rejects DB user privilege proof borrowed o
   const item = manifest.items.find((candidate) => candidate.id === 'SEC-DBUSER-001');
   item.evidence[0].result_summary = item.evidence[0].result_summary
     .replace(
-      'database-scoped-user staging artifact connected as scriptureforge_app current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grants=SELECT,INSERT,UPDATE,DELETE',
-      'database-scoped-user staging artifact connected as scriptureforge_app; scoped-role-summary current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grants=SELECT,INSERT,UPDATE,DELETE',
+      'database-scoped-user staging artifact connected as scriptureforge_app current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grant_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails app_grants=SELECT,INSERT,UPDATE,DELETE',
+      'database-scoped-user staging artifact connected as scriptureforge_app; scoped-role-summary current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grant_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails app_grants=SELECT,INSERT,UPDATE,DELETE',
     );
 
   assert.throws(
@@ -2736,7 +2736,22 @@ test('validateManifest strict release rejects DB user evidence without applicati
   });
   const item = manifest.items.find((candidate) => candidate.id === 'SEC-DBUSER-001');
   item.evidence[0].result_summary = item.evidence[0].result_summary
-    .replace(' app_grants_verified=true app_grant_tables=9 app_grants=SELECT,INSERT,UPDATE,DELETE', '');
+    .replace(' app_grants_verified=true app_grant_tables=9 app_grant_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails app_grants=SELECT,INSERT,UPDATE,DELETE', '');
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /SEC-DBUSER-001 strict release evidence must include a tools\/securityprobe JSON report/,
+  );
+});
+
+test('validateManifest strict release rejects DB user evidence without application grant table names', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'SEC-DBUSER-001');
+  item.evidence[0].result_summary = item.evidence[0].result_summary
+    .replace(' app_grant_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails', '');
 
   assert.throws(
     () => validateManifest(manifest, { strictRelease: true }),
@@ -4037,7 +4052,7 @@ function passedEvidenceFor(id) {
       : id === 'SEC-SECRETS-001'
         ? 'SEC-SECRETS-001 securityprobe passed: irsa-service-account staging artifact namespace=staging service_account=scriptureforge-api role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets eks.amazonaws.com/role-arn scriptureforge trust policy sts:AssumeRoleWithWebIdentity release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123; secret-provider-class staging artifact namespace=staging service_account=scriptureforge-api role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets SecretProviderClass secrets-store.csi.k8s.io provider aws objects objectName objectType secretsmanager objectAlias jmesPath secretObjects type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY ZOOM_WEBHOOK_SECRET_TOKEN release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123; synced-secret-metadata-redacted staging artifact namespace=staging scriptureforge-runtime-secrets type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY ZOOM_WEBHOOK_SECRET_TOKEN redacted stringData absent managed by secrets-store.csi.k8s.io ownerReferences secrets-store.csi.k8s.io/managed=true release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123; iam-secrets-policy staging artifact role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets secretsmanager:GetSecretValue secretsmanager:DescribeSecret arn:aws:secretsmanager: scoped resource no wildcard resources release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123; scoped-secrets-access-test staging artifact namespace=staging service_account=scriptureforge-api role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets allowed configured secret denied unscoped secret AccessDenied distinct_secret_artifacts=true release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123'
       : id === 'SEC-DBUSER-001'
-        ? 'SEC-DBUSER-001 securityprobe passed: database-scoped-user staging artifact connected as scriptureforge_app current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grants=SELECT,INSERT,UPDATE,DELETE release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123'
+        ? 'SEC-DBUSER-001 securityprobe passed: database-scoped-user staging artifact connected as scriptureforge_app current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grant_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails app_grants=SELECT,INSERT,UPDATE,DELETE release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123'
       : id === 'DR-ROLLBACK-001'
         ? 'DR-ROLLBACK-001 resilienceprobe passed: api-ready-before-rollback staging artifact ready service_version deployment_environment pre_rollback_version release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123; rollback-rollout-artifact staging artifact rollout undo revision previous_revision target_revision scriptureforge-api successfully rolled out release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123; api-ready-after-rollback staging artifact ready service_version deployment_environment post_rollback_version rolled_back_from rolled_back_to release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123; degradation-drill-artifact staging artifact AI Zoom degradation fallback AI_ORCHESTRATION_ENGINE_FAULT offline://in-person non-AI routes healthy zoom circuit open ai_fault=true zoom_offline_fallback=true non_ai_routes_healthy=true zoom_circuit_open=true distinct_rollback_artifacts=true release_candidate=0123456789abcdef0123456789abcdef01234567 service_version=scriptureforge-api:0123456789abcdef0123456789abcdef01234567 load_run_id=load-run-123'
       : id === 'DR-BACKUP-001'
