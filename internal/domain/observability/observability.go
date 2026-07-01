@@ -266,7 +266,7 @@ func recordDependencySpan(ctx context.Context, dependency, operation, status str
 
 func dependencyStatusIsError(status string) bool {
 	switch status {
-	case "", "success", "allowed", "mock_success":
+	case "", "success", "allowed":
 		return false
 	}
 	if code, err := strconv.Atoi(status); err == nil {
@@ -276,6 +276,7 @@ func dependencyStatusIsError(status string) bool {
 		strings.Contains(status, "fail") ||
 		strings.Contains(status, "fault") ||
 		strings.Contains(status, "timeout") ||
+		strings.Contains(status, "mock") ||
 		strings.Contains(status, "denied") ||
 		strings.Contains(status, "invalid") ||
 		strings.Contains(status, "expired") ||

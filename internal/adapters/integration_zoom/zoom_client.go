@@ -113,9 +113,6 @@ func (c *ZoomClient) doWithRetry(buildRequest func() (*http.Request, error)) (*h
 // getAccessToken executes the Server-to-Server OAuth flow.
 func (c *ZoomClient) getAccessToken(ctx context.Context) (string, error) {
 	if c.AccountID == "" || c.ClientID == "" || c.ClientSecret == "" {
-		if os.Getenv("GO_ENV") == "testing" {
-			return "mock_zoom_token", nil
-		}
 		return "", fmt.Errorf("zoom credentials are not fully configured")
 	}
 
@@ -158,16 +155,6 @@ func (c *ZoomClient) CreateMeeting(ctx context.Context, config room.MeetingConfi
 		c.recordResult(err)
 		observeZoom(ctx, "create_meeting", "credential_or_token_fallback", start)
 		return offlineMeetingDetails(config), nil
-	}
-
-	// Mock response logic if running tests
-	if token == "mock_zoom_token" {
-		observeZoom(ctx, "create_meeting", "mock_success", start)
-		return &room.MeetingDetails{
-			ID:       "mock-meeting-123",
-			JoinURL:  "https://zoom.us/j/mock-meeting-123",
-			StartURL: "https://zoom.us/s/mock-meeting-123",
-		}, nil
 	}
 
 	type zoomMeetingSettings struct {
@@ -254,11 +241,6 @@ func (c *ZoomClient) TerminateMeeting(ctx context.Context, meetingID string) err
 		return err
 	}
 
-	if token == "mock_zoom_token" {
-		observeZoom(ctx, "terminate_meeting", "mock_success", start)
-		return nil
-	}
-
 	type zoomActionPayload struct {
 		Action string `json:"action"`
 	}
@@ -305,11 +287,6 @@ func (c *ZoomClient) GetMeetingStatus(ctx context.Context, meetingID string) (st
 		c.recordResult(err)
 		observeZoom(ctx, "get_meeting_status", "credential_or_token_error", start)
 		return "", err
-	}
-
-	if token == "mock_zoom_token" {
-		observeZoom(ctx, "get_meeting_status", "mock_success", start)
-		return "waiting", nil
 	}
 
 	url := fmt.Sprintf("https://api.zoom.us/v2/meetings/%s", meetingID)

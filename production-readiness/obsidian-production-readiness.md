@@ -51,6 +51,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Zoom Duplicate Delivery ID Guard**: `zoomprobe`, the staging evidence recorder, and strict release validation require duplicate webhook idempotency proof to include both the Zoom tracking header marker `x-zm-trackingid=<id>` and `delivery_id=<id>` in the `zoom-duplicate-webhook-idempotency` segment; `zoomprobe` also emits structured JSON `tracking_id` and `delivery_id` fields and the recorder rejects reports where either field is missing or does not match the summary marker.
 - [x] **Zoom Report Run Identity Guard**: `tools/record-staging-evidence.mjs` now rejects release-bound `EXT-ZOOM-001` reports unless the report itself carries `load_run_id`, preventing hand-edited Zoom OAuth/webhook/fallback/mapping reports from relying only on per-segment run markers.
 - [x] **Zoom Mapping Retry Guard**: local webhook tests prove a signed delivery whose room lookup temporarily fails does not consume its Zoom tracking ID, so the same delivery can retry and mutate the mapped internal room once after mapping recovers; deployed webhook evidence remains tracked under `EXT-ZOOM-001`.
+- [x] **Zoom Ambient Mock Removal Guard**: Zoom client tests now use explicit fake HTTP transports for success paths, and missing credentials always return the offline `offline://in-person` fallback plus `credential_or_token_fallback` metrics even when `GO_ENV=testing`; dependency spans no longer normalize `mock_success` as production success.
 - [x] **AI Probe Artifact Host Guard**: `tools/aiprobe` rejects localhost, loopback, private-network, unspecified, link-local, and `local-only` provider/generation/degradation/citation/audit artifacts before emitting `EXT-AI-001`.
 - [x] **AI Reserved Artifact Host Guard**: `tools/aiprobe` rejects reserved placeholder hosts such as `.example`, `example.com`, `.test`, and `.invalid` before emitting AI provider, generation, degradation, citation, or audit evidence.
 - [x] **AI Exact Release Binding Guard**: `tools/aiprobe`, the staging evidence recorder, and strict staging manifest validation require AI provider, generation, degradation, citation, and audit artifacts to carry the exact `release_candidate=<manifest release_candidate>` plus `service_version` markers before `EXT-AI-001` can support final readiness.
@@ -353,11 +354,11 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 1
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: 0f2a12e838624ed268aa1dfbba7c1bb0ed0e31be
+- expected_release_candidate: 89d95cd6609734208fcdb8501412322d71213f6a
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: 0f2a12e838624ed268aa1dfbba7c1bb0ed0e31be
+    - expected_release_candidate: 89d95cd6609734208fcdb8501412322d71213f6a
     - actual_release_candidate: ce96c283410756444a63b1345646fc69cf274d22
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
     - required: tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted

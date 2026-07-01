@@ -422,6 +422,12 @@ func TestObserveDependencyFromContextAddsTraceSpan(t *testing.T) {
 	}
 }
 
+func TestMockDependencyStatusIsError(t *testing.T) {
+	if !dependencyStatusIsError("mock_success") {
+		t.Fatal("mock dependency status must not be normalized as a production success")
+	}
+}
+
 func TestArchitectureMetricProfilesExposeWebSocketAndAIInference(t *testing.T) {
 	observer := NewObserver(Options{})
 	ctx := WithObserver(context.Background(), observer)

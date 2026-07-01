@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"testing"
 
@@ -213,6 +212,35 @@ func TestCreateMeetingUsesOfflineFallbackWhenCredentialsMissing(t *testing.T) {
 	}
 }
 
+func TestCreateMeetingDoesNotUseAmbientTestModeMockWhenCredentialsMissing(t *testing.T) {
+	t.Setenv("GO_ENV", "testing")
+	for _, name := range []string{"ZOOM_ACCOUNT_ID", "ZOOM_CLIENT_ID", "ZOOM_CLIENT_SECRET"} {
+		t.Setenv(name, "")
+	}
+	client := NewZoomClient()
+	client.HTTPClient.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		t.Fatal("HTTP transport should not be called without credentials")
+		return nil, nil
+	})
+
+	observer := observability.NewObserver(observability.Options{})
+	ctx := observability.WithObserver(context.Background(), observer)
+	meeting, err := client.CreateMeeting(ctx, room.MeetingConfig{HostID: "host-test"})
+	if err != nil {
+		t.Fatalf("test-mode missing-credential fallback returned error: %v", err)
+	}
+	if meeting.JoinURL != "offline://in-person" || strings.Contains(meeting.ID, "mock") {
+		t.Fatalf("test-mode missing credentials returned non-offline meeting: %#v", meeting)
+	}
+	metrics := observer.Snapshot()
+	if !strings.Contains(metrics, `scriptureforge_dependency_operations_total{dependency="zoom",operation="create_meeting",status="credential_or_token_fallback"} 1`) {
+		t.Fatalf("test-mode missing credentials did not emit fallback metric:\n%s", metrics)
+	}
+	if strings.Contains(metrics, "mock_success") {
+		t.Fatalf("Zoom metrics still expose mock success path:\n%s", metrics)
+	}
+}
+
 func TestGetMeetingStatusEmitsZoomDependencyMetric(t *testing.T) {
 	t.Setenv("GO_ENV", "")
 	client := &ZoomClient{
@@ -254,8 +282,4 @@ func TestGetMeetingStatusEmitsZoomDependencyMetric(t *testing.T) {
 	if !strings.Contains(metrics, `scriptureforge_dependency_operations_total{dependency="zoom",operation="get_meeting_status",status="success"} 1`) {
 		t.Fatalf("Zoom status dependency metric missing:\n%s", metrics)
 	}
-}
-
-func TestMain(m *testing.M) {
-	os.Exit(m.Run())
 }
