@@ -1798,9 +1798,17 @@ function validateZoomEvidence(report, manifest) {
       const webhookTimestamp = String(probe.webhook_timestamp ?? '').trim();
       assert.match(webhookSignature, zoomWebhookSignaturePattern, 'zoom-webhook-signature-delivery probe must include structured webhook_signature');
       assert.match(webhookTimestamp, zoomWebhookTimestampPattern, 'zoom-webhook-signature-delivery probe must include structured webhook_timestamp');
+      assert.equal(probe.stale_rejected, true, 'zoom-webhook-signature-delivery probe must include structured stale_rejected=true');
+      assert.equal(probe.replay_rejected, true, 'zoom-webhook-signature-delivery probe must include structured replay_rejected=true');
+      assert.equal(probe.invalid_signature_rejected, true, 'zoom-webhook-signature-delivery probe must include structured invalid_signature_rejected=true');
+      assert.equal(probe.signed_delivery_accepted, true, 'zoom-webhook-signature-delivery probe must include structured signed_delivery_accepted=true');
       assertSummaryIncludesMarkers(probe.name, summary, [
         `x-zm-signature=${webhookSignature}`,
         `x-zm-request-timestamp=${webhookTimestamp}`,
+        'stale_rejected=true',
+        'replay_rejected=true',
+        'invalid_signature_rejected=true',
+        'signed_delivery_accepted=true',
       ]);
     }
     if (probe.name === 'zoom-timeout-circuit-fallback') {

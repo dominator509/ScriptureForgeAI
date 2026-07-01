@@ -17,17 +17,21 @@ import (
 )
 
 var (
-	deliveryIDPattern             = regexp.MustCompile(`(?i)\bdelivery_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
-	trackingIDPattern             = regexp.MustCompile(`(?i)\bx-zm-trackingid=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
-	meetingExternalIDPattern      = regexp.MustCompile(`(?i)\bmeeting_external_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
-	internalRoomIDPattern         = regexp.MustCompile(`(?i)\binternal_room_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
-	webhookSignaturePattern       = regexp.MustCompile(`(?i)\bx-zm-signature=(v0[:=][0-9a-f]{64})\b`)
-	webhookTimestampPattern       = regexp.MustCompile(`(?i)\bx-zm-request-timestamp=([0-9]{10,})\b`)
-	plainTokenPattern             = regexp.MustCompile(`(?i)\bplain_token=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
-	encryptedTokenPattern         = regexp.MustCompile(`(?i)\bencrypted_token=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
-	validationResponsePattern     = regexp.MustCompile(`(?i)\bvalidation_response=(200)\b`)
-	singleStateMutationPattern    = regexp.MustCompile(`(?i)\bsingle_state_mutation=true\b`)
-	noDuplicateSideEffectsPattern = regexp.MustCompile(`(?i)\bno_duplicate_side_effects=true\b`)
+	deliveryIDPattern               = regexp.MustCompile(`(?i)\bdelivery_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
+	trackingIDPattern               = regexp.MustCompile(`(?i)\bx-zm-trackingid=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
+	meetingExternalIDPattern        = regexp.MustCompile(`(?i)\bmeeting_external_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
+	internalRoomIDPattern           = regexp.MustCompile(`(?i)\binternal_room_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
+	webhookSignaturePattern         = regexp.MustCompile(`(?i)\bx-zm-signature=(v0[:=][0-9a-f]{64})\b`)
+	webhookTimestampPattern         = regexp.MustCompile(`(?i)\bx-zm-request-timestamp=([0-9]{10,})\b`)
+	plainTokenPattern               = regexp.MustCompile(`(?i)\bplain_token=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
+	encryptedTokenPattern           = regexp.MustCompile(`(?i)\bencrypted_token=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
+	validationResponsePattern       = regexp.MustCompile(`(?i)\bvalidation_response=(200)\b`)
+	singleStateMutationPattern      = regexp.MustCompile(`(?i)\bsingle_state_mutation=true\b`)
+	noDuplicateSideEffectsPattern   = regexp.MustCompile(`(?i)\bno_duplicate_side_effects=true\b`)
+	staleRejectedPattern            = regexp.MustCompile(`(?i)\bstale_rejected=true\b`)
+	replayRejectedPattern           = regexp.MustCompile(`(?i)\breplay_rejected=true\b`)
+	invalidSignatureRejectedPattern = regexp.MustCompile(`(?i)\binvalid_signature_rejected=true\b`)
+	signedDeliveryAcceptedPattern   = regexp.MustCompile(`(?i)\bsigned_delivery_accepted=true\b`)
 )
 
 type config struct {
@@ -60,26 +64,30 @@ type report struct {
 }
 
 type probeResult struct {
-	Name                   string `json:"name"`
-	Target                 string `json:"target"`
-	Passed                 bool   `json:"passed"`
-	StatusCode             int    `json:"status_code,omitempty"`
-	LatencyMS              int64  `json:"latency_ms,omitempty"`
-	DeliveryID             string `json:"delivery_id,omitempty"`
-	TrackingID             string `json:"tracking_id,omitempty"`
-	MeetingID              string `json:"meeting_external_id,omitempty"`
-	RoomID                 string `json:"internal_room_id,omitempty"`
-	WebhookSig             string `json:"webhook_signature,omitempty"`
-	WebhookTS              string `json:"webhook_timestamp,omitempty"`
-	PlainToken             string `json:"plain_token,omitempty"`
-	EncryptedToken         string `json:"encrypted_token,omitempty"`
-	ValidationResponse     string `json:"validation_response,omitempty"`
-	ProviderTimeout        bool   `json:"provider_timeout,omitempty"`
-	CircuitOpen            bool   `json:"circuit_open,omitempty"`
-	OfflineFallback        bool   `json:"offline_fallback,omitempty"`
-	SingleStateMutation    bool   `json:"single_state_mutation,omitempty"`
-	NoDuplicateSideEffects bool   `json:"no_duplicate_side_effects,omitempty"`
-	ResultSummary          string `json:"result_summary"`
+	Name                     string `json:"name"`
+	Target                   string `json:"target"`
+	Passed                   bool   `json:"passed"`
+	StatusCode               int    `json:"status_code,omitempty"`
+	LatencyMS                int64  `json:"latency_ms,omitempty"`
+	DeliveryID               string `json:"delivery_id,omitempty"`
+	TrackingID               string `json:"tracking_id,omitempty"`
+	MeetingID                string `json:"meeting_external_id,omitempty"`
+	RoomID                   string `json:"internal_room_id,omitempty"`
+	WebhookSig               string `json:"webhook_signature,omitempty"`
+	WebhookTS                string `json:"webhook_timestamp,omitempty"`
+	StaleRejected            bool   `json:"stale_rejected,omitempty"`
+	ReplayRejected           bool   `json:"replay_rejected,omitempty"`
+	InvalidSignatureRejected bool   `json:"invalid_signature_rejected,omitempty"`
+	SignedDeliveryAccepted   bool   `json:"signed_delivery_accepted,omitempty"`
+	PlainToken               string `json:"plain_token,omitempty"`
+	EncryptedToken           string `json:"encrypted_token,omitempty"`
+	ValidationResponse       string `json:"validation_response,omitempty"`
+	ProviderTimeout          bool   `json:"provider_timeout,omitempty"`
+	CircuitOpen              bool   `json:"circuit_open,omitempty"`
+	OfflineFallback          bool   `json:"offline_fallback,omitempty"`
+	SingleStateMutation      bool   `json:"single_state_mutation,omitempty"`
+	NoDuplicateSideEffects   bool   `json:"no_duplicate_side_effects,omitempty"`
+	ResultSummary            string `json:"result_summary"`
 }
 
 func main() {
@@ -297,9 +305,17 @@ func probeArtifactAny(client *http.Client, name, target string, acceptableRequir
 	}
 	webhookSignature := ""
 	webhookTimestamp := ""
+	staleRejected := false
+	replayRejected := false
+	invalidSignatureRejected := false
+	signedDeliveryAccepted := false
 	if name == "zoom-webhook-signature-delivery" {
 		webhookSignature = extractWebhookSignature(text)
 		webhookTimestamp = extractWebhookTimestamp(text)
+		staleRejected = staleRejectedPattern.MatchString(text)
+		replayRejected = replayRejectedPattern.MatchString(text)
+		invalidSignatureRejected = invalidSignatureRejectedPattern.MatchString(text)
+		signedDeliveryAccepted = signedDeliveryAcceptedPattern.MatchString(text)
 	}
 	plainToken := ""
 	encryptedToken := ""
@@ -330,7 +346,7 @@ func probeArtifactAny(client *http.Client, name, target string, acceptableRequir
 	if name == "zoom-duplicate-webhook-idempotency" && (deliveryID == "" || trackingID == "" || !singleStateMutation || !noDuplicateSideEffects) {
 		passed = false
 	}
-	if name == "zoom-webhook-signature-delivery" && (webhookSignature == "" || webhookTimestamp == "") {
+	if name == "zoom-webhook-signature-delivery" && (webhookSignature == "" || webhookTimestamp == "" || !staleRejected || !replayRejected || !invalidSignatureRejected || !signedDeliveryAccepted) {
 		passed = false
 	}
 	if name == "zoom-webhook-url-validation" && (plainToken == "" || encryptedToken == "" || validationResponse != "200") {
@@ -356,6 +372,9 @@ func probeArtifactAny(client *http.Client, name, target string, acceptableRequir
 		if webhookSignature != "" || webhookTimestamp != "" {
 			summary += fmt.Sprintf("; x-zm-signature=%s; x-zm-request-timestamp=%s", webhookSignature, webhookTimestamp)
 		}
+		if name == "zoom-webhook-signature-delivery" {
+			summary += fmt.Sprintf("; stale_rejected=%t; replay_rejected=%t; invalid_signature_rejected=%t; signed_delivery_accepted=%t", staleRejected, replayRejected, invalidSignatureRejected, signedDeliveryAccepted)
+		}
 		if plainToken != "" || encryptedToken != "" || validationResponse != "" {
 			summary += fmt.Sprintf("; plain_token=%s; encrypted_token=%s; validation_response=%s", plainToken, encryptedToken, validationResponse)
 		}
@@ -366,7 +385,7 @@ func probeArtifactAny(client *http.Client, name, target string, acceptableRequir
 			summary += fmt.Sprintf("; meeting_external_id=%s; internal_room_id=%s", meetingID, roomID)
 		}
 	}
-	return probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, DeliveryID: deliveryID, TrackingID: trackingID, MeetingID: meetingID, RoomID: roomID, WebhookSig: webhookSignature, WebhookTS: webhookTimestamp, PlainToken: plainToken, EncryptedToken: encryptedToken, ValidationResponse: validationResponse, ProviderTimeout: providerTimeout, CircuitOpen: circuitOpen, OfflineFallback: offlineFallback, SingleStateMutation: singleStateMutation, NoDuplicateSideEffects: noDuplicateSideEffects, ResultSummary: summary}
+	return probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, DeliveryID: deliveryID, TrackingID: trackingID, MeetingID: meetingID, RoomID: roomID, WebhookSig: webhookSignature, WebhookTS: webhookTimestamp, StaleRejected: staleRejected, ReplayRejected: replayRejected, InvalidSignatureRejected: invalidSignatureRejected, SignedDeliveryAccepted: signedDeliveryAccepted, PlainToken: plainToken, EncryptedToken: encryptedToken, ValidationResponse: validationResponse, ProviderTimeout: providerTimeout, CircuitOpen: circuitOpen, OfflineFallback: offlineFallback, SingleStateMutation: singleStateMutation, NoDuplicateSideEffects: noDuplicateSideEffects, ResultSummary: summary}
 }
 
 func extractDeliveryID(text string) string {

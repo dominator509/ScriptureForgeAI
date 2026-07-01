@@ -66,7 +66,7 @@ const zoomSegmentMarkerRequirements = new Map([
   ['zoom-oauth-readiness', ['staging artifact', 'oauth', 'account_credentials', 'status', 'ok', 'release_candidate=', 'service_version=', 'load_run_id=']],
   ['zoom-meeting-create-or-fallback', ['staging artifact', 'release_candidate=', 'service_version=', 'load_run_id=']],
   ['zoom-timeout-circuit-fallback', ['staging artifact', 'timeout', 'provider timeout', 'circuit', 'open', 'circuit_open_fallback', 'fallback', 'offline://in-person', 'release_candidate=', 'service_version=', 'load_run_id=']],
-  ['zoom-webhook-signature-delivery', ['staging artifact', 'webhook', 'signature', 'x-zm-signature=', 'x-zm-request-timestamp=', 'stale', 'replay', '401', 'invalid', 'signed', '200', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['zoom-webhook-signature-delivery', ['staging artifact', 'webhook', 'signature', 'x-zm-signature=', 'x-zm-request-timestamp=', 'stale', 'replay', '401', 'invalid', 'signed', '200', 'stale_rejected=true', 'replay_rejected=true', 'invalid_signature_rejected=true', 'signed_delivery_accepted=true', 'release_candidate=', 'service_version=', 'load_run_id=']],
   ['zoom-webhook-url-validation', ['staging artifact', 'endpoint.url_validation', 'plain_token=', 'encrypted_token=', 'validation_response=200', 'release_candidate=', 'service_version=', 'load_run_id=']],
   ['zoom-duplicate-webhook-idempotency', ['staging artifact', 'duplicate', 'x-zm-trackingid=', 'delivery_id=', 'delivery id', 'same Zoom event', 'idempotent', '200', 'single state mutation', 'no duplicate side effects', 'single_state_mutation=true', 'no_duplicate_side_effects=true', 'release_candidate=', 'service_version=', 'load_run_id=']],
   ['zoom-meeting-room-mapping', ['staging artifact', 'meeting_external_id=', 'live_rooms', 'internal_room_id=', 'redis room state', 'mapped', 'unknown meeting ignored', 'no external meeting id fallback', 'distinct_zoom_artifacts=true', 'release_candidate=', 'service_version=', 'load_run_id=']],
@@ -87,6 +87,10 @@ const aiRetryExhaustedPattern = /\bretry_exhausted=true\b/i;
 const aiFailClosedPattern = /\bfail_closed=true\b/i;
 const zoomWebhookSignaturePattern = /\bx-zm-signature=(v0[:=][0-9a-f]{64})\b/i;
 const zoomWebhookTimestampPattern = /\bx-zm-request-timestamp=([0-9]{10,})\b/i;
+const zoomStaleRejectedPattern = /\bstale_rejected=true\b/i;
+const zoomReplayRejectedPattern = /\breplay_rejected=true\b/i;
+const zoomInvalidSignatureRejectedPattern = /\binvalid_signature_rejected=true\b/i;
+const zoomSignedDeliveryAcceptedPattern = /\bsigned_delivery_accepted=true\b/i;
 const zoomPlainTokenPattern = /\bplain_token=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const zoomEncryptedTokenPattern = /\bencrypted_token=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const zoomValidationResponsePattern = /\bvalidation_response=200\b/i;
@@ -1864,6 +1868,26 @@ function validateStrictReleaseItemEvidence(item, manifest) {
       webhookSignatureSegment,
       zoomWebhookTimestampPattern,
       'EXT-ZOOM-001 zoom-webhook-signature-delivery must include concrete x-zm-request-timestamp=<epoch>',
+    );
+    assert.match(
+      webhookSignatureSegment,
+      zoomStaleRejectedPattern,
+      'EXT-ZOOM-001 zoom-webhook-signature-delivery must include stale_rejected=true',
+    );
+    assert.match(
+      webhookSignatureSegment,
+      zoomReplayRejectedPattern,
+      'EXT-ZOOM-001 zoom-webhook-signature-delivery must include replay_rejected=true',
+    );
+    assert.match(
+      webhookSignatureSegment,
+      zoomInvalidSignatureRejectedPattern,
+      'EXT-ZOOM-001 zoom-webhook-signature-delivery must include invalid_signature_rejected=true',
+    );
+    assert.match(
+      webhookSignatureSegment,
+      zoomSignedDeliveryAcceptedPattern,
+      'EXT-ZOOM-001 zoom-webhook-signature-delivery must include signed_delivery_accepted=true',
     );
     const timeoutCircuitSegment = findEvidenceSegment(evidence, 'zoom-timeout-circuit-fallback');
     assert.match(

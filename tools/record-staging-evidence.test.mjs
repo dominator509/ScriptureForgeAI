@@ -345,7 +345,7 @@ const zoomProbeMarkerSummaries = {
   'zoom-oauth-readiness': 'got HTTP 200; staging artifact; verified markers: oauth, account_credentials, status, ok, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
   'zoom-meeting-create-or-fallback': 'got HTTP 200; staging artifact; verified markers: meeting, join_url, zoom.us, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
   'zoom-timeout-circuit-fallback': 'got HTTP 200; staging artifact; verified markers: timeout, provider timeout, circuit, open, circuit_open_fallback, fallback, offline://in-person, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123; provider_timeout=true; circuit_open=true; offline_fallback=true',
-  'zoom-webhook-signature-delivery': 'got HTTP 200; staging artifact; verified markers: webhook, signature, x-zm-signature=v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, x-zm-request-timestamp=1710000000, stale, replay, 401, invalid, signed, 200, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'zoom-webhook-signature-delivery': 'got HTTP 200; staging artifact; verified markers: webhook, signature, x-zm-signature=v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, x-zm-request-timestamp=1710000000, stale, replay, 401, invalid, signed, 200, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123; stale_rejected=true; replay_rejected=true; invalid_signature_rejected=true; signed_delivery_accepted=true',
   'zoom-webhook-url-validation': 'got HTTP 200; staging artifact; verified markers: endpoint.url_validation, plain_token=zoom-plain-123, encrypted_token=zoom-encrypted-456, validation_response=200, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
   'zoom-duplicate-webhook-idempotency': 'got HTTP 200; staging artifact; verified markers: duplicate, x-zm-trackingid=zm-track-123, delivery_id=zm-delivery-123, delivery id, same Zoom event, idempotent, 200, single state mutation, no duplicate side effects, single_state_mutation=true, no_duplicate_side_effects=true, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
   'zoom-meeting-room-mapping': 'got HTTP 200; staging artifact; verified markers: meeting_external_id=zoom-123, live_rooms, internal_room_id=room-abc, redis room state, mapped, unknown meeting ignored, no external meeting id fallback, distinct_zoom_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
@@ -374,6 +374,18 @@ function zoomProbeReportProbe(name, overrides = {}) {
   }
   if (name === 'zoom-webhook-signature-delivery' && !Object.hasOwn(overrides, 'webhook_signature')) {
     probe.webhook_signature = 'v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  }
+  if (name === 'zoom-webhook-signature-delivery' && !Object.hasOwn(overrides, 'stale_rejected')) {
+    probe.stale_rejected = true;
+  }
+  if (name === 'zoom-webhook-signature-delivery' && !Object.hasOwn(overrides, 'replay_rejected')) {
+    probe.replay_rejected = true;
+  }
+  if (name === 'zoom-webhook-signature-delivery' && !Object.hasOwn(overrides, 'invalid_signature_rejected')) {
+    probe.invalid_signature_rejected = true;
+  }
+  if (name === 'zoom-webhook-signature-delivery' && !Object.hasOwn(overrides, 'signed_delivery_accepted')) {
+    probe.signed_delivery_accepted = true;
   }
   if (name === 'zoom-timeout-circuit-fallback' && !Object.hasOwn(overrides, 'provider_timeout')) {
     probe.provider_timeout = true;
@@ -3336,6 +3348,34 @@ test('recordEvidence rejects Zoom resilience evidence without structured fallbac
   );
 });
 
+test('recordEvidence rejects Zoom webhook evidence without structured signature outcomes', () => {
+  const probeNames = Object.keys(zoomProbeMarkerSummaries);
+  assert.throws(
+    () => recordEvidence(
+      {
+        release_candidate: 'abc123',
+        items: [{ id: 'EXT-ZOOM-001', status: 'pending_external' }],
+      },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
+        evidence_items: ['EXT-ZOOM-001'],
+        probes: zoomProbeReportProbes(probeNames, (name) => (
+          name === 'zoom-webhook-signature-delivery'
+            ? { replay_rejected: undefined }
+            : {}
+        )),
+      },
+      'artifacts/zoomprobe.json',
+      'go run ./tools/zoomprobe',
+    ),
+    /zoom-webhook-signature-delivery probe must include structured replay_rejected=true/,
+  );
+});
+
 test('recordEvidence rejects Zoom duplicate evidence without structured tracking ID proof', () => {
   const probeNames = Object.keys(zoomProbeMarkerSummaries);
   assert.throws(
@@ -3648,14 +3688,14 @@ test('recordEvidence rejects Zoom evidence without stale replay denial markers',
         evidence_items: ['EXT-ZOOM-001'],
         probes: zoomProbeReportProbes(probeNames, (name) => ({
           result_summary: name === 'zoom-webhook-signature-delivery'
-            ? zoomProbeMarkerSummaries[name].replace('stale, replay, ', '')
+            ? zoomProbeMarkerSummaries[name].replace('stale, replay, 401, ', '')
             : zoomProbeMarkerSummaries[name],
         })),
       },
       'artifacts/zoomprobe.json',
       'go run ./tools/zoomprobe',
     ),
-    /zoom-webhook-signature-delivery result_summary must include verified marker stale/,
+    /zoom-webhook-signature-delivery result_summary must include verified marker (stale|401)/,
   );
 });
 

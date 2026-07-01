@@ -22,7 +22,7 @@ var requiredZoomProbeSummaryMarkers = map[string][]string{
 }
 
 const zoomReleaseEvidence = " staging artifact release_candidate=sha-zoom service_version=scriptureforge-api:sha-zoom load_run_id=zoom-run-123"
-const zoomWebhookEvidence = "webhook signature x-zm-signature=v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa x-zm-request-timestamp=1710000000 stale replay 401 invalid 401 signed 200"
+const zoomWebhookEvidence = "webhook signature x-zm-signature=v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa x-zm-request-timestamp=1710000000 stale replay 401 invalid 401 signed 200 stale_rejected=true replay_rejected=true invalid_signature_rejected=true signed_delivery_accepted=true"
 const zoomURLValidationEvidence = "endpoint.url_validation plain_token=zoom-plain-123 encrypted_token=zoom-encrypted-456 validation_response=200"
 
 func stagingZoomConfig(timeout time.Duration) config {
@@ -333,6 +333,9 @@ func assertWebhookSignatureProof(t *testing.T, probes []probeResult, wantSignatu
 			if probe.WebhookTS != wantTimestamp {
 				t.Fatalf("webhook timestamp = %q, want %q", probe.WebhookTS, wantTimestamp)
 			}
+			if !probe.StaleRejected || !probe.ReplayRejected || !probe.InvalidSignatureRejected || !probe.SignedDeliveryAccepted {
+				t.Fatalf("webhook signature proof missing structured outcome booleans: %#v", probe)
+			}
 			return
 		}
 	}
@@ -585,6 +588,37 @@ func TestRunFailsWhenWebhookArtifactOmitsStaleReplayDenial(t *testing.T) {
 	err := runWithClient(stagingZoomConfig(time.Second), &output, clientForHTTPServer(t, server))
 	if err == nil {
 		t.Fatalf("expected missing stale replay proof to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "zoom-webhook-signature-delivery") {
+		t.Fatalf("report missing webhook signature probe:\n%s", output.String())
+	}
+}
+
+func TestRunFailsWhenWebhookArtifactOmitsStructuredSignatureOutcomes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth":
+			_, _ = w.Write([]byte("Zoom oauth account_credentials status ok token redacted" + zoomReleaseEvidence))
+		case "/meeting":
+			_, _ = w.Write([]byte("meeting created join_url=https://zoom.us/j/123456789" + zoomReleaseEvidence))
+		case "/resilience":
+			_, _ = w.Write([]byte("provider timeout drill opened circuit; circuit open circuit_open_fallback returned offline://in-person fallback" + zoomReleaseEvidence))
+		case "/webhook":
+			_, _ = w.Write([]byte("webhook signature x-zm-signature=v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa x-zm-request-timestamp=1710000000 stale replay 401 invalid 401 signed 200" + zoomReleaseEvidence))
+		case "/validation":
+			_, _ = w.Write([]byte("endpoint.url_validation 200 plain_token=zoom-plain-123 encrypted_token=zoom-encrypted-456 validation_response=200" + zoomReleaseEvidence))
+		case "/duplicate":
+			_, _ = w.Write([]byte("duplicate webhook x-zm-trackingid=zm-track-123 delivery_id=zm-delivery-123 delivery id same Zoom event idempotent 200 single state mutation no duplicate side effects" + zoomReleaseEvidence))
+		case "/mapping":
+			_, _ = w.Write([]byte("meeting_external_id=zoom-123 mapped live_rooms internal_room_id=room-abc redis room state unknown meeting ignored no external meeting id fallback distinct_zoom_artifacts=true" + zoomReleaseEvidence))
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := runWithClient(stagingZoomConfig(time.Second), &output, clientForHTTPServer(t, server))
+	if err == nil {
+		t.Fatalf("expected missing structured webhook outcome proof to fail:\n%s", output.String())
 	}
 	if !strings.Contains(output.String(), "zoom-webhook-signature-delivery") {
 		t.Fatalf("report missing webhook signature probe:\n%s", output.String())

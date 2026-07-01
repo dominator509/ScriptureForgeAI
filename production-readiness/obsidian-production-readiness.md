@@ -46,6 +46,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Zoom Artifact Host Guard**: `tools/zoomprobe` rejects reserved placeholder hosts such as `.example`, `example.com`, `.test`, and `.invalid`, plus localhost, loopback, private-network, unspecified, and link-local hosts before emitting Zoom OAuth, meeting/fallback, resilience, webhook, URL-validation, duplicate, or mapping evidence.
 - [x] **Zoom Webhook Signature Contradiction Guard**: `tools/zoomprobe`, the staging evidence recorder, and strict staging manifest validation reject Zoom webhook evidence that claims signature verification was disabled, bypassed, or skipped, even if the summary also contains required signed/invalid/replay markers for `EXT-ZOOM-001`.
 - [x] **Zoom Webhook Signature Value Guard**: `tools/zoomprobe`, the staging evidence recorder, and strict staging manifest validation require concrete `x-zm-signature=<v0 signature>` and `x-zm-request-timestamp=<epoch>` markers before webhook signature evidence can support `EXT-ZOOM-001`.
+- [x] **Zoom Webhook Outcome Guard**: `tools/zoomprobe`, the staging evidence recorder, and strict staging manifest validation require structured `stale_rejected=true`, `replay_rejected=true`, `invalid_signature_rejected=true`, and `signed_delivery_accepted=true` markers before webhook signature evidence can support `EXT-ZOOM-001`.
 - [x] **Zoom Duplicate Tracking ID Guard**: `tools/zoomprobe`, the staging evidence recorder, and strict staging manifest validation require duplicate webhook idempotency proof to include a concrete `x-zm-trackingid=<id>` marker and structured JSON `tracking_id` before duplicate evidence can support `EXT-ZOOM-001`.
 - [x] **Zoom Meeting/Fallback Probe Guard**: strict-release validation now requires `zoom-meeting-create-or-fallback` itself to prove either a Zoom `join_url` or `offline://in-person` fallback, so timeout fallback markers from a different probe cannot satisfy meeting creation evidence.
 - [x] **Zoom Duplicate Delivery ID Guard**: `zoomprobe`, the staging evidence recorder, and strict release validation require duplicate webhook idempotency proof to include both the Zoom tracking header marker `x-zm-trackingid=<id>` and `delivery_id=<id>` in the `zoom-duplicate-webhook-idempotency` segment; `zoomprobe` also emits structured JSON `tracking_id` and `delivery_id` fields and the recorder rejects reports where either field is missing or does not match the summary marker.
@@ -367,12 +368,17 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - release_candidate: b1c70b67e157f8c382cf3b872ef943e24714a95b
 - strict_release_ready: no
 - strict_staging_path_ready: yes
-- non_manifest_blockers: 0
+- non_manifest_blockers: 2
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: b1c70b67e157f8c382cf3b872ef943e24714a95b
-- release_candidate_matches_expected: yes
+- expected_release_candidate: 17734c31d9f9781200afc2b0b9b395c4dbfa09f0
+- release_candidate_matches_expected: no
 - blocking items:
+  - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
+    - expected_release_candidate: 17734c31d9f9781200afc2b0b9b395c4dbfa09f0
+    - actual_release_candidate: b1c70b67e157f8c382cf3b872ef943e24714a95b
+  - STAGING-EVIDENCE-CONTRACT [failed]: Environment-specific pending evidence requirements are stale relative to production-readiness/staging-evidence.example.json.
+    - required: EXT-ZOOM-001 required_evidence must be refreshed from the checked-in example contract (11 current entries, 11 expected entries)
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
     - required: tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted
     - required: Uploaded GitHub Actions ci-release-evidence artifact from the exact release SHA with release_candidate=<manifest release_candidate> marker in the recorded summary
