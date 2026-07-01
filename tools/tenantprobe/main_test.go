@@ -722,6 +722,12 @@ func TestDBRLSArtifactSummarizesVerifiedTenantScopedTables(t *testing.T) {
 		"same-tenant read visible",
 		"cross-tenant read hidden",
 		"cross-tenant write denied",
+		"auth_refresh_session_rls=true",
+		"auth_mfa_rls=true",
+		"workspace_switch_tenant_match=true",
+		"privileged_mfa_enrollment_rls=true",
+		"ai_audit_rls=true",
+		"generated_curriculum_audit_rls=true",
 		"load_run_id=" + testLoadRunID,
 	} {
 		if !strings.Contains(result.ResultSummary, marker) {
@@ -837,8 +843,31 @@ func TestDBRLSProofRequiresApplicationRole(t *testing.T) {
 	}
 }
 
+func TestDBRLSProofRequiresAuthAndAIAuditSemanticMarkers(t *testing.T) {
+	for _, marker := range []string{
+		"auth_refresh_session_rls=true ",
+		"auth_mfa_rls=true ",
+		"workspace_switch_tenant_match=true ",
+		"privileged_mfa_enrollment_rls=true ",
+		"ai_audit_rls=true ",
+		"generated_curriculum_audit_rls=true ",
+	} {
+		t.Run(strings.TrimSpace(marker), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(strings.ReplaceAll(fullDBRLSProofArtifact(), marker, "")))
+			}))
+			defer server.Close()
+
+			result := probeDBRLSArtifactForTest(server.Client(), server.URL)
+			if result.Passed {
+				t.Fatalf("DB RLS proof passed despite missing semantic marker %q: %+v", marker, result)
+			}
+		})
+	}
+}
+
 func fullDBRLSProofArtifact() string {
-	return `staging artifact current_user=scriptureforge_app non-superuser superuser=false bypassrls=false app.current_org_id set app.current_org_id=` + testOwnerOrgID + ` current_setting('app.current_org_id') blocked_org_id=` + testBlockedOrgID + ` row_security=on FORCE ROW LEVEL SECURITY rls_tables_verified=9 rls_forced_tables=9 rls_policy_scope=app.current_org_id organizations users scripture_texts refresh_tokens journal_entries live_rooms room_participants ai_request_logs citation_trails same-tenant read visible cross-tenant read hidden cross-tenant write denied release_candidate=sha-tenant service_version=scriptureforge-api:sha-tenant load_run_id=` + testLoadRunID
+	return `staging artifact current_user=scriptureforge_app non-superuser superuser=false bypassrls=false app.current_org_id set app.current_org_id=` + testOwnerOrgID + ` current_setting('app.current_org_id') blocked_org_id=` + testBlockedOrgID + ` row_security=on FORCE ROW LEVEL SECURITY rls_tables_verified=9 rls_forced_tables=9 rls_policy_scope=app.current_org_id organizations users scripture_texts refresh_tokens journal_entries live_rooms room_participants ai_request_logs citation_trails same-tenant read visible cross-tenant read hidden cross-tenant write denied auth_refresh_session_rls=true auth_mfa_rls=true workspace_switch_tenant_match=true privileged_mfa_enrollment_rls=true ai_audit_rls=true generated_curriculum_audit_rls=true release_candidate=sha-tenant service_version=scriptureforge-api:sha-tenant load_run_id=` + testLoadRunID
 }
 
 func probeDBRLSArtifactForTest(client *http.Client, target string) probeResult {

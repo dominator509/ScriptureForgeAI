@@ -97,6 +97,12 @@ var requiredDBRLSMarkers = []string{
 	"same-tenant read visible",
 	"cross-tenant read hidden",
 	"cross-tenant write denied",
+	"auth_refresh_session_rls=true",
+	"auth_mfa_rls=true",
+	"workspace_switch_tenant_match=true",
+	"privileged_mfa_enrollment_rls=true",
+	"ai_audit_rls=true",
+	"generated_curriculum_audit_rls=true",
 }
 
 var uuidPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)

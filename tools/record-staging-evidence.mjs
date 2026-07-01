@@ -141,6 +141,12 @@ const requiredTenantRLSContextMarkers = [
   'same-tenant read visible',
   'cross-tenant read hidden',
   'cross-tenant write denied',
+  'auth_refresh_session_rls=true',
+  'auth_mfa_rls=true',
+  'workspace_switch_tenant_match=true',
+  'privileged_mfa_enrollment_rls=true',
+  'ai_audit_rls=true',
+  'generated_curriculum_audit_rls=true',
   'distinct_db_rls_artifact=true',
 ];
 
