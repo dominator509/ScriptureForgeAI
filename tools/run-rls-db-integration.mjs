@@ -22,6 +22,11 @@ export const rlsDBRequiredTests = [
   'MFAEnrollAndVerifyFlowForPrivilegedUsers',
 ];
 
+export const rlsDBRequiredPackages = [
+  'scriptureforge/tests/integration',
+  'scriptureforge/internal/ports',
+];
+
 export const rlsDBSemanticProofMarkers = [
   'rls_all_tenant_tables=true',
   'rls_table_organizations=true',
@@ -71,6 +76,9 @@ export const rlsDBSemanticProofMarkers = [
   'auth_mfa_rls=true',
   'workspace_switch_tenant_match=true',
   'privileged_mfa_enrollment_rls=true',
+  'rls_tests_integration_package_reported=true',
+  'rls_ports_package_reported=true',
+  'rls_verbose_pass_lines_bound_to_packages=true',
 ];
 
 export const rlsDBProofMarkers = [
@@ -80,12 +88,20 @@ export const rlsDBProofMarkers = [
 
 export function validateRLSDBGoTestOutput(output) {
   const text = String(output ?? '');
+  for (const packageName of rlsDBRequiredPackages) {
+    const packagePattern = new RegExp(`^ok\\s+${escapeRegExp(packageName)}(?:\\s|$)`, 'm');
+    assertTestOutput(packagePattern.test(text), `rls-db-integration Go test output must include ok result for ${packageName}`);
+  }
   for (const testName of rlsDBRequiredTests) {
     const passPattern = new RegExp(`--- PASS: Test${testName}\\b`);
     assertTestOutput(passPattern.test(text), `rls-db-integration Go test output must include PASS for Test${testName}`);
     const skipPattern = new RegExp(`--- SKIP: Test${testName}\\b`);
     assertTestOutput(!skipPattern.test(text), `rls-db-integration Go test output must not skip Test${testName}`);
   }
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export function validateDatabaseURL(env = process.env) {

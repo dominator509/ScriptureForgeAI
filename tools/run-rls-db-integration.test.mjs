@@ -4,6 +4,7 @@ import {
   buildRLSDBIntegrationCommand,
   buildRLSDBIntegrationEnv,
   rlsDBProofMarkers,
+  rlsDBRequiredPackages,
   rlsDBRequiredTests,
   rlsDBSemanticProofMarkers,
   rlsDBTestPattern,
@@ -46,6 +47,9 @@ test('parseArgs accepts an explicit Go binary for CI setup-go environments', () 
 });
 
 test('rlsDBProofMarkers include semantic tenant isolation coverage markers', () => {
+  for (const packageName of rlsDBRequiredPackages) {
+    assert.equal(['scriptureforge/tests/integration', 'scriptureforge/internal/ports'].includes(packageName), true);
+  }
   for (const marker of rlsDBRequiredTests) {
     assert.equal(rlsDBProofMarkers.includes(marker), true);
   }
@@ -96,6 +100,9 @@ test('rlsDBProofMarkers include semantic tenant isolation coverage markers', () 
     'auth_mfa_rls=true',
     'workspace_switch_tenant_match=true',
     'privileged_mfa_enrollment_rls=true',
+    'rls_tests_integration_package_reported=true',
+    'rls_ports_package_reported=true',
+    'rls_verbose_pass_lines_bound_to_packages=true',
   ]) {
     assert.equal(rlsDBSemanticProofMarkers.includes(marker), true);
     assert.equal(rlsDBProofMarkers.includes(marker), true);
@@ -109,18 +116,16 @@ test('buildRLSDBIntegrationEnv forces DB requirement and default Go cache', () =
 });
 
 test('validateRLSDBGoTestOutput accepts verbose output only when every required RLS test passed', () => {
-  const output = rlsDBRequiredTests
-    .map((marker) => `=== RUN   Test${marker}\n--- PASS: Test${marker} (0.01s)`)
-    .join('\n');
+  const output = requiredRLSOutput();
 
   assert.doesNotThrow(() => validateRLSDBGoTestOutput(output));
 });
 
 test('validateRLSDBGoTestOutput rejects missing required RLS tests', () => {
-  const output = rlsDBRequiredTests
+  const output = `${requiredRLSPackageOutput()}\n${rlsDBRequiredTests
     .filter((marker) => marker !== 'TenantScopedJournalHandlersEnforceRLS')
     .map((marker) => `=== RUN   Test${marker}\n--- PASS: Test${marker} (0.01s)`)
-    .join('\n');
+    .join('\n')}`;
 
   assert.throws(
     () => validateRLSDBGoTestOutput(output),
@@ -129,14 +134,35 @@ test('validateRLSDBGoTestOutput rejects missing required RLS tests', () => {
 });
 
 test('validateRLSDBGoTestOutput rejects skipped required RLS tests', () => {
-  const output = rlsDBRequiredTests
+  const output = `${requiredRLSPackageOutput()}\n${rlsDBRequiredTests
     .map((marker) => marker === 'RoomHandlersHonorTenantIsolation'
       ? `=== RUN   Test${marker}\n--- SKIP: Test${marker} (0.01s)`
       : `=== RUN   Test${marker}\n--- PASS: Test${marker} (0.01s)`)
-    .join('\n');
+    .join('\n')}`;
 
   assert.throws(
     () => validateRLSDBGoTestOutput(output),
     /must include PASS for TestRoomHandlersHonorTenantIsolation/,
   );
 });
+
+test('validateRLSDBGoTestOutput rejects missing package result lines', () => {
+  const output = requiredRLSOutput().replace('ok scriptureforge/internal/ports 0.10s', '');
+
+  assert.throws(
+    () => validateRLSDBGoTestOutput(output),
+    /must include ok result for scriptureforge\/internal\/ports/,
+  );
+});
+
+function requiredRLSPackageOutput() {
+  return rlsDBRequiredPackages
+    .map((packageName) => `ok ${packageName} 0.10s`)
+    .join('\n');
+}
+
+function requiredRLSOutput() {
+  return `${requiredRLSPackageOutput()}\n${rlsDBRequiredTests
+    .map((marker) => `=== RUN   Test${marker}\n--- PASS: Test${marker} (0.01s)`)
+    .join('\n')}`;
+}
