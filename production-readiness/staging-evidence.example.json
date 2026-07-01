@@ -300,9 +300,9 @@
         "Threat model review approval",
         "security/dependency_risk_register.md#DRR-001 dependency risk decision",
         "Residual risk review covering pending staging evidence, deployment, secrets, RLS, observability, load, rollback, and external-service blockers",
-        "Owner/security approval record captured as a repo security/*.md signoff/approval document or HTTPS non-local approval artifact",
-        "Release risk signoff record captured as a repo security/*.md signoff/approval document or HTTPS non-local approval artifact",
-        "record-staging-evidence SEC-SIGNOFF-001 summary markers: threat model approval, security/dependency_risk_register.md#DRR-001, dependency risk decision, residual risk review, owner/security approval, release risk signoff, and exact release_candidate=<manifest release_candidate>"
+        "Owner/security approval record captured as a content-verified repo security/*.md signoff/approval document or HTTPS non-local approval artifact",
+        "Release risk signoff record captured as a content-verified repo security/*.md signoff/approval document or HTTPS non-local approval artifact",
+        "record-staging-evidence SEC-SIGNOFF-001 summary markers: threat model approval, security/dependency_risk_register.md#DRR-001, dependency risk decision, residual risk review, owner/security approval, release risk signoff, signoff_artifact_verified=true, and exact release_candidate=<manifest release_candidate>"
       ]
     }
   ]
