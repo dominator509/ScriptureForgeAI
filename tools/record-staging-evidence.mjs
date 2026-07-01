@@ -2220,6 +2220,7 @@ function validateResilienceEvidence(report, manifest) {
     1,
     'resilience report probe result_summary load_run_id values must all match',
   );
+  assert.ok(reportLoadRunID, 'resilience report must include load_run_id');
   assert.equal(requiredProbes.size, 0, `resilience report missing probes: ${[...requiredProbes].join(', ')}`);
 }
 

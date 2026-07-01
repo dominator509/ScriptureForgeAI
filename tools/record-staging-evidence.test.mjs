@@ -6887,6 +6887,7 @@ test('recordEvidence records production-grade resilience evidence', () => {
       threshold_pass: true,
       release_candidate: 'abc123',
       service_version: 'scriptureforge-api:abc123',
+      load_run_id: 'load-run-123',
       evidence_items: ['DR-ROLLBACK-001', 'DR-BACKUP-001'],
       probes: resilienceProbeReportProbes(probeNames),
     },
@@ -6896,6 +6897,33 @@ test('recordEvidence records production-grade resilience evidence', () => {
 
   assert.equal(updated.items[0].status, 'passed');
   assert.equal(updated.items[1].status, 'passed');
+});
+
+test('recordEvidence rejects otherwise valid resilience evidence without report load_run_id', () => {
+  assert.throws(
+    () => recordEvidence(
+      {
+        release_candidate: 'abc123',
+        items: [{ id: 'DR-ROLLBACK-001', status: 'pending_external' }],
+      },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['DR-ROLLBACK-001'],
+        probes: resilienceProbeReportProbes([
+          'api-ready-before-rollback',
+          'rollback-rollout-artifact',
+          'api-ready-after-rollback',
+          'degradation-drill-artifact',
+        ]),
+      },
+      'artifacts/resilienceprobe.json',
+      'go run ./tools/resilienceprobe -probe-rollback',
+    ),
+    /resilience report must include load_run_id/,
+  );
 });
 
 test('recordEvidence rejects resilience evidence for a different release candidate', () => {
