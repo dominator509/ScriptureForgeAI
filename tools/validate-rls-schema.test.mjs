@@ -1,10 +1,21 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { discoverTenantScopedTables, validateRLSSchema } from './validate-rls-schema.mjs';
+import { discoverTenantScopedTables, validateProductionRoomMembershipWiring, validateRLSSchema } from './validate-rls-schema.mjs';
 
 async function fixtures() {
-  const [migrationText, tableRLSTestText, handlerRLSTestText, portHandlerRLSTestText, aiAuditRLSTestText, authSessionRLSTestText, authHandlerText] = await Promise.all([
+  const [
+    migrationText,
+    tableRLSTestText,
+    handlerRLSTestText,
+    portHandlerRLSTestText,
+    aiAuditRLSTestText,
+    authSessionRLSTestText,
+    authHandlerText,
+    platformMainText,
+    roomHandlerText,
+    socketHandlerText,
+  ] = await Promise.all([
     readFile('migrations/000002_core_schema.up.sql', 'utf8'),
     readFile('tests/integration/table_rls_test.go', 'utf8'),
     readFile('tests/integration/tenant_handler_rls_test.go', 'utf8'),
@@ -12,14 +23,50 @@ async function fixtures() {
     readFile('internal/ports/ai_audit_integration_test.go', 'utf8'),
     readFile('tests/integration/auth_session_test.go', 'utf8'),
     readFile('internal/ports/auth_http.go', 'utf8'),
+    readFile('cmd/platform-engine/main.go', 'utf8'),
+    readFile('internal/ports/rooms_http.go', 'utf8'),
+    readFile('internal/ports/driving_wss.go', 'utf8'),
   ]);
-  return { migrationText, tableRLSTestText, handlerRLSTestText, portHandlerRLSTestText, aiAuditRLSTestText, authSessionRLSTestText, authHandlerText };
+  return {
+    migrationText,
+    tableRLSTestText,
+    handlerRLSTestText,
+    portHandlerRLSTestText,
+    aiAuditRLSTestText,
+    authSessionRLSTestText,
+    authHandlerText,
+    platformMainText,
+    roomHandlerText,
+    socketHandlerText,
+  };
 }
 
 test('validateRLSSchema accepts current tenant-scoped schema and integration tests', async () => {
-  const { migrationText, tableRLSTestText, handlerRLSTestText, portHandlerRLSTestText, aiAuditRLSTestText, authSessionRLSTestText, authHandlerText } = await fixtures();
+  const {
+    migrationText,
+    tableRLSTestText,
+    handlerRLSTestText,
+    portHandlerRLSTestText,
+    aiAuditRLSTestText,
+    authSessionRLSTestText,
+    authHandlerText,
+    platformMainText,
+    roomHandlerText,
+    socketHandlerText,
+  } = await fixtures();
   assert.deepEqual(
-    validateRLSSchema(migrationText, tableRLSTestText, handlerRLSTestText, portHandlerRLSTestText, aiAuditRLSTestText, authSessionRLSTestText, authHandlerText),
+    validateRLSSchema(
+      migrationText,
+      tableRLSTestText,
+      handlerRLSTestText,
+      portHandlerRLSTestText,
+      aiAuditRLSTestText,
+      authSessionRLSTestText,
+      authHandlerText,
+      platformMainText,
+      roomHandlerText,
+      socketHandlerText,
+    ),
     { tenantScopedTableCount: 9 },
   );
 });
@@ -208,6 +255,47 @@ test('validateRLSSchema rejects missing auth refresh-token tenant context wiring
   assert.throws(
     () => validateRLSSchema(migrationText, tableRLSTestText, handlerRLSTestText, portHandlerRLSTestText, aiAuditRLSTestText, authSessionRLSTestText, broken),
     /auth\.SetTenantContext/,
+  );
+});
+
+test('validateProductionRoomMembershipWiring accepts production DB-backed route wiring', async () => {
+  const { platformMainText, roomHandlerText, socketHandlerText } = await fixtures();
+  assert.doesNotThrow(() => validateProductionRoomMembershipWiring(platformMainText, roomHandlerText, socketHandlerText));
+});
+
+test('validateProductionRoomMembershipWiring rejects production room membership overrides', async () => {
+  const { platformMainText, roomHandlerText, socketHandlerText } = await fixtures();
+  const broken = platformMainText.replace(
+    '&ports.RoomHandler{DB: dbpool, StateManager: roomStateManager}',
+    '&ports.RoomHandler{DB: dbpool, StateManager: roomStateManager, MembershipValidator: func(*http.Request, *auth.TokenClaims, string) bool { return true }}',
+  );
+  assert.notEqual(broken, platformMainText, 'test fixture must add a production RoomHandler membership override');
+  assert.throws(
+    () => validateProductionRoomMembershipWiring(broken, roomHandlerText, socketHandlerText),
+    /production RoomHandler must be constructed without a MembershipValidator override/,
+  );
+});
+
+test('validateProductionRoomMembershipWiring rejects production socket membership overrides', async () => {
+  const { platformMainText, roomHandlerText, socketHandlerText } = await fixtures();
+  const broken = platformMainText.replace(
+    '&ports.SocketConnection{DB: dbpool, StateManager: roomStateManager, Hub: roomHub}',
+    '&ports.SocketConnection{DB: dbpool, StateManager: roomStateManager, Hub: roomHub, MembershipValidator: func(*http.Request, *auth.TokenClaims, string) bool { return true }}',
+  );
+  assert.notEqual(broken, platformMainText, 'test fixture must add a production SocketConnection membership override');
+  assert.throws(
+    () => validateProductionRoomMembershipWiring(broken, roomHandlerText, socketHandlerText),
+    /production SocketConnection must be constructed without a MembershipValidator override/,
+  );
+});
+
+test('validateProductionRoomMembershipWiring rejects tenantless socket membership checks', async () => {
+  const { platformMainText, roomHandlerText, socketHandlerText } = await fixtures();
+  const broken = socketHandlerText.replace('WHERE organization_id = $1 AND room_id = $2 AND user_id = $3', 'WHERE room_id = $1 AND user_id = $2');
+  assert.notEqual(broken, socketHandlerText, 'test fixture must weaken socket membership SQL');
+  assert.throws(
+    () => validateProductionRoomMembershipWiring(platformMainText, roomHandlerText, broken),
+    /SocketConnection membership validation must use tenant-scoped Postgres\/RLS checks/,
   );
 });
 
