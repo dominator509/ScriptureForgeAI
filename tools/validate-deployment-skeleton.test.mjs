@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   validateTerraformImageDigestInputs,
   validatePlatformRuntimeConfig,
+  validateTerraformReleaseInputGuards,
   validateTerraformSecretInputs,
 } from './validate-deployment-skeleton.mjs';
 
@@ -93,5 +94,46 @@ test('validateTerraformImageDigestInputs rejects mutable image tag inputs', asyn
   assert.throws(
     () => validateTerraformImageDigestInputs(broken, tfvarsExample, app),
     /api_image must validate immutable sha256 image digests/,
+  );
+});
+
+test('validateTerraformReleaseInputGuards accepts current staging input validation', async () => {
+  const { variables } = await terraformSecretFixtures();
+  assert.doesNotThrow(() => validateTerraformReleaseInputGuards(variables));
+});
+
+test('validateTerraformReleaseInputGuards rejects default service versions', async () => {
+  const { variables } = await terraformSecretFixtures();
+  const broken = variables.replace(
+    'variable "service_version" {\n  description = "Release or image version label attached to application telemetry."\n  type        = string\n\n  validation {',
+    'variable "service_version" {\n  description = "Release or image version label attached to application telemetry."\n  type        = string\n  default     = "unversioned"\n\n  validation {',
+  );
+  assert.notEqual(broken, variables, 'test fixture must add a service_version default');
+  assert.throws(
+    () => validateTerraformReleaseInputGuards(broken),
+    /service_version must not define a default value/,
+  );
+});
+
+test('validateTerraformReleaseInputGuards rejects weak WebSocket origin validation', async () => {
+  const { variables } = await terraformSecretFixtures();
+  const broken = variables.replace(
+    'startswith(trimspace(origin), "https://")',
+    'length(trimspace(origin)) > 0',
+  );
+  assert.notEqual(broken, variables, 'test fixture must weaken allowed_ws_origins validation');
+  assert.throws(
+    () => validateTerraformReleaseInputGuards(broken),
+    /allowed_ws_origins validation must reject or require https:\/\//,
+  );
+});
+
+test('validateTerraformReleaseInputGuards rejects placeholder hostname validation drift', async () => {
+  const { variables } = await terraformSecretFixtures();
+  const broken = variables.replaceAll('!strcontains(lower(trimspace(var.api_hostname)), ".example") &&', '');
+  assert.notEqual(broken, variables, 'test fixture must weaken api_hostname placeholder validation');
+  assert.throws(
+    () => validateTerraformReleaseInputGuards(broken),
+    /api_hostname validation must reject \.example/,
   );
 });

@@ -290,6 +290,23 @@ variable "eks_oidc_thumbprint_list" {
 variable "allowed_ws_origins" {
   description = "Comma-separated browser origins allowed for WebSocket upgrades."
   type        = string
+
+  validation {
+    condition = (
+      length(trimspace(var.allowed_ws_origins)) > 0 &&
+      alltrue([
+        for origin in split(",", var.allowed_ws_origins) :
+        startswith(trimspace(origin), "https://") &&
+        !strcontains(lower(trimspace(origin)), "localhost") &&
+        !strcontains(lower(trimspace(origin)), "example.com") &&
+        !strcontains(lower(trimspace(origin)), ".example") &&
+        !strcontains(lower(trimspace(origin)), ".test") &&
+        !strcontains(lower(trimspace(origin)), ".invalid") &&
+        !strcontains(trimspace(origin), "*")
+      ])
+    )
+    error_message = "allowed_ws_origins must be comma-separated HTTPS origins for real staging/production hosts; localhost, wildcard, example, test, and invalid origins are not allowed."
+  }
 }
 
 variable "trust_proxy_headers" {
@@ -301,11 +318,14 @@ variable "trust_proxy_headers" {
 variable "service_version" {
   description = "Release or image version label attached to application telemetry."
   type        = string
-  default     = "unversioned"
 
   validation {
-    condition     = length(trimspace(var.service_version)) > 0
-    error_message = "service_version must not be empty."
+    condition = (
+      length(trimspace(var.service_version)) > 0 &&
+      !contains(["unversioned", "latest"], lower(trimspace(var.service_version))) &&
+      !strcontains(lower(trimspace(var.service_version)), "replace-with")
+    )
+    error_message = "service_version must be an explicit release value, not unversioned, latest, or a replace-with placeholder."
   }
 }
 
@@ -332,11 +352,35 @@ variable "otel_exporter_otlp_insecure" {
 variable "api_hostname" {
   description = "Hostname for the Go API ingress."
   type        = string
+
+  validation {
+    condition = (
+      can(regex("^[A-Za-z0-9][A-Za-z0-9.-]+[.][A-Za-z]{2,}$", var.api_hostname)) &&
+      lower(trimspace(var.api_hostname)) != "localhost" &&
+      !strcontains(lower(trimspace(var.api_hostname)), "example.com") &&
+      !strcontains(lower(trimspace(var.api_hostname)), ".example") &&
+      !strcontains(lower(trimspace(var.api_hostname)), ".test") &&
+      !strcontains(lower(trimspace(var.api_hostname)), ".invalid")
+    )
+    error_message = "api_hostname must be a real DNS hostname; localhost, example, test, and invalid hosts are not allowed for staging/production."
+  }
 }
 
 variable "web_hostname" {
   description = "Hostname for the web ingress."
   type        = string
+
+  validation {
+    condition = (
+      can(regex("^[A-Za-z0-9][A-Za-z0-9.-]+[.][A-Za-z]{2,}$", var.web_hostname)) &&
+      lower(trimspace(var.web_hostname)) != "localhost" &&
+      !strcontains(lower(trimspace(var.web_hostname)), "example.com") &&
+      !strcontains(lower(trimspace(var.web_hostname)), ".example") &&
+      !strcontains(lower(trimspace(var.web_hostname)), ".test") &&
+      !strcontains(lower(trimspace(var.web_hostname)), ".invalid")
+    )
+    error_message = "web_hostname must be a real DNS hostname; localhost, example, test, and invalid hosts are not allowed for staging/production."
+  }
 }
 
 variable "ingress_certificate_arn" {

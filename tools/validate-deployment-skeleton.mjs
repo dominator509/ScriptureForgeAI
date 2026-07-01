@@ -18,6 +18,7 @@ export const deploymentSkeletonProofMarkers = [
   'hpa_pdb_rollout_safety=true',
   'root_database_url_absent=true',
   'immutable_workload_image_digests=true',
+  'staging_input_placeholders_rejected=true',
 ];
 
 async function readTerraform(name) {
@@ -116,6 +117,30 @@ export function validateTerraformImageDigestInputs(variables, tfvarsExample, app
     'image = var.rust_engine_image',
   ]) {
     assert.ok(app.includes(requiredImageReference), `workload manifest missing ${requiredImageReference}`);
+  }
+}
+
+export function validateTerraformReleaseInputGuards(variables) {
+  const serviceVersionBlock = terraformVariableBlock(variables, 'service_version');
+  assert.ok(!/\bdefault\s*=/.test(serviceVersionBlock), 'service_version must not define a default value');
+  for (const marker of ['unversioned', 'latest', 'replace-with']) {
+    assert.ok(serviceVersionBlock.includes(marker), `service_version validation must reject ${marker}`);
+  }
+
+  const allowedOriginsBlock = terraformVariableBlock(variables, 'allowed_ws_origins');
+  for (const marker of ['https://', 'localhost', 'example.com', '.example', '.test', '.invalid', '*']) {
+    assert.ok(allowedOriginsBlock.includes(marker), `allowed_ws_origins validation must reject or require ${marker}`);
+  }
+
+  for (const hostnameVariable of ['api_hostname', 'web_hostname']) {
+    const block = terraformVariableBlock(variables, hostnameVariable);
+    assert.ok(
+      block.includes('can(regex("^[A-Za-z0-9][A-Za-z0-9.-]+[.][A-Za-z]{2,}$",'),
+      `${hostnameVariable} must validate DNS hostname shape`,
+    );
+    for (const marker of ['localhost', 'example.com', '.example', '.test', '.invalid']) {
+      assert.ok(block.includes(marker), `${hostnameVariable} validation must reject ${marker}`);
+    }
   }
 }
 
@@ -309,6 +334,7 @@ requireIncludes(
 
 validateTerraformSecretInputs(variables, tfvarsExample, app);
 validateTerraformImageDigestInputs(variables, tfvarsExample, app);
+validateTerraformReleaseInputGuards(variables);
 assert.ok(!tfvarsExample.includes('skip_final_snapshot = true'), 'tfvars example must not preserve production-hostile snapshot defaults');
 
 validatePlatformRuntimeConfig(platformMain);
