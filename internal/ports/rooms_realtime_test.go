@@ -107,8 +107,10 @@ func TestLiveRoomRejectsInvalidEventAndBroadcastsAcceptedEvent(t *testing.T) {
 		t.Fatalf("invalid event append count = %d, want 0", got)
 	}
 
+	waitForRoomSubscribers(t, hub, "room-1", 1)
 	replacement := dialRoom(t, server.URL, "room-1", "a2")
 	defer replacement.Close()
+	waitForRoomSubscribers(t, hub, "room-1", 2)
 	if err := replacement.WriteJSON(RoomEvent{Type: "cursor", RoomID: "room-1", Payload: json.RawMessage(`{"verse":"John 1:1"}`)}); err != nil {
 		t.Fatalf("write valid event: %v", err)
 	}
