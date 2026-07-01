@@ -222,9 +222,9 @@ const stagingProbeMarkerSummaries = {
 };
 
 const resilienceProbeMarkerSummaries = {
-  'api-ready-before-rollback': 'got HTTP 200; staging artifact; verified markers: ready, service_version, deployment_environment, pre_rollback_version, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'api-ready-before-rollback': 'got HTTP 200; staging artifact; verified markers: ready, service_version, deployment_environment, pre_rollback_version, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123; pre_rollback_version=release-1',
   'rollback-rollout-artifact': 'got HTTP 200; staging artifact; verified markers: rollout, undo, revision, previous_revision, target_revision, scriptureforge-api, successfully rolled out, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
-  'api-ready-after-rollback': 'got HTTP 200; staging artifact; verified markers: ready, service_version, deployment_environment, post_rollback_version, rolled_back_from, rolled_back_to, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'api-ready-after-rollback': 'got HTTP 200; staging artifact; verified markers: ready, service_version, deployment_environment, post_rollback_version, rolled_back_from, rolled_back_to, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123; post_rollback_version=release-0 rolled_back_from=release-1 rolled_back_to=release-0',
   'degradation-drill-artifact': 'got HTTP 200; staging artifact; verified markers: AI, Zoom, degradation, fallback, AI_ORCHESTRATION_ENGINE_FAULT, offline://in-person, non-AI routes healthy, zoom circuit open, ai_fault=true, zoom_offline_fallback=true, non_ai_routes_healthy=true, zoom_circuit_open=true, distinct_rollback_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123; ai_fault=true zoom_offline_fallback=true non_ai_routes_healthy=true zoom_circuit_open=true',
   'backup-snapshot-artifact': 'got HTTP 200; staging artifact; verified markers: snapshot, snapshot_id=snap-123, available, encrypted, kms, retention, automated backup, source cluster, rpo_minutes=15, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
   'restore-drill-artifact': 'got HTTP 200; staging artifact; verified markers: restore, restore_job_id=restore-456, available, staging, restored endpoint, source snapshot_id=snap-123, checksum, isolated restore, rto_minutes=30, restore_duration_minutes=18, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
@@ -240,6 +240,22 @@ function resilienceProbeReportProbe(name, overrides = {}) {
     result_summary: resilienceProbeMarkerSummaries[name],
     ...overrides,
   };
+  if (name === 'api-ready-before-rollback') {
+    if (!Object.hasOwn(overrides, 'pre_rollback_version')) {
+      probe.pre_rollback_version = 'release-1';
+    }
+  }
+  if (name === 'api-ready-after-rollback') {
+    if (!Object.hasOwn(overrides, 'post_rollback_version')) {
+      probe.post_rollback_version = 'release-0';
+    }
+    if (!Object.hasOwn(overrides, 'rolled_back_from')) {
+      probe.rolled_back_from = 'release-1';
+    }
+    if (!Object.hasOwn(overrides, 'rolled_back_to')) {
+      probe.rolled_back_to = 'release-0';
+    }
+  }
   if (name === 'backup-snapshot-artifact') {
     if (!Object.hasOwn(overrides, 'snapshot_id')) {
       probe.snapshot_id = 'snap-123';
@@ -6976,9 +6992,9 @@ test('recordEvidence rejects resilience evidence from local readiness targets', 
         threshold_pass: true,
         evidence_items: ['DR-ROLLBACK-001'],
         probes: [
-          { name: 'api-ready-before-rollback', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/rollback/ready-before.json', status_code: 200, result_summary: resilienceProbeMarkerSummaries['api-ready-before-rollback'] },
+          { name: 'api-ready-before-rollback', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/rollback/ready-before.json', status_code: 200, pre_rollback_version: 'release-1', result_summary: resilienceProbeMarkerSummaries['api-ready-before-rollback'] },
           { name: 'rollback-rollout-artifact', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/rollback/rollout.txt', status_code: 200, result_summary: resilienceProbeMarkerSummaries['rollback-rollout-artifact'] },
-          { name: 'api-ready-after-rollback', passed: true, target: 'http://127.0.0.1:8080/ready', status_code: 200, result_summary: resilienceProbeMarkerSummaries['api-ready-after-rollback'] },
+          { name: 'api-ready-after-rollback', passed: true, target: 'http://127.0.0.1:8080/ready', status_code: 200, post_rollback_version: 'release-0', rolled_back_from: 'release-1', rolled_back_to: 'release-0', result_summary: resilienceProbeMarkerSummaries['api-ready-after-rollback'] },
           { name: 'degradation-drill-artifact', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/rollback/degradation.txt', status_code: 200, result_summary: resilienceProbeMarkerSummaries['degradation-drill-artifact'] },
         ],
       },
@@ -7120,11 +7136,7 @@ test('recordEvidence rejects rollback evidence without distinct artifact marker'
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
         evidence_items: ['DR-ROLLBACK-001'],
-        probes: probeNames.map((name) => ({
-          name,
-          passed: true,
-          target: `https://artifacts.staging.scriptureforge.ai/resilience/${name}.txt`,
-          status_code: 200,
+        probes: resilienceProbeReportProbes(probeNames, (name) => ({
           result_summary: name === 'degradation-drill-artifact'
             ? resilienceProbeMarkerSummaries[name].replace(', distinct_rollback_artifacts=true', '')
             : resilienceProbeMarkerSummaries[name],
@@ -7324,6 +7336,69 @@ test('recordEvidence rejects rollback evidence without version linkage markers',
       'go run ./tools/resilienceprobe -probe-rollback',
     ),
     /api-ready-before-rollback result_summary must include verified marker pre_rollback_version/,
+  );
+});
+
+test('recordEvidence rejects rollback evidence without structured version linkage fields', () => {
+  const probeNames = [
+    'api-ready-before-rollback',
+    'rollback-rollout-artifact',
+    'api-ready-after-rollback',
+    'degradation-drill-artifact',
+  ];
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DR-ROLLBACK-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
+        evidence_items: ['DR-ROLLBACK-001'],
+        probes: resilienceProbeReportProbes(probeNames, (name) => (
+          name === 'api-ready-before-rollback'
+            ? { pre_rollback_version: '' }
+            : {}
+        )),
+      },
+      'artifacts/resilienceprobe.json',
+      'go run ./tools/resilienceprobe -probe-rollback',
+    ),
+    /api-ready-before-rollback probe must include structured pre_rollback_version/,
+  );
+});
+
+test('recordEvidence rejects rollback evidence when structured versions are inconsistent', () => {
+  const probeNames = [
+    'api-ready-before-rollback',
+    'rollback-rollout-artifact',
+    'api-ready-after-rollback',
+    'degradation-drill-artifact',
+  ];
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DR-ROLLBACK-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
+        evidence_items: ['DR-ROLLBACK-001'],
+        probes: resilienceProbeReportProbes(probeNames, (name) => (
+          name === 'api-ready-after-rollback'
+            ? {
+                rolled_back_to: 'release-other',
+                result_summary: resilienceProbeMarkerSummaries[name].replace('rolled_back_to=release-0', 'rolled_back_to=release-other'),
+              }
+            : {}
+        )),
+      },
+      'artifacts/resilienceprobe.json',
+      'go run ./tools/resilienceprobe -probe-rollback',
+    ),
+    /DR-ROLLBACK-001 api-ready-after-rollback rolled_back_to must match api-ready-after-rollback post_rollback_version/,
   );
 });
 

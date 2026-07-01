@@ -2115,6 +2115,10 @@ function validateResilienceEvidence(report, manifest) {
   assert.equal(probes.length, requiredProbes.size, 'resilience report must include exactly the required probes for requested evidence items');
   const rollbackArtifactTargets = [];
   const backupArtifactTargets = [];
+  let preRollbackVersion = '';
+  let postRollbackVersion = '';
+  let rolledBackFrom = '';
+  let rolledBackTo = '';
   let backupSnapshotID = '';
   let restoreSourceSnapshotID = '';
   const rollbackProbeNames = new Set([
@@ -2177,6 +2181,26 @@ function validateResilienceEvidence(report, manifest) {
         `rpo_minutes=${probe.rpo_minutes}`,
       ]);
     }
+    if (probe.name === 'api-ready-before-rollback') {
+      preRollbackVersion = String(probe.pre_rollback_version ?? '').trim();
+      assert.match(preRollbackVersion, resilienceIdentifierPattern, 'api-ready-before-rollback probe must include structured pre_rollback_version');
+      assertSummaryIncludesMarkers(probe.name, String(probe.result_summary ?? ''), [
+        `pre_rollback_version=${preRollbackVersion}`,
+      ]);
+    }
+    if (probe.name === 'api-ready-after-rollback') {
+      postRollbackVersion = String(probe.post_rollback_version ?? '').trim();
+      rolledBackFrom = String(probe.rolled_back_from ?? '').trim();
+      rolledBackTo = String(probe.rolled_back_to ?? '').trim();
+      assert.match(postRollbackVersion, resilienceIdentifierPattern, 'api-ready-after-rollback probe must include structured post_rollback_version');
+      assert.match(rolledBackFrom, resilienceIdentifierPattern, 'api-ready-after-rollback probe must include structured rolled_back_from');
+      assert.match(rolledBackTo, resilienceIdentifierPattern, 'api-ready-after-rollback probe must include structured rolled_back_to');
+      assertSummaryIncludesMarkers(probe.name, String(probe.result_summary ?? ''), [
+        `post_rollback_version=${postRollbackVersion}`,
+        `rolled_back_from=${rolledBackFrom}`,
+        `rolled_back_to=${rolledBackTo}`,
+      ]);
+    }
     if (probe.name === 'restore-drill-artifact') {
       const restoreJobID = String(probe.restore_job_id ?? '').trim();
       const sourceSnapshotID = String(probe.source_snapshot_id ?? '').trim();
@@ -2211,6 +2235,21 @@ function validateResilienceEvidence(report, manifest) {
     }
   }
   if (evidenceItems.includes('DR-ROLLBACK-001')) {
+    assert.equal(
+      rolledBackFrom,
+      preRollbackVersion,
+      'DR-ROLLBACK-001 api-ready-after-rollback rolled_back_from must match api-ready-before-rollback pre_rollback_version',
+    );
+    assert.equal(
+      rolledBackTo,
+      postRollbackVersion,
+      'DR-ROLLBACK-001 api-ready-after-rollback rolled_back_to must match api-ready-after-rollback post_rollback_version',
+    );
+    assert.notEqual(
+      postRollbackVersion,
+      preRollbackVersion,
+      'DR-ROLLBACK-001 post_rollback_version must differ from pre_rollback_version',
+    );
     assertDistinctReportURLs('DR-ROLLBACK-001', rollbackArtifactTargets);
   }
   if (evidenceItems.includes('DR-BACKUP-001')) {

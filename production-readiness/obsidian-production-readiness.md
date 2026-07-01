@@ -5,7 +5,7 @@ title: ScriptureForgeAI Production Readiness
 type: dashboard
 status: active
 owner: "team"
-updated: 2026-06-29
+updated: 2026-07-01
 tags:
   - production-readiness
   - serena
@@ -230,6 +230,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Resilience Distinct Artifact Guard**: `tools/resilienceprobe`, the staging evidence recorder, and strict staging validation require rollback readiness/rollout/degradation proof to use distinct artifact URLs with `distinct_rollback_artifacts=true`, and backup/restore/restored-smoke proof to use distinct artifact URLs with `distinct_backup_artifacts=true`.
 - [x] **Resilience Artifact Alias Guard**: `tools/resilienceprobe` canonicalizes rollback and backup evidence artifact URLs before distinctness checks, so default-port, host-case, query-order, or fragment aliases cannot satisfy separate rollback, degradation, snapshot, restore, and restored-smoke proof roles.
 - [x] **Resilience Structured Backup Field Guard**: `tools/resilienceprobe` emits structured JSON `snapshot_id`, `restore_job_id`, `source_snapshot_id`, `rpo_minutes`, `rto_minutes`, and `restore_duration_minutes` fields for backup/restore drills, and the staging evidence recorder rejects missing, mismatched, or cross-artifact-inconsistent structured values before `DR-BACKUP-001` can be recorded.
+- [x] **Resilience Rollback Version Binding Guard**: `tools/resilienceprobe`, the staging evidence recorder, and strict-release validation require concrete `pre_rollback_version`, `post_rollback_version`, `rolled_back_from`, and `rolled_back_to` values, with `rolled_back_from` matching the pre-rollback version and `rolled_back_to` matching the post-rollback version before `DR-ROLLBACK-001` can support final readiness.
 - [x] **Resilience RTO Contradiction Guard**: `tools/resilienceprobe`, the staging evidence recorder, and strict-release validation now reject backup/restore evidence when `restore_duration_minutes` exceeds `rto_minutes`, so a restore drill cannot satisfy `DR-BACKUP-001` while admitting it missed its declared recovery-time objective.
 - [x] **Resilience Failure Contradiction Guard**: `tools/resilienceprobe`, the staging evidence recorder, strict-release validation, and the staging evidence contract reject rollback, rollout undo, degradation, backup, restore, smoke, RPO, or RTO evidence that admits failed drills or exceeded recovery objectives even if required success markers also appear.
 - [x] **Local Gate Git Integrity**: local gate reports include branch/upstream, ahead/behind counts, and `git status --short`; strict validation rejects dirty or unsynced reports unless development-only relaxations are explicit.
@@ -329,11 +330,11 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 1
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: c4a72855ece418d3fe6b7d66bcfcd4d550b9ac1e
+- expected_release_candidate: bde2fc478725cb6899a467a60c9108ddd58e8256
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: c4a72855ece418d3fe6b7d66bcfcd4d550b9ac1e
+    - expected_release_candidate: bde2fc478725cb6899a467a60c9108ddd58e8256
     - actual_release_candidate: ce96c283410756444a63b1345646fc69cf274d22
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
     - required: tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted

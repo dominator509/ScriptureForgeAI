@@ -102,9 +102,9 @@ func TestRunEmitsRollbackAndBackupEvidenceWhenDrillsPass(t *testing.T) {
 		t.Fatalf("report missing resilience evidence items: %+v", result.EvidenceItems)
 	}
 	expectedMarkers := map[string][]string{
-		"api-ready-before-rollback":  {"staging artifact", "ready", "service_version", "deployment_environment", "pre_rollback_version", "release_candidate", "sha-new", "release-1", "load_run_id=resilience-run-123"},
+		"api-ready-before-rollback":  {"staging artifact", "ready", "service_version", "deployment_environment", "pre_rollback_version", "pre_rollback_version=release-1", "release_candidate", "sha-new", "release-1", "load_run_id=resilience-run-123"},
 		"rollback-rollout-artifact":  {"staging artifact", "rollout", "undo", "revision", "previous_revision", "target_revision", "scriptureforge-api", "successfully rolled out", "release_candidate", "sha-new", "release-1", "load_run_id=resilience-run-123"},
-		"api-ready-after-rollback":   {"staging artifact", "ready", "service_version", "deployment_environment", "post_rollback_version", "rolled_back_from", "rolled_back_to", "release_candidate", "sha-new", "release-1", "load_run_id=resilience-run-123"},
+		"api-ready-after-rollback":   {"staging artifact", "ready", "service_version", "deployment_environment", "post_rollback_version", "post_rollback_version=release-0", "rolled_back_from", "rolled_back_from=release-1", "rolled_back_to", "rolled_back_to=release-0", "release_candidate", "sha-new", "release-1", "load_run_id=resilience-run-123"},
 		"degradation-drill-artifact": {"staging artifact", "AI", "Zoom", "degradation", "fallback", "AI_ORCHESTRATION_ENGINE_FAULT", "offline://in-person", "non-AI routes healthy", "zoom circuit open", "ai_fault=true", "zoom_offline_fallback=true", "non_ai_routes_healthy=true", "zoom_circuit_open=true", "distinct_rollback_artifacts=true", "release_candidate", "sha-new", "release-1", "load_run_id=resilience-run-123"},
 		"backup-snapshot-artifact":   {"staging artifact", "snapshot", "snapshot_id", "snapshot_id=snap-123", "available", "encrypted", "kms", "retention", "automated backup", "source cluster", "rpo_minutes", "rpo_minutes=15", "release_candidate", "sha-new", "release-1", "load_run_id=resilience-run-123"},
 		"restore-drill-artifact":     {"staging artifact", "restore", "restore_job_id", "restore_job_id=restore-456", "available", "staging", "restored endpoint", "source snapshot_id", "source snapshot_id=snap-123", "checksum", "isolated restore", "rto_minutes", "rto_minutes=30", "restore_duration_minutes", "restore_duration_minutes=18", "release_candidate", "sha-new", "release-1", "load_run_id=resilience-run-123"},
@@ -118,6 +118,7 @@ func TestRunEmitsRollbackAndBackupEvidenceWhenDrillsPass(t *testing.T) {
 		}
 	}
 	assertBackupRestoreStructuredFields(t, result.Probes)
+	assertRollbackStructuredFields(t, result.Probes)
 }
 
 func TestRunFailsWhenRollbackArtifactUsesDifferentLoadRun(t *testing.T) {
@@ -173,6 +174,29 @@ func assertBackupRestoreStructuredFields(t *testing.T, probes []probeResult) {
 	}
 	if !sawBackup || !sawRestore {
 		t.Fatalf("missing backup/restore structured probes: backup=%v restore=%v", sawBackup, sawRestore)
+	}
+}
+
+func assertRollbackStructuredFields(t *testing.T, probes []probeResult) {
+	t.Helper()
+	var sawBefore bool
+	var sawAfter bool
+	for _, probe := range probes {
+		switch probe.Name {
+		case "api-ready-before-rollback":
+			sawBefore = true
+			if probe.PreRollbackVersion != "release-1" {
+				t.Fatalf("unexpected rollback-before structured fields: %+v", probe)
+			}
+		case "api-ready-after-rollback":
+			sawAfter = true
+			if probe.PostRollbackVersion != "release-0" || probe.RolledBackFrom != "release-1" || probe.RolledBackTo != "release-0" {
+				t.Fatalf("unexpected rollback-after structured fields: %+v", probe)
+			}
+		}
+	}
+	if !sawBefore || !sawAfter {
+		t.Fatalf("missing rollback structured probes: before=%v after=%v", sawBefore, sawAfter)
 	}
 }
 
@@ -280,6 +304,33 @@ func TestRunFailsWhenRollbackArtifactsOmitVersionLinkage(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "api-ready-before-rollback") {
 		t.Fatalf("report missing readiness-before probe:\n%s", output.String())
+	}
+}
+
+func TestRunFailsWhenRollbackVersionLinkageIsInconsistent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/ready-before":
+			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-1","deployment_environment":"staging","pre_rollback_version":"release-1","release_candidate":"sha-new","markers":"release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"}`))
+		case "/rollout":
+			_, _ = w.Write([]byte("kubectl rollout undo deployment/scriptureforge-api previous_revision=42 target_revision=41; scriptureforge-api deployment successfully rolled out release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
+		case "/ready-after":
+			_, _ = w.Write([]byte(`{"status":"ready","service_version":"release-0","deployment_environment":"staging","post_rollback_version":"release-0","rolled_back_from":"release-other","rolled_back_to":"release-0","markers":"release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"}`))
+		case "/degradation":
+			_, _ = w.Write([]byte("AI degradation fallback exercised with AI_ORCHESTRATION_ENGINE_FAULT ai_fault=true; Zoom degradation fallback exercised with offline://in-person zoom_offline_fallback=true; non-AI routes healthy non_ai_routes_healthy=true; zoom circuit open zoom_circuit_open=true distinct_rollback_artifacts=true release_candidate=sha-new service_version=release-1 load_run_id=resilience-run-123"))
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	cfg := stagingResilienceConfig(time.Second)
+	cfg.ProbeBackup = false
+	err := runWithClient(cfg, &output, clientForHTTPServer(t, server))
+	if err == nil {
+		t.Fatalf("expected inconsistent rollback linkage to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "rolled_back_from") || !strings.Contains(output.String(), "pre_rollback_version") {
+		t.Fatalf("report did not explain rollback version mismatch:\n%s", output.String())
 	}
 }
 

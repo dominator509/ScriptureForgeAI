@@ -142,6 +142,10 @@ const obsAlertDeliveryPattern = /alert-delivery-status(?=[^;]*staging artifact)(
 const obsRetentionPolicyPattern = /telemetry-retention-policy(?=[^;]*staging artifact)(?=[^;]*retention)(?=[^;]*30 days)(?=[^;]*trace)(?=[^;]*logs)(?=[^;]*metrics)(?=[^;]*distinct_alert_artifacts=true)(?=[^;]*release_candidate=)(?=[^;]*load_run_id=)/i;
 const resilienceSnapshotIDPattern = /\bsnapshot_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const resilienceSourceSnapshotIDPattern = /\bsource snapshot_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const resiliencePreRollbackVersionPattern = /\bpre_rollback_version=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b/i;
+const resiliencePostRollbackVersionPattern = /\bpost_rollback_version=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b/i;
+const resilienceRolledBackFromPattern = /\brolled_back_from=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b/i;
+const resilienceRolledBackToPattern = /\brolled_back_to=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b/i;
 const resilienceRTOMinutesPattern = /\brto_minutes=([0-9]+)\b/i;
 const resilienceRestoreDurationMinutesPattern = /\brestore_duration_minutes=([0-9]+)\b/i;
 const tenantSegmentMarkerRequirements = new Map([
@@ -1507,6 +1511,9 @@ function validateStrictReleaseItemEvidence(item, manifest) {
         `${item.id} strict release evidence must include resilience markers on ${segment}`,
       );
     }
+    if (item.id === 'DR-ROLLBACK-001') {
+      assertStrictRollbackVersionLinkage(evidence);
+    }
     if (item.id === 'DR-BACKUP-001') {
       assertStrictBackupRestoreSnapshotLinkage(evidence);
     }
@@ -2134,6 +2141,36 @@ function extractStandaloneTraceID(segmentText, segmentName) {
     `OBS-OTEL-001 strict release ${segmentName} trace ID must not be all zeroes`,
   );
   return traceID.toLowerCase();
+}
+
+function assertStrictRollbackVersionLinkage(evidence) {
+  const beforeSegment = findEvidenceSegment(evidence, 'api-ready-before-rollback');
+  const afterSegment = findEvidenceSegment(evidence, 'api-ready-after-rollback');
+  assert.ok(beforeSegment, 'DR-ROLLBACK-001 strict release evidence must include api-ready-before-rollback segment');
+  assert.ok(afterSegment, 'DR-ROLLBACK-001 strict release evidence must include api-ready-after-rollback segment');
+  const preRollbackVersion = beforeSegment.match(resiliencePreRollbackVersionPattern)?.[1] ?? '';
+  const postRollbackVersion = afterSegment.match(resiliencePostRollbackVersionPattern)?.[1] ?? '';
+  const rolledBackFrom = afterSegment.match(resilienceRolledBackFromPattern)?.[1] ?? '';
+  const rolledBackTo = afterSegment.match(resilienceRolledBackToPattern)?.[1] ?? '';
+  assert.ok(preRollbackVersion, 'DR-ROLLBACK-001 strict release api-ready-before-rollback segment must include pre_rollback_version=<version>');
+  assert.ok(postRollbackVersion, 'DR-ROLLBACK-001 strict release api-ready-after-rollback segment must include post_rollback_version=<version>');
+  assert.ok(rolledBackFrom, 'DR-ROLLBACK-001 strict release api-ready-after-rollback segment must include rolled_back_from=<version>');
+  assert.ok(rolledBackTo, 'DR-ROLLBACK-001 strict release api-ready-after-rollback segment must include rolled_back_to=<version>');
+  assert.equal(
+    rolledBackFrom,
+    preRollbackVersion,
+    'DR-ROLLBACK-001 strict release rolled_back_from must match pre_rollback_version',
+  );
+  assert.equal(
+    rolledBackTo,
+    postRollbackVersion,
+    'DR-ROLLBACK-001 strict release rolled_back_to must match post_rollback_version',
+  );
+  assert.notEqual(
+    postRollbackVersion,
+    preRollbackVersion,
+    'DR-ROLLBACK-001 strict release post_rollback_version must differ from pre_rollback_version',
+  );
 }
 
 function assertStrictBackupRestoreSnapshotLinkage(evidence) {

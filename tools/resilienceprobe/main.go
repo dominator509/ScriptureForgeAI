@@ -18,6 +18,10 @@ import (
 )
 
 var (
+	preRollbackVersionPattern     = regexp.MustCompile(`(?i)(?:"pre_rollback_version"\s*:\s*"([^"]+)"|\bpre_rollback_version=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b)`)
+	postRollbackVersionPattern    = regexp.MustCompile(`(?i)(?:"post_rollback_version"\s*:\s*"([^"]+)"|\bpost_rollback_version=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b)`)
+	rolledBackFromPattern         = regexp.MustCompile(`(?i)(?:"rolled_back_from"\s*:\s*"([^"]+)"|\brolled_back_from=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b)`)
+	rolledBackToPattern           = regexp.MustCompile(`(?i)(?:"rolled_back_to"\s*:\s*"([^"]+)"|\brolled_back_to=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b)`)
 	snapshotIDPattern             = regexp.MustCompile(`(?i)\bsnapshot_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
 	restoreJobIDPattern           = regexp.MustCompile(`(?i)\brestore_job_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
 	sourceSnapshotIDPattern       = regexp.MustCompile(`(?i)\bsource snapshot_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
@@ -62,6 +66,10 @@ type probeResult struct {
 	Passed                 bool   `json:"passed"`
 	StatusCode             int    `json:"status_code,omitempty"`
 	LatencyMS              int64  `json:"latency_ms,omitempty"`
+	PreRollbackVersion     string `json:"pre_rollback_version,omitempty"`
+	PostRollbackVersion    string `json:"post_rollback_version,omitempty"`
+	RolledBackFrom         string `json:"rolled_back_from,omitempty"`
+	RolledBackTo           string `json:"rolled_back_to,omitempty"`
 	SnapshotID             string `json:"snapshot_id,omitempty"`
 	RestoreJobID           string `json:"restore_job_id,omitempty"`
 	SourceSnapshotID       string `json:"source_snapshot_id,omitempty"`
@@ -200,6 +208,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 			probeReadyOrArtifact(client, "api-ready-after-rollback", cfg.APIReadyAfterURL, append([]string{"ready", "deployment_environment", "post_rollback_version", "rolled_back_from", "rolled_back_to"}, releaseMarkers...)),
 			probeArtifact(client, "degradation-drill-artifact", cfg.DegradationDrillURL, append([]string{"AI", "Zoom", "degradation", "fallback", "AI_ORCHESTRATION_ENGINE_FAULT", "offline://in-person", "non-AI routes healthy", "zoom circuit open", "ai_fault=true", "zoom_offline_fallback=true", "non_ai_routes_healthy=true", "zoom_circuit_open=true", "distinct_rollback_artifacts=true"}, releaseMarkers...)),
 		)
+		enforceRollbackVersionLinkage(probes)
 		evidenceItems = append(evidenceItems, "DR-ROLLBACK-001")
 	}
 	if cfg.ProbeBackup {
@@ -277,6 +286,16 @@ func probeArtifact(client *http.Client, name, target string, required []string) 
 
 func resilienceStructuredSummaryMarkers(result probeResult) string {
 	switch result.Name {
+	case "api-ready-before-rollback":
+		if result.PreRollbackVersion == "" {
+			return ""
+		}
+		return fmt.Sprintf("; pre_rollback_version=%s", result.PreRollbackVersion)
+	case "api-ready-after-rollback":
+		if result.PostRollbackVersion == "" || result.RolledBackFrom == "" || result.RolledBackTo == "" {
+			return ""
+		}
+		return fmt.Sprintf("; post_rollback_version=%s rolled_back_from=%s rolled_back_to=%s", result.PostRollbackVersion, result.RolledBackFrom, result.RolledBackTo)
 	case "backup-snapshot-artifact":
 		if result.SnapshotID == "" || result.RPOMinutes <= 0 {
 			return ""
@@ -294,6 +313,35 @@ func resilienceStructuredSummaryMarkers(result probeResult) string {
 		return "; ai_fault=true zoom_offline_fallback=true non_ai_routes_healthy=true zoom_circuit_open=true"
 	default:
 		return ""
+	}
+}
+
+func enforceRollbackVersionLinkage(probes []probeResult) {
+	var beforeVersion string
+	var afterIndex = -1
+	for i := range probes {
+		switch probes[i].Name {
+		case "api-ready-before-rollback":
+			beforeVersion = probes[i].PreRollbackVersion
+		case "api-ready-after-rollback":
+			afterIndex = i
+		}
+	}
+	if beforeVersion == "" || afterIndex < 0 {
+		return
+	}
+	after := &probes[afterIndex]
+	if after.RolledBackFrom != beforeVersion {
+		after.Passed = false
+		after.ResultSummary += fmt.Sprintf("; rolled_back_from %q does not match pre_rollback_version %q", after.RolledBackFrom, beforeVersion)
+	}
+	if after.RolledBackTo != after.PostRollbackVersion {
+		after.Passed = false
+		after.ResultSummary += fmt.Sprintf("; rolled_back_to %q does not match post_rollback_version %q", after.RolledBackTo, after.PostRollbackVersion)
+	}
+	if after.PostRollbackVersion == beforeVersion {
+		after.Passed = false
+		after.ResultSummary += fmt.Sprintf("; post_rollback_version %q must differ from pre_rollback_version %q", after.PostRollbackVersion, beforeVersion)
 	}
 }
 
@@ -319,6 +367,12 @@ func enforceBackupRestoreLinkage(probes []probeResult) {
 
 func applyStructuredProbeFields(result *probeResult, text string) {
 	switch result.Name {
+	case "api-ready-before-rollback":
+		result.PreRollbackVersion = extractStringField(preRollbackVersionPattern, text)
+	case "api-ready-after-rollback":
+		result.PostRollbackVersion = extractStringField(postRollbackVersionPattern, text)
+		result.RolledBackFrom = extractStringField(rolledBackFromPattern, text)
+		result.RolledBackTo = extractStringField(rolledBackToPattern, text)
 	case "backup-snapshot-artifact":
 		result.SnapshotID = extractStringField(snapshotIDPattern, text)
 		result.RPOMinutes = extractPositiveIntField(rpoMinutesPattern, text)
@@ -340,7 +394,12 @@ func extractStringField(pattern *regexp.Regexp, text string) string {
 	if len(match) < 2 {
 		return ""
 	}
-	return match[1]
+	for _, candidate := range match[1:] {
+		if candidate != "" {
+			return candidate
+		}
+	}
+	return ""
 }
 
 func extractPositiveIntField(pattern *regexp.Regexp, text string) int {
@@ -360,12 +419,22 @@ func probeHTTPBody(client *http.Client, name, target string, required []string) 
 	if !result.Passed {
 		return result
 	}
+	applyStructuredProbeFields(&result, body)
 	if !containsAllFold(body, required) || containsAnyFold(body, forbiddenArtifactMarkers()) {
 		result.Passed = false
 		result.ResultSummary += "; readiness/smoke markers missing or marked mock/placeholder"
 	} else {
 		result.ResultSummary += fmt.Sprintf("; staging artifact; verified markers: %s", strings.Join(required, ", "))
 	}
+	if name == "api-ready-before-rollback" && result.PreRollbackVersion == "" {
+		result.Passed = false
+		result.ResultSummary += "; structured pre_rollback_version missing"
+	}
+	if name == "api-ready-after-rollback" && (result.PostRollbackVersion == "" || result.RolledBackFrom == "" || result.RolledBackTo == "") {
+		result.Passed = false
+		result.ResultSummary += "; structured post_rollback_version, rolled_back_from, or rolled_back_to missing"
+	}
+	result.ResultSummary += resilienceStructuredSummaryMarkers(result)
 	return result
 }
 
