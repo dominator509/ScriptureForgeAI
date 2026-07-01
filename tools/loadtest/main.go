@@ -41,6 +41,8 @@ type config struct {
 	WebSocketSelfTest         bool
 	WSEventsPerClient         int
 	WSRoomID                  string
+	WSUserID                  string
+	WSOrganizationID          string
 	WSToken                   string
 	WSOrigin                  string
 	WSReplicaArtifactURL      string
@@ -79,6 +81,8 @@ type report struct {
 	RedisTelemetryArtifactURL    string   `json:"redis_telemetry_artifact_url,omitempty"`
 	WSOrigin                     string   `json:"ws_origin,omitempty"`
 	WSRoomID                     string   `json:"ws_room_id,omitempty"`
+	WSUserID                     string   `json:"ws_user_id,omitempty"`
+	WSOrganizationID             string   `json:"ws_organization_id,omitempty"`
 	WSReconnectRoomID            string   `json:"ws_reconnect_room_id,omitempty"`
 	WSPollingRoomID              string   `json:"ws_polling_room_id,omitempty"`
 	RedisTelemetryRoomID         string   `json:"redis_telemetry_room_id,omitempty"`
@@ -126,6 +130,8 @@ var postgresP99Pattern = regexp.MustCompile(`(?i)\bpostgres_p99_ms=([0-9]+)\b`)
 var redisP99Pattern = regexp.MustCompile(`(?i)\bredis_p99_ms=([0-9]+)\b`)
 var roomBroadcastDropsPattern = regexp.MustCompile(`(?i)\broom_broadcast_drops=([0-9]+)\b`)
 var roomIDPattern = regexp.MustCompile(`(?i)\broom_id=([^\s,;]+)\b`)
+var userIDPattern = regexp.MustCompile(`(?i)\buser_id=([^\s,;]+)\b`)
+var organizationIDPattern = regexp.MustCompile(`(?i)\borganization_id=([^\s,;]+)\b`)
 
 type stagingArtifactEvidence struct {
 	HTTPReplicaCount             int
@@ -163,6 +169,8 @@ func parseFlags() config {
 	flag.BoolVar(&cfg.WebSocketSelfTest, "websocket-self-test", false, "run against an in-process WebSocket room endpoint")
 	flag.IntVar(&cfg.WSEventsPerClient, "ws-events-per-client", 5, "events each WebSocket client sends during -websocket or -websocket-self-test")
 	flag.StringVar(&cfg.WSRoomID, "ws-room-id", "", "room id embedded in WebSocket room event envelopes; defaults to the final path segment of -target")
+	flag.StringVar(&cfg.WSUserID, "ws-user-id", os.Getenv("STAGING_WS_USER_ID"), "authenticated user id that staging WebSocket artifacts must name")
+	flag.StringVar(&cfg.WSOrganizationID, "ws-organization-id", os.Getenv("STAGING_WS_ORGANIZATION_ID"), "authenticated organization id that staging WebSocket artifacts must name")
 	flag.StringVar(&cfg.WSToken, "ws-token", "", "optional bearer token for WebSocket Authorization header")
 	flag.StringVar(&cfg.WSOrigin, "ws-origin", "http://localhost", "Origin header for WebSocket upgrades")
 	flag.StringVar(&cfg.WSReplicaArtifactURL, "ws-replica-artifact-url", os.Getenv("STAGING_WS_REPLICA_ARTIFACT_URL"), "HTTPS artifact proving WebSocket load reached multiple API replicas")
@@ -391,6 +399,12 @@ func runWebSocketLoad(cfg config, output io.Writer) error {
 	if isStagingEvidenceTarget(cfg.Target, true) {
 		if strings.TrimSpace(cfg.WSToken) == "" {
 			return errors.New("ws-token is required for staging websocket evidence")
+		}
+		if strings.TrimSpace(cfg.WSUserID) == "" {
+			return errors.New("ws-user-id is required for staging websocket evidence")
+		}
+		if strings.TrimSpace(cfg.WSOrganizationID) == "" {
+			return errors.New("ws-organization-id is required for staging websocket evidence")
 		}
 		origin, err := normalizeHTTPSOrigin(cfg.WSOrigin, "ws-origin")
 		if err != nil {
@@ -624,6 +638,16 @@ func validateStagingWebSocketArtifacts(client *http.Client, cfg config) (staging
 	if err != nil {
 		return evidence, err
 	}
+	userID := strings.TrimSpace(cfg.WSUserID)
+	if userID == "" {
+		return evidence, errors.New("ws-user-id is required for staging websocket artifact validation")
+	}
+	organizationID := strings.TrimSpace(cfg.WSOrganizationID)
+	if organizationID == "" {
+		return evidence, errors.New("ws-organization-id is required for staging websocket artifact validation")
+	}
+	userIDMarker := "user_id=" + userID
+	organizationIDMarker := "organization_id=" + organizationID
 	artifacts := []struct {
 		name     string
 		target   string
@@ -640,6 +664,8 @@ func validateStagingWebSocketArtifacts(client *http.Client, cfg config) (staging
 				releaseMarker,
 				serviceVersionMarker,
 				loadRunMarker,
+				userIDMarker,
+				organizationIDMarker,
 			},
 		},
 		{
@@ -654,6 +680,8 @@ func validateStagingWebSocketArtifacts(client *http.Client, cfg config) (staging
 				releaseMarker,
 				serviceVersionMarker,
 				loadRunMarker,
+				userIDMarker,
+				organizationIDMarker,
 			},
 		},
 		{
@@ -668,6 +696,8 @@ func validateStagingWebSocketArtifacts(client *http.Client, cfg config) (staging
 				releaseMarker,
 				serviceVersionMarker,
 				loadRunMarker,
+				userIDMarker,
+				organizationIDMarker,
 			},
 		},
 		{
@@ -684,6 +714,8 @@ func validateStagingWebSocketArtifacts(client *http.Client, cfg config) (staging
 				releaseMarker,
 				serviceVersionMarker,
 				loadRunMarker,
+				userIDMarker,
+				organizationIDMarker,
 			},
 		},
 	}
@@ -694,6 +726,9 @@ func validateStagingWebSocketArtifacts(client *http.Client, cfg config) (staging
 	for _, artifact := range artifacts {
 		text, err := validateArtifactMarkers(client, artifact.name, artifact.target, artifact.required, expectedPollingLatestSequence)
 		if err != nil {
+			return evidence, err
+		}
+		if err := validatePrincipalMarkers(text, artifact.name, userID, organizationID); err != nil {
 			return evidence, err
 		}
 		if artifact.name == "ws-replica-artifact-url" {
@@ -897,6 +932,36 @@ func parseRoomIDMarker(text, artifactName, expectedRoomID string) (string, error
 	return roomID, nil
 }
 
+func validatePrincipalMarkers(text, artifactName, expectedUserID, expectedOrganizationID string) error {
+	userID, err := parseExpectedTextMarker(text, userIDPattern, artifactName, "user_id", expectedUserID)
+	if err != nil {
+		return err
+	}
+	organizationID, err := parseExpectedTextMarker(text, organizationIDPattern, artifactName, "organization_id", expectedOrganizationID)
+	if err != nil {
+		return err
+	}
+	if userID == organizationID {
+		return fmt.Errorf("%s artifact user_id and organization_id must be distinct principal markers", artifactName)
+	}
+	return nil
+}
+
+func parseExpectedTextMarker(text string, pattern *regexp.Regexp, artifactName, markerName, expected string) (string, error) {
+	match := pattern.FindStringSubmatch(text)
+	if len(match) != 2 {
+		return "", fmt.Errorf("%s artifact missing %s marker", artifactName, markerName)
+	}
+	value := strings.TrimSpace(match[1])
+	if value == "" {
+		return "", fmt.Errorf("%s artifact %s marker must not be empty", artifactName, markerName)
+	}
+	if expectedValue := strings.TrimSpace(expected); expectedValue != "" && value != expectedValue {
+		return "", fmt.Errorf("%s artifact %s=%s does not match expected %s=%s", artifactName, markerName, value, markerName, expectedValue)
+	}
+	return value, nil
+}
+
 func addClientQuery(target string, client int) (string, error) {
 	parsed, err := url.Parse(target)
 	if err != nil {
@@ -968,6 +1033,8 @@ func buildReport(cfg config, elapsed time.Duration, load loadResult) report {
 		RedisTelemetryArtifactURL:    cfg.RedisTelemetryArtifactURL,
 		WSOrigin:                     wsOriginForReport(cfg),
 		WSRoomID:                     wsRoomIDForReport(cfg),
+		WSUserID:                     strings.TrimSpace(cfg.WSUserID),
+		WSOrganizationID:             strings.TrimSpace(cfg.WSOrganizationID),
 		WSReconnectRoomID:            cfg.ArtifactEvidence.WSReconnectRoomID,
 		WSPollingRoomID:              cfg.ArtifactEvidence.WSPollingRoomID,
 		RedisTelemetryRoomID:         cfg.ArtifactEvidence.RedisTelemetryRoomID,
@@ -1065,11 +1132,13 @@ func resultSummaryFor(result report) string {
 	}
 	if result.EvidenceProfile == "staging_websocket" {
 		summary = fmt.Sprintf(
-			"%s production_min_ws_events=%d ws_origin=%s ws_room_id=%s ws_reconnect_room_id=%s ws_polling_room_id=%s redis_telemetry_room_id=%s ws_reconnect_sequence_continues=%t ws_authenticated=%t ws_expected_events=%d ws_unique_sequences=%d ws_min_sequence=%d ws_max_sequence=%d ws_polling_latest_sequence=%d ws_sequence_contiguous=%t ws_replica_artifact_url=%s ws_reconnect_artifact_url=%s ws_polling_artifact_url=%s redis_telemetry_artifact_url=%s ws_replica_count=%d room_broadcast_drops=%d",
+			"%s production_min_ws_events=%d ws_origin=%s ws_room_id=%s ws_user_id=%s ws_organization_id=%s ws_reconnect_room_id=%s ws_polling_room_id=%s redis_telemetry_room_id=%s ws_reconnect_sequence_continues=%t ws_authenticated=%t ws_expected_events=%d ws_unique_sequences=%d ws_min_sequence=%d ws_max_sequence=%d ws_polling_latest_sequence=%d ws_sequence_contiguous=%t ws_replica_artifact_url=%s ws_reconnect_artifact_url=%s ws_polling_artifact_url=%s redis_telemetry_artifact_url=%s ws_replica_count=%d room_broadcast_drops=%d",
 			summary,
 			result.ProductionMinWSEvents,
 			result.WSOrigin,
 			result.WSRoomID,
+			result.WSUserID,
+			result.WSOrganizationID,
 			result.WSReconnectRoomID,
 			result.WSPollingRoomID,
 			result.RedisTelemetryRoomID,
@@ -1109,6 +1178,8 @@ func resultSummaryFor(result report) string {
 			"ws_sequence_contiguous=true",
 			"ws_origin=https://",
 			"ws_room_id",
+			"ws_user_id",
+			"ws_organization_id",
 			"ws_reconnect_room_id",
 			"ws_polling_room_id",
 			"redis_telemetry_room_id",

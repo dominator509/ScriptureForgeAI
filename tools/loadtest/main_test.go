@@ -176,6 +176,8 @@ func TestStagingWebSocketReportIncludesProductionTargetAndEvidenceIDs(t *testing
 		Concurrency:               500,
 		WSEventsPerClient:         60,
 		WSRoomID:                  "staging-room",
+		WSUserID:                  "staging-user",
+		WSOrganizationID:          "staging-org",
 		WSToken:                   "staging-token",
 		WSOrigin:                  "https://app-load.staging.scriptureforge.ai",
 		WSReplicaArtifactURL:      "https://load-artifacts.staging.scriptureforge.ai/load/ws-replicas.txt",
@@ -260,6 +262,8 @@ func TestWebSocketExternalRunRequiresStagingArtifacts(t *testing.T) {
 		WSEventsPerClient: 1,
 		WSRoomID:          "staging-room",
 		WSToken:           "staging-token",
+		WSUserID:          "staging-user",
+		WSOrganizationID:  "staging-org",
 		WSOrigin:          "https://app-load.staging.scriptureforge.ai",
 		MinRPS:            1,
 		MaxP99:            time.Second,
@@ -278,6 +282,8 @@ func TestWebSocketExternalRunRequiresStagingArtifacts(t *testing.T) {
 		WSEventsPerClient:    1,
 		WSRoomID:             "staging-room",
 		WSToken:              "staging-token",
+		WSUserID:             "staging-user",
+		WSOrganizationID:     "staging-org",
 		WSOrigin:             "https://app-load.staging.scriptureforge.ai",
 		WSReplicaArtifactURL: "https://load-artifacts.staging.scriptureforge.ai/load/ws-replicas.txt",
 		MinRPS:               1,
@@ -297,6 +303,8 @@ func TestWebSocketExternalRunRequiresStagingArtifacts(t *testing.T) {
 		WSEventsPerClient:      1,
 		WSRoomID:               "staging-room",
 		WSToken:                "staging-token",
+		WSUserID:               "staging-user",
+		WSOrganizationID:       "staging-org",
 		WSOrigin:               "https://app-load.staging.scriptureforge.ai",
 		WSReplicaArtifactURL:   "https://load-artifacts.staging.scriptureforge.ai/load/ws-replicas.txt",
 		WSReconnectArtifactURL: "https://load-artifacts.staging.scriptureforge.ai/load/ws-reconnect.txt",
@@ -332,6 +340,8 @@ func TestWebSocketStagingEvidenceRequiresBearerAndHTTPSOrigin(t *testing.T) {
 	}
 
 	base.WSToken = "staging-token"
+	base.WSUserID = "staging-user"
+	base.WSOrganizationID = "staging-org"
 	base.WSOrigin = "http://localhost"
 	output.Reset()
 	err = run(base, &output)
@@ -358,13 +368,13 @@ func TestValidateStagingWebSocketArtifactsRequiresMarkerProofs(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/load/ws-replicas.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 api replica distribution scriptureforge-api multiple replicas replica_count=2"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org api replica distribution scriptureforge-api multiple replicas replica_count=2"))
 		case "/load/ws-reconnect.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 websocket reconnect same room room_id=staging-room accepted event after reconnect ws_reconnect_sequence_continues=true"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org websocket reconnect same room room_id=staging-room accepted event after reconnect ws_reconnect_sequence_continues=true"))
 		case "/load/ws-polling.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 http polling fallback /api/v1/rooms/state room_id=staging-room latest sequence latest_sequence=30000"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org http polling fallback /api/v1/rooms/state room_id=staging-room latest sequence latest_sequence=30000"))
 		case "/load/redis-telemetry.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped room_broadcast_drops=0"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped room_broadcast_drops=0"))
 		default:
 			http.NotFound(w, r)
 		}
@@ -406,20 +416,20 @@ func TestValidateStagingWebSocketArtifactsRejectsWeakStructuredArtifactValues(t 
 	}{
 		{
 			name:        "missing replica count",
-			replicaBody: "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 api replica distribution scriptureforge-api multiple replicas",
-			redisBody:   "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped room_broadcast_drops=0",
+			replicaBody: "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org api replica distribution scriptureforge-api multiple replicas",
+			redisBody:   "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped room_broadcast_drops=0",
 			want:        "missing numeric replica_count marker",
 		},
 		{
 			name:        "single replica",
-			replicaBody: "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 api replica distribution scriptureforge-api multiple replicas replica_count=1",
-			redisBody:   "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped room_broadcast_drops=0",
+			replicaBody: "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org api replica distribution scriptureforge-api multiple replicas replica_count=1",
+			redisBody:   "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped room_broadcast_drops=0",
 			want:        "replica_count=1 must prove at least 2 replicas",
 		},
 		{
 			name:        "broadcast drops",
-			replicaBody: "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 api replica distribution scriptureforge-api multiple replicas replica_count=2",
-			redisBody:   "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped room_broadcast_drops=1",
+			replicaBody: "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org api replica distribution scriptureforge-api multiple replicas replica_count=2",
+			redisBody:   "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped room_broadcast_drops=1",
 			want:        "redis-telemetry-artifact-url artifact missing required staging markers",
 		},
 	} {
@@ -429,9 +439,9 @@ func TestValidateStagingWebSocketArtifactsRejectsWeakStructuredArtifactValues(t 
 				case "/load/ws-replicas.txt":
 					_, _ = w.Write([]byte(tc.replicaBody))
 				case "/load/ws-reconnect.txt":
-					_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 websocket reconnect same room room_id=staging-room accepted event after reconnect ws_reconnect_sequence_continues=true"))
+					_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org websocket reconnect same room room_id=staging-room accepted event after reconnect ws_reconnect_sequence_continues=true"))
 				case "/load/ws-polling.txt":
-					_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 http polling fallback /api/v1/rooms/state room_id=staging-room latest sequence latest_sequence=30000"))
+					_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org http polling fallback /api/v1/rooms/state room_id=staging-room latest sequence latest_sequence=30000"))
 				case "/load/redis-telemetry.txt":
 					_, _ = w.Write([]byte(tc.redisBody))
 				default:
@@ -463,13 +473,13 @@ func TestValidateStagingWebSocketArtifactsRejectsWrongRoomBinding(t *testing.T) 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/load/ws-replicas.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 api replica distribution scriptureforge-api multiple replicas replica_count=2"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org api replica distribution scriptureforge-api multiple replicas replica_count=2"))
 		case "/load/ws-reconnect.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 websocket reconnect same room room_id=other-room accepted event after reconnect ws_reconnect_sequence_continues=true"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org websocket reconnect same room room_id=other-room accepted event after reconnect ws_reconnect_sequence_continues=true"))
 		case "/load/ws-polling.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 http polling fallback /api/v1/rooms/state room_id=other-room latest sequence latest_sequence=30000"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org http polling fallback /api/v1/rooms/state room_id=other-room latest sequence latest_sequence=30000"))
 		case "/load/redis-telemetry.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 redis telemetry room sequence room_id=other-room contiguous no duplicate no skipped room_broadcast_drops=0"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org redis telemetry room sequence room_id=other-room contiguous no duplicate no skipped room_broadcast_drops=0"))
 		default:
 			http.NotFound(w, r)
 		}
@@ -486,13 +496,13 @@ func TestValidateStagingWebSocketArtifactsRejectsReconnectWithoutSequenceContinu
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/load/ws-replicas.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 api replica distribution scriptureforge-api multiple replicas replica_count=2"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org api replica distribution scriptureforge-api multiple replicas replica_count=2"))
 		case "/load/ws-reconnect.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 websocket reconnect same room room_id=staging-room accepted event after reconnect"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org websocket reconnect same room room_id=staging-room accepted event after reconnect"))
 		case "/load/ws-polling.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 http polling fallback /api/v1/rooms/state room_id=staging-room latest sequence latest_sequence=30000"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org http polling fallback /api/v1/rooms/state room_id=staging-room latest sequence latest_sequence=30000"))
 		case "/load/redis-telemetry.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped room_broadcast_drops=0"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped room_broadcast_drops=0"))
 		default:
 			http.NotFound(w, r)
 		}
@@ -509,13 +519,13 @@ func TestValidateStagingWebSocketArtifactsRejectsStaleReleaseCandidate(t *testin
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/load/ws-replicas.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=def456 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 api replica distribution scriptureforge-api multiple replicas replica_count=2"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=def456 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org api replica distribution scriptureforge-api multiple replicas replica_count=2"))
 		case "/load/ws-reconnect.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=def456 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 websocket reconnect same room room_id=staging-room accepted event after reconnect ws_reconnect_sequence_continues=true"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=def456 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org websocket reconnect same room room_id=staging-room accepted event after reconnect ws_reconnect_sequence_continues=true"))
 		case "/load/ws-polling.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=def456 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 http polling fallback /api/v1/rooms/state room_id=staging-room latest sequence latest_sequence=30000"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=def456 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org http polling fallback /api/v1/rooms/state room_id=staging-room latest sequence latest_sequence=30000"))
 		case "/load/redis-telemetry.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=def456 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped room_broadcast_drops=0"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=def456 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped room_broadcast_drops=0"))
 		default:
 			http.NotFound(w, r)
 		}
@@ -532,13 +542,13 @@ func TestValidateStagingWebSocketArtifactsRejectsWeakPollingProof(t *testing.T) 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/load/ws-replicas.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 api replica distribution scriptureforge-api multiple replicas replica_count=2"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org api replica distribution scriptureforge-api multiple replicas replica_count=2"))
 		case "/load/ws-reconnect.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 websocket reconnect same room room_id=staging-room accepted event after reconnect ws_reconnect_sequence_continues=true"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org websocket reconnect same room room_id=staging-room accepted event after reconnect ws_reconnect_sequence_continues=true"))
 		case "/load/ws-polling.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 http polling fallback room_id=staging-room latest sequence"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org http polling fallback room_id=staging-room latest sequence"))
 		case "/load/redis-telemetry.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped room_broadcast_drops=0"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped room_broadcast_drops=0"))
 		default:
 			http.NotFound(w, r)
 		}
@@ -555,13 +565,13 @@ func TestValidateStagingWebSocketArtifactsRejectsMissingBroadcastDropProof(t *te
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/load/ws-replicas.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 api replica distribution scriptureforge-api multiple replicas replica_count=2"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org api replica distribution scriptureforge-api multiple replicas replica_count=2"))
 		case "/load/ws-reconnect.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 websocket reconnect same room room_id=staging-room accepted event after reconnect ws_reconnect_sequence_continues=true"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org websocket reconnect same room room_id=staging-room accepted event after reconnect ws_reconnect_sequence_continues=true"))
 		case "/load/ws-polling.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 http polling fallback /api/v1/rooms/state room_id=staging-room latest sequence latest_sequence=30000"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org http polling fallback /api/v1/rooms/state room_id=staging-room latest sequence latest_sequence=30000"))
 		case "/load/redis-telemetry.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped"))
 		default:
 			http.NotFound(w, r)
 		}
@@ -578,13 +588,13 @@ func TestValidateStagingWebSocketArtifactsRejectsWeakLatestSequencePollingProof(
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/load/ws-replicas.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 api replica distribution scriptureforge-api multiple replicas replica_count=2"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org api replica distribution scriptureforge-api multiple replicas replica_count=2"))
 		case "/load/ws-reconnect.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 websocket reconnect same room room_id=staging-room accepted event after reconnect ws_reconnect_sequence_continues=true"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org websocket reconnect same room room_id=staging-room accepted event after reconnect ws_reconnect_sequence_continues=true"))
 		case "/load/ws-polling.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 http polling fallback /api/v1/rooms/state room_id=staging-room latest sequence"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org http polling fallback /api/v1/rooms/state room_id=staging-room latest sequence"))
 		case "/load/redis-telemetry.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped room_broadcast_drops=0"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped room_broadcast_drops=0"))
 		default:
 			http.NotFound(w, r)
 		}
@@ -601,13 +611,13 @@ func TestValidateStagingWebSocketArtifactsRejectsStalePollingLatestSequence(t *t
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/load/ws-replicas.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 api replica distribution scriptureforge-api multiple replicas replica_count=2"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org api replica distribution scriptureforge-api multiple replicas replica_count=2"))
 		case "/load/ws-reconnect.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 websocket reconnect same room room_id=staging-room accepted event after reconnect ws_reconnect_sequence_continues=true"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org websocket reconnect same room room_id=staging-room accepted event after reconnect ws_reconnect_sequence_continues=true"))
 		case "/load/ws-polling.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 http polling fallback /api/v1/rooms/state room_id=staging-room latest sequence latest_sequence=400"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org http polling fallback /api/v1/rooms/state room_id=staging-room latest sequence latest_sequence=400"))
 		case "/load/redis-telemetry.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped room_broadcast_drops=0"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped room_broadcast_drops=0"))
 		default:
 			http.NotFound(w, r)
 		}
@@ -624,13 +634,13 @@ func TestValidateStagingWebSocketArtifactsRejectsPollingLatestSequenceMismatch(t
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/load/ws-replicas.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 api replica distribution scriptureforge-api multiple replicas replica_count=2"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org api replica distribution scriptureforge-api multiple replicas replica_count=2"))
 		case "/load/ws-reconnect.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 websocket reconnect same room room_id=staging-room accepted event after reconnect ws_reconnect_sequence_continues=true"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org websocket reconnect same room room_id=staging-room accepted event after reconnect ws_reconnect_sequence_continues=true"))
 		case "/load/ws-polling.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 http polling fallback /api/v1/rooms/state room_id=staging-room latest sequence latest_sequence=30001"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org http polling fallback /api/v1/rooms/state room_id=staging-room latest sequence latest_sequence=30001"))
 		case "/load/redis-telemetry.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped room_broadcast_drops=0"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped room_broadcast_drops=0"))
 		default:
 			http.NotFound(w, r)
 		}
@@ -647,13 +657,13 @@ func TestValidateStagingWebSocketArtifactsRejectsMockRedisProof(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/load/ws-replicas.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 api replica distribution scriptureforge-api multiple replicas replica_count=2"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org api replica distribution scriptureforge-api multiple replicas replica_count=2"))
 		case "/load/ws-reconnect.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 websocket reconnect same room room_id=staging-room accepted event after reconnect ws_reconnect_sequence_continues=true"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org websocket reconnect same room room_id=staging-room accepted event after reconnect ws_reconnect_sequence_continues=true"))
 		case "/load/ws-polling.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 http polling fallback /api/v1/rooms/state room_id=staging-room latest sequence latest_sequence=30000"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org http polling fallback /api/v1/rooms/state room_id=staging-room latest sequence latest_sequence=30000"))
 		case "/load/redis-telemetry.txt":
-			_, _ = w.Write([]byte("mock staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped room_broadcast_drops=0"))
+			_, _ = w.Write([]byte("mock staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org redis telemetry room sequence room_id=staging-room contiguous no duplicate no skipped room_broadcast_drops=0"))
 		default:
 			http.NotFound(w, r)
 		}
@@ -883,9 +893,9 @@ func TestValidateStagingHTTPArtifactsRequiresMarkerProofs(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/load/http-replicas.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 api replica distribution scriptureforge-api multiple replicas replica_count=2"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org api replica distribution scriptureforge-api multiple replicas replica_count=2"))
 		case "/load/dependency-telemetry.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 dependency telemetry postgres postgres_p99_ms=32 redis redis_p99_ms=18 p99 below threshold dependency_threshold_pass=true"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org dependency telemetry postgres postgres_p99_ms=32 redis redis_p99_ms=18 p99 below threshold dependency_threshold_pass=true"))
 		default:
 			http.NotFound(w, r)
 		}
@@ -912,9 +922,9 @@ func TestValidateStagingHTTPArtifactsRejectsAdmittedThresholdFailure(t *testing.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/load/http-replicas.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 api replica distribution scriptureforge-api multiple replicas replica_count=2"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org api replica distribution scriptureforge-api multiple replicas replica_count=2"))
 		case "/load/dependency-telemetry.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 dependency telemetry postgres postgres_p99_ms=32 redis redis_p99_ms=18 p99 below threshold dependency_threshold_pass=true; threshold failed"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org dependency telemetry postgres postgres_p99_ms=32 redis redis_p99_ms=18 p99 below threshold dependency_threshold_pass=true; threshold failed"))
 		default:
 			http.NotFound(w, r)
 		}
@@ -990,9 +1000,9 @@ func TestValidateStagingHTTPArtifactsRejectsStaleReleaseCandidate(t *testing.T) 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/load/http-replicas.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=def456 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 api replica distribution scriptureforge-api multiple replicas replica_count=2"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=def456 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org api replica distribution scriptureforge-api multiple replicas replica_count=2"))
 		case "/load/dependency-telemetry.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=def456 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 dependency telemetry postgres postgres_p99_ms=32 redis redis_p99_ms=18 p99 below threshold dependency_threshold_pass=true"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=def456 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org dependency telemetry postgres postgres_p99_ms=32 redis redis_p99_ms=18 p99 below threshold dependency_threshold_pass=true"))
 		default:
 			http.NotFound(w, r)
 		}
@@ -1016,9 +1026,9 @@ func TestValidateStagingHTTPArtifactsRejectsWeakDependencyTelemetryProof(t *test
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/load/http-replicas.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 api replica distribution scriptureforge-api multiple replicas replica_count=2"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org api replica distribution scriptureforge-api multiple replicas replica_count=2"))
 		case "/load/dependency-telemetry.txt":
-			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 dependency telemetry postgres redis p99 below threshold"))
+			_, _ = w.Write([]byte("staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org dependency telemetry postgres redis p99 below threshold"))
 		default:
 			http.NotFound(w, r)
 		}
@@ -1047,26 +1057,26 @@ func TestValidateStagingHTTPArtifactsRejectsWeakStructuredArtifactValues(t *test
 	}{
 		{
 			name:        "missing replica count",
-			replicaBody: "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 api replica distribution scriptureforge-api multiple replicas",
-			telemetry:   "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 dependency telemetry postgres postgres_p99_ms=32 redis redis_p99_ms=18 p99 below threshold dependency_threshold_pass=true",
+			replicaBody: "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org api replica distribution scriptureforge-api multiple replicas",
+			telemetry:   "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org dependency telemetry postgres postgres_p99_ms=32 redis redis_p99_ms=18 p99 below threshold dependency_threshold_pass=true",
 			want:        "missing numeric replica_count marker",
 		},
 		{
 			name:        "single replica",
-			replicaBody: "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 api replica distribution scriptureforge-api multiple replicas replica_count=1",
-			telemetry:   "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 dependency telemetry postgres postgres_p99_ms=32 redis redis_p99_ms=18 p99 below threshold dependency_threshold_pass=true",
+			replicaBody: "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org api replica distribution scriptureforge-api multiple replicas replica_count=1",
+			telemetry:   "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org dependency telemetry postgres postgres_p99_ms=32 redis redis_p99_ms=18 p99 below threshold dependency_threshold_pass=true",
 			want:        "replica_count=1 must prove at least 2 replicas",
 		},
 		{
 			name:        "postgres p99 above target",
-			replicaBody: "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 api replica distribution scriptureforge-api multiple replicas replica_count=2",
-			telemetry:   "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 dependency telemetry postgres postgres_p99_ms=250 redis redis_p99_ms=18 p99 below threshold dependency_threshold_pass=true",
+			replicaBody: "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org api replica distribution scriptureforge-api multiple replicas replica_count=2",
+			telemetry:   "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org dependency telemetry postgres postgres_p99_ms=250 redis redis_p99_ms=18 p99 below threshold dependency_threshold_pass=true",
 			want:        "postgres_p99_ms=250 exceeds production max 200",
 		},
 		{
 			name:        "redis p99 above target",
-			replicaBody: "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 api replica distribution scriptureforge-api multiple replicas replica_count=2",
-			telemetry:   "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 dependency telemetry postgres postgres_p99_ms=32 redis redis_p99_ms=250 p99 below threshold dependency_threshold_pass=true",
+			replicaBody: "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org api replica distribution scriptureforge-api multiple replicas replica_count=2",
+			telemetry:   "staging artifact release_candidate=abc123 service_version=scriptureforge-api:abc123 load_run_id=load-run-123 user_id=staging-user organization_id=staging-org dependency telemetry postgres postgres_p99_ms=32 redis redis_p99_ms=250 p99 below threshold dependency_threshold_pass=true",
 			want:        "redis_p99_ms=250 exceeds production max 200",
 		},
 	} {
@@ -1143,6 +1153,8 @@ func TestWebSocketExternalRunRejectsLocalArtifactURLs(t *testing.T) {
 				WSEventsPerClient:         1,
 				WSRoomID:                  "staging-room",
 				WSToken:                   "staging-token",
+				WSUserID:                  "staging-user",
+				WSOrganizationID:          "staging-org",
 				WSOrigin:                  "https://app-load.staging.scriptureforge.ai",
 				WSReplicaArtifactURL:      "https://load-artifacts.staging.scriptureforge.ai/load/ws-replicas.txt",
 				WSReconnectArtifactURL:    "https://load-artifacts.staging.scriptureforge.ai/load/ws-reconnect.txt",
@@ -1233,6 +1245,8 @@ func stagingWebSocketArtifactConfig() config {
 		WSPollingArtifactURL:      "https://load-artifacts.staging.scriptureforge.ai/load/ws-polling.txt",
 		RedisTelemetryArtifactURL: "https://load-artifacts.staging.scriptureforge.ai/load/redis-telemetry.txt",
 		WSRoomID:                  "staging-room",
+		WSUserID:                  "staging-user",
+		WSOrganizationID:          "staging-org",
 		Concurrency:               500,
 		WSEventsPerClient:         60,
 		ReleaseCandidate:          "abc123",

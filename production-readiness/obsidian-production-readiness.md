@@ -357,15 +357,17 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 2
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: 4ae7ba569656f29cfca8339a6ef5b9261d7b0208
+- expected_release_candidate: bc7db1a78b4c55e4871bd396a7de70ace06cfa3e
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: 4ae7ba569656f29cfca8339a6ef5b9261d7b0208
+    - expected_release_candidate: bc7db1a78b4c55e4871bd396a7de70ace06cfa3e
     - actual_release_candidate: ce96c283410756444a63b1345646fc69cf274d22
   - STAGING-EVIDENCE-CONTRACT [failed]: Environment-specific pending evidence requirements are stale relative to production-readiness/staging-evidence.example.json.
     - required: DEPLOY-TF-001 required_evidence must be refreshed from the checked-in example contract (6 current entries, 6 expected entries)
     - required: DEPLOY-K8S-001 required_evidence must be refreshed from the checked-in example contract (5 current entries, 5 expected entries)
+    - required: DATA-REDIS-001 required_evidence must be refreshed from the checked-in example contract (4 current entries, 4 expected entries)
+    - required: PERF-WS-001 required_evidence must be refreshed from the checked-in example contract (7 current entries, 7 expected entries)
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
     - required: tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted
     - required: Uploaded GitHub Actions ci-release-evidence artifact from the exact release SHA with release_candidate=<manifest release_candidate> marker in the recorded summary
