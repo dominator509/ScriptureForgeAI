@@ -104,8 +104,8 @@ const productionPerformanceTargets = {
 
 const requiredPerformanceSummaryMarkers = {
   'PERF-HTTP-001': ['staging_http', 'https://', 'min_rps', '5000', 'max_p99_ms', '200', 'production_target_rps=5000', 'production_target_p99_ms=200', 'production_min_duration_ms=60000', 'duration_ms>=60000', 'observed_rps', 'observed_p99_ms', 'threshold_pass=true', 'release_candidate', 'service_version', 'load_run_id=', 'http_replica_artifact_url', 'http_replica_artifact_verified', 'http_replica_count=', 'dependency_telemetry_artifact_url', 'dependency_telemetry_artifact_verified', 'dependency_latency_artifact_verified=true', 'dependency_postgres_p99_ms=', 'dependency_redis_p99_ms='],
-  'PERF-WS-001': ['staging artifact', 'staging_websocket', 'wss://', 'min_rps', '500', 'max_p99_ms', '200', 'production_target_rps=500', 'production_target_p99_ms=200', 'production_min_duration_ms=60000', 'duration_ms>=60000', 'production_min_ws_events=30000', 'observed_rps', 'observed_p99_ms', 'threshold_pass=true', 'release_candidate', 'service_version', 'load_run_id=', 'ws_sequence_contiguous=true', 'ws_origin=https://', 'ws_room_id=', 'ws_authenticated=true', 'ws_expected_events', 'ws_polling_latest_sequence', 'ws_replica_artifact_url=https://', 'ws_replica_artifact_verified', 'ws_replica_count=', 'ws_reconnect_artifact_url=https://', 'ws_reconnect_artifact_verified', 'ws_reconnect_sequence_continues=true', 'ws_polling_artifact_url=https://', 'ws_polling_artifact_verified', 'ws_polling_artifact_latest_sequence_validated=true', 'ws_polling_artifact_latest_sequence_matches_run=true', 'redis_telemetry_artifact_url=https://', 'redis_telemetry_artifact_verified', 'ws_distinct_artifacts=true', 'room_broadcast_drops=0'],
-  'DATA-REDIS-001': ['staging artifact', 'staging_websocket', 'release_candidate', 'service_version', 'load_run_id=', 'ws_room_id=', 'ws_sequence_contiguous=true', 'production_min_ws_events=30000', 'ws_expected_events', 'ws_unique_sequences', 'ws_min_sequence', 'ws_max_sequence', 'ws_polling_latest_sequence', 'ws_polling_artifact_url=https://', 'ws_polling_artifact_latest_sequence_validated=true', 'ws_polling_artifact_latest_sequence_matches_run=true', 'redis_telemetry_artifact_url=https://', 'redis_telemetry_artifact_verified', 'ws_distinct_artifacts=true', 'room_broadcast_drops=0'],
+  'PERF-WS-001': ['staging artifact', 'staging_websocket', 'wss://', 'min_rps', '500', 'max_p99_ms', '200', 'production_target_rps=500', 'production_target_p99_ms=200', 'production_min_duration_ms=60000', 'duration_ms>=60000', 'production_min_ws_events=30000', 'observed_rps', 'observed_p99_ms', 'threshold_pass=true', 'release_candidate', 'service_version', 'load_run_id=', 'ws_sequence_contiguous=true', 'ws_origin=https://', 'ws_room_id=', 'ws_reconnect_room_id=', 'ws_polling_room_id=', 'redis_telemetry_room_id=', 'ws_authenticated=true', 'ws_expected_events', 'ws_polling_latest_sequence', 'ws_replica_artifact_url=https://', 'ws_replica_artifact_verified', 'ws_replica_count=', 'ws_reconnect_artifact_url=https://', 'ws_reconnect_artifact_verified', 'ws_reconnect_sequence_continues=true', 'ws_polling_artifact_url=https://', 'ws_polling_artifact_verified', 'ws_polling_artifact_latest_sequence_validated=true', 'ws_polling_artifact_latest_sequence_matches_run=true', 'redis_telemetry_artifact_url=https://', 'redis_telemetry_artifact_verified', 'ws_distinct_artifacts=true', 'room_broadcast_drops=0'],
+  'DATA-REDIS-001': ['staging artifact', 'staging_websocket', 'release_candidate', 'service_version', 'load_run_id=', 'ws_room_id=', 'ws_reconnect_room_id=', 'ws_polling_room_id=', 'redis_telemetry_room_id=', 'ws_sequence_contiguous=true', 'production_min_ws_events=30000', 'ws_expected_events', 'ws_unique_sequences', 'ws_min_sequence', 'ws_max_sequence', 'ws_polling_latest_sequence', 'ws_polling_artifact_url=https://', 'ws_polling_artifact_latest_sequence_validated=true', 'ws_polling_artifact_latest_sequence_matches_run=true', 'redis_telemetry_artifact_url=https://', 'redis_telemetry_artifact_verified', 'ws_distinct_artifacts=true', 'room_broadcast_drops=0'],
 };
 
 const forbiddenPerformanceSummaryMarkers = [
@@ -662,6 +662,7 @@ function validatePerformanceEvidence(report, manifest) {
     if (id === 'PERF-WS-001') {
       assert.equal(report.evidence_profile, 'staging_websocket', `${id} load report must use evidence_profile=staging_websocket`);
       assert.equal(report.ws_authenticated, true, `${id} report must prove ws_authenticated=true`);
+      assertWebSocketArtifactRoomBinding(report, id);
       const wsReplicaCount = reportNumericValue(report, 'ws_replica_count');
       assert.ok(wsReplicaCount >= 2, `${id} ws_replica_count ${wsReplicaCount} must prove at least 2 replicas`);
       const productionMinWSEvents = reportNumericValue(report, 'production_min_ws_events');
@@ -691,6 +692,7 @@ function validatePerformanceEvidence(report, manifest) {
     assert.ok(evidenceItems.includes('PERF-WS-001'), 'DATA-REDIS-001 load evidence must be paired with PERF-WS-001');
     const wsRoomID = String(report.ws_room_id ?? '').trim();
     assert.match(wsRoomID, /\S/, 'DATA-REDIS-001 report must include ws_room_id');
+    assertWebSocketArtifactRoomBinding(report, 'DATA-REDIS-001');
     assert.equal(report.ws_sequence_contiguous, true, 'DATA-REDIS-001 report must prove ws_sequence_contiguous=true');
     assert.equal(typeof report.ws_expected_events, 'number', 'DATA-REDIS-001 report must include ws_expected_events');
     assert.equal(typeof report.ws_unique_sequences, 'number', 'DATA-REDIS-001 report must include ws_unique_sequences');
@@ -753,6 +755,19 @@ function validatePerformanceEvidence(report, manifest) {
     const redisTelemetryArtifactURL = String(report.redis_telemetry_artifact_url ?? '');
     assert.match(redisTelemetryArtifactURL, /^https:\/\//, 'DATA-REDIS-001 report must include HTTPS redis_telemetry_artifact_url');
     assertNonLocalOrPrivateTarget(redisTelemetryArtifactURL, `DATA-REDIS-001 redis_telemetry_artifact_url must not be local/self-test: ${redisTelemetryArtifactURL}`);
+  }
+}
+
+function assertWebSocketArtifactRoomBinding(report, id) {
+  const wsRoomID = String(report.ws_room_id ?? '').trim();
+  assert.match(wsRoomID, /\S/, `${id} report must include ws_room_id`);
+  for (const field of ['ws_reconnect_room_id', 'ws_polling_room_id', 'redis_telemetry_room_id']) {
+    const value = String(report[field] ?? '').trim();
+    assert.match(value, /\S/, `${id} report must include ${field}`);
+    assert.equal(value, wsRoomID, `${id} ${field} must match ws_room_id`);
+    assertSummaryIncludesMarkers(`${id} ${field} room binding`, String(report.result_summary ?? ''), [
+      `${field}=${wsRoomID}`,
+    ]);
   }
 }
 

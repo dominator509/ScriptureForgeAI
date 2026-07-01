@@ -216,11 +216,11 @@ const httpPerformanceSegmentMarkerRequirements = new Map([
   ['verified markers', ['http_replica_artifact_verified', 'dependency_telemetry_artifact_verified', 'dependency_latency_artifact_verified=true', 'http_distinct_artifacts=true']],
 ]);
 const websocketPerformanceSegmentMarkerRequirements = new Map([
-  ['PERF-WS-001', ['staging artifact', 'profile=staging_websocket', 'min_rps=500', 'max_p99_ms=200', 'production_target_rps=500', 'production_target_p99_ms=200', 'production_min_duration_ms=60000', 'duration_ms>=60000', 'production_min_ws_events=30000', 'observed_rps=', 'observed_p99_ms=', 'threshold_pass=true', 'release_candidate=', 'service_version=', 'load_run_id=', 'ws_origin=https://', 'ws_room_id=', 'ws_authenticated=true', 'ws_expected_events=', 'ws_polling_latest_sequence=', 'ws_sequence_contiguous=true', 'ws_replica_count=']],
+  ['PERF-WS-001', ['staging artifact', 'profile=staging_websocket', 'min_rps=500', 'max_p99_ms=200', 'production_target_rps=500', 'production_target_p99_ms=200', 'production_min_duration_ms=60000', 'duration_ms>=60000', 'production_min_ws_events=30000', 'observed_rps=', 'observed_p99_ms=', 'threshold_pass=true', 'release_candidate=', 'service_version=', 'load_run_id=', 'ws_origin=https://', 'ws_room_id=', 'ws_reconnect_room_id=', 'ws_polling_room_id=', 'redis_telemetry_room_id=', 'ws_authenticated=true', 'ws_expected_events=', 'ws_polling_latest_sequence=', 'ws_sequence_contiguous=true', 'ws_replica_count=']],
   ['verified markers', ['ws_replica_artifact_url=https://', 'ws_replica_artifact_verified', 'ws_reconnect_artifact_url=https://', 'ws_reconnect_artifact_verified', 'ws_reconnect_sequence_continues=true', 'ws_polling_artifact_url=https://', 'ws_polling_artifact_verified', 'ws_polling_artifact_latest_sequence_validated=true', 'ws_polling_artifact_latest_sequence_matches_run=true', 'redis_telemetry_artifact_url=https://', 'redis_telemetry_artifact_verified', 'ws_distinct_artifacts=true', 'room_broadcast_drops=0']],
 ]);
 const redisPerformanceSegmentMarkerRequirements = new Map([
-  ['DATA-REDIS-001', ['staging artifact', 'profile=staging_websocket', 'release_candidate=', 'service_version=', 'load_run_id=', 'ws_room_id=', 'ws_sequence_contiguous=true', 'production_min_ws_events=30000', 'ws_expected_events=', 'ws_unique_sequences=', 'ws_min_sequence=1', 'ws_max_sequence=', 'ws_polling_latest_sequence=', 'redis_telemetry_artifact_url=https://']],
+  ['DATA-REDIS-001', ['staging artifact', 'profile=staging_websocket', 'release_candidate=', 'service_version=', 'load_run_id=', 'ws_room_id=', 'ws_reconnect_room_id=', 'ws_polling_room_id=', 'redis_telemetry_room_id=', 'ws_sequence_contiguous=true', 'production_min_ws_events=30000', 'ws_expected_events=', 'ws_unique_sequences=', 'ws_min_sequence=1', 'ws_max_sequence=', 'ws_polling_latest_sequence=', 'redis_telemetry_artifact_url=https://']],
   ['verified markers', ['ws_polling_artifact_url=https://', 'redis_telemetry_artifact_verified', 'ws_polling_artifact_latest_sequence_validated=true', 'ws_polling_artifact_latest_sequence_matches_run=true', 'ws_distinct_artifacts=true', 'room_broadcast_drops=0']],
 ]);
 const abuseRateLimitSegmentMarkerRequirements = new Map([
@@ -1752,6 +1752,7 @@ function validateStrictReleaseItemEvidence(item, manifest) {
     for (const [segment, markers] of websocketPerformanceSegmentMarkerRequirements) {
       assertEvidenceHasSegmentMarkers(evidence, segment, markers, `PERF-WS-001 strict release evidence must include WebSocket load markers on ${segment}`);
     }
+    assertStrictWebSocketArtifactRoomBinding(evidence, 'PERF-WS-001');
     assertStrictPerformanceNumbers('PERF-WS-001', evidence, 'PERF-WS-001', {
       minRPS: 500,
       maxP99MS: 200,
@@ -1763,6 +1764,7 @@ function validateStrictReleaseItemEvidence(item, manifest) {
     for (const [segment, markers] of redisPerformanceSegmentMarkerRequirements) {
       assertEvidenceHasSegmentMarkers(evidence, segment, markers, `DATA-REDIS-001 strict release evidence must include Redis load markers on ${segment}`);
     }
+    assertStrictWebSocketArtifactRoomBinding(evidence, 'DATA-REDIS-001');
     assertStrictRedisSequenceNumbers(evidence);
   }
   if (item.id === 'ABUSE-LIMIT-001') {
@@ -2182,6 +2184,24 @@ function extractNumericMarker(segmentText, marker, itemID) {
   const value = Number.parseFloat(match[1]);
   assert.ok(Number.isFinite(value), `${itemID} strict release evidence ${marker} must be numeric`);
   return value;
+}
+
+function extractTextMarker(segmentText, marker, itemID) {
+  const pattern = new RegExp(`(?:^|[\\s,])${escapeRegExp(marker)}=([^\\s,;]+)`, 'i');
+  const match = pattern.exec(segmentText);
+  assert.ok(match, `${itemID} strict release evidence must include ${marker}`);
+  return String(match[1] ?? '').trim();
+}
+
+function assertStrictWebSocketArtifactRoomBinding(evidence, itemID) {
+  const segmentText = findEvidenceSegment(evidence, itemID);
+  assert.ok(segmentText, `${itemID} strict release evidence must include WebSocket room binding segment`);
+  const wsRoomID = extractTextMarker(segmentText, 'ws_room_id', itemID);
+  assert.ok(wsRoomID, `${itemID} strict release ws_room_id must not be empty`);
+  for (const marker of ['ws_reconnect_room_id', 'ws_polling_room_id', 'redis_telemetry_room_id']) {
+    const roomID = extractTextMarker(segmentText, marker, itemID);
+    assert.equal(roomID, wsRoomID, `${itemID} strict release ${marker} must match ws_room_id`);
+  }
 }
 
 function extractStandaloneTraceID(segmentText, segmentName) {
