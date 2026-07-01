@@ -1665,6 +1665,9 @@ function validateZoomEvidence(report, manifest) {
   assert.equal(probes.length, requiredProbes.size, 'EXT-ZOOM-001 report must include exactly the required Zoom probes');
   const zoomArtifactTargets = [];
   const reportLoadRunID = String(report.load_run_id ?? '').trim();
+  if (String(manifest.release_candidate ?? '').trim()) {
+    assert.ok(reportLoadRunID, 'EXT-ZOOM-001 report must include load_run_id');
+  }
   const probeLoadRunIDs = new Set();
   for (const probe of probes) {
     assert.ok(requiredProbes.delete(probe.name), `EXT-ZOOM-001 report includes unexpected or duplicate probe ${probe.name}`);

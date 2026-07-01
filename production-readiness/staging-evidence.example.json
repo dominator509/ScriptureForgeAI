@@ -205,17 +205,17 @@
       "status": "pending_external",
       "description": "Zoom OAuth, meeting creation fallback, webhook signature validation, endpoint URL validation, duplicate webhook idempotency, and room mapping are proven with staging credentials.",
       "required_evidence": [
-        "tools/zoomprobe JSON report with EXT-ZOOM-001 evidence item",
+        "tools/zoomprobe JSON report with EXT-ZOOM-001 evidence item and report-level load_run_id=<same run>",
         "tools/stagingprobe -probe-zoom JSON report",
-        "Zoom OAuth probe output with exact release_candidate=<manifest release_candidate> and service_version markers",
-        "Meeting create or fallback output with exact release_candidate=<manifest release_candidate> and service_version markers",
-        "Zoom provider-timeout/circuit_open_fallback output with exact release_candidate=<manifest release_candidate> and service_version markers",
-        "Webhook delivery/signature proof with concrete x-zm-signature=<v0 signature> and x-zm-request-timestamp=<epoch> markers, stale replay 401 denial, invalid-signature 401, signed-event 200 validation, exact release_candidate=<manifest release_candidate>, and service_version markers",
-        "Zoom endpoint.url_validation challenge proof with exact release_candidate=<manifest release_candidate> and service_version markers",
-        "Duplicate webhook idempotency proof with x-zm-trackingid, structured JSON delivery_id matching delivery_id=<id>, delivery ID, same Zoom event, single state mutation, no duplicate side effects, exact release_candidate=<manifest release_candidate>, and service_version markers",
-        "Meeting-to-room mapping proof with concrete meeting_external_id=<id> and internal_room_id=<id>, Redis room state, unknown meeting ignore behavior, no external meeting ID fallback, exact release_candidate=<manifest release_candidate>, and service_version markers",
+        "Zoom OAuth probe output with exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
+        "Meeting create or fallback output with exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
+        "Zoom provider-timeout/circuit_open_fallback output with exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
+        "Webhook delivery/signature proof with concrete x-zm-signature=<v0 signature> and x-zm-request-timestamp=<epoch> markers, stale replay 401 denial, invalid-signature 401, signed-event 200 validation, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
+        "Zoom endpoint.url_validation challenge proof with exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
+        "Duplicate webhook idempotency proof with x-zm-trackingid, structured JSON delivery_id matching delivery_id=<id>, delivery ID, same Zoom event, single state mutation, no duplicate side effects, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
+        "Meeting-to-room mapping proof with concrete meeting_external_id=<id> and internal_room_id=<id>, Redis room state, unknown meeting ignore behavior, no external meeting ID fallback, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
         "Zoom OAuth, meeting/fallback, provider-timeout circuit fallback, signature headers, URL validation, duplicate, and meeting-to-room mapping artifacts must be canonical-distinct HTTPS URLs, not one combined proof artifact or URL alias",
-        "zoomprobe result_summary marker list with staging artifact provenance and exact release_candidate=<manifest release_candidate> plus service_version markers on every OAuth, meeting/fallback, provider-timeout circuit fallback, concrete signature/timestamp headers, URL validation, duplicate, and mapping proof segment, with distinct_zoom_artifacts=true on the mapping segment; non-HTTPS, reserved example/test/invalid hosts, local, loopback, private-network, unspecified, link-local, mock, placeholder, synthetic, stubbed, test-only, dry-run, local-only, signature verification disabled, webhook signature disabled, signature verification bypassed, or skip signature verification artifact URLs, content, or result summaries are not accepted"
+        "zoomprobe result_summary marker list with staging artifact provenance and exact release_candidate=<manifest release_candidate> plus service_version plus matching load_run_id=<same run> markers on every OAuth, meeting/fallback, provider-timeout circuit fallback, concrete signature/timestamp headers, URL validation, duplicate, and mapping proof segment, with distinct_zoom_artifacts=true on the mapping segment; non-HTTPS, reserved example/test/invalid hosts, local, loopback, private-network, unspecified, link-local, mock, placeholder, synthetic, stubbed, test-only, dry-run, local-only, signature verification disabled, webhook signature disabled, signature verification bypassed, or skip signature verification artifact URLs, content, or result summaries are not accepted"
       ]
     },
     {

@@ -2953,6 +2953,7 @@ test('recordEvidence records production-grade Zoom evidence', () => {
       threshold_pass: true,
       release_candidate: 'abc123',
       service_version: 'scriptureforge-api:abc123',
+      load_run_id: 'load-run-123',
       evidence_items: ['EXT-ZOOM-001'],
       probes: zoomProbeReportProbes(probeNames),
     },
@@ -2961,6 +2962,29 @@ test('recordEvidence records production-grade Zoom evidence', () => {
   );
 
   assert.equal(updated.items[0].status, 'passed');
+});
+
+test('recordEvidence rejects Zoom evidence without report load run identity', () => {
+  const probeNames = Object.keys(zoomProbeMarkerSummaries);
+  assert.throws(
+    () => recordEvidence(
+      {
+        release_candidate: 'abc123',
+        items: [{ id: 'EXT-ZOOM-001', status: 'pending_external' }],
+      },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['EXT-ZOOM-001'],
+        probes: zoomProbeReportProbes(probeNames),
+      },
+      'artifacts/zoomprobe.json',
+      'go run ./tools/zoomprobe',
+    ),
+    /EXT-ZOOM-001 report must include load_run_id/,
+  );
 });
 
 test('recordEvidence rejects Zoom evidence without probe load run markers', () => {
@@ -2976,6 +3000,7 @@ test('recordEvidence rejects Zoom evidence without probe load run markers', () =
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['EXT-ZOOM-001'],
         probes: zoomProbeReportProbes(probeNames, (name) => (
           name === 'zoom-oauth-readiness'
@@ -3003,6 +3028,7 @@ test('recordEvidence rejects Zoom evidence with mixed probe load run markers', (
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['EXT-ZOOM-001'],
         probes: zoomProbeReportProbes(probeNames, (name) => (
           name === 'zoom-meeting-room-mapping'
@@ -3013,7 +3039,7 @@ test('recordEvidence rejects Zoom evidence with mixed probe load run markers', (
       'artifacts/zoomprobe.json',
       'go run ./tools/zoomprobe',
     ),
-    /EXT-ZOOM-001 probe result_summary load_run_id values must all match/,
+    /zoom-meeting-room-mapping result_summary load_run_id must match report load_run_id/,
   );
 });
 
@@ -3030,6 +3056,7 @@ test('recordEvidence rejects Zoom resilience evidence without structured fallbac
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['EXT-ZOOM-001'],
         probes: zoomProbeReportProbes(probeNames, (name) => (
           name === 'zoom-timeout-circuit-fallback'
@@ -3057,6 +3084,7 @@ test('recordEvidence rejects Zoom duplicate evidence without structured tracking
         threshold_pass: true,
         release_candidate: 'abc123',
         service_version: 'scriptureforge-api:abc123',
+        load_run_id: 'load-run-123',
         evidence_items: ['EXT-ZOOM-001'],
         probes: zoomProbeReportProbes(probeNames, (name) => (
           name === 'zoom-duplicate-webhook-idempotency'
@@ -3084,6 +3112,7 @@ test('recordEvidence rejects Zoom evidence for a different release candidate', (
         threshold_pass: true,
         release_candidate: 'def456',
         service_version: 'scriptureforge-api:def456',
+        load_run_id: 'load-run-123',
         evidence_items: ['EXT-ZOOM-001'],
         probes: zoomProbeReportProbes(probeNames, (name) => ({
           result_summary: zoomProbeMarkerSummaries[name]
