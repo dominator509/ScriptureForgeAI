@@ -1066,6 +1066,21 @@ test('recordEvidence records production-grade tenant RLS evidence', () => {
   assert.equal(updated.items[0].status, 'passed');
 });
 
+test('recordEvidence rejects tenant RLS evidence with only summary load run identity', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DATA-RLS-001', status: 'pending_external' }] },
+      {
+        ...tenantRLSProbeReport(),
+        load_run_id: '',
+      },
+      'artifacts/tenantprobe.json',
+      'go run ./tools/tenantprobe',
+    ),
+    /DATA-RLS-001 report must include load_run_id/,
+  );
+});
+
 test('recordEvidence rejects tenant RLS evidence without concrete DB role bypass proof', () => {
   assert.throws(
     () => recordEvidence(
@@ -9606,6 +9621,33 @@ test('recordEvidence records production-grade abuse evidence', () => {
   assert.equal(updated.items[0].status, 'passed');
   assert.match(updated.items[0].evidence[0].result_summary, /config_artifact_verified=true/);
   assert.match(updated.items[0].evidence[0].result_summary, /distinct_abuse_artifacts=true/);
+});
+
+test('recordEvidence rejects abuse evidence with only summary load run identity', () => {
+  const probes = abuseProbeReportProbes();
+
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'ABUSE-LIMIT-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        api_target: 'https://api.staging.scriptureforge.ai',
+        web_origin: 'https://app.staging.scriptureforge.ai',
+        config_artifact_url: 'https://artifacts.staging.scriptureforge.ai/abuse/config.txt',
+        config_artifact_verified: true,
+        config_artifact_summary: abuseConfigSummary,
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        load_run_id: '',
+        evidence_items: ['ABUSE-LIMIT-001'],
+        probes,
+      },
+      'artifacts/abuseprobe.json',
+      'go run ./tools/abuseprobe -api-base=https://api.staging.scriptureforge.ai',
+    ),
+    /ABUSE-LIMIT-001 report must include load_run_id/,
+  );
 });
 
 test('recordEvidence rejects abuse profile summaries without staging artifact provenance', () => {

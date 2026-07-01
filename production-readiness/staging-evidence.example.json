@@ -94,7 +94,7 @@
       "status": "pending_external",
       "description": "Auth login, auth refresh, account-scoped login, AI, journal, room, and WebSocket abuse limits are observed through real staging ingress behavior.",
       "required_evidence": [
-        "tools/abuseprobe JSON report with ABUSE-LIMIT-001 evidence item, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id markers from the same staging load run",
+        "tools/abuseprobe JSON report with ABUSE-LIMIT-001 evidence item, report-level load_run_id=<same run>, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id markers from the same staging load run",
         "429 responses for auth login, auth refresh, auth-account, AI, journal, rooms, and real WebSocket upgrade profiles after at least 2 attempts with concrete attempt counts, repeated_attempts_verified=true, structured account_scoped=true, forwarded_client_ip_rotated=true, refresh_token_scoped=true, websocket_upgrade=true where applicable, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id markers",
         "Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, and X-RateLimit-Reset header proof with positive retry/limit/reset values, X-RateLimit-Remaining=0, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id",
         "HTTPS redacted artifact proving positive-integer staging ABUSE_LIMIT_* request/window assignments, positive-integer ABUSE_LIMIT_AUTH_ACCOUNT_* request/window assignments, positive-integer ABUSE_LIMIT_MAX_BUCKETS assignment, TRUST_PROXY_HEADERS=true, X-Forwarded-For, X-Real-IP, redacted configuration, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id used for the probe",
@@ -109,7 +109,7 @@
       "status": "pending_external",
       "description": "Tenant RLS behavior is proven through the deployed API and staging database connection pool.",
       "required_evidence": [
-        "tools/tenantprobe JSON report with DATA-RLS-001 evidence item and load_run_id marker from the same staging load run",
+        "tools/tenantprobe JSON report with DATA-RLS-001 evidence item and report-level load_run_id=<same load run>",
         "Same-tenant journal and room create/read/list/state probe output, including owner journal list visibility for the created entry",
         "Cross-tenant journal read/list denial, room list/state denial, and API tenant/user override write-denial output for journal and room create routes",
         "Database/RLS proof artifact must use a canonical-distinct evidence host from the staging API target, not one combined API proof artifact or host alias",

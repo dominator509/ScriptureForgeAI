@@ -341,11 +341,11 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 1
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: 208513ac88c3ee645811c71b06a6e3b57d1002c9
+- expected_release_candidate: 801ed6395a9146cd22aef4da56d4e5965492ed9a
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: 208513ac88c3ee645811c71b06a6e3b57d1002c9
+    - expected_release_candidate: 801ed6395a9146cd22aef4da56d4e5965492ed9a
     - actual_release_candidate: ce96c283410756444a63b1345646fc69cf274d22
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
     - required: tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted
@@ -390,7 +390,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
     - required: Database grants for app role across organizations, users, scripture_texts, refresh_tokens, journal_entries, live_rooms, room_participants, ai_request_logs, and citation_trails
     - required: Denied privileged operation probe with privileged_operation_denied=true
   - ABUSE-LIMIT-001 [pending_external]: Auth, account-scoped login, AI, journal, room, and WebSocket abuse limits are observed through real staging ingress behavior.
-    - required: tools/abuseprobe JSON report with ABUSE-LIMIT-001 evidence item, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id markers from the same staging load run
+    - required: tools/abuseprobe JSON report with ABUSE-LIMIT-001 evidence item, report-level load_run_id=<same run>, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id markers from the same staging load run
     - required: 429 responses for auth login, auth refresh, auth-account, AI, journal, rooms, and real WebSocket upgrade profiles after at least 2 attempts with concrete attempt counts, repeated_attempts_verified=true, structured account_scoped=true, forwarded_client_ip_rotated=true, refresh_token_scoped=true, websocket_upgrade=true where applicable, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id markers
     - required: Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, and X-RateLimit-Reset header proof with positive retry/limit/reset values, X-RateLimit-Remaining=0, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id
     - required: HTTPS redacted artifact proving positive-integer staging ABUSE_LIMIT_* request/window assignments, positive-integer ABUSE_LIMIT_AUTH_ACCOUNT_* request/window assignments, positive-integer ABUSE_LIMIT_MAX_BUCKETS assignment, TRUST_PROXY_HEADERS=true, X-Forwarded-For, X-Real-IP, redacted configuration, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id used for the probe
@@ -398,7 +398,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
     - required: Abuse report must include HTTPS web_origin used for WebSocket probes; config artifact host must be distinct from staging API target and web_origin, with distinct_abuse_artifacts=true in the verified config summary
     - required: abuseprobe result_summary marker list for auth login, auth refresh, account-scoped login, AI, journal, rooms, and WebSocket profiles including staging artifact provenance on every route-profile segment, concrete attempt counts >= 2, repeated_attempts_verified=true, refresh token, refresh_token_scoped=true, rotating forwarded client IP, account_scoped=true, forwarded_client_ip_rotated=true, websocket upgrade, websocket_upgrade=true, exact release_candidate=<manifest release_candidate>, service_version proof, load_run_id proof with all profile/config summaries matching the same value, and distinct_abuse_artifacts=true
   - DATA-RLS-001 [pending_external]: Tenant RLS behavior is proven through the deployed API and staging database connection pool.
-    - required: tools/tenantprobe JSON report with DATA-RLS-001 evidence item and load_run_id marker from the same staging load run
+    - required: tools/tenantprobe JSON report with DATA-RLS-001 evidence item and report-level load_run_id=<same load run>
     - required: Same-tenant journal and room create/read/list/state probe output, including owner journal list visibility for the created entry
     - required: Cross-tenant journal read/list denial, room list/state denial, and API tenant/user override write-denial output for journal and room create routes
     - required: Database/RLS proof artifact must use a canonical-distinct evidence host from the staging API target, not one combined API proof artifact or host alias
