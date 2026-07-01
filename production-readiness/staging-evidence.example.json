@@ -10,8 +10,8 @@
       "status": "pending_external",
       "description": "Clean pushed GitHub Actions run for the exact release branch.",
       "required_evidence": [
-        "tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted",
-        "Uploaded GitHub Actions ci-release-evidence artifact from the exact release SHA with release_candidate=<manifest release_candidate> marker in the recorded summary",
+        "tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL, commit_sha exactly matching release_candidate=<manifest release_candidate>, artifact_commit_sha structurally matching commit_sha, and run_id/run_attempt/run_number provenance bound to ci_run_url; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted",
+        "Uploaded GitHub Actions ci-release-evidence artifact from the exact release SHA with release_candidate=<manifest release_candidate>, artifact_commit_sha_structural_binding_required=true, and github_run_id_url_binding_required=true markers in the recorded summary",
         "GitHub Actions run URL",
         "Full 40-character commit SHA matching the manifest release_candidate",
         "GitHub repository/ref/event/run-attempt provenance plus clean source-control marker from the release workflow",

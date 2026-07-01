@@ -1047,6 +1047,14 @@ function validateCIEvidence(report, manifest) {
     );
   }
   assert.ok(String(report.workflow_name ?? '').trim(), 'SRC-CI-001 report must include workflow_name');
+  assert.equal(
+    String(report.artifact_commit_sha ?? '').trim().toLowerCase(),
+    String(report.commit_sha ?? '').trim().toLowerCase(),
+    'SRC-CI-001 report artifact_commit_sha must match commit_sha',
+  );
+  assert.match(String(report.run_id ?? ''), /^[1-9][0-9]*$/, 'SRC-CI-001 report must include positive run_id');
+  assert.match(String(report.run_attempt ?? ''), /^[1-9][0-9]*$/, 'SRC-CI-001 report must include positive run_attempt');
+  assert.match(String(report.run_number ?? ''), /^[1-9][0-9]*$/, 'SRC-CI-001 report must include positive run_number');
   assert.match(String(report.repository ?? ''), /^[^/\s]+\/[^/\s]+$/, 'SRC-CI-001 report must include GitHub repository owner/name');
   assert.match(String(report.ref ?? ''), /^refs\/(heads|tags|pull)\/.+/, 'SRC-CI-001 report must include full GitHub ref');
   assert.ok(String(report.ref_name ?? '').trim(), 'SRC-CI-001 report must include ref_name');
@@ -1065,6 +1073,15 @@ function validateCIEvidence(report, manifest) {
   assert.ok(!isReservedPlaceholderTarget(releaseRunTarget), 'github-actions-release-run target must not use reserved placeholder hosts');
   assert.match(releaseRunTarget, /ci-release-evidence/i, 'github-actions-release-run target must reference uploaded ci-release-evidence artifact');
   assert.equal(String(releaseRun.run_url ?? ''), runURL, 'github-actions-release-run probe run_url must match ci_run_url');
+  assert.equal(
+    String(releaseRun.artifact_commit_sha ?? '').trim().toLowerCase(),
+    String(report.commit_sha ?? '').trim().toLowerCase(),
+    'github-actions-release-run probe artifact_commit_sha must match report commit_sha',
+  );
+  assert.equal(String(releaseRun.run_id ?? ''), String(report.run_id ?? ''), 'github-actions-release-run probe run_id must match report run_id');
+  assert.equal(String(releaseRun.run_attempt ?? ''), String(report.run_attempt ?? ''), 'github-actions-release-run probe run_attempt must match report run_attempt');
+  assert.equal(String(releaseRun.run_number ?? ''), String(report.run_number ?? ''), 'github-actions-release-run probe run_number must match report run_number');
+  assert.equal(new URL(runURL).pathname.endsWith(`/actions/runs/${report.run_id}`), true, 'SRC-CI-001 ci_run_url must include report run_id');
   assert.equal(String(releaseRun.repository ?? ''), report.repository, 'github-actions-release-run probe repository must match report repository');
   assert.equal(String(releaseRun.ref ?? ''), report.ref, 'github-actions-release-run probe ref must match report ref');
   assert.equal(String(releaseRun.ref_name ?? ''), report.ref_name, 'github-actions-release-run probe ref_name must match report ref_name');

@@ -46,6 +46,9 @@ func TestCIProbeEmitsSourceControlEvidence(t *testing.T) {
 	if result.CommitSHA != testCommitSHA || result.WorkflowName != "Security Pipeline Verification" {
 		t.Fatalf("release identity was not propagated: %+v", result)
 	}
+	if result.ArtifactCommitSHA != testCommitSHA || result.RunID != "1234567890" || result.RunAttempt != "1" || result.RunNumber != "42" {
+		t.Fatalf("structured CI run identity was not propagated: %+v", result)
+	}
 	if result.CIRunURL != "https://github.com/example/scriptureforgeai/actions/runs/1234567890" {
 		t.Fatalf("CI run URL was not propagated: %+v", result)
 	}
@@ -84,6 +87,9 @@ func TestCIProbeAcceptsLocalArtifactFile(t *testing.T) {
 	}
 	if result.CIRunURL == "" || result.Probes[0].RunURL == "" {
 		t.Fatalf("local artifact probe should propagate run URL: %+v", result)
+	}
+	if result.ArtifactCommitSHA != testCommitSHA || result.RunID != "1234567890" || result.RunAttempt != "1" || result.RunNumber != "42" {
+		t.Fatalf("local artifact probe should propagate structured run identity: %+v", result)
 	}
 	assertProbeSummaryProofMarkers(t, result)
 }
@@ -206,6 +212,83 @@ func TestCIProbeRejectsMissingRunURL(t *testing.T) {
 	}, &output, clientForHTTPServer(t, server))
 	if err == nil {
 		t.Fatalf("expected missing run URL to fail:\n%s", output.String())
+	}
+}
+
+func TestCIProbeRejectsStaleCommitLineEvenWhenTargetSHAIsMentioned(t *testing.T) {
+	artifact := strings.ReplaceAll(
+		successfulRunArtifact(),
+		"commit: 0123456789abcdef0123456789abcdef01234567\n",
+		"commit: fedcba9876543210fedcba9876543210fedcba98\nrelease_candidate: 0123456789abcdef0123456789abcdef01234567\n",
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(artifact))
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := runWithClient(config{
+		RunArtifactURL: "https://ci-artifacts.staging.scriptureforge.ai/ci/ci-release-evidence.txt",
+		CommitSHA:      testCommitSHA,
+		WorkflowName:   "Security Pipeline Verification",
+		Timeout:        time.Second,
+	}, &output, clientForHTTPServer(t, server))
+	if err == nil {
+		t.Fatalf("expected mismatched commit line to fail even though target SHA is mentioned:\n%s", output.String())
+	}
+}
+
+func TestCIProbeRejectsRunURLNotBoundToRunID(t *testing.T) {
+	artifact := strings.ReplaceAll(
+		successfulRunArtifact(),
+		"run_url: https://github.com/example/scriptureforgeai/actions/runs/1234567890\n",
+		"run_url: https://github.com/example/scriptureforgeai/actions/runs/9999999999\n",
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(artifact))
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := runWithClient(config{
+		RunArtifactURL: "https://ci-artifacts.staging.scriptureforge.ai/ci/ci-release-evidence.txt",
+		CommitSHA:      testCommitSHA,
+		WorkflowName:   "Security Pipeline Verification",
+		Timeout:        time.Second,
+	}, &output, clientForHTTPServer(t, server))
+	if err == nil {
+		t.Fatalf("expected run_url/run_id mismatch to fail:\n%s", output.String())
+	}
+}
+
+func TestCIProbeRejectsRunURLRunIDPrefixMatch(t *testing.T) {
+	artifact := strings.ReplaceAll(
+		successfulRunArtifact(),
+		"run_id: 1234567890\n",
+		"run_id: 123\n",
+	)
+	artifact = strings.ReplaceAll(
+		artifact,
+		"run_url: https://github.com/example/scriptureforgeai/actions/runs/1234567890\n",
+		"run_url: https://github.com/example/scriptureforgeai/actions/runs/1234\n",
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(artifact))
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := runWithClient(config{
+		RunArtifactURL: "https://ci-artifacts.staging.scriptureforge.ai/ci/ci-release-evidence.txt",
+		CommitSHA:      testCommitSHA,
+		WorkflowName:   "Security Pipeline Verification",
+		Timeout:        time.Second,
+	}, &output, clientForHTTPServer(t, server))
+	if err == nil {
+		t.Fatalf("expected prefix-only run_url/run_id match to fail:\n%s", output.String())
 	}
 }
 
@@ -361,7 +444,7 @@ source_control_clean_command: git diff --quiet
 source_control_cached_clean_command: git diff --cached --quiet
 source_control_untracked_clean_command: git status --short
 release_evidence_scope: exact-github-sha-required-gates
-proof markers: full_commit_sha_required=true, github_run_provenance_required=true, source_control_clean_verified=true, source_control_untracked_clean_verified=true, github_run_attempt_provenance_required=true, exact_sha_required_gates_scope=true, local_gate_markers_included=true, staging_gap_report_footer_contract_required=true, staging_gap_report_required_evidence_contract_required=true, trufflehog_marker_included=true, success_conclusion_required=true
+proof markers: full_commit_sha_required=true, artifact_commit_sha_structural_binding_required=true, github_run_provenance_required=true, github_run_id_url_binding_required=true, source_control_clean_verified=true, source_control_untracked_clean_verified=true, github_run_attempt_provenance_required=true, exact_sha_required_gates_scope=true, local_gate_markers_included=true, staging_gap_report_footer_contract_required=true, staging_gap_report_required_evidence_contract_required=true, trufflehog_marker_included=true, success_conclusion_required=true
 status: completed
 conclusion: success
 required gates:

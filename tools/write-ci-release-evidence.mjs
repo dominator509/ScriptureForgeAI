@@ -10,7 +10,9 @@ export const requiredGates = [
 
 export const ciReleaseEvidenceProofMarkers = [
   'full_commit_sha_required=true',
+  'artifact_commit_sha_structural_binding_required=true',
   'github_run_provenance_required=true',
+  'github_run_id_url_binding_required=true',
   'source_control_clean_verified=true',
   'source_control_untracked_clean_verified=true',
   'github_run_attempt_provenance_required=true',

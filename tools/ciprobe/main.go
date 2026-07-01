@@ -29,10 +29,14 @@ type report struct {
 	ThresholdPass        bool          `json:"threshold_pass"`
 	CommitSHA            string        `json:"commit_sha"`
 	WorkflowName         string        `json:"workflow_name"`
+	ArtifactCommitSHA    string        `json:"artifact_commit_sha,omitempty"`
 	Repository           string        `json:"repository,omitempty"`
 	Ref                  string        `json:"ref,omitempty"`
 	RefName              string        `json:"ref_name,omitempty"`
 	EventName            string        `json:"event_name,omitempty"`
+	RunID                string        `json:"run_id,omitempty"`
+	RunAttempt           string        `json:"run_attempt,omitempty"`
+	RunNumber            string        `json:"run_number,omitempty"`
 	SourceControlStatus  string        `json:"source_control_status,omitempty"`
 	ReleaseEvidenceScope string        `json:"release_evidence_scope,omitempty"`
 	CIRunURL             string        `json:"ci_run_url,omitempty"`
@@ -46,7 +50,11 @@ type probeResult struct {
 	Passed               bool   `json:"passed"`
 	StatusCode           int    `json:"status_code,omitempty"`
 	LatencyMS            int64  `json:"latency_ms,omitempty"`
+	ArtifactCommitSHA    string `json:"artifact_commit_sha,omitempty"`
 	RunURL               string `json:"run_url,omitempty"`
+	RunID                string `json:"run_id,omitempty"`
+	RunAttempt           string `json:"run_attempt,omitempty"`
+	RunNumber            string `json:"run_number,omitempty"`
 	Repository           string `json:"repository,omitempty"`
 	Ref                  string `json:"ref,omitempty"`
 	RefName              string `json:"ref_name,omitempty"`
@@ -115,10 +123,14 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 		ThresholdPass:        true,
 		CommitSHA:            cfg.CommitSHA,
 		WorkflowName:         cfg.WorkflowName,
+		ArtifactCommitSHA:    probes[0].ArtifactCommitSHA,
 		Repository:           probes[0].Repository,
 		Ref:                  probes[0].Ref,
 		RefName:              probes[0].RefName,
 		EventName:            probes[0].EventName,
+		RunID:                probes[0].RunID,
+		RunAttempt:           probes[0].RunAttempt,
+		RunNumber:            probes[0].RunNumber,
 		SourceControlStatus:  probes[0].SourceControlStatus,
 		ReleaseEvidenceScope: probes[0].ReleaseEvidenceScope,
 		CIRunURL:             probes[0].RunURL,
@@ -163,7 +175,7 @@ func probeCIArtifact(client *http.Client, cfg config) probeResult {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512*1024))
 	bodyText := string(body)
 	metadata := extractCIArtifactMetadata(bodyText)
-	passed := resp.StatusCode >= 200 && resp.StatusCode < 300 && ciArtifactTextPasses(bodyText, cfg)
+	passed := resp.StatusCode >= 200 && resp.StatusCode < 300 && ciArtifactTextPasses(bodyText, cfg) && ciArtifactMetadataPasses(metadata, cfg)
 	summary := fmt.Sprintf("got HTTP %d in %dms", resp.StatusCode, latency)
 	if passed {
 		summary += "; " + strings.Join(requiredProofMarkers(), " ")
@@ -188,7 +200,7 @@ func probeCIArtifactFile(cfg config) probeResult {
 	}
 	bodyText := string(body)
 	metadata := extractCIArtifactMetadata(bodyText)
-	passed := ciArtifactTextPasses(bodyText, cfg)
+	passed := ciArtifactTextPasses(bodyText, cfg) && ciArtifactMetadataPasses(metadata, cfg)
 	summary := fmt.Sprintf("read local artifact in %dms", latency)
 	if passed {
 		summary += "; " + strings.Join(requiredProofMarkers(), " ")
@@ -205,7 +217,11 @@ func probeCIArtifactFile(cfg config) probeResult {
 
 func extractCIArtifactMetadata(text string) probeResult {
 	return probeResult{
+		ArtifactCommitSHA:    extractLineValue(text, "commit:"),
 		RunURL:               extractLineValue(text, "run_url:"),
+		RunID:                extractLineValue(text, "run_id:"),
+		RunAttempt:           extractLineValue(text, "run_attempt:"),
+		RunNumber:            extractLineValue(text, "run_number:"),
 		Repository:           extractLineValue(text, "repository:"),
 		Ref:                  extractLineValue(text, "ref:"),
 		RefName:              extractLineValue(text, "ref_name:"),
@@ -241,6 +257,19 @@ func ciArtifactTextPasses(text string, cfg config) bool {
 	}, requiredGateMarkers()...)
 	required = append(required, requiredProofMarkers()...)
 	return containsAllFold(text, required) && containsNoneFold(text, failingRunMarkers())
+}
+
+func ciArtifactMetadataPasses(metadata probeResult, cfg config) bool {
+	if !strings.EqualFold(strings.TrimSpace(metadata.ArtifactCommitSHA), cfg.CommitSHA) {
+		return false
+	}
+	if !isPositiveInteger(metadata.RunID) || !isPositiveInteger(metadata.RunAttempt) || !isPositiveInteger(metadata.RunNumber) {
+		return false
+	}
+	if !runURLMatchesRunID(metadata.RunURL, metadata.RunID) {
+		return false
+	}
+	return true
 }
 
 func requiredGateMarkers() []string {
@@ -286,7 +315,9 @@ func requiredProofMarkers() []string {
 	return []string{
 		"proof markers:",
 		"full_commit_sha_required=true",
+		"artifact_commit_sha_structural_binding_required=true",
 		"github_run_provenance_required=true",
+		"github_run_id_url_binding_required=true",
 		"source_control_clean_verified=true",
 		"source_control_untracked_clean_verified=true",
 		"github_run_attempt_provenance_required=true",
@@ -343,6 +374,18 @@ func extractLineValue(text, prefix string) string {
 
 func isFullCommitSHA(value string) bool {
 	return regexp.MustCompile(`^[a-fA-F0-9]{40}$`).MatchString(value)
+}
+
+func isPositiveInteger(value string) bool {
+	return regexp.MustCompile(`^[1-9][0-9]*$`).MatchString(strings.TrimSpace(value))
+}
+
+func runURLMatchesRunID(raw, runID string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+	return strings.HasSuffix(strings.TrimSuffix(parsed.Path, "/"), "/actions/runs/"+strings.TrimSpace(runID))
 }
 
 func normalizeArtifactURL(raw string) (string, error) {
