@@ -30,6 +30,7 @@ type config struct {
 	ReleaseCandidate string
 	ServiceVersion   string
 	DeploymentEnv    string
+	LoadRunID        string
 	Timeout          time.Duration
 	ServiceName      string
 }
@@ -43,6 +44,7 @@ type report struct {
 	ReleaseCandidate string        `json:"release_candidate"`
 	ServiceVersion   string        `json:"service_version"`
 	DeploymentEnv    string        `json:"deployment_environment"`
+	LoadRunID        string        `json:"load_run_id"`
 	Probes           []probeResult `json:"probes"`
 	EvidenceItems    []string      `json:"evidence_items"`
 }
@@ -77,6 +79,7 @@ func parseFlags() config {
 	flag.StringVar(&cfg.ReleaseCandidate, "release-candidate", os.Getenv("RELEASE_CANDIDATE"), "release candidate Git SHA or tag expected in Rust evidence")
 	flag.StringVar(&cfg.ServiceVersion, "service-version", os.Getenv("SERVICE_VERSION"), "service version expected in Rust evidence")
 	flag.StringVar(&cfg.DeploymentEnv, "deployment-environment", os.Getenv("DEPLOYMENT_ENVIRONMENT"), "deployment environment expected in Rust evidence, for example staging")
+	flag.StringVar(&cfg.LoadRunID, "load-run-id", os.Getenv("STAGING_LOAD_RUN_ID"), "staging evidence run identifier shared by Rust health, metrics, and API integration proof")
 	flag.StringVar(&cfg.ServiceName, "service-name", "scriptureforge.engine.ScriptureEngine", "gRPC health service name")
 	flag.DurationVar(&cfg.Timeout, "timeout", 5*time.Second, "per-probe timeout")
 	flag.Parse()
@@ -102,8 +105,9 @@ func runWithDependencies(cfg config, output io.Writer, grpcProbe grpcProbeFunc, 
 	cfg.ReleaseCandidate = strings.TrimSpace(cfg.ReleaseCandidate)
 	cfg.ServiceVersion = strings.TrimSpace(cfg.ServiceVersion)
 	cfg.DeploymentEnv = strings.TrimSpace(cfg.DeploymentEnv)
-	if cfg.ReleaseCandidate == "" || cfg.ServiceVersion == "" || cfg.DeploymentEnv == "" {
-		return errors.New("Rust proof requires -release-candidate, -service-version, and -deployment-environment")
+	cfg.LoadRunID = strings.TrimSpace(cfg.LoadRunID)
+	if cfg.ReleaseCandidate == "" || cfg.ServiceVersion == "" || cfg.DeploymentEnv == "" || cfg.LoadRunID == "" {
+		return errors.New("Rust proof requires -release-candidate, -service-version, -deployment-environment, and -load-run-id")
 	}
 	if cfg.Timeout <= 0 {
 		return errors.New("timeout must be positive")
@@ -135,6 +139,7 @@ func runWithDependencies(cfg config, output io.Writer, grpcProbe grpcProbeFunc, 
 		fmt.Sprintf("release_candidate=%s", cfg.ReleaseCandidate),
 		fmt.Sprintf("service_version=%s", cfg.ServiceVersion),
 		fmt.Sprintf("deployment_environment=%s", cfg.DeploymentEnv),
+		fmt.Sprintf("load_run_id=%s", cfg.LoadRunID),
 	}
 	healthProbe := grpcProbe(cfg.GRPCAddress, cfg.ServiceName, cfg.Timeout)
 	if healthProbe.Passed {
@@ -158,6 +163,7 @@ func runWithDependencies(cfg config, output io.Writer, grpcProbe grpcProbeFunc, 
 		ReleaseCandidate: cfg.ReleaseCandidate,
 		ServiceVersion:   cfg.ServiceVersion,
 		DeploymentEnv:    cfg.DeploymentEnv,
+		LoadRunID:        cfg.LoadRunID,
 		Probes:           probes,
 		EvidenceItems:    []string{"RUST-GRPC-001"},
 	}

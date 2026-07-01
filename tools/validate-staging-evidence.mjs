@@ -303,9 +303,9 @@ const kubernetesSegmentMarkerRequirements = new Map([
   ['kubernetes-workload-resources', ['staging artifact', 'namespace', 'staging', 'deployment', 'service', 'ingress', 'hpa', 'pdb', 'ready', 'available', 'targets', 'minavailable', 'readinessProbe', 'livenessProbe', 'rollingUpdate', 'maxUnavailable=0', 'minReplicas', 'maxReplicas', 'tls', 'SecretProviderClass', 'image', 'sha256:', 'release_candidate=', 'service_version=', 'load_run_id=', 'scriptureforge-api', 'scriptureforge-web', 'scriptureforge-rust-engine', 'distinct_kubernetes_artifacts=true']],
 ]);
 const rustSegmentMarkerRequirements = new Map([
-  ['rust-grpc-health', ['staging artifact', 'grpc health', 'scriptureforge.engine.ScriptureEngine', 'SERVING', 'release_candidate=', 'service_version=', 'deployment_environment=']],
-  ['rust-metrics', ['staging artifact', 'scriptureforge_rust_engine_embedding_requests_total', 'scriptureforge_rust_engine_embedding_failures_total', 'scriptureforge_rust_engine_vector_search_requests_total', 'scriptureforge_rust_engine_vector_search_failures_total', 'Prometheus metrics', 'rust_metrics_samples_verified=true', 'rust_embedding_requests_positive=true', 'rust_vector_search_requests_positive=true', 'release_candidate=', 'service_version=', 'deployment_environment=']],
-  ['api-rust-integration-metrics', ['staging artifact', 'Go API rust_engine vector_search success', 'scriptureforge_dependency_operations_total', 'scriptureforge_dependency_operation_duration_seconds_sum', 'api_rust_metrics_samples_verified=true', 'distinct_metrics_targets=true', 'release_candidate=', 'service_version=', 'deployment_environment=']],
+  ['rust-grpc-health', ['staging artifact', 'grpc health', 'scriptureforge.engine.ScriptureEngine', 'SERVING', 'release_candidate=', 'service_version=', 'deployment_environment=', 'load_run_id=']],
+  ['rust-metrics', ['staging artifact', 'scriptureforge_rust_engine_embedding_requests_total', 'scriptureforge_rust_engine_embedding_failures_total', 'scriptureforge_rust_engine_vector_search_requests_total', 'scriptureforge_rust_engine_vector_search_failures_total', 'Prometheus metrics', 'rust_metrics_samples_verified=true', 'rust_embedding_requests_positive=true', 'rust_vector_search_requests_positive=true', 'release_candidate=', 'service_version=', 'deployment_environment=', 'load_run_id=']],
+  ['api-rust-integration-metrics', ['staging artifact', 'Go API rust_engine vector_search success', 'scriptureforge_dependency_operations_total', 'scriptureforge_dependency_operation_duration_seconds_sum', 'api_rust_metrics_samples_verified=true', 'distinct_metrics_targets=true', 'release_candidate=', 'service_version=', 'deployment_environment=', 'load_run_id=']],
 ]);
 const mobileSegmentMarkerRequirements = new Map([
   ['mobile-eas-or-device-run', ['staging artifact', 'eas', 'build', 'finished', 'android', 'ios', 'native device', 'installed app', 'release channel staging', 'expo profile staging', 'distinct_mobile_artifacts=true', 'release_candidate=', 'service_version=']],
@@ -726,6 +726,7 @@ export const strictProbeFamilies = {
       'distinct_metrics_targets=true',
       'release_candidate',
       'service_version',
+      'load_run_id=',
     ],
   },
   'OBS-OTEL-001': {
@@ -1557,6 +1558,17 @@ function validateStrictReleaseItemEvidence(item, manifest) {
       apiRustVectorSearchSecondsPattern,
       'RUST-GRPC-001 api-rust-integration-metrics must include positive api_rust_vector_search_seconds=<seconds>',
     );
+    const rustLoadRunIDs = [
+      'rust-grpc-health',
+      'rust-metrics',
+      'api-rust-integration-metrics',
+    ].map((segment) => summarySegmentCapture(
+      findEvidenceSegment(evidence, segment),
+      segment,
+      /\bload_run_id=([^\s,;]+)/i,
+    ));
+    assert.ok(rustLoadRunIDs.every(Boolean), 'RUST-GRPC-001 strict release evidence must include load_run_id on every Rust segment');
+    assert.equal(new Set(rustLoadRunIDs).size, 1, 'RUST-GRPC-001 strict release evidence load_run_id values must all match');
   }
   if (item.id === 'CLIENT-MOBILE-001') {
     for (const [segment, markers] of mobileSegmentMarkerRequirements) {

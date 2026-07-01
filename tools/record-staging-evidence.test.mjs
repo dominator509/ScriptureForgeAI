@@ -481,9 +481,9 @@ function mobileConfigProbe(overrides = {}) {
 }
 
 const rustProbeMarkerSummaries = {
-  'rust-grpc-health': 'gRPC health status SERVING in 12ms; verified markers: staging artifact, grpc health, scriptureforge.engine.ScriptureEngine, SERVING, release_candidate=abc123, service_version=scriptureforge-rust-engine:abc123, deployment_environment=staging',
-  'rust-metrics': 'metrics HTTP 200 in 12ms; verified markers: staging artifact, scriptureforge_rust_engine_embedding_requests_total, scriptureforge_rust_engine_embedding_failures_total, scriptureforge_rust_engine_vector_search_requests_total, scriptureforge_rust_engine_vector_search_failures_total, release_candidate=abc123, service_version=scriptureforge-rust-engine:abc123, deployment_environment=staging, Prometheus metrics, rust_metrics_samples_verified=true, rust_embedding_requests_positive=true, rust_vector_search_requests_positive=true; embedding_requests=1; vector_search_requests=1',
-  'api-rust-integration-metrics': 'API metrics HTTP 200 in 12ms; verified markers: staging artifact, Go API rust_engine vector_search success, scriptureforge_dependency_operations_total, scriptureforge_dependency_operation_duration_seconds_sum, api_rust_metrics_samples_verified=true, distinct_metrics_targets=true, release_candidate=abc123, service_version=scriptureforge-rust-engine:abc123, deployment_environment=staging; api_rust_vector_search_ops=1; api_rust_vector_search_seconds=0.042',
+  'rust-grpc-health': 'gRPC health status SERVING in 12ms; verified markers: staging artifact, grpc health, scriptureforge.engine.ScriptureEngine, SERVING, release_candidate=abc123, service_version=scriptureforge-rust-engine:abc123, deployment_environment=staging, load_run_id=rust-run-123',
+  'rust-metrics': 'metrics HTTP 200 in 12ms; verified markers: staging artifact, scriptureforge_rust_engine_embedding_requests_total, scriptureforge_rust_engine_embedding_failures_total, scriptureforge_rust_engine_vector_search_requests_total, scriptureforge_rust_engine_vector_search_failures_total, release_candidate=abc123, service_version=scriptureforge-rust-engine:abc123, deployment_environment=staging, load_run_id=rust-run-123, Prometheus metrics, rust_metrics_samples_verified=true, rust_embedding_requests_positive=true, rust_vector_search_requests_positive=true; embedding_requests=1; vector_search_requests=1',
+  'api-rust-integration-metrics': 'API metrics HTTP 200 in 12ms; verified markers: staging artifact, Go API rust_engine vector_search success, scriptureforge_dependency_operations_total, scriptureforge_dependency_operation_duration_seconds_sum, api_rust_metrics_samples_verified=true, distinct_metrics_targets=true, release_candidate=abc123, service_version=scriptureforge-rust-engine:abc123, deployment_environment=staging, load_run_id=rust-run-123; api_rust_vector_search_ops=1; api_rust_vector_search_seconds=0.042',
 };
 
 function rustProbe(name, overrides = {}) {
@@ -2405,7 +2405,7 @@ test('recordEvidence rejects Rust gRPC evidence without verified marker summarie
             passed: true,
             target: 'http://scriptureforge-rust-engine.staging.svc.cluster.local:9102/metrics',
             status_code: 200,
-            result_summary: 'metrics HTTP 200 in 12ms; verified markers: staging artifact, Prometheus metrics',
+            result_summary: 'metrics HTTP 200 in 12ms; verified markers: staging artifact, Prometheus metrics, load_run_id=rust-run-123',
           },
           {
             name: 'api-rust-integration-metrics',
@@ -2787,7 +2787,7 @@ test('recordEvidence rejects Rust gRPC evidence without failure-counter metrics'
             passed: true,
             target: 'http://scriptureforge-rust-engine.staging.svc.cluster.local:9102/metrics',
             status_code: 200,
-            result_summary: 'metrics HTTP 200 in 12ms; verified markers: staging artifact, scriptureforge_rust_engine_embedding_requests_total, scriptureforge_rust_engine_vector_search_requests_total, Prometheus metrics',
+            result_summary: 'metrics HTTP 200 in 12ms; verified markers: staging artifact, scriptureforge_rust_engine_embedding_requests_total, scriptureforge_rust_engine_vector_search_requests_total, Prometheus metrics, load_run_id=rust-run-123',
           },
           {
             name: 'api-rust-integration-metrics',

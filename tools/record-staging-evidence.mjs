@@ -1426,6 +1426,7 @@ function validateRustEvidence(report, manifest) {
     `deployment_environment=${String(report.deployment_environment ?? '').trim()}`,
   ];
   assert.ok(String(report.deployment_environment ?? '').trim(), 'RUST-GRPC-001 report must include deployment_environment');
+  const probeLoadRunIDs = new Set();
   const grpcTarget = String(report.grpc_target ?? '');
   assert.ok(grpcTarget.length > 0, 'RUST-GRPC-001 report must include grpc_target');
   assertNonLocalOrPrivateTarget(grpcTarget, `RUST-GRPC-001 grpc_target must not be local/self-test: ${grpcTarget}`);
@@ -1450,6 +1451,9 @@ function validateRustEvidence(report, manifest) {
   const probes = Array.isArray(report.probes) ? report.probes : [];
   const probesByName = new Map(probes.map((probe) => [probe.name, probe]));
   const health = probesByName.get('rust-grpc-health');
+  const reportLoadRunID = String(report.load_run_id ?? '').trim()
+    || summaryMarkerValue(String(health?.result_summary ?? ''), 'load_run_id');
+  assert.ok(reportLoadRunID, 'RUST-GRPC-001 report must include load_run_id');
   assert.ok(health, 'RUST-GRPC-001 report must include rust-grpc-health probe');
   assert.equal(health.passed, true, 'rust-grpc-health must pass');
   assert.equal(health.status, 'SERVING', 'rust-grpc-health must report SERVING');
@@ -1457,6 +1461,7 @@ function validateRustEvidence(report, manifest) {
   assertSummaryIncludesMarkers('rust-grpc-health', String(health.result_summary ?? ''), [
     ...(requiredRustProbeSummaryMarkers.get('rust-grpc-health') ?? []),
     ...reportReleaseMarkers,
+    assertProbeLoadRunBinding('rust-grpc-health', String(health.result_summary ?? ''), reportLoadRunID, probeLoadRunIDs),
   ]);
 
   const metrics = probesByName.get('rust-metrics');
@@ -1467,6 +1472,7 @@ function validateRustEvidence(report, manifest) {
   assertSummaryIncludesMarkers('rust-metrics', String(metrics.result_summary ?? ''), [
     ...(requiredRustProbeSummaryMarkers.get('rust-metrics') ?? []),
     ...reportReleaseMarkers,
+    assertProbeLoadRunBinding('rust-metrics', String(metrics.result_summary ?? ''), reportLoadRunID, probeLoadRunIDs),
   ]);
   assert.ok(Number(metrics.embedding_requests) > 0, 'rust-metrics must include positive structured embedding_requests');
   assert.ok(Number(metrics.vector_search_requests) > 0, 'rust-metrics must include positive structured vector_search_requests');
@@ -1483,6 +1489,7 @@ function validateRustEvidence(report, manifest) {
   assertSummaryIncludesMarkers('api-rust-integration-metrics', String(apiMetrics.result_summary ?? ''), [
     ...(requiredRustProbeSummaryMarkers.get('api-rust-integration-metrics') ?? []),
     ...reportReleaseMarkers,
+    assertProbeLoadRunBinding('api-rust-integration-metrics', String(apiMetrics.result_summary ?? ''), reportLoadRunID, probeLoadRunIDs),
   ]);
   assert.ok(Number(apiMetrics.api_rust_vector_search_ops) > 0, 'api-rust-integration-metrics must include positive structured api_rust_vector_search_ops');
   assert.ok(Number(apiMetrics.api_rust_vector_search_seconds) > 0, 'api-rust-integration-metrics must include positive structured api_rust_vector_search_seconds');
@@ -1490,6 +1497,7 @@ function validateRustEvidence(report, manifest) {
     `api_rust_vector_search_ops=${Number(apiMetrics.api_rust_vector_search_ops)}`,
     `api_rust_vector_search_seconds=${Number(apiMetrics.api_rust_vector_search_seconds)}`,
   ]);
+  assert.equal(probeLoadRunIDs.size, 1, 'RUST-GRPC-001 probe result_summary load_run_id values must all match');
 }
 
 function validateZoomEvidence(report, manifest) {

@@ -19,12 +19,12 @@ import (
 )
 
 var requiredRustProbeSummaryMarkers = map[string][]string{
-	"rust-grpc-health":             {"staging artifact", "grpc health", "scriptureforge.engine.ScriptureEngine", "SERVING", "release_candidate=sha-rust", "service_version=scriptureforge-rust-engine:sha-rust", "deployment_environment=staging"},
-	"rust-metrics":                 {"staging artifact", "scriptureforge_rust_engine_embedding_requests_total", "scriptureforge_rust_engine_embedding_failures_total", "scriptureforge_rust_engine_vector_search_requests_total", "scriptureforge_rust_engine_vector_search_failures_total", "Prometheus metrics", "rust_metrics_samples_verified=true", "rust_embedding_requests_positive=true", "rust_vector_search_requests_positive=true", "release_candidate=sha-rust", "service_version=scriptureforge-rust-engine:sha-rust", "deployment_environment=staging", "embedding_requests=1", "vector_search_requests=1"},
-	"api-rust-integration-metrics": {"staging artifact", "Go API rust_engine vector_search success", "scriptureforge_dependency_operations_total", "scriptureforge_dependency_operation_duration_seconds_sum", "api_rust_metrics_samples_verified=true", "distinct_metrics_targets=true", "release_candidate=sha-rust", "service_version=scriptureforge-rust-engine:sha-rust", "deployment_environment=staging", "api_rust_vector_search_ops=1", "api_rust_vector_search_seconds=0.042"},
+	"rust-grpc-health":             {"staging artifact", "grpc health", "scriptureforge.engine.ScriptureEngine", "SERVING", "release_candidate=sha-rust", "service_version=scriptureforge-rust-engine:sha-rust", "deployment_environment=staging", "load_run_id=rust-run-123"},
+	"rust-metrics":                 {"staging artifact", "scriptureforge_rust_engine_embedding_requests_total", "scriptureforge_rust_engine_embedding_failures_total", "scriptureforge_rust_engine_vector_search_requests_total", "scriptureforge_rust_engine_vector_search_failures_total", "Prometheus metrics", "rust_metrics_samples_verified=true", "rust_embedding_requests_positive=true", "rust_vector_search_requests_positive=true", "release_candidate=sha-rust", "service_version=scriptureforge-rust-engine:sha-rust", "deployment_environment=staging", "load_run_id=rust-run-123", "embedding_requests=1", "vector_search_requests=1"},
+	"api-rust-integration-metrics": {"staging artifact", "Go API rust_engine vector_search success", "scriptureforge_dependency_operations_total", "scriptureforge_dependency_operation_duration_seconds_sum", "api_rust_metrics_samples_verified=true", "distinct_metrics_targets=true", "release_candidate=sha-rust", "service_version=scriptureforge-rust-engine:sha-rust", "deployment_environment=staging", "load_run_id=rust-run-123", "api_rust_vector_search_ops=1", "api_rust_vector_search_seconds=0.042"},
 }
 
-var rustReleaseMarkers = []string{"release_candidate=sha-rust", "service_version=scriptureforge-rust-engine:sha-rust", "deployment_environment=staging"}
+var rustReleaseMarkers = []string{"release_candidate=sha-rust", "service_version=scriptureforge-rust-engine:sha-rust", "deployment_environment=staging", "load_run_id=rust-run-123"}
 
 func stagingRustConfig() config {
 	return config{
@@ -34,6 +34,7 @@ func stagingRustConfig() config {
 		ReleaseCandidate: "sha-rust",
 		ServiceVersion:   "scriptureforge-rust-engine:sha-rust",
 		DeploymentEnv:    "staging",
+		LoadRunID:        "rust-run-123",
 		Timeout:          time.Second,
 		ServiceName:      "scriptureforge.engine.ScriptureEngine",
 	}
@@ -75,7 +76,7 @@ func TestRunProducesRustGRPCEvidenceReport(t *testing.T) {
 	if result.ReleaseCandidate != "sha-rust" || result.ServiceVersion != "scriptureforge-rust-engine:sha-rust" {
 		t.Fatalf("unexpected release identity: %+v", result)
 	}
-	if result.DeploymentEnv != "staging" {
+	if result.DeploymentEnv != "staging" || result.LoadRunID != "rust-run-123" {
 		t.Fatalf("unexpected deployment environment: %+v", result)
 	}
 	assertProbeSummariesIncludeMarkers(t, result.Probes, requiredRustProbeSummaryMarkers)
@@ -106,6 +107,16 @@ func TestRunRequiresDeploymentEnvironment(t *testing.T) {
 	err := runWithDependencies(cfg, &output, nil, http.DefaultClient)
 	if err == nil || !strings.Contains(err.Error(), "deployment-environment") {
 		t.Fatalf("expected deployment environment requirement error, got %v", err)
+	}
+}
+
+func TestRunRequiresLoadRunID(t *testing.T) {
+	cfg := stagingRustConfig()
+	cfg.LoadRunID = ""
+	var output bytes.Buffer
+	err := runWithDependencies(cfg, &output, nil, http.DefaultClient)
+	if err == nil || !strings.Contains(err.Error(), "load-run-id") {
+		t.Fatalf("expected load-run-id requirement error, got %v", err)
 	}
 }
 
@@ -399,6 +410,7 @@ func TestRunRejectsLocalOrMalformedTargets(t *testing.T) {
 			tc.cfg.ReleaseCandidate = "sha-rust"
 			tc.cfg.ServiceVersion = "scriptureforge-rust-engine:sha-rust"
 			tc.cfg.DeploymentEnv = "staging"
+			tc.cfg.LoadRunID = "rust-run-123"
 			var output bytes.Buffer
 			err := runWithDependencies(tc.cfg, &output, nil, http.DefaultClient)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
