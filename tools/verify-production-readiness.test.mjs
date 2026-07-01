@@ -33,7 +33,7 @@ import { stagingEvidenceGapReportProofMarkers } from './report-staging-evidence-
 import { projectPathProofMarkers, strictStagingPathProofMarkers } from './verify-project-path.mjs';
 import { goTestProofMarkers, goVetProofMarkers } from './run-go-core-gate.mjs';
 import { goProbeProofMarkers } from './run-go-probe-tests.mjs';
-import { npmAuditProofMarkers } from './run-npm-audit.mjs';
+import { npmAuditCompletedMarkers } from './run-npm-audit.mjs';
 import { terraformFmtProofMarkers, terraformValidateProofMarkers } from './run-terraform-command.mjs';
 import { terraformInitProofMarkers } from './run-terraform-init.mjs';
 import {
@@ -825,7 +825,7 @@ function stdoutForGate(id) {
   if (id === 'go-vet') return `go-vet-gate validated: ${goVetProofMarkers.join(', ')}`;
   if (id === 'rls-db-integration') return `rls-db-integration proof: ${rlsDBProofMarkers.join(', ')}`;
   if (id === 'evidence-probes') return `production evidence probe tests validated: ${goProbeProofMarkers.join(', ')}`;
-  if (id === 'web-audit' || id === 'mobile-audit') return `npm audit gate validated: ${npmAuditProofMarkers.join(', ')}`;
+  if (id === 'web-audit' || id === 'mobile-audit') return `npm audit gate validated: ${npmAuditCompletedMarkers.join(', ')}`;
   if (id === 'web-smoke') {
     return [
       'web api smoke proof:',
@@ -842,14 +842,24 @@ function stdoutForGate(id) {
       ...mobileSmokeProofMarkers,
     ].join('\n');
   }
-  if (id === 'mobile-build-check') return `mobile-build-check-gate validated: ${mobileBuildCheckProofMarkers.join(', ')}`;
+  if (id === 'mobile-build-check') {
+    return [
+      `mobile-build-check-gate validated: ${mobileBuildCheckProofMarkers.join(', ')}`,
+      `journal crypto verification passed: ${journalCryptoProofMarkers.join(', ')}`,
+    ].join('\n');
+  }
   if (id === 'rust-protobuf-validation') return `Rust protobuf tooling verified: ${rustProtobufProofMarkers.join(', ')}`;
   if (id === 'rust-cargo-test') {
     return rustCargoProofMarkers.join('\n');
   }
   if (id === 'terraform-fmt') return `terraform-fmt-gate validated: ${terraformFmtProofMarkers.join(', ')}`;
   if (id === 'terraform-init-validate') return `terraform init gate validated: ${terraformInitProofMarkers.join(', ')}`;
-  if (id === 'terraform-validate') return `terraform-validate-gate validated: ${terraformValidateProofMarkers.join(', ')}`;
+  if (id === 'terraform-validate') {
+    return [
+      'Success! The configuration is valid.',
+      `terraform-validate-gate validated: ${terraformValidateProofMarkers.join(', ')}`,
+    ].join('\n');
+  }
   if (id === 'deployment-skeleton-validation') return `deployment skeleton and runtime config invariants validated: ${deploymentSkeletonProofMarkers.join(', ')}`;
   if (id === 'observability-validation') return `observability artifacts validated: ${observabilityProofMarkers.join(', ')}`;
   if (id === 'journal-crypto-validation') return `journal crypto verification passed: ${journalCryptoProofMarkers.join(', ')}`;
@@ -904,9 +914,20 @@ function contractManifest() {
       category: 'test',
       status: 'pending_external',
       description: `${id} pending proof`,
-      required_evidence: [`${id} required evidence`],
+      required_evidence: pendingEvidenceFor(id),
     })),
   };
+}
+
+function pendingEvidenceFor(id) {
+  if (id !== 'SEC-SIGNOFF-001') {
+    return [`${id} required evidence`];
+  }
+  return [
+    'Owner/security approval record captured as a content-verified repo security/*.md signoff/approval document or HTTPS non-local approval artifact',
+    'Release risk signoff record captured as a content-verified repo security/*.md signoff/approval document or HTTPS non-local approval artifact',
+    'record-staging-evidence SEC-SIGNOFF-001 summary markers: threat model approval, security/dependency_risk_register.md#DRR-001, dependency risk decision, residual risk review, owner/security approval, release risk signoff, signoff_artifact_verified=true, and exact release_candidate=<manifest release_candidate>',
+  ];
 }
 
 function passedEvidenceFor(id, releaseCandidate = sha) {
@@ -937,8 +958,12 @@ function passedEvidenceFor(id, releaseCandidate = sha) {
     observed_at: '2026-06-25T12:00:00Z',
     command_or_probe: id === 'SRC-CI-001'
       ? 'go run ./tools/ciprobe -run-artifact-url https://artifacts.staging.scriptureforge.ai/ci/ci-release-evidence.txt'
-      : `go run ./tools/${probe}`,
-    artifact: `https://artifacts.staging.scriptureforge.ai/${probe}.json`,
+      : id === 'SEC-SIGNOFF-001'
+        ? 'record-staging-evidence SEC-SIGNOFF-001 --artifact security/release-risk-signoff.md'
+        : `go run ./tools/${probe}`,
+    artifact: id === 'SEC-SIGNOFF-001'
+      ? 'security/release-risk-signoff.md'
+      : `https://artifacts.staging.scriptureforge.ai/${probe}.json`,
     result_summary: strictEvidenceSummary(id, releaseCandidate),
   };
 }
@@ -948,7 +973,7 @@ function strictEvidenceSummary(id, releaseCandidate = sha) {
     return `github-actions-release-run passed with uploaded ci-release-evidence artifact release_candidate=${releaseCandidate} proof markers: ${ciReleaseEvidenceProofMarkers.join(', ')}`;
   }
   if (id === 'DEPLOY-TF-001') {
-    return `DEPLOY-TF-001 deploymentprobe passed: terraform-remote-backend-init staging artifact terraform s3 backend bucket key encrypt=true dynamodb_table successfully initialized release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; terraform-staging-plan staging artifact Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; terraform-staging-apply-or-approval staging artifact deployment approval approved DEPLOY-TF-001 change_ticket=PLATFORM-123 release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123 distinct_terraform_artifacts=true`;
+    return `DEPLOY-TF-001 deploymentprobe passed: terraform-remote-backend-init staging artifact terraform s3 backend bucket key encrypt=true kms_key_id=alias/scriptureforge-tf-state versioning=enabled dynamodb_table successfully initialized release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; terraform-staging-plan staging artifact Terraform Plan: aws_eks_cluster aws_eks_node_group aws_rds_cluster aws_elasticache_replication_group aws_ecr_repository kubernetes_deployment kubernetes_ingress_v1 kubernetes_horizontal_pod_autoscaler_v2 kubernetes_pod_disruption_budget_v1 kubernetes_manifest aws_iam_role kms_key_id=arn:aws:kms:us-east-1:123456789012:key/11111111-1111-4111-8111-111111111111 database_kms_key_arn=arn:aws:kms:us-east-1:123456789012:key/22222222-2222-4222-8222-222222222222 redis_kms_key_arn=arn:aws:kms:us-east-1:123456789012:key/33333333-3333-4333-8333-333333333333 release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; terraform-staging-apply-or-approval staging artifact deployment approval approved DEPLOY-TF-001 change_ticket=PLATFORM-123 release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123 distinct_terraform_artifacts=true`;
   }
   if (id === 'DEPLOY-TLS-001') {
     const release = `release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123`;
@@ -966,7 +991,7 @@ function strictEvidenceSummary(id, releaseCandidate = sha) {
     return `DEPLOY-K8S-001 deploymentprobe passed: kubernetes-rollout-status staging artifact namespace staging deployment scriptureforge-api scriptureforge-web scriptureforge-rust-engine successfully rolled out ready available release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; kubernetes-workload-resources staging artifact namespace staging deployment service ingress hpa pdb ready available targets minavailable readinessProbe livenessProbe rollingUpdate maxUnavailable=0 minReplicas maxReplicas tls SecretProviderClass image scriptureforge-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa scriptureforge-web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb scriptureforge-rust-engine@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123 scriptureforge-api scriptureforge-web scriptureforge-rust-engine concrete_image_digests=3 workload_image_digests=3 distinct_kubernetes_artifacts=true`;
   }
   if (id === 'EXT-ZOOM-001') {
-  return `EXT-ZOOM-001 zoomprobe passed: zoom-oauth-readiness staging artifact oauth account_credentials status ok release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; zoom-meeting-create-or-fallback staging artifact meeting join_url zoom.us release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; zoom-timeout-circuit-fallback staging artifact timeout provider timeout circuit open circuit_open_fallback fallback offline://in-person provider_timeout=true circuit_open=true offline_fallback=true release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; zoom-webhook-signature-delivery staging artifact webhook signature x-zm-signature=v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa x-zm-request-timestamp=1710000000 stale replay 401 invalid signed 200 release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; zoom-webhook-url-validation staging artifact endpoint.url_validation plain_token=zoom-plain-123 encrypted_token=zoom-encrypted-456 validation_response=200 release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; zoom-duplicate-webhook-idempotency staging artifact duplicate x-zm-trackingid=zm-track-123 delivery_id=zm-delivery-123 delivery id same Zoom event idempotent 200 single state mutation no duplicate side effects single_state_mutation=true no_duplicate_side_effects=true release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; zoom-meeting-room-mapping staging artifact meeting_external_id=zoom-123 live_rooms internal_room_id=room-abc redis room state mapped unknown meeting ignored no external meeting id fallback distinct_zoom_artifacts=true release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123`;
+  return `EXT-ZOOM-001 zoomprobe passed: zoom-oauth-readiness staging artifact oauth account_credentials status ok release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; zoom-meeting-create-or-fallback staging artifact meeting join_url zoom.us release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; zoom-timeout-circuit-fallback staging artifact timeout provider timeout circuit open circuit_open_fallback fallback offline://in-person provider_timeout=true circuit_open=true offline_fallback=true release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; zoom-webhook-signature-delivery staging artifact webhook signature x-zm-signature=v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa x-zm-request-timestamp=1710000000 stale replay 401 invalid signed 200 stale_rejected=true replay_rejected=true invalid_signature_rejected=true signed_delivery_accepted=true release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; zoom-webhook-url-validation staging artifact endpoint.url_validation plain_token=zoom-plain-123 encrypted_token=zoom-encrypted-456 validation_response=200 release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; zoom-duplicate-webhook-idempotency staging artifact duplicate x-zm-trackingid=zm-track-123 delivery_id=zm-delivery-123 delivery id same Zoom event idempotent 200 single state mutation no duplicate side effects single_state_mutation=true no_duplicate_side_effects=true release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; zoom-meeting-room-mapping staging artifact meeting_external_id=zoom-123 live_rooms internal_room_id=room-abc redis room state mapped unknown meeting ignored no external meeting id fallback distinct_zoom_artifacts=true release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123`;
 }
   if (id === 'EXT-AI-001') {
     return `EXT-AI-001 aiprobe passed: ai-provider-config staging artifact AI_PROVIDER AI_CHAT_MODEL AI_CHAT_ENDPOINT AI_HTTP_TIMEOUT_MS AI_MAX_RETRIES OPENAI_API_KEY redacted configured AI_PROVIDER=openai AI_CHAT_MODEL=gpt-staging AI_CHAT_ENDPOINT=https://api.openai.com/v1/chat/completions AI_HTTP_TIMEOUT_MS=3500 AI_MAX_RETRIES=1 release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; ai-generation-route staging artifact /api/v1/ai/generate/study authenticated JWT claims organization_id=org-staging user_id=user-staging request_id=req-1 200 generated_curriculum [Genesis 1:1] release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; ai-timeout-degradation staging artifact provider timeout degradation retry exhausted 503 fail closed AI_ORCHESTRATION_ENGINE_FAULT provider_timeout=true retry_exhausted=true fail_closed=true release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; ai-citation-verification staging artifact no-citation rejected hallucinated citation rejected verified citation accepted citation_trails citation_id=cite-1 release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; ai-audit-persistence staging artifact ai_request_logs citation_trails organization_id=org-staging user_id=user-staging request_id=req-1 citation_id=cite-1 succeeded failed verified tenant rls cross-tenant hidden distinct_ai_artifacts=true release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123`;
@@ -989,7 +1014,7 @@ function strictEvidenceSummary(id, releaseCandidate = sha) {
     const release = `release_candidate=${releaseCandidate} service_version=scriptureforge-mobile:${releaseCandidate} load_run_id=load-run-123`;
     return [
       'CLIENT-MOBILE-001 mobileprobe passed: mobile-eas-or-device-run staging artifact eas build finished android ios native device installed app release channel staging expo profile staging mobile_build_id=mobile-build-123 platforms=android,ios release_channel=staging expo_profile=staging distinct_mobile_artifacts=true',
-      'mobile-native-crypto-smoke staging artifact runJournalCryptoSelfTest react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true mobile_build_id=mobile-build-123 AES-GCM round-trip unique_iv=true unique IV tamper rejected associated data wrong associated data rejected associated_data_salt_id=journal:self-test:server-derived-salt associated_data_salt_version=1 non-extractable provider-bound key fallback-derived key rejected key disposed disposed handle rejected revoked_key_rejected=true stale raw key rejected passphrase wiped passphrase buffer zeroized salt wiped salt buffer zeroized plaintext cleared plaintext buffer zeroized distinct_mobile_artifacts=true',
+      'mobile-native-crypto-smoke staging artifact runJournalCryptoSelfTest react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true mobile_build_id=mobile-build-123 AES-GCM round-trip unique_iv=true unique IV tamper rejected associated data wrong associated data rejected associated_data_salt_id=journal:self-test:server-derived-salt associated_data_salt_version=1 non-extractable provider-bound key fallback-derived key rejected key disposed key_disposed=true disposed handle rejected disposed_handle_rejected=true revoked_key_rejected=true stale raw key rejected passphrase wiped passphrase buffer zeroized passphrase_buffer_zeroized=true salt wiped salt buffer zeroized salt_buffer_zeroized=true plaintext cleared plaintext buffer zeroized plaintext_buffer_zeroized=true distinct_mobile_artifacts=true',
       'mobile-staging-config staging artifact EXPO_PUBLIC_API_BASE_URL EXPO_PUBLIC_WS_BASE_URL EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging mobile_build_id=mobile-build-123 https:// wss:// staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai distinct_mobile_artifacts=true',
     ].map((segment) => `${segment} ${release}`).join('; ');
   }
@@ -1010,7 +1035,7 @@ function strictEvidenceSummary(id, releaseCandidate = sha) {
     return `DR-ROLLBACK-001 resilienceprobe passed: api-ready-before-rollback staging artifact ready service_version deployment_environment pre_rollback_version pre_rollback_version=release-1 release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; rollback-rollout-artifact staging artifact rollout undo revision previous_revision target_revision scriptureforge-api successfully rolled out release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; api-ready-after-rollback staging artifact ready service_version deployment_environment post_rollback_version post_rollback_version=release-0 rolled_back_from rolled_back_from=release-1 rolled_back_to rolled_back_to=release-0 release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; degradation-drill-artifact staging artifact AI Zoom degradation fallback AI_ORCHESTRATION_ENGINE_FAULT offline://in-person non-AI routes healthy zoom circuit open ai_fault=true zoom_offline_fallback=true non_ai_routes_healthy=true zoom_circuit_open=true distinct_rollback_artifacts=true release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123`;
   }
   if (id === 'DR-BACKUP-001') {
-    return `DR-BACKUP-001 resilienceprobe passed: backup-snapshot-artifact staging artifact snapshot snapshot_id=snap-123 available encrypted kms retention automated backup source cluster rpo_minutes=15 release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; restore-drill-artifact staging artifact restore restore_job_id=restore-456 available staging restored endpoint source snapshot_id=snap-123 checksum isolated restore rto_minutes=30 restore_duration_minutes=18 release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; restored-database-smoke staging artifact smoke passed restored database tenant journal auth RLS migration version no plaintext journal distinct_backup_artifacts=true release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123`;
+    return `DR-BACKUP-001 resilienceprobe passed: backup-snapshot-artifact staging artifact snapshot snapshot_id=snap-123 available encrypted kms_key_id=arn:aws:kms:us-east-1:123456789012:key/44444444-4444-4444-8444-444444444444 retention automated backup source cluster rpo_minutes=15 release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; restore-drill-artifact staging artifact restore restore_job_id=restore-456 available staging restored endpoint source snapshot_id=snap-123 checksum isolated restore rto_minutes=30 restore_duration_minutes=18 release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123; restored-database-smoke staging artifact smoke passed restored database tenant journal auth RLS migration version no plaintext journal distinct_backup_artifacts=true release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123`;
   }
   if (id === 'ABUSE-LIMIT-001') {
     const release = `release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123`;
@@ -1036,13 +1061,31 @@ function strictEvidenceSummary(id, releaseCandidate = sha) {
     return `DATA-REDIS-001 staging artifact profile=staging_websocket release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123 ws_room_id=room-1 ws_user_id=user-1 ws_organization_id=org-1 ws_reconnect_room_id=room-1 ws_polling_room_id=room-1 redis_telemetry_room_id=room-1 ws_reconnect_sequence_continues=true production_min_ws_events=30000 ws_sequence_contiguous=true ws_expected_events=30000 ws_unique_sequences=30000 ws_min_sequence=1 ws_max_sequence=30000 ws_polling_latest_sequence=30000 ws_polling_artifact_url=https://artifacts.staging.scriptureforge.ai/load/ws-polling.txt redis_telemetry_artifact_url=https://artifacts.staging.scriptureforge.ai/load/redis-telemetry.txt; verified markers: ws_polling_artifact_url=https://artifacts.staging.scriptureforge.ai/load/ws-polling.txt, redis_telemetry_artifact_verified, ws_polling_artifact_latest_sequence_validated=true, ws_polling_artifact_latest_sequence_matches_run=true, ws_distinct_artifacts=true, room_broadcast_drops=0`;
   }
   if (id === 'SEC-SIGNOFF-001') {
-    return `threat model approval complete; security/dependency_risk_register.md#DRR-001 dependency risk decision reviewed; residual risk review complete; owner/security approval recorded; release risk signoff approved; release_candidate=${releaseCandidate}`;
+    return `threat model approval complete; security/dependency_risk_register.md#DRR-001 dependency risk decision reviewed; residual risk review complete; owner/security approval recorded; release risk signoff approved; signoff_artifact_verified=true; release_candidate=${releaseCandidate}`;
   }
   return `${id} passed`;
 }
 
 function tenantRLSSummary(releaseCandidate) {
   const release = `release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123`;
+  const rlsTables = [
+    'organizations',
+    'users',
+    'scripture_texts',
+    'refresh_tokens',
+    'journal_entries',
+    'live_rooms',
+    'room_participants',
+    'ai_request_logs',
+    'citation_trails',
+  ];
+  const rlsTableOutcomes = rlsTables
+    .flatMap((table) => [
+      `rls_table_${table}_same_visible=true`,
+      `rls_table_${table}_cross_hidden=true`,
+      `rls_table_${table}_write_denied=true`,
+    ])
+    .join(' ');
   return [
     'DATA-RLS-001 tenantprobe passed: owner-create-encrypted-journal same-tenant journal write accepted encrypted journal created plaintext not returned plaintext-shaped journal payload denied malformed encrypted envelope rejected journal_id=journal-1',
     'blocked-journal-tenant-override-write-denied cross-tenant journal write denied tenant override rejected',
@@ -1056,7 +1099,7 @@ function tenantRLSSummary(releaseCandidate) {
     'blocked-active-rooms-excludes-created-room cross-tenant room list hidden created room absent room_id=room-1',
     'owner-room-state same-tenant room state visible created room state returned room_id=room-1',
     'blocked-room-state-denied cross-tenant room state denied created room state hidden room_id=room-1',
-    "database-rls-context-proof staging artifact current_user=scriptureforge_app non-superuser superuser=false bypassrls=false app.current_org_id app.current_org_id=11111111-1111-4111-8111-111111111111 current_setting('app.current_org_id') blocked_org_id=22222222-2222-4222-8222-222222222222 row_security=on FORCE ROW LEVEL SECURITY rls_tables_verified=9 rls_forced_tables=9 rls_policy_scope=app.current_org_id organizations users scripture_texts refresh_tokens journal_entries live_rooms room_participants ai_request_logs citation_trails same-tenant read visible cross-tenant read hidden cross-tenant write denied auth_refresh_session_rls=true auth_mfa_rls=true workspace_switch_tenant_match=true privileged_mfa_enrollment_rls=true ai_audit_rls=true generated_curriculum_audit_rls=true distinct_db_rls_artifact=true",
+    `database-rls-context-proof staging artifact current_user=scriptureforge_app non-superuser superuser=false bypassrls=false app.current_org_id app.current_org_id=11111111-1111-4111-8111-111111111111 current_setting('app.current_org_id') blocked_org_id=22222222-2222-4222-8222-222222222222 row_security=on FORCE ROW LEVEL SECURITY rls_tables_verified=9 rls_forced_tables=9 rls_table_names=${rlsTables.join(',')} rls_policy_scope=app.current_org_id ${rlsTables.join(' ')} ${rlsTableOutcomes} same-tenant read visible cross-tenant read hidden cross-tenant write denied auth_refresh_session_rls=true auth_mfa_rls=true workspace_switch_tenant_match=true privileged_mfa_enrollment_rls=true ai_audit_rls=true generated_curriculum_audit_rls=true distinct_db_rls_artifact=true`,
   ].map((segment) => `${segment} ${release}`).join('; ');
 }
 

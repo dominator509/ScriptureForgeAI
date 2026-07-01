@@ -100,12 +100,13 @@ export const ciStrictStagingPathProofMarkers = [
   'strict_staging_broken_shims_rejected=true',
 ];
 
-export function resolveCommand(name, runner = spawnSync) {
-  const probe = isWindows
+export function resolveCommand(name, runner = spawnSync, platformName = platform()) {
+  const runningOnWindows = platformName === 'win32';
+  const probe = runningOnWindows
     ? runner('where.exe', [name], { encoding: 'utf8' })
     : runner('which', [name], { encoding: 'utf8' });
   if (probe.status !== 0) {
-    return isWindows && runner === spawnSync ? resolveWindowsPathManually(name) : [];
+    return runningOnWindows && runner === spawnSync ? resolveWindowsPathManually(name) : [];
   }
   return probe.stdout
     .split(/\r?\n/)
@@ -144,8 +145,8 @@ function resolveWindowsPathManually(name) {
   return matches;
 }
 
-export function windowsFallbackDirectoriesForCommand(name, env = process.env) {
-  if (!isWindows) {
+export function windowsFallbackDirectoriesForCommand(name, env = process.env, { platformName = platform() } = {}) {
+  if (platformName !== 'win32') {
     return [];
   }
   const repoRoot = process.cwd();
@@ -272,11 +273,17 @@ function readVersionDetails(command, versionArgs = ['--version'], runner = spawn
   };
 }
 
-export function buildPathReport({ runner = spawnSync, strictStaging = false, ci = false, vendoredProtocCoverage = checkVendoredProtocCoverage } = {}) {
+export function buildPathReport({
+  runner = spawnSync,
+  strictStaging = false,
+  ci = false,
+  vendoredProtocCoverage = checkVendoredProtocCoverage,
+  platformName = platform(),
+} = {}) {
   const vendoredProtoc = vendoredProtocCoverage();
   const requiredSet = ci ? ciRequiredCommands : requiredCommands;
   const required = requiredSet.map((command) => {
-    const paths = resolveCommand(command.name, runner);
+    const paths = resolveCommand(command.name, runner, platformName);
     return {
       name: command.name,
       required: true,
@@ -286,7 +293,7 @@ export function buildPathReport({ runner = spawnSync, strictStaging = false, ci 
     };
   });
   const optional = optionalCommands.map((command) => {
-    const paths = resolveCommand(command.name, runner);
+    const paths = resolveCommand(command.name, runner, platformName);
     const version = paths.length > 0 && command.versionArgs
       ? readVersionDetails(preferredExecutable(paths, command.name), command.versionArgs, runner, command.versionPattern)
       : null;
@@ -300,7 +307,7 @@ export function buildPathReport({ runner = spawnSync, strictStaging = false, ci 
       version_ok: versionOK,
       version_requirement: command.versionRequirement,
       version_matches: version?.version_matches ?? null,
-      searched_paths: strictStaging && paths.length === 0 ? windowsFallbackDirectoriesForCommand(command.name) : undefined,
+      searched_paths: strictStaging && paths.length === 0 ? windowsFallbackDirectoriesForCommand(command.name, process.env, { platformName }) : undefined,
       reason: command.reason,
       remediation: command.remediation,
       strict: command.strict === true,

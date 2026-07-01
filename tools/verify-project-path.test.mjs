@@ -177,6 +177,7 @@ test('project path report fails strict staging mode when evidence tools are miss
   const report = buildPathReport({
     runner: fakeRunner({ missing: new Set(['aws', 'kubectl', 'psql', 'docker', 'gh', 'gopls']) }),
     strictStaging: true,
+    platformName: 'win32',
   });
 
   assert.equal(report.threshold_pass, false);
@@ -251,7 +252,7 @@ test('Windows fallback directories include common AWS and PostgreSQL installs', 
   };
 
   assert.deepEqual(
-    windowsFallbackDirectoriesForCommand('aws', env).filter((entry) => entry.includes('AWSCLIV2')),
+    windowsFallbackDirectoriesForCommand('aws', env, { platformName: 'win32' }).filter((entry) => entry.includes('AWSCLIV2')),
     [
       'C:\\Program Files\\Amazon\\AWSCLIV2',
       'C:\\Program Files\\AWSCLIV2',
@@ -260,26 +261,26 @@ test('Windows fallback directories include common AWS and PostgreSQL installs', 
     ],
   );
   assert.ok(
-    windowsFallbackDirectoriesForCommand('aws', env).includes('C:\\Users\\domin\\AppData\\Local\\Microsoft\\WinGet\\Links'),
+    windowsFallbackDirectoriesForCommand('aws', env, { platformName: 'win32' }).includes('C:\\Users\\domin\\AppData\\Local\\Microsoft\\WinGet\\Links'),
     'winget link directory should be searched for aws',
   );
   assert.ok(
-    windowsFallbackDirectoriesForCommand('aws', env).includes('C:\\ProgramData\\chocolatey\\bin'),
+    windowsFallbackDirectoriesForCommand('aws', env, { platformName: 'win32' }).includes('C:\\ProgramData\\chocolatey\\bin'),
     'Chocolatey bin directory should be searched for aws',
   );
   assert.ok(
-    windowsFallbackDirectoriesForCommand('aws', env).includes('C:\\Users\\domin\\scoop\\shims'),
+    windowsFallbackDirectoriesForCommand('aws', env, { platformName: 'win32' }).includes('C:\\Users\\domin\\scoop\\shims'),
     'Scoop shim directory should be searched for aws',
   );
   assert.ok(
-    windowsFallbackDirectoriesForCommand('psql', env).some((entry) => entry.endsWith('PostgreSQL\\13\\bin')),
+    windowsFallbackDirectoriesForCommand('psql', env, { platformName: 'win32' }).some((entry) => entry.endsWith('PostgreSQL\\13\\bin')),
     'PostgreSQL 13 bin directory should be searched for psql',
   );
   assert.ok(
-    windowsFallbackDirectoriesForCommand('psql', env).some((entry) => entry.startsWith('C:\\Program Files (x86)\\PostgreSQL')),
+    windowsFallbackDirectoriesForCommand('psql', env, { platformName: 'win32' }).some((entry) => entry.startsWith('C:\\Program Files (x86)\\PostgreSQL')),
     'Program Files (x86) PostgreSQL directories should be searched for psql',
   );
-  assert.deepEqual(windowsFallbackDirectoriesForCommand('node', env), []);
+  assert.deepEqual(windowsFallbackDirectoriesForCommand('node', env, { platformName: 'win32' }), []);
 });
 
 test('Windows fallback directories include RTK and GitHub CLI installs', () => {
@@ -292,28 +293,28 @@ test('Windows fallback directories include RTK and GitHub CLI installs', () => {
   };
 
   assert.deepEqual(
-    windowsFallbackDirectoriesForCommand('rtk', env),
+    windowsFallbackDirectoriesForCommand('rtk', env, { platformName: 'win32' }),
     [
       'C:\\Users\\domin\\.local\\bin',
     ],
   );
   assert.deepEqual(
-    windowsFallbackDirectoriesForCommand('gh', env).filter((entry) => entry.includes('GitHub CLI')),
+    windowsFallbackDirectoriesForCommand('gh', env, { platformName: 'win32' }).filter((entry) => entry.includes('GitHub CLI')),
     [
       'C:\\Program Files\\GitHub CLI',
       'C:\\Program Files (x86)\\GitHub CLI',
     ],
   );
   assert.ok(
-    windowsFallbackDirectoriesForCommand('gh', env).includes('C:\\Users\\domin\\AppData\\Local\\Microsoft\\WinGet\\Links'),
+    windowsFallbackDirectoriesForCommand('gh', env, { platformName: 'win32' }).includes('C:\\Users\\domin\\AppData\\Local\\Microsoft\\WinGet\\Links'),
     'winget link directory should be searched for gh',
   );
   assert.ok(
-    windowsFallbackDirectoriesForCommand('gh', env).includes('C:\\ProgramData\\chocolatey\\bin'),
+    windowsFallbackDirectoriesForCommand('gh', env, { platformName: 'win32' }).includes('C:\\ProgramData\\chocolatey\\bin'),
     'Chocolatey bin directory should be searched for gh',
   );
   assert.ok(
-    windowsFallbackDirectoriesForCommand('gh', env).includes('C:\\Users\\domin\\scoop\\shims'),
+    windowsFallbackDirectoriesForCommand('gh', env, { platformName: 'win32' }).includes('C:\\Users\\domin\\scoop\\shims'),
     'Scoop shim directory should be searched for gh',
   );
 });
@@ -324,23 +325,23 @@ test('Windows fallback directories include repo-local build toolchains', () => {
   };
 
   assert.ok(
-    windowsFallbackDirectoriesForCommand('go', env).some((entry) => entry.endsWith('.tools\\go\\bin')),
+    windowsFallbackDirectoriesForCommand('go', env, { platformName: 'win32' }).some((entry) => entry.endsWith('.tools\\go\\bin')),
     'repo-local Go bin should be searched',
   );
   assert.ok(
-    windowsFallbackDirectoriesForCommand('cargo', env).some((entry) => entry.endsWith('.tools\\cargo\\bin')),
+    windowsFallbackDirectoriesForCommand('cargo', env, { platformName: 'win32' }).some((entry) => entry.endsWith('.tools\\cargo\\bin')),
     'repo-local Cargo bin should be searched',
   );
   assert.ok(
-    windowsFallbackDirectoriesForCommand('rustc', env).some((entry) => entry.endsWith('.tools\\cargo\\bin')),
+    windowsFallbackDirectoriesForCommand('rustc', env, { platformName: 'win32' }).some((entry) => entry.endsWith('.tools\\cargo\\bin')),
     'repo-local rustc bin should be searched',
   );
   assert.ok(
-    windowsFallbackDirectoriesForCommand('terraform', env).some((entry) => entry.endsWith('.tools\\terraform')),
+    windowsFallbackDirectoriesForCommand('terraform', env, { platformName: 'win32' }).some((entry) => entry.endsWith('.tools\\terraform')),
     'repo-local Terraform dir should be searched',
   );
   assert.ok(
-    windowsFallbackDirectoriesForCommand('gopls', env).some((entry) => entry.endsWith('go\\bin')),
+    windowsFallbackDirectoriesForCommand('gopls', env, { platformName: 'win32' }).some((entry) => entry.endsWith('go\\bin')),
     'Go tool bin directories should be searched for gopls',
   );
 });
