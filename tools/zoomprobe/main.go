@@ -171,6 +171,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 	forbiddenWithSecrets := forbiddenArtifactMarkers(true)
 	forbiddenEvidenceOnly := forbiddenArtifactMarkers(false)
 	releaseMarkers := []string{
+		"staging artifact",
 		fmt.Sprintf("release_candidate=%s", cfg.ReleaseCandidate),
 		fmt.Sprintf("service_version=%s", cfg.ServiceVersion),
 		fmt.Sprintf("load_run_id=%s", cfg.LoadRunID),

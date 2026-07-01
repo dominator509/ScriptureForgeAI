@@ -21,7 +21,7 @@ var requiredZoomProbeSummaryMarkers = map[string][]string{
 	"zoom-meeting-room-mapping":          {"staging artifact", "meeting_external_id=", "live_rooms", "internal_room_id=", "redis room state", "mapped", "unknown meeting ignored", "no external meeting id fallback", "distinct_zoom_artifacts=true", "release_candidate=sha-zoom", "service_version=scriptureforge-api:sha-zoom", "load_run_id=zoom-run-123"},
 }
 
-const zoomReleaseEvidence = " release_candidate=sha-zoom service_version=scriptureforge-api:sha-zoom load_run_id=zoom-run-123"
+const zoomReleaseEvidence = " staging artifact release_candidate=sha-zoom service_version=scriptureforge-api:sha-zoom load_run_id=zoom-run-123"
 const zoomWebhookEvidence = "webhook signature x-zm-signature=v0=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa x-zm-request-timestamp=1710000000 stale replay 401 invalid 401 signed 200"
 const zoomURLValidationEvidence = "endpoint.url_validation plain_token=zoom-plain-123 encrypted_token=zoom-encrypted-456 validation_response=200"
 
@@ -190,7 +190,7 @@ func TestRunFailsWhenArtifactUsesDifferentLoadRun(t *testing.T) {
 		case "/meeting":
 			_, _ = w.Write([]byte("meeting created join_url=https://zoom.us/j/123456789" + zoomReleaseEvidence))
 		case "/resilience":
-			_, _ = w.Write([]byte("provider timeout drill opened circuit; circuit open circuit_open_fallback returned offline://in-person fallback release_candidate=sha-zoom service_version=scriptureforge-api:sha-zoom load_run_id=zoom-run-999"))
+			_, _ = w.Write([]byte("provider timeout drill opened circuit; circuit open circuit_open_fallback returned offline://in-person fallback staging artifact release_candidate=sha-zoom service_version=scriptureforge-api:sha-zoom load_run_id=zoom-run-999"))
 		case "/webhook":
 			_, _ = w.Write([]byte(zoomWebhookEvidence + zoomReleaseEvidence))
 		case "/validation":
@@ -210,6 +210,37 @@ func TestRunFailsWhenArtifactUsesDifferentLoadRun(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "zoom-timeout-circuit-fallback") {
 		t.Fatalf("report missing load-run-mismatched resilience probe:\n%s", output.String())
+	}
+}
+
+func TestRunFailsWhenOAuthArtifactOmitsStagingProvenance(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth":
+			_, _ = w.Write([]byte("Zoom oauth account_credentials status ok token redacted release_candidate=sha-zoom service_version=scriptureforge-api:sha-zoom load_run_id=zoom-run-123"))
+		case "/meeting":
+			_, _ = w.Write([]byte("meeting created join_url=https://zoom.us/j/123456789" + zoomReleaseEvidence))
+		case "/resilience":
+			_, _ = w.Write([]byte("provider timeout drill opened circuit; circuit open circuit_open_fallback returned offline://in-person fallback" + zoomReleaseEvidence))
+		case "/webhook":
+			_, _ = w.Write([]byte(zoomWebhookEvidence + zoomReleaseEvidence))
+		case "/validation":
+			_, _ = w.Write([]byte(zoomURLValidationEvidence + zoomReleaseEvidence))
+		case "/duplicate":
+			_, _ = w.Write([]byte("duplicate webhook x-zm-trackingid=zm-track-123 delivery_id=zm-delivery-123 delivery id same Zoom event idempotent 200 single state mutation no duplicate side effects single_state_mutation=true no_duplicate_side_effects=true" + zoomReleaseEvidence))
+		case "/mapping":
+			_, _ = w.Write([]byte("meeting_external_id=zoom-123 mapped to live_rooms internal_room_id=room-abc redis room state updated; unknown meeting ignored; no external meeting id fallback distinct_zoom_artifacts=true" + zoomReleaseEvidence))
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := runWithClient(stagingZoomConfig(time.Second), &output, clientForHTTPServer(t, server))
+	if err == nil {
+		t.Fatalf("expected missing staging provenance to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "zoom-oauth-readiness") {
+		t.Fatalf("report missing OAuth probe:\n%s", output.String())
 	}
 }
 
