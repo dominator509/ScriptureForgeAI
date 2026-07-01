@@ -3,6 +3,11 @@ import test from 'node:test';
 import { requiredIds } from './validate-staging-evidence.mjs';
 import { bootstrapManifest, parseArgs } from './bootstrap-staging-evidence.mjs';
 
+const signoffRequiredEvidence = [
+  'Owner/security approval record captured as a content-verified repo security/*.md signoff/approval document or HTTPS non-local approval artifact',
+  'record-staging-evidence SEC-SIGNOFF-001 summary markers: threat model approval, security/dependency_risk_register.md#DRR-001, dependency risk decision, residual risk review, owner/security approval, release risk signoff, signoff_artifact_verified=true, and exact release_candidate=<manifest release_candidate>',
+];
+
 test('parseArgs supports template, output, environment, release candidate, and force', () => {
   const args = parseArgs([
     '--template',
@@ -34,7 +39,7 @@ test('bootstrapManifest stamps release metadata and resets items to pending evid
       category: 'category',
       status: 'passed',
       description: `${id} proof`,
-      required_evidence: ['real artifact'],
+      required_evidence: id === 'SEC-SIGNOFF-001' ? signoffRequiredEvidence : ['real artifact'],
       evidence: [{ artifact: 'old.json' }],
       owner: 'old owner',
       blocker: 'old blocker',
@@ -54,7 +59,7 @@ test('bootstrapManifest stamps release metadata and resets items to pending evid
   assert.equal(manifest.items.length, requiredIds.length);
   for (const item of manifest.items) {
     assert.equal(item.status, 'pending_external');
-    assert.deepEqual(item.required_evidence, ['real artifact']);
+    assert.deepEqual(item.required_evidence, item.id === 'SEC-SIGNOFF-001' ? signoffRequiredEvidence : ['real artifact']);
     assert.equal(item.evidence, undefined);
     assert.equal(item.owner, undefined);
     assert.equal(item.blocker, undefined);

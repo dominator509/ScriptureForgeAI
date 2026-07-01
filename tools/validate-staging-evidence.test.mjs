@@ -38,6 +38,21 @@ test('validateManifest accepts pending items in contract mode', () => {
   assert.equal(result.strictRelease, false);
 });
 
+test('validateManifest rejects pending signoff contracts without artifact verification marker', () => {
+  const manifest = baseManifest({
+    statusFor: () => 'pending_external',
+  });
+  const signoffItem = manifest.items.find((item) => item.id === 'SEC-SIGNOFF-001');
+  signoffItem.required_evidence = signoffItem.required_evidence.map((entry) => entry
+    .replaceAll('content-verified repo security/*.md signoff/approval document or HTTPS non-local approval artifact', 'repo security/*.md signoff/approval document or HTTPS non-local approval artifact')
+    .replace(', signoff_artifact_verified=true,', ','));
+
+  assert.throws(
+    () => validateManifest(manifest),
+    /SEC-SIGNOFF-001 pending required_evidence must require a content-verified signoff artifact/,
+  );
+});
+
 test('validateManifest strict release accepts passed items and signoff accepted risk', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
@@ -4067,7 +4082,12 @@ function buildItem(id, status) {
   };
 
   if (status === 'pending_external') {
-    item.required_evidence = ['artifact'];
+    item.required_evidence = id === 'SEC-SIGNOFF-001'
+      ? [
+        'Owner/security approval record captured as a content-verified repo security/*.md signoff/approval document or HTTPS non-local approval artifact',
+        'record-staging-evidence SEC-SIGNOFF-001 summary markers: threat model approval, security/dependency_risk_register.md#DRR-001, dependency risk decision, residual risk review, owner/security approval, release risk signoff, signoff_artifact_verified=true, and exact release_candidate=<manifest release_candidate>',
+      ]
+      : ['artifact'];
   } else if (status === 'passed') {
     item.evidence = [passedEvidenceFor(id)];
   } else if (status === 'blocked' || status === 'failed') {

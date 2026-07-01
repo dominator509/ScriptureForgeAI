@@ -313,6 +313,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **NPM Audit Wrapper Regression Guard**: `tools/run-npm-audit.test.mjs` proves the web/mobile audit wrapper preserves configured severity levels, propagates vulnerability failures, classifies registry outages separately from vulnerability results, and falls back through `cmd.exe` for Windows npm shims; the shared local tooling-test gate and GitHub Actions require this coverage.
 - [x] **Security Signoff Exact Release Binding Guard**: `tools/record-staging-evidence.mjs` and strict staging manifest validation require passed `SEC-SIGNOFF-001` owner/security signoff summaries to carry exact `release_candidate=<manifest release_candidate>` so a prior release signoff cannot satisfy a current production-readiness claim.
 - [x] **Security Signoff Artifact Content Guard**: `tools/record-staging-evidence.mjs` now reads repo-local `security/*.md` owner/security signoff artifacts and requires the document itself to carry threat-model, DRR-001, residual-risk, owner/security approval, release-risk signoff, `signoff_artifact_verified=true`, and exact release-candidate markers before recording `SEC-SIGNOFF-001`; strict staging validation requires the same verification marker in passed signoff summaries.
+- [x] **Security Signoff Pending Contract Guard**: `tools/validate-staging-evidence.mjs` rejects pending `SEC-SIGNOFF-001` contract rows whose `required_evidence` omits content-verified signoff artifact wording or `signoff_artifact_verified=true`, so environment manifests cannot drift back to summary-only owner/security approval requirements.
 - [x] **Security Probe Artifact Host Guard**: `tools/securityprobe` rejects reserved documentation/sample hosts such as `.example`, `example.com`, `.test`, and `.invalid`, plus localhost, loopback, private-network, unspecified, link-local, and `local-only` IRSA, Secrets Store CSI, synced-secret, IAM-policy, and access-test artifacts before emitting secret or DB-user evidence markers.
 - [x] **Security Artifacts Local Gate Proof Marker Guard**: `tools/validate-security-artifacts.mjs` emits proof markers for threat model STRIDE coverage, crypto/IAM review, SAST/SCA report, domain-specific audit, fuzzing report, secret handling review, dependency risk register, stale-claim rejection, and residual-risk signoff path coverage; `tools/validate-local-gate-report.mjs` rejects local gate reports whose `security-artifacts-validation` output lacks those markers.
 - [x] **Security Artifacts Regression Test Guard**: `tools/validate-security-artifacts.test.mjs` proves current security docs pass, stale security claims fail, required coverage markers cannot be removed, and every required security file must be loaded; the local tooling-test gate, GitHub Actions tooling-test command, and `tools/validate-ci-workflow.mjs` all require this test.
@@ -361,20 +362,15 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 
 <!-- OBSIDIAN-STAGING-EVIDENCE-SNAPSHOT-START -->
 ## Staging Evidence Snapshot (staging)
-- release_candidate: ce96c283410756444a63b1345646fc69cf274d22
+- release_candidate: 1ca843f0df9540cb4c9baae16dd9366fe6b8be2f
 - strict_release_ready: no
 - strict_staging_path_ready: yes
-- non_manifest_blockers: 2
+- non_manifest_blockers: 0
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: 234c9773274ccbeafbfc3747ae79ea2991ceb467
-- release_candidate_matches_expected: no
+- expected_release_candidate: 1ca843f0df9540cb4c9baae16dd9366fe6b8be2f
+- release_candidate_matches_expected: yes
 - blocking items:
-  - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: 234c9773274ccbeafbfc3747ae79ea2991ceb467
-    - actual_release_candidate: ce96c283410756444a63b1345646fc69cf274d22
-  - STAGING-EVIDENCE-CONTRACT [failed]: Environment-specific pending evidence requirements are stale relative to production-readiness/staging-evidence.example.json.
-    - required: SEC-SIGNOFF-001 required_evidence must be refreshed from the checked-in example contract (6 current entries, 6 expected entries)
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
     - required: tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted
     - required: Uploaded GitHub Actions ci-release-evidence artifact from the exact release SHA with release_candidate=<manifest release_candidate> marker in the recorded summary
@@ -417,7 +413,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
     - required: Redacted DATABASE_URL principal proof with staging artifact provenance, connected as scriptureforge_app, superuser=false, bypassrls=false, createrole=false, createdb=false, app_grants_verified=true, app_grant_tables=9, app_grant_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails, app_grants=SELECT,INSERT,UPDATE,DELETE, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers
     - required: Database grants for app role across organizations, users, scripture_texts, refresh_tokens, journal_entries, live_rooms, room_participants, ai_request_logs, and citation_trails
     - required: Denied privileged operation probe with privileged_operation_denied=true
-  - ABUSE-LIMIT-001 [pending_external]: Auth, account-scoped login, AI, journal, room, and WebSocket abuse limits are observed through real staging ingress behavior.
+  - ABUSE-LIMIT-001 [pending_external]: Auth login, auth refresh, account-scoped login, AI, journal, room, and WebSocket abuse limits are observed through real staging ingress behavior.
     - required: tools/abuseprobe JSON report with ABUSE-LIMIT-001 evidence item, report-level load_run_id=<same run>, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id markers from the same staging load run
     - required: 429 responses for auth login, auth refresh, auth-account, AI, journal, rooms, and real WebSocket upgrade profiles after at least 2 attempts with concrete attempt counts, repeated_attempts_verified=true, structured account_scoped=true, forwarded_client_ip_rotated=true, refresh_token_scoped=true, websocket_upgrade=true where applicable, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id markers
     - required: Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, and X-RateLimit-Reset header proof with positive retry/limit/reset values, X-RateLimit-Remaining=0, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id
@@ -526,8 +522,8 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
     - required: Threat model review approval
     - required: security/dependency_risk_register.md#DRR-001 dependency risk decision
     - required: Residual risk review covering pending staging evidence, deployment, secrets, RLS, observability, load, rollback, and external-service blockers
-    - required: Owner/security approval record captured as a repo security/*.md signoff/approval document or HTTPS non-local approval artifact
-    - required: Release risk signoff record captured as a repo security/*.md signoff/approval document or HTTPS non-local approval artifact
-    - required: record-staging-evidence SEC-SIGNOFF-001 summary markers: threat model approval, security/dependency_risk_register.md#DRR-001, dependency risk decision, residual risk review, owner/security approval, release risk signoff, and exact release_candidate=<manifest release_candidate>
+    - required: Owner/security approval record captured as a content-verified repo security/*.md signoff/approval document or HTTPS non-local approval artifact
+    - required: Release risk signoff record captured as a content-verified repo security/*.md signoff/approval document or HTTPS non-local approval artifact
+    - required: record-staging-evidence SEC-SIGNOFF-001 summary markers: threat model approval, security/dependency_risk_register.md#DRR-001, dependency risk decision, residual risk review, owner/security approval, release risk signoff, signoff_artifact_verified=true, and exact release_candidate=<manifest release_candidate>
 
 <!-- OBSIDIAN-STAGING-EVIDENCE-SNAPSHOT-END -->

@@ -1242,6 +1242,18 @@ function validateItem(item, manifestGeneratedAt, today) {
   if (item.status === 'pending_external') {
     assert.ok(Array.isArray(item.required_evidence), `${item.id} pending item must list required_evidence`);
     assert.ok(item.required_evidence.length > 0, `${item.id} pending item must have at least one required evidence entry`);
+    if (item.id === 'SEC-SIGNOFF-001') {
+      const requiredText = item.required_evidence.join('\n');
+      assert.match(
+        requiredText,
+        /content-verified repo security\/\*\.md signoff\/approval document or HTTPS non-local approval artifact/,
+        'SEC-SIGNOFF-001 pending required_evidence must require a content-verified signoff artifact',
+      );
+      assert.ok(
+        requiredText.includes('signoff_artifact_verified=true'),
+        'SEC-SIGNOFF-001 pending required_evidence must include signoff_artifact_verified=true',
+      );
+    }
   }
 
   if (item.status === 'passed') {
