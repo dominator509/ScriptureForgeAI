@@ -3,6 +3,7 @@ node_modules/
 dist/
 target/
 *.tsbuildinfo
+.obsidian/workspace.json
 .env
 .env.*
 !.env.example
