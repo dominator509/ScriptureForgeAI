@@ -11,6 +11,7 @@ export const terraformValidateProofMarkers = [
   'terraform_validate_command=true',
   'terraform_chdir_build_terraform=true',
   'validated_skeleton=true',
+  'terraform_validate_success_output=true',
 ];
 
 export function defaultTerraformBin(platformName = platform()) {
@@ -52,14 +53,25 @@ export function runTerraformCommand({
     stdio: 'pipe',
   });
   const output = `${child.stdout || ''}${child.stderr || ''}${child.error ? child.error.message : ''}`;
+  let exitCode = child.status ?? 1;
+  let validatedOutput = output;
+  if (exitCode === 0 && mode === 'validate' && !stripAnsi(output).includes('Success! The configuration is valid.')) {
+    const suffix = output.endsWith('\n') || output.length === 0 ? '' : '\n';
+    exitCode = 1;
+    validatedOutput = `${output}${suffix}terraform-validate-gate missing Terraform success output\n`;
+  }
   return {
-    exitCode: child.status ?? 1,
-    output,
+    exitCode,
+    output: validatedOutput,
     command,
     args: plan.args,
     proofName: plan.proofName,
     markers: plan.markers,
   };
+}
+
+function stripAnsi(value) {
+  return value.replace(/\x1B\[[0-9;]*m/g, '');
 }
 
 export function parseArgs(rawArgs) {

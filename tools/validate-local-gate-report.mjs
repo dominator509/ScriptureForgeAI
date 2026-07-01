@@ -281,6 +281,7 @@ export function validateLocalGateReport(report, {
       const output = `${result.stdout_tail}\n${result.stderr_tail}`;
       assert.match(result.command, /tools[\\/]run-terraform-command\.mjs --mode validate/, 'terraform-validate command must use tools/run-terraform-command.mjs in validate mode');
       assert.match(output, /terraform-validate-gate validated:/, 'terraform-validate output must include the Terraform validate proof summary');
+      assert.match(stripAnsi(output), /Success! The configuration is valid\./, 'terraform-validate output must include Terraform success output');
       for (const marker of terraformValidateProofMarkers) {
         assert.ok(output.includes(marker), `terraform-validate output must include ${marker}`);
       }
@@ -400,6 +401,10 @@ export function validateLocalGateReport(report, {
     gitHead: report.git_head,
     gitBranch: report.git_branch,
   };
+}
+
+function stripAnsi(value) {
+  return value.replace(/\x1B\[[0-9;]*m/g, '');
 }
 
 export function parseArgs(argv) {

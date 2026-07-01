@@ -69,6 +69,31 @@ test('runTerraformCommand runs validate with proof markers', () => {
   assert.deepEqual(result.markers, terraformValidateProofMarkers);
 });
 
+test('runTerraformCommand accepts ANSI-colored validate success output', () => {
+  const result = runTerraformCommand({
+    mode: 'validate',
+    bin: 'terraform',
+    spawnSyncImpl() {
+      return { status: 0, stdout: '\u001b[32m\u001b[1mSuccess!\u001b[0m The configuration is valid.\n', stderr: '' };
+    },
+  });
+
+  assert.equal(result.exitCode, 0);
+});
+
+test('runTerraformCommand rejects validate success without Terraform success output', () => {
+  const result = runTerraformCommand({
+    mode: 'validate',
+    bin: 'terraform',
+    spawnSyncImpl() {
+      return { status: 0, stdout: 'validation skipped\n', stderr: '' };
+    },
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /terraform-validate-gate missing Terraform success output/);
+});
+
 test('runTerraformCommand propagates failing Terraform output', () => {
   const result = runTerraformCommand({
     mode: 'validate',

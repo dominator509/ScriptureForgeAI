@@ -378,6 +378,14 @@ test('validateLocalGateReport rejects Terraform init reports without proof marke
     /terraform-validate output must include the Terraform validate proof summary/,
   );
 
+  const missingValidateSuccessOutput = completeReport();
+  findGate(missingValidateSuccessOutput, 'terraform-validate').stdout_tail = terraformValidateProofOutput()
+    .replace('Success! The configuration is valid.\n', '');
+  assert.throws(
+    () => validateLocalGateReport(missingValidateSuccessOutput),
+    /terraform-validate output must include Terraform success output/,
+  );
+
   const missingValidateMarker = completeReport();
   findGate(missingValidateMarker, 'terraform-validate').stdout_tail = terraformValidateProofOutput()
     .replace('validated_skeleton=true', 'validated_skeleton=false');
@@ -788,7 +796,8 @@ function terraformFmtProofOutput() {
 }
 
 function terraformValidateProofOutput() {
-  return `terraform-validate-gate validated: ${terraformValidateProofMarkers.join(', ')}`;
+  return `Success! The configuration is valid.
+terraform-validate-gate validated: ${terraformValidateProofMarkers.join(', ')}`;
 }
 
 function webSmokeProofOutput() {
