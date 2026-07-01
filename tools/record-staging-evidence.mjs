@@ -249,6 +249,7 @@ const mobileRequireNativeCryptoPattern = /^true$/i;
 const mobileDeploymentEnvironmentPattern = /^staging$/i;
 const mobileNativeProviderPattern = /^react-native-quick-crypto$/;
 const mobileNativeRequiredPattern = /^true$/i;
+const mobileUniqueIVPattern = /^true$/i;
 const mobileBuildIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const mobileBuildIDSummaryPattern = /\bmobile_build_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
 const mobileNativeProviderSummaryPattern = /\bprovider=([A-Za-z0-9_.:-]+)\b/i;
@@ -1546,20 +1547,27 @@ function validateMobileEvidence(report, manifest) {
     }
     if (probe.name === 'mobile-native-crypto-smoke') {
       const mobileBuildID = String(probe.mobile_build_id ?? extractFirstMatch(summary, mobileBuildIDSummaryPattern)).trim();
-      const provider = String(probe.provider ?? extractFirstMatch(summary, mobileNativeProviderSummaryPattern)).trim();
-      const nativeRequired = String(probe.native_required ?? extractFirstMatch(summary, mobileNativeRequiredSummaryPattern)).trim();
+      const summaryProvider = extractFirstMatch(summary, mobileNativeProviderSummaryPattern);
+      const summaryNativeRequired = extractFirstMatch(summary, mobileNativeRequiredSummaryPattern);
+      const provider = String(probe.provider ?? summaryProvider).trim();
+      const nativeRequired = String(probe.native_required ?? summaryNativeRequired).trim();
+      const uniqueIV = String(probe.unique_iv ?? '').trim();
       const associatedDataSaltID = String(probe.associated_data_salt_id ?? extractFirstMatch(summary, mobileAssociatedDataSaltIDSummaryPattern)).trim();
       const associatedDataVersion = String(probe.associated_data_salt_version ?? extractFirstMatch(summary, mobileAssociatedDataVersionSummaryPattern)).trim();
       assert.match(mobileBuildID, mobileBuildIDPattern, 'mobile-native-crypto-smoke probe must include structured mobile_build_id');
       mobileBuildIDs.add(mobileBuildID);
+      assert.match(summaryProvider, mobileNativeProviderPattern, 'mobile-native-crypto-smoke probe must include structured provider=react-native-quick-crypto');
+      assert.match(summaryNativeRequired, mobileNativeRequiredPattern, 'mobile-native-crypto-smoke probe must include structured native_required=true');
       assert.match(provider, mobileNativeProviderPattern, 'mobile-native-crypto-smoke probe must include structured provider=react-native-quick-crypto');
       assert.match(nativeRequired, mobileNativeRequiredPattern, 'mobile-native-crypto-smoke probe must include structured native_required=true');
+      assert.match(uniqueIV, mobileUniqueIVPattern, 'mobile-native-crypto-smoke probe must include structured unique_iv=true');
       assert.match(associatedDataSaltID, mobileAssociatedDataSaltIDPattern, 'mobile-native-crypto-smoke probe must include structured associated_data_salt_id');
       assert.match(associatedDataVersion, mobileAssociatedDataVersionPattern, 'mobile-native-crypto-smoke probe must include positive structured associated_data_salt_version');
       assertSummaryIncludesMarkers(probe.name, summary, [
         `mobile_build_id=${mobileBuildID}`,
         `provider=${provider}`,
         `native_required=${nativeRequired}`,
+        `unique_iv=${uniqueIV}`,
         `associated_data_salt_id=${associatedDataSaltID}`,
         `associated_data_salt_version=${associatedDataVersion}`,
       ]);

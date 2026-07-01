@@ -26,6 +26,7 @@ var (
 	mobileDeploymentEnvironmentPattern = regexp.MustCompile(`(?i)\bEXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=([A-Za-z0-9_.:-]+)\b`)
 	mobileProviderPattern              = regexp.MustCompile(`(?i)\bprovider=([A-Za-z0-9_.:-]+)\b`)
 	mobileNativeRequiredPattern        = regexp.MustCompile(`(?i)\bnative_required=(true|false)\b`)
+	mobileUniqueIVPattern              = regexp.MustCompile(`(?i)\bunique_iv=(true|false)\b`)
 	mobileBuildIDPattern               = regexp.MustCompile(`(?i)\bmobile_build_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b`)
 	mobileAssociatedDataSaltIDPattern  = regexp.MustCompile(`(?i)\bassociated_data_salt_id=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b`)
 	mobileAssociatedDataVersionPattern = regexp.MustCompile(`(?i)\bassociated_data_salt_version=([1-9][0-9]*)\b`)
@@ -60,6 +61,7 @@ type probeResult struct {
 	LatencyMS             int64  `json:"latency_ms,omitempty"`
 	Provider              string `json:"provider,omitempty"`
 	NativeRequired        *bool  `json:"native_required,omitempty"`
+	UniqueIV              *bool  `json:"unique_iv,omitempty"`
 	MobileBuildID         string `json:"mobile_build_id,omitempty"`
 	Platforms             string `json:"platforms,omitempty"`
 	ReleaseChannel        string `json:"release_channel,omitempty"`
@@ -209,8 +211,10 @@ func probeArtifact(client *http.Client, name, target string, required []string, 
 	deploymentEnvironment := ""
 	provider := ""
 	nativeRequired := ""
+	uniqueIV := ""
 	mobileBuildID := ""
 	var nativeRequiredValue *bool
+	var uniqueIVValue *bool
 	associatedDataSaltID := ""
 	associatedDataVersion := ""
 	if name == "mobile-eas-or-device-run" {
@@ -226,13 +230,18 @@ func probeArtifact(client *http.Client, name, target string, required []string, 
 		mobileBuildID = extractMatch(text, mobileBuildIDPattern)
 		provider = extractMatch(text, mobileProviderPattern)
 		nativeRequired = extractMatch(text, mobileNativeRequiredPattern)
+		uniqueIV = extractMatch(text, mobileUniqueIVPattern)
 		associatedDataSaltID = extractMatch(text, mobileAssociatedDataSaltIDPattern)
 		associatedDataVersion = extractMatch(text, mobileAssociatedDataVersionPattern)
 		if nativeRequired != "" {
 			value := nativeRequired == "true"
 			nativeRequiredValue = &value
 		}
-		if mobileBuildID == "" || provider != "react-native-quick-crypto" || nativeRequired != "true" || associatedDataSaltID == "" || associatedDataVersion == "" {
+		if uniqueIV != "" {
+			value := uniqueIV == "true"
+			uniqueIVValue = &value
+		}
+		if mobileBuildID == "" || provider != "react-native-quick-crypto" || nativeRequired != "true" || uniqueIV != "true" || associatedDataSaltID == "" || associatedDataVersion == "" {
 			passed = false
 		}
 	}
@@ -255,13 +264,13 @@ func probeArtifact(client *http.Client, name, target string, required []string, 
 			summary += fmt.Sprintf(", mobile_build_id=%s, platforms=%s, release_channel=%s, expo_profile=%s", mobileBuildID, platforms, releaseChannel, expoProfile)
 		}
 		if name == "mobile-native-crypto-smoke" {
-			summary += fmt.Sprintf(", mobile_build_id=%s, provider=%s, native_required=%s, associated_data_salt_id=%s, associated_data_salt_version=%s", mobileBuildID, provider, nativeRequired, associatedDataSaltID, associatedDataVersion)
+			summary += fmt.Sprintf(", mobile_build_id=%s, provider=%s, native_required=%s, unique_iv=%s, associated_data_salt_id=%s, associated_data_salt_version=%s", mobileBuildID, provider, nativeRequired, uniqueIV, associatedDataSaltID, associatedDataVersion)
 		}
 		if name == "mobile-staging-config" {
 			summary += fmt.Sprintf(", mobile_build_id=%s, EXPO_PUBLIC_API_BASE_URL=%s, EXPO_PUBLIC_WS_BASE_URL=%s, EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=%s, EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=%s", mobileBuildID, apiBaseURL, wsBaseURL, requireNativeCrypto, deploymentEnvironment)
 		}
 	}
-	return probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, Provider: provider, NativeRequired: nativeRequiredValue, MobileBuildID: mobileBuildID, Platforms: platforms, ReleaseChannel: releaseChannel, ExpoProfile: expoProfile, APIBaseURL: apiBaseURL, WSBaseURL: wsBaseURL, RequireNativeCrypto: requireNativeCrypto, DeploymentEnvironment: deploymentEnvironment, AssociatedDataSaltID: associatedDataSaltID, AssociatedDataVersion: associatedDataVersion, ResultSummary: summary}
+	return probeResult{Name: name, Target: target, Passed: passed, StatusCode: resp.StatusCode, LatencyMS: latency, Provider: provider, NativeRequired: nativeRequiredValue, UniqueIV: uniqueIVValue, MobileBuildID: mobileBuildID, Platforms: platforms, ReleaseChannel: releaseChannel, ExpoProfile: expoProfile, APIBaseURL: apiBaseURL, WSBaseURL: wsBaseURL, RequireNativeCrypto: requireNativeCrypto, DeploymentEnvironment: deploymentEnvironment, AssociatedDataSaltID: associatedDataSaltID, AssociatedDataVersion: associatedDataVersion, ResultSummary: summary}
 }
 
 func enforceMobileBuildLinkage(probes []probeResult) {

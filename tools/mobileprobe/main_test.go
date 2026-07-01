@@ -136,6 +136,9 @@ func TestRunEmitsMobileEvidenceWhenArtifactsPass(t *testing.T) {
 	if cryptoProbe.NativeRequired == nil || *cryptoProbe.NativeRequired != true {
 		t.Fatalf("native crypto probe did not expose structured native_required=true: %+v", cryptoProbe)
 	}
+	if cryptoProbe.UniqueIV == nil || *cryptoProbe.UniqueIV != true {
+		t.Fatalf("native crypto probe did not expose structured unique_iv=true: %+v", cryptoProbe)
+	}
 	if cryptoProbe.AssociatedDataSaltID != "journal:self-test:server-derived-salt" || cryptoProbe.AssociatedDataVersion != "1" {
 		t.Fatalf("native crypto probe did not expose structured associated-data salt binding: %+v", cryptoProbe)
 	}
@@ -227,6 +230,47 @@ func TestRunFailsWhenNativeCryptoBindsWrongProviderFirst(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "mobile-native-crypto-smoke") {
 		t.Fatalf("report missing crypto probe:\n%s", output.String())
+	}
+}
+
+func TestRunFailsWhenNativeCryptoOmitsUniqueIVProof(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		cryptoText string
+	}{
+		{
+			name:       "missing unique iv marker",
+			cryptoText: "staging artifact runJournalCryptoSelfTest react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true mobile_build_id=mobile-build-123 AES-GCM native smoke round-trip passed; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized" + mobileReleaseMarkersText,
+		},
+		{
+			name:       "false unique iv marker",
+			cryptoText: "staging artifact runJournalCryptoSelfTest react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true mobile_build_id=mobile-build-123 AES-GCM native smoke round-trip passed; unique_iv=false; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized" + mobileReleaseMarkersText,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/eas":
+					_, _ = w.Write([]byte("staging artifact EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, mobile_build_id=mobile-build-123 platforms=android,ios release_channel=staging expo_profile=staging" + mobileReleaseMarkersText))
+				case "/crypto":
+					_, _ = w.Write([]byte(tc.cryptoText))
+				case "/config":
+					_, _ = w.Write([]byte("staging artifact mobile_build_id=mobile-build-123 EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging" + mobileReleaseMarkersText))
+				default:
+					w.WriteHeader(http.StatusNotFound)
+				}
+			}))
+			defer server.Close()
+
+			var output bytes.Buffer
+			err := runWithClient(stagingMobileConfig(time.Second), &output, clientForHTTPServer(t, server))
+			if err == nil {
+				t.Fatalf("expected native crypto artifact without unique IV proof to fail:\n%s", output.String())
+			}
+			if !strings.Contains(output.String(), "mobile-native-crypto-smoke") {
+				t.Fatalf("report missing crypto probe:\n%s", output.String())
+			}
+		})
 	}
 }
 
