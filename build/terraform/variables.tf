@@ -242,7 +242,7 @@ variable "web_autoscaling" {
 }
 
 variable "app_secret_arns" {
-  description = "Existing Secrets Manager ARNs used by workloads. database_url/JWT/OpenAI secrets may be plain strings; zoom_credentials must be JSON with account_id, client_id, client_secret, and webhook_secret_token keys."
+  description = "Existing AWS Secrets Manager ARNs used by workloads. database_url, jwt_secret_key, openai_api_key, and zoom_credentials must all be Secrets Manager ARNs; zoom_credentials secret value must be JSON with account_id, client_id, client_secret, and webhook_secret_token keys."
   type = object({
     database_url     = string
     jwt_secret_key   = string

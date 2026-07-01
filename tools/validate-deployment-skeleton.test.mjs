@@ -1,7 +1,19 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { validatePlatformRuntimeConfig } from './validate-deployment-skeleton.mjs';
+import {
+  validatePlatformRuntimeConfig,
+  validateTerraformSecretInputs,
+} from './validate-deployment-skeleton.mjs';
+
+async function terraformSecretFixtures() {
+  const [variables, tfvarsExample, app] = await Promise.all([
+    readFile('build/terraform/variables.tf', 'utf8'),
+    readFile('build/terraform/terraform.tfvars.example', 'utf8'),
+    readFile('build/terraform/app.tf', 'utf8'),
+  ]);
+  return { variables, tfvarsExample, app };
+}
 
 test('validatePlatformRuntimeConfig accepts the platform engine runtime guard', async () => {
   const source = await readFile('cmd/platform-engine/main.go', 'utf8');
@@ -25,5 +37,45 @@ test('validatePlatformRuntimeConfig rejects missing local fallback marker', asyn
   assert.throws(
     () => validatePlatformRuntimeConfig(broken),
     /localhost:50051/,
+  );
+});
+
+test('validateTerraformSecretInputs accepts current secret input wiring', async () => {
+  const { variables, tfvarsExample, app } = await terraformSecretFixtures();
+  assert.doesNotThrow(() => validateTerraformSecretInputs(variables, tfvarsExample, app));
+});
+
+test('validateTerraformSecretInputs rejects database root password defaults', async () => {
+  const { variables, tfvarsExample, app } = await terraformSecretFixtures();
+  const broken = variables.replace(
+    'sensitive   = true',
+    'sensitive   = true\n  default     = "replace-with-at-least-16-characters"',
+  );
+  assert.notEqual(broken, variables, 'test fixture must add a root password default');
+  assert.throws(
+    () => validateTerraformSecretInputs(broken, tfvarsExample, app),
+    /database root passphrase must not define a default value/,
+  );
+});
+
+test('validateTerraformSecretInputs rejects plaintext workload secret inputs', async () => {
+  const { variables, tfvarsExample, app } = await terraformSecretFixtures();
+  const broken = variables.replace(
+    'can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.openai_api_key)),',
+    'length(var.app_secret_arns.openai_api_key) > 0,',
+  );
+  assert.notEqual(broken, variables, 'test fixture must remove the OpenAI secret ARN validation');
+  assert.throws(
+    () => validateTerraformSecretInputs(broken, tfvarsExample, app),
+    /app_secret_arns\.openai_api_key must be validated as a Secrets Manager ARN/,
+  );
+});
+
+test('validateTerraformSecretInputs rejects workload root database URL construction', async () => {
+  const { variables, tfvarsExample, app } = await terraformSecretFixtures();
+  const broken = `${app}\n# regression marker aws_rds_cluster.postgres.master_password`;
+  assert.throws(
+    () => validateTerraformSecretInputs(variables, tfvarsExample, broken),
+    /workload manifests must not read the RDS root password/,
   );
 });

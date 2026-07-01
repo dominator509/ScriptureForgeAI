@@ -8,6 +8,8 @@ export const deploymentSkeletonProofMarkers = [
   'remote_state_backend=true',
   'irsa_secret_access=true',
   'secretproviderclass_sync=true',
+  'database_root_secret_no_default=true',
+  'workload_secret_inputs_are_arns=true',
   'tls_ingress=true',
   'rds_backup_final_snapshot=true',
   'redis_runtime_wiring=true',
@@ -59,6 +61,39 @@ export function validatePlatformRuntimeConfig(platformMain) {
     /case "staging", "production", "prod":\s*\n\s*return true/.test(platformMain),
     'platform engine must require explicit GRPC_ENGINE_ADDRESS for staging/production/prod',
   );
+}
+
+function terraformVariableBlock(source, name) {
+  const start = source.indexOf(`variable "${name}"`);
+  assert.ok(start >= 0, `terraform variables missing ${name}`);
+  const next = source.indexOf('\nvariable "', start + 1);
+  return source.slice(start, next >= 0 ? next : source.length);
+}
+
+export function validateTerraformSecretInputs(variables, tfvarsExample, app) {
+  const rootSecretBlock = terraformVariableBlock(variables, 'database_root_security_passphrase');
+  assert.ok(rootSecretBlock.includes('sensitive   = true'), 'database root passphrase must be marked sensitive');
+  assert.ok(!/\bdefault\s*=/.test(rootSecretBlock), 'database root passphrase must not define a default value');
+  assert.ok(
+    /length\(var\.database_root_security_passphrase\)\s*>=\s*16/.test(rootSecretBlock),
+    'database root passphrase must keep a minimum length validation',
+  );
+
+  const secretARNBlock = terraformVariableBlock(variables, 'app_secret_arns');
+  for (const key of ['database_url', 'jwt_secret_key', 'openai_api_key', 'zoom_credentials']) {
+    assert.ok(secretARNBlock.includes(`${key}     = string`) || secretARNBlock.includes(`${key}   = string`) || secretARNBlock.includes(`${key} = string`), `app_secret_arns missing ${key}`);
+    assert.ok(
+      secretARNBlock.includes(`can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.${key}))`),
+      `app_secret_arns.${key} must be validated as a Secrets Manager ARN`,
+    );
+    assert.ok(
+      tfvarsExample.includes(`${key}`) && tfvarsExample.includes('arn:aws:secretsmanager:'),
+      `terraform.tfvars.example must document ${key} as a Secrets Manager ARN`,
+    );
+  }
+  assert.ok(!app.includes('aws_rds_cluster.postgres.master_password'), 'workload manifests must not read the RDS root password');
+  assert.ok(!app.includes('aws_rds_cluster.postgres.master_username'), 'workload manifests must not construct a root database URL');
+  assert.ok(!app.includes('postgres://'), 'workload manifests must source DATABASE_URL from Secrets Manager, not inline PostgreSQL URLs');
 }
 
 requireIncludes(
@@ -249,9 +284,7 @@ requireIncludes(
   'terraform.tfvars.example',
 );
 
-assert.ok(!app.includes('aws_rds_cluster.postgres.master_password'), 'workload manifests must not read the RDS root password');
-assert.ok(!app.includes('aws_rds_cluster.postgres.master_username'), 'workload manifests must not construct a root database URL');
-assert.ok(!app.includes('postgres://'), 'workload manifests must source DATABASE_URL from Secrets Manager, not inline PostgreSQL URLs');
+validateTerraformSecretInputs(variables, tfvarsExample, app);
 assert.ok(!tfvarsExample.includes('skip_final_snapshot = true'), 'tfvars example must not preserve production-hostile snapshot defaults');
 
 validatePlatformRuntimeConfig(platformMain);
