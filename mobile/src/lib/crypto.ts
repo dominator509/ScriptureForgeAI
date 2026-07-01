@@ -28,6 +28,12 @@ export interface JournalCryptoSelfTestResult extends JournalCryptoProviderStatus
 }
 
 export function journalAssociatedData(saltID: string, saltVersion: number): string {
+  if (saltID.trim() === '') {
+    throw new Error('Journal associated data requires a server salt identifier');
+  }
+  if (!Number.isInteger(saltVersion) || saltVersion <= 0) {
+    throw new Error('Journal associated data requires a positive integer salt version');
+  }
   return `scriptureforge-journal:v1:salt_id=${saltID}:salt_version=${saltVersion}`;
 }
 

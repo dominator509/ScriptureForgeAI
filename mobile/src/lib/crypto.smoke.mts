@@ -20,6 +20,7 @@ const originalNativeRequired = process.env.EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO;
 const mobileCryptoSmokeProofMarkers = [
   'mobile_crypto_aes_gcm=true',
   'mobile_crypto_associated_data=true',
+  'mobile_crypto_associated_data_input_guard=true',
   'mobile_crypto_unique_iv=true',
   'mobile_crypto_native_required_fail_closed=true',
   'mobile_crypto_native_required_self_test_fail_closed=true',
@@ -68,6 +69,21 @@ test('journal AES-GCM encrypts, decrypts, and rejects tampered ciphertext', asyn
     () => decryptJournalData(encrypted, key, journalAssociatedData('journal:v1:different-salt', 1)),
     /decrypt|operation|data|authentication/i,
     'wrong associated data must reject journal ciphertext',
+  );
+});
+
+test('journal associated data rejects missing salt identity', () => {
+  assert.throws(
+    () => journalAssociatedData('   ', 1),
+    /server salt identifier/i,
+  );
+  assert.throws(
+    () => journalAssociatedData('journal:v1:server-derived-salt', 0),
+    /positive integer salt version/i,
+  );
+  assert.throws(
+    () => journalAssociatedData('journal:v1:server-derived-salt', 1.5),
+    /positive integer salt version/i,
   );
 });
 

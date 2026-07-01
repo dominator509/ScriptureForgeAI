@@ -29,6 +29,7 @@ export const journalCryptoProofMarkers = [
   'unique_iv=true',
   'tamper_rejected=true',
   'associated_data_rejected=true',
+  'associated_data_input_guard=true',
   'associated_data_salt_binding=true',
   'non_extractable_key=true',
   'key_disposal=true',
@@ -190,6 +191,9 @@ for (const [clientName, clientCryptoSource] of [
     'journalAssociatedData',
     'scriptureforge-journal:v1:salt_id=',
     'additionalData',
+    'Journal associated data requires a server salt identifier',
+    'Journal associated data requires a positive integer salt version',
+    'Number.isInteger(saltVersion)',
   ]) {
     if (!clientCryptoSource.includes(requiredAssociatedDataSnippet)) {
       throw new Error(`${clientName} journal crypto missing AES-GCM associated-data binding marker: ${requiredAssociatedDataSnippet}`);
@@ -239,6 +243,8 @@ for (const requiredMobileCryptoSmokeSnippet of [
   'runJournalCryptoSelfTest',
   'required native provider',
   'wrong associated data must reject journal ciphertext',
+  'journal associated data rejects missing salt identity',
+  'mobile_crypto_associated_data_input_guard=true',
   'associated_data_salt_id=journal:self-test:server-derived-salt',
   'associated_data_salt_version=1',
   'AES-GCM IVs must be unique per encryption',
@@ -250,6 +256,8 @@ for (const requiredMobileCryptoSmokeSnippet of [
 for (const requiredWebCryptoSmokeSnippet of [
   'web journal AES-GCM round-trips and rejects tampered ciphertext',
   'wrong associated data must reject web journal ciphertext',
+  'web journal associated data rejects missing salt identity',
+  'web_crypto_associated_data_input_guard=true',
   'JOURNAL_PBKDF2_ITERATIONS, 600000',
   'web journal key derivation rejects blank passphrase or server salt',
   'non-extractable',

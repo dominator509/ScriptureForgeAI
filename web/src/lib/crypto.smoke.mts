@@ -17,6 +17,7 @@ const originalWindow = globalThis.window;
 const webCryptoSmokeProofMarkers = [
   'web_crypto_aes_gcm=true',
   'web_crypto_associated_data=true',
+  'web_crypto_associated_data_input_guard=true',
   'web_crypto_pbkdf2_600000=true',
   'web_crypto_key_disposal=true',
   'web_crypto_revoked_key_rejected=true',
@@ -66,6 +67,21 @@ test('web journal AES-GCM rejects wrong associated data', async () => {
     () => decryptJournalData(encrypted, key, journalAssociatedData('journal:v1:different-salt', 1)),
     /decrypt|operation|data|authentication|payload/i,
     'wrong associated data must reject web journal ciphertext',
+  );
+});
+
+test('web journal associated data rejects missing salt identity', () => {
+  assert.throws(
+    () => journalAssociatedData('   ', 1),
+    /server salt identifier/i,
+  );
+  assert.throws(
+    () => journalAssociatedData('journal:v1:server-derived-salt', 0),
+    /positive integer salt version/i,
+  );
+  assert.throws(
+    () => journalAssociatedData('journal:v1:server-derived-salt', 1.5),
+    /positive integer salt version/i,
   );
 });
 
