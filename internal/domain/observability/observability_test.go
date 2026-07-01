@@ -428,6 +428,14 @@ func TestMockDependencyStatusIsError(t *testing.T) {
 	}
 }
 
+func TestDroppedRejectedAndUnavailableDependencyStatusesAreErrors(t *testing.T) {
+	for _, status := range []string{"dropped", "room_broadcast_dropped", "rejected", "provider_unavailable"} {
+		if !dependencyStatusIsError(status) {
+			t.Fatalf("dependency status %q must mark the span as an error", status)
+		}
+	}
+}
+
 func TestArchitectureMetricProfilesExposeWebSocketAndAIInference(t *testing.T) {
 	observer := NewObserver(Options{})
 	ctx := WithObserver(context.Background(), observer)

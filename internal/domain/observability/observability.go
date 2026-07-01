@@ -278,9 +278,12 @@ func dependencyStatusIsError(status string) bool {
 		strings.Contains(status, "timeout") ||
 		strings.Contains(status, "mock") ||
 		strings.Contains(status, "denied") ||
+		strings.Contains(status, "dropped") ||
 		strings.Contains(status, "invalid") ||
 		strings.Contains(status, "expired") ||
-		strings.Contains(status, "limited")
+		strings.Contains(status, "limited") ||
+		strings.Contains(status, "rejected") ||
+		strings.Contains(status, "unavailable")
 }
 
 func firstNonEmpty(values ...string) string {

@@ -138,6 +138,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **OBS Canonical Log Field Guard**: Go API access logs now emit architecture-required `timestamp` and `severity` JSON fields alongside legacy `at`/`level`, and `tools/observabilityprobe`, staging evidence recording, strict-release validation, and `tools/validate-observability.mjs` require `timestamp=` plus `severity=` markers on `log-backend-trace-correlation` evidence.
 - [x] **OBS Local Gate Proof Marker Guard**: `tools/validate-observability.mjs` emits proof markers for dashboard metrics, alert rules, trace ID logs, `/metrics`, dependency spans, WebSocket and AI profile metrics, Rust metrics, OTEL env wiring, and staging evidence contract coverage; `tools/validate-local-gate-report.mjs` rejects local gate reports whose `observability-validation` output lacks those markers.
 - [x] **OBS Regression Test Guard**: `tools/validate-observability.test.mjs` proves the current dashboard/alert/runbook/source artifacts pass and rejects drift that drops AI inference dashboard metrics, room broadcast drop alerts, API trace ID guards, Rust traceparent observability, or external Rust metrics staging proof; the local tooling-test gate, GitHub Actions tooling-test command, and `tools/validate-ci-workflow.mjs` all require this test.
+- [x] **OBS Dependency Error Span Guard**: dropped, rejected, and unavailable dependency outcomes now mark dependency spans with OpenTelemetry error status, including WebSocket room broadcast drops; unit tests and `tools/validate-observability.mjs` guard the classification tokens.
 - [x] **OBS Dashboard/Alert Segment Guard**: strict-release validation now requires `dashboard-import`, `alert-rules-loaded`, `alert-delivery-status`, and `telemetry-retention-policy` to each carry their own dashboard, rule, delivery, and retention markers before `OBS-ALERT-001` can support final readiness.
 - [x] **OBS Alert Delivery Identity Guard**: `tools/observabilityprobe`, the staging evidence recorder, and strict-release validation require `OBS-ALERT-001` alert-delivery proof to carry concrete `alertname=<alert_name>`, `receiver=<alert_receiver>`, and `delivery_id=<id>` markers, with `alert_name` and `alert_receiver` persisted in the probe JSON report, so generic Alertmanager success text cannot satisfy production alert-delivery evidence.
 - [x] **OBS Extracted Identity Binding Guard**: `tools/observabilityprobe` rejects trace/log/alert artifacts when extracted `trace_id`, `route`, `method`, `tenant_id`, `user_id`, `role`, `alertname`, or `receiver` values do not match the configured probe inputs, so later matching marker text cannot mask a different first telemetry or Alertmanager event.
@@ -375,11 +376,11 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 2
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: 66ab41f6c85dc19ecb6a9fec34933a224e5d37da
+- expected_release_candidate: 92d521c9e017de51919a172c08b580c8fe07239b
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: 66ab41f6c85dc19ecb6a9fec34933a224e5d37da
+    - expected_release_candidate: 92d521c9e017de51919a172c08b580c8fe07239b
     - actual_release_candidate: b1c70b67e157f8c382cf3b872ef943e24714a95b
   - STAGING-EVIDENCE-CONTRACT [failed]: Environment-specific pending evidence requirements are stale relative to production-readiness/staging-evidence.example.json.
     - required: DEPLOY-TF-001 required_evidence must be refreshed from the checked-in example contract (6 current entries, 6 expected entries)

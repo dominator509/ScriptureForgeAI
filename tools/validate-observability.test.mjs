@@ -62,6 +62,12 @@ describe('validate-observability', () => {
     expectValidationFailure(cloneSources({ apiObservability }), /API structured log observability missing normalizeTraceID/);
   });
 
+  it('rejects dependency span error-classification drift', () => {
+    const apiObservability = baseSources.apiObservability.replace('strings.Contains(status, "dropped")', 'status == "drop"');
+
+    expectValidationFailure(cloneSources({ apiObservability }), /API structured log observability missing strings\.Contains\(status, "dropped"\)/);
+  });
+
   it('rejects canonical structured log field drift', () => {
     const apiObservability = baseSources.apiObservability.replace('Timestamp             string `json:"timestamp"`', 'LegacyAtOnly          string `json:"at"`');
 
