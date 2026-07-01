@@ -251,7 +251,11 @@ func probeArtifact(client *http.Client, name, target string, required []string, 
 		wsBaseURL = extractMatch(text, mobileWSBaseURLPattern)
 		requireNativeCrypto = extractMatch(text, mobileRequireNativeCryptoPattern)
 		deploymentEnvironment = extractMatch(text, mobileDeploymentEnvironmentPattern)
-		if mobileBuildID == "" || apiBaseURL == "" || wsBaseURL == "" || requireNativeCrypto != "true" || deploymentEnvironment != "staging" {
+		if mobileBuildID == "" ||
+			!isAllowedStagingEndpoint(apiBaseURL, "https") ||
+			!isAllowedStagingEndpoint(wsBaseURL, "wss") ||
+			requireNativeCrypto != "true" ||
+			deploymentEnvironment != "staging" {
 			passed = false
 		}
 	}
@@ -403,6 +407,14 @@ func normalizeArtifactURL(raw, field string) (string, error) {
 	}
 	parsed.Fragment = ""
 	return parsed.String(), nil
+}
+
+func isAllowedStagingEndpoint(raw, scheme string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Scheme != scheme || parsed.Host == "" {
+		return false
+	}
+	return !isReservedPlaceholderHost(parsed.Hostname()) && !isLocalOrPrivateHost(parsed.Hostname())
 }
 
 func isReservedPlaceholderHost(host string) bool {

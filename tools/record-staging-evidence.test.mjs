@@ -2432,6 +2432,37 @@ test('recordEvidence rejects mobile staging config with hardcoded production API
   );
 });
 
+test('recordEvidence rejects mobile staging config with reserved placeholder endpoints', () => {
+  assert.throws(
+    () => recordEvidence(
+      { release_candidate: 'abc123', items: [{ id: 'CLIENT-MOBILE-001' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-mobile:abc123',
+        load_run_id: 'load-run-123',
+        mobile_build_id: 'mobile-build-123',
+        evidence_items: ['CLIENT-MOBILE-001'],
+        probes: [
+          mobileEASProbe(),
+          mobileCryptoProbe(),
+          mobileConfigProbe({
+            api_base_url: 'https://api.staging.example',
+            ws_base_url: 'wss://api.staging.example',
+            result_summary: mobileProbeMarkerSummaries['mobile-staging-config']
+              .replaceAll('https://api.staging.scriptureforge.ai', 'https://api.staging.example')
+              .replaceAll('wss://api.staging.scriptureforge.ai', 'wss://api.staging.example'),
+          }),
+        ],
+      },
+      'artifacts/mobileprobe.json',
+      'go run ./tools/mobileprobe',
+    ),
+    /mobile-staging-config api_base_url must not be local\/self-test/,
+  );
+});
+
 test('recordEvidence rejects mobile evidence for a different release candidate', () => {
   assert.throws(
     () => recordEvidence(

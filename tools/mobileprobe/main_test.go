@@ -20,7 +20,7 @@ const mobileReleaseMarkersText = " release_candidate=" + mobileReleaseCandidate 
 var requiredMobileProbeSummaryMarkers = map[string][]string{
 	"mobile-eas-or-device-run":   {"staging artifact", "eas", "build", "finished", "android", "ios", "native device", "installed app", "release channel staging", "expo profile staging", "mobile_build_id=mobile-build-123", "platforms=android,ios", "release_channel=staging", "expo_profile=staging", "release_candidate=" + mobileReleaseCandidate, "service_version=" + mobileServiceVersion, "load_run_id=" + mobileLoadRunID, "distinct_mobile_artifacts=true"},
 	"mobile-native-crypto-smoke": {"staging artifact", "react-native-quick-crypto", "native provider", "native module loaded", "provider status react-native-quick-crypto", "native-required true", "mobile_build_id=mobile-build-123", "AES-GCM", "round-trip", "unique_iv=true", "unique IV", "tamper rejected", "associated data", "wrong associated data rejected", "associated_data_salt_id=", "associated_data_salt_version=", "non-extractable", "provider-bound key", "fallback-derived key rejected", "key disposed", "disposed handle rejected", "revoked_key_rejected=true", "stale raw key rejected", "passphrase wiped", "passphrase buffer zeroized", "salt wiped", "salt buffer zeroized", "plaintext cleared", "plaintext buffer zeroized", "release_candidate=" + mobileReleaseCandidate, "service_version=" + mobileServiceVersion, "load_run_id=" + mobileLoadRunID, "distinct_mobile_artifacts=true"},
-	"mobile-staging-config":      {"staging artifact", "EXPO_PUBLIC_API_BASE_URL", "EXPO_PUBLIC_WS_BASE_URL", "EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true", "EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging", "mobile_build_id=mobile-build-123", "https://", "wss://", "staging", "EXPO_PUBLIC_API_BASE_URL=https://api.staging.example", "EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example", "release_candidate=" + mobileReleaseCandidate, "service_version=" + mobileServiceVersion, "load_run_id=" + mobileLoadRunID, "distinct_mobile_artifacts=true"},
+	"mobile-staging-config":      {"staging artifact", "EXPO_PUBLIC_API_BASE_URL", "EXPO_PUBLIC_WS_BASE_URL", "EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true", "EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging", "mobile_build_id=mobile-build-123", "https://", "wss://", "staging", "EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai", "EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai", "release_candidate=" + mobileReleaseCandidate, "service_version=" + mobileServiceVersion, "load_run_id=" + mobileLoadRunID, "distinct_mobile_artifacts=true"},
 }
 
 func stagingMobileConfig(timeout time.Duration) config {
@@ -92,7 +92,7 @@ func TestRunEmitsMobileEvidenceWhenArtifactsPass(t *testing.T) {
 		case "/crypto":
 			_, _ = w.Write([]byte("staging artifact runJournalCryptoSelfTest react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true mobile_build_id=mobile-build-123 AES-GCM native smoke round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
-			_, _ = w.Write([]byte("staging artifact mobile_build_id=mobile-build-123 EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
+			_, _ = w.Write([]byte("staging artifact mobile_build_id=mobile-build-123 EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -152,7 +152,7 @@ func TestRunFailsWhenMobileBuildIDsDoNotMatch(t *testing.T) {
 		case "/crypto":
 			_, _ = w.Write([]byte("staging artifact runJournalCryptoSelfTest react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true mobile_build_id=mobile-build-other AES-GCM native smoke round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
-			_, _ = w.Write([]byte("staging artifact mobile_build_id=mobile-build-123 EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
+			_, _ = w.Write([]byte("staging artifact mobile_build_id=mobile-build-123 EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
 		}
 	}))
 	defer server.Close()
@@ -189,7 +189,7 @@ func TestRunFailsWhenNativeCryptoOmitsExactProviderMarkers(t *testing.T) {
 				case "/crypto":
 					_, _ = w.Write([]byte(tc.cryptoText))
 				case "/config":
-					_, _ = w.Write([]byte("staging artifact EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging" + mobileReleaseMarkersText))
+					_, _ = w.Write([]byte("staging artifact EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging" + mobileReleaseMarkersText))
 				default:
 					w.WriteHeader(http.StatusNotFound)
 				}
@@ -216,7 +216,7 @@ func TestRunFailsWhenNativeCryptoBindsWrongProviderFirst(t *testing.T) {
 		case "/crypto":
 			_, _ = w.Write([]byte("staging artifact runJournalCryptoSelfTest provider=expo-secure-store native_required=false react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM native smoke round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized" + mobileReleaseMarkersText))
 		case "/config":
-			_, _ = w.Write([]byte("staging artifact EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging" + mobileReleaseMarkersText))
+			_, _ = w.Write([]byte("staging artifact EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging" + mobileReleaseMarkersText))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -255,7 +255,7 @@ func TestRunFailsWhenNativeCryptoOmitsUniqueIVProof(t *testing.T) {
 				case "/crypto":
 					_, _ = w.Write([]byte(tc.cryptoText))
 				case "/config":
-					_, _ = w.Write([]byte("staging artifact mobile_build_id=mobile-build-123 EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging" + mobileReleaseMarkersText))
+					_, _ = w.Write([]byte("staging artifact mobile_build_id=mobile-build-123 EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging" + mobileReleaseMarkersText))
 				default:
 					w.WriteHeader(http.StatusNotFound)
 				}
@@ -300,7 +300,7 @@ func TestRunFailsWhenNativeCryptoOmitsConcreteAssociatedDataSaltValues(t *testin
 				case "/crypto":
 					_, _ = w.Write([]byte(tc.cryptoText))
 				case "/config":
-					_, _ = w.Write([]byte("staging artifact EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging" + mobileReleaseMarkersText))
+					_, _ = w.Write([]byte("staging artifact EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging" + mobileReleaseMarkersText))
 				default:
 					w.WriteHeader(http.StatusNotFound)
 				}
@@ -327,7 +327,7 @@ func TestRunFailsWhenMobileArtifactsOmitStagingProvenance(t *testing.T) {
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM native smoke round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
-			_, _ = w.Write([]byte("EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
+			_, _ = w.Write([]byte("EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -388,7 +388,7 @@ func TestRunFailsWhenNativeCryptoUsesNodeShim(t *testing.T) {
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized using node:webcrypto"))
 		case "/config":
-			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
+			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
 		}
 	}))
 	defer server.Close()
@@ -411,7 +411,7 @@ func TestRunFailsWhenNativeCryptoUsesGenericNodeCrypto(t *testing.T) {
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized via Node crypto"))
 		case "/config":
-			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
+			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
 		}
 	}))
 	defer server.Close()
@@ -434,7 +434,7 @@ func TestRunFailsWhenNativeCryptoArtifactUsesRemoteDebug(t *testing.T) {
 		case "/crypto":
 			_, _ = w.Write([]byte("staging artifact runJournalCryptoSelfTest react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true mobile_build_id=mobile-build-123 AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized; remote debug" + mobileReleaseMarkersText))
 		case "/config":
-			_, _ = w.Write([]byte("staging artifact mobile_build_id=mobile-build-123 EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging" + mobileReleaseMarkersText))
+			_, _ = w.Write([]byte("staging artifact mobile_build_id=mobile-build-123 EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging" + mobileReleaseMarkersText))
 		}
 	}))
 	defer server.Close()
@@ -503,7 +503,7 @@ func TestRunFailsWhenArtifactLacksReleaseMarkers(t *testing.T) {
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
-			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
+			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
 		}
 	}))
 	defer server.Close()
@@ -526,7 +526,7 @@ func TestRunFailsWhenNativeCryptoLacksKeyLifecycleProof(t *testing.T) {
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected"))
 		case "/config":
-			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
+			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
 		}
 	}))
 	defer server.Close()
@@ -549,7 +549,7 @@ func TestRunFailsWhenNativeCryptoLacksAssociatedDataProof(t *testing.T) {
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
-			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
+			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
 		}
 	}))
 	defer server.Close()
@@ -572,7 +572,7 @@ func TestRunFailsWhenNativeCryptoLacksAssociatedDataSaltProof(t *testing.T) {
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
-			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
+			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
 		}
 	}))
 	defer server.Close()
@@ -595,7 +595,7 @@ func TestRunFailsWhenNativeCryptoLacksZeroizedBufferProof(t *testing.T) {
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; salt wiped; plaintext cleared"))
 		case "/config":
-			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
+			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
 		}
 	}))
 	defer server.Close()
@@ -618,7 +618,7 @@ func TestRunFailsWhenNativeCryptoLacksProviderBindingProof(t *testing.T) {
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded native-required true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
-			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
+			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
 		}
 	}))
 	defer server.Close()
@@ -641,7 +641,7 @@ func TestRunFailsWhenNativeCryptoUsesFallbackWebCrypto(t *testing.T) {
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized via fallback WebCrypto"))
 		case "/config":
-			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
+			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
 		}
 	}))
 	defer server.Close()
@@ -661,7 +661,7 @@ func TestRunFailsWhenNativeCryptoUsesJavaScriptFallback(t *testing.T) {
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized through JavaScript fallback"))
 		case "/config":
-			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
+			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
 		}
 	}))
 	defer server.Close()
@@ -684,7 +684,7 @@ func TestRunFailsWhenNativeCryptoUsesBrowserWebCryptoFallback(t *testing.T) {
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized through browser WebCrypto globalThis.crypto crypto.subtle shim"))
 		case "/config":
-			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
+			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
 		}
 	}))
 	defer server.Close()
@@ -707,7 +707,7 @@ func TestRunFailsWhenEASArtifactLacksNativeDeviceProof(t *testing.T) {
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
-			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
+			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
 		}
 	}))
 	defer server.Close()
@@ -730,7 +730,7 @@ func TestRunFailsWhenEASArtifactLacksInstalledStagingAppProof(t *testing.T) {
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
-			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
+			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
 		}
 	}))
 	defer server.Close()
@@ -753,7 +753,7 @@ func TestRunFailsWhenEASArtifactIsDryRun(t *testing.T) {
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
-			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
+			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
 		}
 	}))
 	defer server.Close()
@@ -799,7 +799,7 @@ func TestRunFailsWhenEASArtifactUsesDevClientOrSimulator(t *testing.T) {
 				case "/crypto":
 					_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 				case "/config":
-					_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
+					_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
 				}
 			}))
 			defer server.Close()
@@ -824,7 +824,7 @@ func TestRunFailsWhenConfigDoesNotRequireNativeCrypto(t *testing.T) {
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
-			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=false EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
+			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=false EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
 		}
 	}))
 	defer server.Close()
@@ -846,11 +846,11 @@ func TestRunFailsWhenConfigContainsContradictoryStagingCryptoMarkers(t *testing.
 	}{
 		{
 			name:       "spaced disabled native crypto",
-			configText: "staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO = false",
+			configText: "staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO = false",
 		},
 		{
 			name:       "development deployment environment",
-			configText: "staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=development",
+			configText: "staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=development",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -886,7 +886,7 @@ func TestRunFailsWhenConfigLacksStagingDeploymentEnvironment(t *testing.T) {
 		case "/crypto":
 			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; passphrase buffer zeroized; salt wiped; salt buffer zeroized; plaintext cleared; plaintext buffer zeroized"))
 		case "/config":
-			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true"))
+			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true"))
 		}
 	}))
 	defer server.Close()
@@ -918,6 +918,29 @@ func TestRunFailsWhenConfigUsesPrivateStagingEndpoints(t *testing.T) {
 	err := runWithClient(stagingMobileConfig(time.Second), &output, clientForHTTPServer(t, server))
 	if err == nil {
 		t.Fatalf("expected private staging endpoints to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "mobile-staging-config") {
+		t.Fatalf("report missing config probe:\n%s", output.String())
+	}
+}
+
+func TestRunFailsWhenConfigUsesReservedPlaceholderStagingEndpoints(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/eas":
+			_, _ = w.Write([]byte("EAS build finished successfully for android and ios native device validation with installed app, release channel staging, expo profile staging, platforms=android,ios release_channel=staging expo_profile=staging, platforms=android,ios release_channel=staging expo_profile=staging"))
+		case "/crypto":
+			_, _ = w.Write([]byte("react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true AES-GCM round-trip passed; unique_iv=true; unique IV; tamper rejected; associated data; wrong associated data rejected; associated_data_salt_id=journal:self-test:server-derived-salt; associated_data_salt_version=1; non-extractable key verified; provider-bound key; fallback-derived key rejected; key disposed; disposed handle rejected; revoked_key_rejected=true; stale raw key rejected; passphrase wiped; salt wiped; plaintext cleared"))
+		case "/config":
+			_, _ = w.Write([]byte("staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.example EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.example EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging"))
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := runWithClient(stagingMobileConfig(time.Second), &output, clientForHTTPServer(t, server))
+	if err == nil {
+		t.Fatalf("expected reserved placeholder staging endpoints to fail:\n%s", output.String())
 	}
 	if !strings.Contains(output.String(), "mobile-staging-config") {
 		t.Fatalf("report missing config probe:\n%s", output.String())

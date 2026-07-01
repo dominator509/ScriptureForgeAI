@@ -2426,6 +2426,22 @@ test('validateManifest strict release rejects mobile staging config with hardcod
   );
 });
 
+test('validateManifest strict release rejects mobile staging config with reserved placeholder endpoints', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'CLIENT-MOBILE-001');
+  item.evidence[0].result_summary = item.evidence[0].result_summary
+    .replaceAll('https://api.staging.scriptureforge.ai', 'https://api.staging.example')
+    .replaceAll('wss://api.staging.scriptureforge.ai', 'wss://api.staging.example');
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /CLIENT-MOBILE-001 mobile-staging-config EXPO_PUBLIC_API_BASE_URL must be a public non-placeholder staging endpoint/,
+  );
+});
+
 test('validateManifest strict release rejects mobile evidence without distinct artifact marker', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',

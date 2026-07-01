@@ -1633,6 +1633,8 @@ function validateMobileEvidence(report, manifest) {
       mobileBuildIDs.add(mobileBuildID);
       assert.match(apiBaseURL, mobileAPIBaseURLPattern, 'mobile-staging-config probe must include structured HTTPS api_base_url');
       assert.match(wsBaseURL, mobileWSBaseURLPattern, 'mobile-staging-config probe must include structured WSS ws_base_url');
+      assertNonLocalOrPrivateTarget(apiBaseURL, `mobile-staging-config api_base_url must not be local/self-test: ${apiBaseURL}`);
+      assertNonLocalOrPrivateTarget(wsBaseURL, `mobile-staging-config ws_base_url must not be local/self-test: ${wsBaseURL}`);
       assert.match(requireNativeCrypto, mobileRequireNativeCryptoPattern, 'mobile-staging-config probe must include structured require_native_crypto=true');
       assert.match(deploymentEnvironment, mobileDeploymentEnvironmentPattern, 'mobile-staging-config probe must include structured deployment_environment=staging');
       assertSummaryIncludesMarkers(probe.name, summary, [

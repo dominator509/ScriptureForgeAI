@@ -1727,16 +1727,20 @@ function validateStrictReleaseItemEvidence(item, manifest) {
       'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include positive associated_data_salt_version',
     );
     const configSegment = findEvidenceSegment(evidence, 'mobile-staging-config');
+    const apiBaseURL = configSegment.match(mobileAPIBaseURLPattern)?.[1] ?? '';
+    const wsBaseURL = configSegment.match(mobileWSBaseURLPattern)?.[1] ?? '';
     assert.match(
       configSegment,
       mobileAPIBaseURLPattern,
       'CLIENT-MOBILE-001 mobile-staging-config must include HTTPS EXPO_PUBLIC_API_BASE_URL=<url>',
     );
+    assertNonLocalStagingEndpoint(apiBaseURL, 'CLIENT-MOBILE-001 mobile-staging-config EXPO_PUBLIC_API_BASE_URL must be a public non-placeholder staging endpoint');
     assert.match(
       configSegment,
       mobileWSBaseURLPattern,
       'CLIENT-MOBILE-001 mobile-staging-config must include WSS EXPO_PUBLIC_WS_BASE_URL=<url>',
     );
+    assertNonLocalStagingEndpoint(wsBaseURL, 'CLIENT-MOBILE-001 mobile-staging-config EXPO_PUBLIC_WS_BASE_URL must be a public non-placeholder staging endpoint');
     assert.match(
       configSegment,
       mobileRequireNativeCryptoPattern,
@@ -2597,6 +2601,17 @@ function isHTTPSNonLocalArtifact(value) {
   const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
   return url.protocol === 'https:'
     && !isLocalOrPrivateHost(hostname);
+}
+
+function assertNonLocalStagingEndpoint(value, message) {
+  let url;
+  try {
+    url = new URL(String(value ?? '').trim());
+  } catch {
+    assert.fail(message);
+  }
+  const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  assert.ok(!isLocalOrPrivateHost(hostname), message);
 }
 
 function isLocalOrPrivateHost(hostname) {
