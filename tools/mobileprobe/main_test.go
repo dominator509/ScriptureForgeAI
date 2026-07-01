@@ -120,6 +120,9 @@ func TestRunEmitsMobileEvidenceWhenArtifactsPass(t *testing.T) {
 	if result.LoadRunID != mobileLoadRunID {
 		t.Fatalf("unexpected load run ID: %+v", result)
 	}
+	if result.MobileBuildID != "mobile-build-123" {
+		t.Fatalf("report did not expose shared mobile build ID: %+v", result)
+	}
 	assertProbeSummariesIncludeMarkers(t, result.Probes, requiredMobileProbeSummaryMarkers)
 	for _, probe := range result.Probes {
 		if probe.MobileBuildID != "mobile-build-123" {

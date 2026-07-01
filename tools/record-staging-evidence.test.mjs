@@ -1785,6 +1785,7 @@ test('recordEvidence records production-grade mobile evidence', () => {
       release_candidate: 'abc123',
       service_version: 'scriptureforge-mobile:abc123',
       load_run_id: 'load-run-123',
+      mobile_build_id: 'mobile-build-123',
       evidence_items: ['CLIENT-MOBILE-001'],
       probes: [
         mobileEASProbe(),
@@ -1845,6 +1846,7 @@ test('recordEvidence rejects mobile evidence without staging artifact provenance
         release_candidate: 'abc123',
         service_version: 'scriptureforge-mobile:abc123',
         load_run_id: 'load-run-123',
+        mobile_build_id: 'mobile-build-123',
         evidence_items: ['CLIENT-MOBILE-001'],
         probes: [
           mobileEASProbe({ result_summary: mobileProbeMarkerSummaries['mobile-eas-or-device-run'].replace('staging artifact, ', '') }),
@@ -1875,6 +1877,7 @@ test('recordEvidence rejects mobile evidence without native HTTPS artifacts', ()
         release_candidate: 'abc123',
         service_version: 'scriptureforge-mobile:abc123',
         load_run_id: 'load-run-123',
+        mobile_build_id: 'mobile-build-123',
         evidence_items: ['CLIENT-MOBILE-001'],
         probes: [
           mobileEASProbe(),
@@ -1899,6 +1902,7 @@ test('recordEvidence rejects mobile evidence without distinct artifact proof', (
         release_candidate: 'abc123',
         service_version: 'scriptureforge-mobile:abc123',
         load_run_id: 'load-run-123',
+        mobile_build_id: 'mobile-build-123',
         evidence_items: ['CLIENT-MOBILE-001'],
         probes: [
           mobileEASProbe({ result_summary: mobileProbeMarkerSummaries['mobile-eas-or-device-run'].replaceAll(', distinct_mobile_artifacts=true', '') }),
@@ -1923,6 +1927,7 @@ test('recordEvidence rejects mobile evidence with mixed build IDs', () => {
         release_candidate: 'abc123',
         service_version: 'scriptureforge-mobile:abc123',
         load_run_id: 'load-run-123',
+        mobile_build_id: 'mobile-build-123',
         evidence_items: ['CLIENT-MOBILE-001'],
         probes: [
           mobileEASProbe(),
@@ -1944,6 +1949,37 @@ test('recordEvidence rejects mobile evidence with mixed build IDs', () => {
   );
 });
 
+test('recordEvidence rejects mobile evidence with a mismatched report build ID', () => {
+  assert.throws(
+    () => recordEvidence(
+      { release_candidate: 'abc123', items: [{ id: 'CLIENT-MOBILE-001' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-mobile:abc123',
+        load_run_id: 'load-run-123',
+        mobile_build_id: 'mobile-build-other',
+        evidence_items: ['CLIENT-MOBILE-001'],
+        probes: [
+          mobileEASProbe(),
+          {
+            name: 'mobile-native-crypto-smoke',
+            passed: true,
+            target: 'https://artifacts.staging.scriptureforge.ai/mobile/native-crypto-smoke.txt',
+            status_code: 200,
+            result_summary: mobileProbeMarkerSummaries['mobile-native-crypto-smoke'],
+          },
+          mobileConfigProbe(),
+        ],
+      },
+      'artifacts/mobileprobe.json',
+      'go run ./tools/mobileprobe',
+    ),
+    /CLIENT-MOBILE-001 report mobile_build_id must match mobile probe mobile_build_id/,
+  );
+});
+
 test('recordEvidence rejects mobile evidence with canonical duplicate artifact targets', () => {
   assert.throws(
     () => recordEvidence(
@@ -1954,6 +1990,7 @@ test('recordEvidence rejects mobile evidence with canonical duplicate artifact t
         release_candidate: 'abc123',
         service_version: 'scriptureforge-mobile:abc123',
         load_run_id: 'load-run-123',
+        mobile_build_id: 'mobile-build-123',
         evidence_items: ['CLIENT-MOBILE-001'],
         probes: [
           mobileEASProbe({ target: 'https://ARTIFACTS.staging.scriptureforge.ai:443/mobile/shared-proof.txt?b=2&a=1' }),
@@ -1982,6 +2019,7 @@ test('recordEvidence rejects mobile native crypto evidence without exact provide
           release_candidate: 'abc123',
           service_version: 'scriptureforge-mobile:abc123',
           load_run_id: 'load-run-123',
+          mobile_build_id: 'mobile-build-123',
           evidence_items: ['CLIENT-MOBILE-001'],
           probes: [
             mobileEASProbe(),
@@ -2022,6 +2060,7 @@ test('recordEvidence rejects mobile native crypto evidence with mismatched provi
           release_candidate: 'abc123',
           service_version: 'scriptureforge-mobile:abc123',
           load_run_id: 'load-run-123',
+          mobile_build_id: 'mobile-build-123',
           evidence_items: ['CLIENT-MOBILE-001'],
           probes: [
             mobileEASProbe(),
@@ -2054,6 +2093,7 @@ test('recordEvidence rejects mobile evidence without verified marker summaries',
         release_candidate: 'abc123',
         service_version: 'scriptureforge-mobile:abc123',
         load_run_id: 'load-run-123',
+        mobile_build_id: 'mobile-build-123',
         evidence_items: ['CLIENT-MOBILE-001'],
         probes: [
           mobileEASProbe(),
@@ -2096,6 +2136,7 @@ test('recordEvidence rejects mobile native crypto evidence without concrete asso
           release_candidate: 'abc123',
           service_version: 'scriptureforge-mobile:abc123',
           load_run_id: 'load-run-123',
+          mobile_build_id: 'mobile-build-123',
           evidence_items: ['CLIENT-MOBILE-001'],
           probes: [
             mobileEASProbe(),
@@ -2127,6 +2168,7 @@ test('recordEvidence rejects mobile evidence without installed staging app proof
         release_candidate: 'abc123',
         service_version: 'scriptureforge-mobile:abc123',
         load_run_id: 'load-run-123',
+        mobile_build_id: 'mobile-build-123',
         evidence_items: ['CLIENT-MOBILE-001'],
         probes: [
           mobileEASProbe({
@@ -2159,6 +2201,7 @@ test('recordEvidence rejects mobile evidence without staging deployment environm
         release_candidate: 'abc123',
         service_version: 'scriptureforge-mobile:abc123',
         load_run_id: 'load-run-123',
+        mobile_build_id: 'mobile-build-123',
         evidence_items: ['CLIENT-MOBILE-001'],
         probes: [
           mobileEASProbe(),
@@ -2191,6 +2234,7 @@ test('recordEvidence rejects mobile evidence with emulator or debug-client proof
         release_candidate: 'abc123',
         service_version: 'scriptureforge-mobile:abc123',
         load_run_id: 'load-run-123',
+        mobile_build_id: 'mobile-build-123',
         evidence_items: ['CLIENT-MOBILE-001'],
         probes: [
           mobileEASProbe({ result_summary: `${mobileProbeMarkerSummaries['mobile-eas-or-device-run']}, Android emulator` }),
@@ -2227,6 +2271,7 @@ test('recordEvidence rejects mobile native crypto shim and JavaScript fallback m
           release_candidate: 'abc123',
           service_version: 'scriptureforge-mobile:abc123',
           load_run_id: 'load-run-123',
+          mobile_build_id: 'mobile-build-123',
           evidence_items: ['CLIENT-MOBILE-001'],
           probes: [
             mobileEASProbe(),
@@ -2258,6 +2303,7 @@ test('recordEvidence rejects mobile staging config with contradictory native cry
         release_candidate: 'abc123',
         service_version: 'scriptureforge-mobile:abc123',
         load_run_id: 'load-run-123',
+        mobile_build_id: 'mobile-build-123',
         evidence_items: ['CLIENT-MOBILE-001'],
         probes: [
           mobileEASProbe(),
@@ -2288,6 +2334,7 @@ test('recordEvidence rejects mobile staging config with hardcoded production API
         release_candidate: 'abc123',
         service_version: 'scriptureforge-mobile:abc123',
         load_run_id: 'load-run-123',
+        mobile_build_id: 'mobile-build-123',
         evidence_items: ['CLIENT-MOBILE-001'],
         probes: [
           mobileEASProbe(),

@@ -47,6 +47,7 @@ type report struct {
 	ReleaseCandidate string        `json:"release_candidate"`
 	ServiceVersion   string        `json:"service_version"`
 	LoadRunID        string        `json:"load_run_id"`
+	MobileBuildID    string        `json:"mobile_build_id"`
 	Probes           []probeResult `json:"probes"`
 	EvidenceItems    []string      `json:"evidence_items"`
 }
@@ -148,6 +149,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 		probeArtifact(client, "mobile-staging-config", cfg.StagingConfigProofURL, append([]string{"staging artifact", "EXPO_PUBLIC_API_BASE_URL", "EXPO_PUBLIC_WS_BASE_URL", "EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true", "EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging", "mobile_build_id=", "https://", "wss://", "staging"}, releaseMarkers...), []string{"localhost", "127.0.0.1", "10.", "172.16.", "192.168.", "169.254.", "0.0.0.0", "[::1]", "local-only", "https://api.scriptureforge.com", "wss://api.scriptureforge.com", "EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=false", "EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO = false", "EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=development", "EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=local"}),
 	}
 	enforceMobileBuildLinkage(probes)
+	mobileBuildID := linkedMobileBuildID(probes)
 
 	result := report{
 		ObservedAt:       time.Now().UTC().Format("2006-01-02T15:04:05Z"),
@@ -155,6 +157,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 		ReleaseCandidate: cfg.ReleaseCandidate,
 		ServiceVersion:   cfg.ServiceVersion,
 		LoadRunID:        cfg.LoadRunID,
+		MobileBuildID:    mobileBuildID,
 		Probes:           probes,
 		EvidenceItems:    []string{"CLIENT-MOBILE-001"},
 	}
@@ -279,6 +282,23 @@ func enforceMobileBuildLinkage(probes []probeResult) {
 		probes[i].Passed = false
 		probes[i].ResultSummary += "; mobile_build_id values do not match across mobile evidence artifacts"
 	}
+}
+
+func linkedMobileBuildID(probes []probeResult) string {
+	buildID := ""
+	for i := range probes {
+		if !probes[i].Passed || probes[i].MobileBuildID == "" {
+			continue
+		}
+		if buildID == "" {
+			buildID = probes[i].MobileBuildID
+			continue
+		}
+		if probes[i].MobileBuildID != buildID {
+			return ""
+		}
+	}
+	return buildID
 }
 
 func validateDistinctArtifactURLs(urls map[string]string) error {

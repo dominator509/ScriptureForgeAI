@@ -1480,6 +1480,8 @@ function validateMobileEvidence(report, manifest) {
   assertReportReleaseMatchesManifest(report, manifest, 'CLIENT-MOBILE-001');
   const reportLoadRunID = String(report.load_run_id ?? '').trim();
   assert.ok(reportLoadRunID, 'CLIENT-MOBILE-001 report must include load_run_id');
+  const reportMobileBuildID = String(report.mobile_build_id ?? '').trim();
+  assert.match(reportMobileBuildID, mobileBuildIDPattern, 'CLIENT-MOBILE-001 report must include structured mobile_build_id');
   const reportReleaseMarkers = [
     `release_candidate=${String(report.release_candidate ?? '').trim()}`,
     `service_version=${String(report.service_version ?? '').trim()}`,
@@ -1565,6 +1567,7 @@ function validateMobileEvidence(report, manifest) {
   }
   assertDistinctReportURLs('CLIENT-MOBILE-001', probes.map((probe) => [probe.name, String(probe.target ?? '')]));
   assert.equal(mobileBuildIDs.size, 1, 'CLIENT-MOBILE-001 mobile_build_id values must match across mobile probes');
+  assert.equal(reportMobileBuildID, [...mobileBuildIDs][0], 'CLIENT-MOBILE-001 report mobile_build_id must match mobile probe mobile_build_id');
   assert.equal(requiredProbes.size, 0, `CLIENT-MOBILE-001 report missing probes: ${[...requiredProbes].join(', ')}`);
   assertSummaryIncludesMarkers('CLIENT-MOBILE-001', probes.map((probe) => String(probe.result_summary ?? '')).join(' '), [
     'distinct_mobile_artifacts=true',
