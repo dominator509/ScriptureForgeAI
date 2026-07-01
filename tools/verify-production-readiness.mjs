@@ -12,6 +12,7 @@ export const productionReadinessProofMarkers = [
   'local_gate_report_validated=true',
   'strict_staging_path_validated=true',
   'clean_synced_git_required=true',
+  'git_remote_tracking_refreshed=true',
   'release_candidate_matches_git_head=true',
   'local_gate_head_matches_git_head=true',
   'local_gate_branch_matches_current=true',
@@ -151,6 +152,7 @@ function parseTimeMs(value, label) {
 }
 
 export function readGitState(cwd, git = realGit) {
+  refreshGitRemoteState(cwd, git);
   const status = git(['status', '--porcelain=v1', '--branch'], cwd);
   const lines = status.split(/\r?\n/).filter(Boolean);
   const branchLine = lines[0] ?? '';
@@ -166,6 +168,15 @@ export function readGitState(cwd, git = realGit) {
     behind: divergence.behind,
     headSHA: git(['rev-parse', 'HEAD'], cwd).trim(),
   };
+}
+
+function refreshGitRemoteState(cwd, git) {
+  try {
+    git(['fetch', '--dry-run'], cwd);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`git fetch --dry-run must succeed before production readiness claim: ${message}`);
+  }
 }
 
 export function parseBranchLine(branchLine) {

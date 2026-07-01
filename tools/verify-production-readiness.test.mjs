@@ -161,6 +161,7 @@ test('verifyProductionReadiness accepts strict manifest on clean synced HEAD', a
     assert.equal(result.localGates, gateDefinitions.length);
     assert.equal(result.stagingPathCommands, 13);
     assert.deepEqual(result.proofMarkers, productionReadinessProofMarkers);
+    assert.ok(result.proofMarkers.includes('git_remote_tracking_refreshed=true'));
     assert.ok(result.proofMarkers.includes('local_gate_branch_matches_current=true'));
     assert.ok(result.proofMarkers.includes('local_gate_upstream_matches_current=true'));
     assert.ok(result.proofMarkers.includes('local_gate_freshness_checked=true'));
@@ -246,6 +247,31 @@ test('verifyProductionReadiness rejects unsynced branch', async () => {
         pathReportBuilder: readyPathReportBuilder,
       }),
       /must not be ahead/,
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('verifyProductionReadiness rejects unrefreshable git remote metadata', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'scriptureforge-readiness-'));
+  try {
+    const { manifestPath, localGateReportPath, contractManifestPath, obsidianNotePath } = await writeReadinessInputs(dir);
+    await assert.rejects(
+      () => verifyProductionReadiness({
+        manifestPath,
+        localGateReportPath,
+        contractManifestPath,
+        obsidianNotePath,
+        cwd: dir,
+        git: fakeGit({
+          status: '## main...origin/main\n',
+          head: sha,
+          fetchError: new Error('remote unavailable'),
+        }),
+        pathReportBuilder: readyPathReportBuilder,
+      }),
+      /git fetch --dry-run must succeed before production readiness claim: remote unavailable/,
     );
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -678,8 +704,14 @@ async function writeReadinessInputs(dir, { manifest = strictManifest(sha), local
   });
   return { manifestPath, localGateReportPath, contractManifestPath, obsidianNotePath };
 }
-function fakeGit({ status, head }) {
+function fakeGit({ status, head, fetchError = null }) {
   return (args) => {
+    if (args.join(' ') === 'fetch --dry-run') {
+      if (fetchError) {
+        throw fetchError;
+      }
+      return '';
+    }
     if (args.join(' ') === 'status --porcelain=v1 --branch') {
       return status;
     }
