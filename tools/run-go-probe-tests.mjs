@@ -55,15 +55,45 @@ export function runGoProbeTests({
     env,
   });
   const output = `${child.stdout || ''}${child.stderr || ''}${child.error ? child.error.message : ''}`;
-  const exitCode = child.status ?? 1;
+  let exitCode = child.status ?? 1;
+  let validatedOutput = output;
+  if (exitCode === 0) {
+    try {
+      validateGoProbeOutput(output, packages);
+    } catch (error) {
+      const suffix = output.endsWith('\n') || output.length === 0 ? '' : '\n';
+      exitCode = 1;
+      validatedOutput = `${output}${suffix}${error.message}\n`;
+    }
+  }
   return {
     exitCode,
-    output,
+    output: validatedOutput,
     markers: goProbeProofMarkers,
     packages,
     command,
     args,
   };
+}
+
+export function validateGoProbeOutput(output, packages = goProbePackages) {
+  const missing = [];
+  for (const packageName of packages) {
+    if (!new RegExp(`^ok\\s+${escapeRegExp(importPathForPackage(packageName))}\\b`, 'm').test(output)) {
+      missing.push(packageName);
+    }
+  }
+  if (missing.length > 0) {
+    throw new Error(`production evidence probe tests missing package result lines: ${missing.join(', ')}`);
+  }
+}
+
+function importPathForPackage(packageName) {
+  return packageName.replace(/^\.\//, 'scriptureforge/');
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export function parseArgs(rawArgs) {

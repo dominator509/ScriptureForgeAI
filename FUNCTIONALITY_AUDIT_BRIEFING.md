@@ -766,6 +766,8 @@ Status last updated: 2026-06-28
 
 2026-06-29 update: `tools/validate-local-gate-report.mjs` now rejects `staging-evidence-gap-report` local gate rows that omit rendered `required:` evidence details, even if the proof footer, blocker IDs, and proof markers are present. This prevents a truncated gap report from passing local release evidence while external staging artifacts remain pending.
 
+2026-07-01 update: production evidence probe gate proof now requires every probe package to appear in the uncached Go test output. `tools/run-go-probe-tests.mjs` refuses to emit its source, tenant/RLS, Rust, observability, security, resilience, mobile, deployment, abuse, Zoom, AI, and load proof markers unless `go test` reports an `ok scriptureforge/tools/...` result line for each package in the batch. This strengthens local/CI probe-tool coverage only; deployed staging evidence for those systems remains pending external proof.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.

@@ -291,6 +291,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Go Core Gate Proof Wrapper Guard**: `tools/run-go-core-gate.mjs` wraps all-package Go test and Go vet gates, emits stable proof markers for `go test ./... -count=1 -timeout=90s` and `go vet ./...`, and is required by local gates, GitHub Actions, CI workflow drift validation, and local gate report validation.
 - [x] **Client Build Proof Wrapper Guard**: `tools/run-client-command.mjs` wraps web typecheck, web build, and mobile build-check gates so successful client commands emit stable proof markers; local gates, GitHub Actions, `tools/validate-ci-workflow.mjs`, and `tools/validate-local-gate-report.mjs` reject raw or marker-free client build/typecheck evidence.
 - [x] **Production Evidence Probe Proof Wrapper Guard**: `tools/run-go-probe-tests.mjs` wraps the Go probe-test batch for source/tenant/Rust/observability/security/resilience/mobile/deployment/abuse/Zoom/AI/load evidence tooling, emits per-probe-family proof markers, and is required by local gates, GitHub Actions, CI workflow drift validation, and local gate report validation.
+- [x] **Production Evidence Probe Package Result Guard**: `tools/run-go-probe-tests.mjs` now refuses to emit probe proof markers unless the uncached Go output includes an `ok scriptureforge/tools/...` result line for every source, tenant, Rust, observability, security, resilience, mobile, deployment, abuse, Zoom, AI, and load probe package, preventing partial probe runs from advertising full evidence-tool coverage.
 - [x] **Terraform Fmt/Validate Proof Wrapper Guard**: `tools/run-terraform-command.mjs` wraps recursive Terraform formatting checks and Terraform validation for `build/terraform`, emits stable proof markers, and is required by local gates, GitHub Actions, CI workflow drift validation, and local gate report validation alongside the existing network-aware init wrapper.
 - [x] **Staging PATH Discovery Guard**: `tools/use-project-path.cmd`, `tools/use-project-path.ps1`, and `tools/verify-project-path.mjs` search repo-local tools plus common Windows Program Files, WinGet, Chocolatey, and Scoop locations for staging evidence tools, and strict staging failures list searched fallback paths for missing `psql`/`aws` remediation.
 - [x] **Security Probe Scoped IAM Guard**: `tools/securityprobe` and the staging evidence recorder now require IRSA trust-policy proof plus scoped/no-wildcard Secrets Manager IAM policy markers before `SEC-SECRETS-001` can be recorded.
@@ -362,11 +363,11 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 1
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: 91a35405445097669ba51ad99e3a0f15d1b5c984
+- expected_release_candidate: b084bb06e2d5cce5afc4cd850a605865efeddcb0
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: 91a35405445097669ba51ad99e3a0f15d1b5c984
+    - expected_release_candidate: b084bb06e2d5cce5afc4cd850a605865efeddcb0
     - actual_release_candidate: ce96c283410756444a63b1345646fc69cf274d22
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
     - required: tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted
