@@ -22,11 +22,31 @@ const mobileCryptoSmokeProofMarkers = [
   'mobile_crypto_associated_data=true',
   'mobile_crypto_associated_data_input_guard=true',
   'mobile_crypto_unique_iv=true',
+  'mobile_crypto_runtime_buffer_zeroization=true',
   'mobile_crypto_native_required_fail_closed=true',
   'mobile_crypto_native_required_self_test_fail_closed=true',
   'mobile_crypto_self_test_markers=true',
   'mobile_crypto_revoked_key_rejected=true',
 ];
+
+function bufferFromText(value: string): ArrayBuffer {
+  const bytes = new TextEncoder().encode(value);
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+}
+
+function captureBuffer(value: BufferSource | undefined): Uint8Array | null {
+  if (!value) return null;
+  if (value instanceof Uint8Array) return value;
+  if (ArrayBuffer.isView(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  return new Uint8Array(value);
+}
+
+function assertZeroized(name: string, bytes: Uint8Array | null): void {
+  assert.ok(bytes, `${name} buffer was not captured`);
+  assert.ok(bytes.every(value => value === 0), `${name} buffer was not zeroized`);
+}
 
 beforeEach(() => {
   Object.defineProperty(globalThis, 'crypto', {
@@ -145,6 +165,95 @@ test('journal encryption rejects keys not derived by the journal crypto module',
     () => encryptJournalData('untracked mobile key plaintext', importedKey),
     /not derived by client-side journal key derivation/,
   );
+});
+
+test('mobile crypto zeroizes provider input buffers after operations', async () => {
+  const syntheticKeyMaterial = {} as CryptoKey;
+  const syntheticKey = {} as CryptoKey;
+  const captured = {
+    passphrase: null as Uint8Array | null,
+    salt: null as Uint8Array | null,
+    plaintext: null as Uint8Array | null,
+    encryptIV: null as Uint8Array | null,
+    encryptAssociatedData: null as Uint8Array | null,
+    ciphertext: null as Uint8Array | null,
+    decryptIV: null as Uint8Array | null,
+    decryptAssociatedData: null as Uint8Array | null,
+    decryptedPlaintext: null as Uint8Array | null,
+  };
+  const instrumentedCrypto = {
+    getRandomValues: <T extends ArrayBufferView | null>(array: T): T => {
+      if (array instanceof Uint8Array) {
+        array.fill(9);
+      }
+      return array;
+    },
+    subtle: {
+      importKey: async (
+        _format: KeyFormat,
+        keyData: BufferSource,
+        _algorithm: AlgorithmIdentifier,
+        _extractable: boolean,
+        _keyUsages: KeyUsage[],
+      ): Promise<CryptoKey> => {
+        captured.passphrase = captureBuffer(keyData);
+        return syntheticKeyMaterial;
+      },
+      deriveKey: async (
+        algorithm: Pbkdf2Params,
+        _baseKey: CryptoKey,
+        _derivedKeyAlgorithm: AlgorithmIdentifier,
+        _extractable: boolean,
+        _keyUsages: KeyUsage[],
+      ): Promise<CryptoKey> => {
+        captured.salt = captureBuffer(algorithm.salt);
+        return syntheticKey;
+      },
+      encrypt: async (
+        algorithm: AesGcmParams,
+        _key: CryptoKey,
+        data: BufferSource,
+      ): Promise<ArrayBuffer> => {
+        captured.plaintext = captureBuffer(data);
+        captured.encryptIV = captureBuffer(algorithm.iv);
+        captured.encryptAssociatedData = captureBuffer(algorithm.additionalData);
+        return bufferFromText('ciphertext');
+      },
+      decrypt: async (
+        algorithm: AesGcmParams,
+        _key: CryptoKey,
+        data: BufferSource,
+      ): Promise<ArrayBuffer> => {
+        captured.ciphertext = captureBuffer(data);
+        captured.decryptIV = captureBuffer(algorithm.iv);
+        captured.decryptAssociatedData = captureBuffer(algorithm.additionalData);
+        captured.decryptedPlaintext = new TextEncoder().encode('plaintext from provider');
+        return captured.decryptedPlaintext.buffer as ArrayBuffer;
+      },
+    } as unknown as SubtleCrypto,
+  } as unknown as Crypto;
+
+  Object.defineProperty(globalThis, 'crypto', {
+    configurable: true,
+    value: instrumentedCrypto,
+  });
+
+  const key = await deriveIsolationKey('zeroize-passphrase', 'journal:v1:zeroize-salt');
+  assertZeroized('passphrase', captured.passphrase);
+  assertZeroized('salt', captured.salt);
+
+  const associatedData = journalAssociatedData('journal:v1:zeroize-salt', 1);
+  const encrypted = await encryptJournalData('zeroize plaintext', key, associatedData);
+  assertZeroized('plaintext', captured.plaintext);
+  assertZeroized('encrypt IV', captured.encryptIV);
+  assertZeroized('encrypt associated data', captured.encryptAssociatedData);
+
+  const decrypted = await decryptJournalData(encrypted, key, associatedData);
+  assert.equal(decrypted, 'plaintext from provider');
+  assertZeroized('ciphertext', captured.ciphertext);
+  assertZeroized('decrypt IV', captured.decryptIV);
+  assertZeroized('decrypt associated data', captured.decryptAssociatedData);
+  assertZeroized('decrypted plaintext', captured.decryptedPlaintext);
 });
 
 test('production native-required mode fails closed without native quick crypto', async () => {
