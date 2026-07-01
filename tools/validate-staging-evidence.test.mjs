@@ -1778,6 +1778,42 @@ test('validateManifest strict release rejects OTEL trace and log evidence with d
   );
 });
 
+test('validateManifest strict release rejects OTEL trace and log evidence with different observed routes', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'OBS-OTEL-001');
+  item.evidence[0].result_summary = item.evidence[0].result_summary
+    .replace(
+      'log-backend-trace-correlation staging artifact trace_id=11112222333344445555666677778888 trace_id scriptureforge-api scriptureforge-rust-engine route=/api/v1/ai/generate/study method=POST',
+      'log-backend-trace-correlation staging artifact trace_id=11112222333344445555666677778888 trace_id scriptureforge-api scriptureforge-rust-engine route=/api/v1/journal_entries method=POST',
+    );
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /OBS-OTEL-001 strict release trace\/log segments must reference the same observed route/,
+  );
+});
+
+test('validateManifest strict release rejects OTEL trace and log evidence with different HTTP methods', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'OBS-OTEL-001');
+  item.evidence[0].result_summary = item.evidence[0].result_summary
+    .replace(
+      'log-backend-trace-correlation staging artifact trace_id=11112222333344445555666677778888 trace_id scriptureforge-api scriptureforge-rust-engine route=/api/v1/ai/generate/study method=POST',
+      'log-backend-trace-correlation staging artifact trace_id=11112222333344445555666677778888 trace_id scriptureforge-api scriptureforge-rust-engine route=/api/v1/ai/generate/study method=GET',
+    );
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /OBS-OTEL-001 strict release trace\/log segments must reference the same HTTP method/,
+  );
+});
+
 test('validateManifest strict release rejects OTEL trace without route and method markers', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',

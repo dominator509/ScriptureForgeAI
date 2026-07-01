@@ -2193,6 +2193,20 @@ function validateStrictReleaseItemEvidence(item, manifest) {
       traceSegmentTraceID,
       'OBS-OTEL-001 strict release trace/log segments must reference the same concrete trace ID',
     );
+    const traceSegmentRoute = extractTextMarker(traceSegment, 'route', 'OBS-OTEL-001 trace-backend-search');
+    const logSegmentRoute = extractTextMarker(logSegment, 'route', 'OBS-OTEL-001 log-backend-trace-correlation');
+    const traceSegmentMethod = extractTextMarker(traceSegment, 'method', 'OBS-OTEL-001 trace-backend-search').toUpperCase();
+    const logSegmentMethod = extractTextMarker(logSegment, 'method', 'OBS-OTEL-001 log-backend-trace-correlation').toUpperCase();
+    assert.equal(
+      logSegmentRoute,
+      traceSegmentRoute,
+      'OBS-OTEL-001 strict release trace/log segments must reference the same observed route',
+    );
+    assert.equal(
+      logSegmentMethod,
+      traceSegmentMethod,
+      'OBS-OTEL-001 strict release trace/log segments must reference the same HTTP method',
+    );
   }
   if (item.id === 'OBS-ALERT-001') {
     const missingDashboardImportProof = evidence.some((artifact) => {
