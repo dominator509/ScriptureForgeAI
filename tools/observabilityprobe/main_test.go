@@ -14,8 +14,8 @@ import (
 func requiredOTELSummaryMarkers(traceID string) map[string][]string {
 	return map[string][]string{
 		"collector-otlp-config":         {"staging artifact", "receivers", "otlp", "4317", "4318", "exporters", "service", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs", "load_run_id=obs-run-123"},
-		"api-prometheus-metrics":        {"staging artifact", "scriptureforge_http_requests_total", "scriptureforge_http_request_duration_seconds_sum", "scriptureforge_http_requests_total{", "status=", "websocket_active_connections_count", `scriptureforge_dependency_operations_total{dependency="websocket",operation="room_broadcast",status="dropped"`, "ai_inference_duration_seconds_sum", "ai_inference_duration_seconds_count", `scriptureforge_dependency_operations_total{dependency="rust_engine",operation="vector_search",status="success"`, `scriptureforge_dependency_operation_duration_seconds_sum{dependency="rust_engine",operation="vector_search",status="success"`, "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs", "load_run_id=obs-run-123"},
-		"rust-prometheus-metrics":       {"staging artifact", "scriptureforge_rust_engine_embedding_requests_total", "scriptureforge_rust_engine_embedding_failures_total", "scriptureforge_rust_engine_vector_search_requests_total", "scriptureforge_rust_engine_vector_search_failures_total", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs", "load_run_id=obs-run-123"},
+		"api-prometheus-metrics":        {"staging artifact", "scriptureforge_http_requests_total", "scriptureforge_http_request_duration_seconds_sum", "scriptureforge_http_requests_total{", "status=", "websocket_active_connections_count", `scriptureforge_dependency_operations_total{dependency="websocket",operation="room_broadcast",status="dropped"`, "ai_inference_duration_seconds_sum", "ai_inference_duration_seconds_count", `scriptureforge_dependency_operations_total{dependency="rust_engine",operation="vector_search",status="success"`, `scriptureforge_dependency_operation_duration_seconds_sum{dependency="rust_engine",operation="vector_search",status="success"`, "api_metrics_samples_positive=true", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs", "load_run_id=obs-run-123"},
+		"rust-prometheus-metrics":       {"staging artifact", "scriptureforge_rust_engine_embedding_requests_total", "scriptureforge_rust_engine_embedding_failures_total", "scriptureforge_rust_engine_vector_search_requests_total", "scriptureforge_rust_engine_vector_search_failures_total", "rust_metrics_samples_positive=true", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs", "load_run_id=obs-run-123"},
 		"trace-backend-search":          {"staging artifact", traceID, "scriptureforge-api", "scriptureforge-rust-engine", "route=/api/v1/ai/generate/study", "method=POST", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs", "load_run_id=obs-run-123"},
 		"log-backend-trace-correlation": {"staging artifact", traceID, "trace_id", "scriptureforge-api", "scriptureforge-rust-engine", "route=/api/v1/ai/generate/study", "method=POST", "timestamp=", "severity=", "service_version", "deployment_environment", "tenant_id=org-staging", "user_id=user-staging", "role=admin", "distinct_otel_artifacts=true", "release_candidate=sha-obs", "service_version=scriptureforge-api:sha-obs", "load_run_id=obs-run-123"},
 	}
@@ -734,6 +734,60 @@ scriptureforge_dependency_operation_duration_seconds_sum{dependency="rust_engine
 	}, &output, clientForHTTPServer(t, server))
 	if err == nil {
 		t.Fatalf("expected missing architecture metric profiles to fail:\n%s", output.String())
+	}
+	if !strings.Contains(output.String(), "api-prometheus-metrics") {
+		t.Fatalf("report missing API metrics probe:\n%s", output.String())
+	}
+}
+
+func TestRunFailsWhenAPIMetricsOnlyExposeZeroSamples(t *testing.T) {
+	zeroAPIMetrics := `scriptureforge_http_requests_total{method="GET",path="/ready",status="200"} 0
+scriptureforge_http_request_duration_seconds_sum 0
+websocket_active_connections_count 0
+scriptureforge_dependency_operations_total{dependency="websocket",operation="room_broadcast",status="dropped"} 0
+ai_inference_duration_seconds_sum{profile="gpt-4.1",status="success"} 0
+ai_inference_duration_seconds_count{profile="gpt-4.1",status="success"} 0
+scriptureforge_dependency_operations_total{dependency="rust_engine",operation="vector_search",status="success"} 0
+scriptureforge_dependency_operation_duration_seconds_sum{dependency="rust_engine",operation="vector_search",status="success"} 0`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/collector":
+			_, _ = w.Write([]byte("receivers otlp 4317 4318 exporters service" + observabilityReleaseMarkers))
+		case "/api-metrics":
+			_, _ = w.Write([]byte(zeroAPIMetrics + observabilityReleaseMarkers))
+		case "/rust-metrics":
+			_, _ = w.Write([]byte(completeRustMetricsArtifact + observabilityReleaseMarkers))
+		case "/traces":
+			_, _ = w.Write([]byte("trace abcdefabcdefabcdefabcdefabcdefab scriptureforge-api scriptureforge-rust-engine found route=/api/v1/ai/generate/study method=POST" + observabilityReleaseMarkers))
+		case "/logs":
+			_, _ = w.Write([]byte(`{"trace_id":"abcdefabcdefabcdefabcdefabcdefab","service":"scriptureforge-api","downstream":"scriptureforge-rust-engine","timestamp":"2026-07-01T12:00:00Z","severity":"info","service_version":"staging-1","deployment_environment":"staging","tenant_id":"org","user_id":"user","role":"admin","route":"/api/v1/ai/generate/study","method":"POST"} timestamp=2026-07-01T12:00:00Z severity=info tenant_id=org-staging user_id=user-staging role=admin ` + observabilityReleaseMarkers))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := runWithClient(config{
+		ProbeOTEL:          true,
+		CollectorConfigURL: "https://observability-artifacts.staging.scriptureforge.ai/collector",
+		APIMetricsURL:      "https://api-observability.staging.scriptureforge.ai/api-metrics",
+		RustMetricsURL:     "https://rust-metrics.staging.scriptureforge.ai/rust-metrics",
+		TraceQueryURL:      "https://traces.staging.scriptureforge.ai/traces?trace_id=abcdefabcdefabcdefabcdefabcdefab",
+		LogQueryURL:        "https://logs.staging.scriptureforge.ai/logs?trace_id=abcdefabcdefabcdefabcdefabcdefab",
+		TraceID:            "abcdefabcdefabcdefabcdefabcdefab",
+		ObservedRoute:      "/api/v1/ai/generate/study",
+		HTTPMethod:         "POST",
+		TenantID:           "org-staging",
+		UserID:             "user-staging",
+		Role:               "admin",
+		ReleaseCandidate:   "sha-obs",
+		ServiceVersion:     "scriptureforge-api:sha-obs",
+		LoadRunID:          "obs-run-123",
+		Timeout:            time.Second,
+	}, &output, clientForHTTPServer(t, server))
+	if err == nil {
+		t.Fatalf("expected zero-sample API metrics to fail:\n%s", output.String())
 	}
 	if !strings.Contains(output.String(), "api-prometheus-metrics") {
 		t.Fatalf("report missing API metrics probe:\n%s", output.String())

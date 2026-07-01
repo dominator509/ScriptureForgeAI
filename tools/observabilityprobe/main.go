@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -638,10 +639,30 @@ func probeContains(client *http.Client, name, target string, required []string, 
 			passed = false
 		}
 	}
+	if name == "api-prometheus-metrics" && !hasPositiveMetricSamples(text, []string{
+		"scriptureforge_http_requests_total",
+		"scriptureforge_http_request_duration_seconds_sum",
+		"ai_inference_duration_seconds_count",
+		"scriptureforge_dependency_operations_total",
+	}) {
+		passed = false
+	}
+	if name == "rust-prometheus-metrics" && !hasPositiveMetricSamples(text, []string{
+		"scriptureforge_rust_engine_embedding_requests_total",
+		"scriptureforge_rust_engine_vector_search_requests_total",
+	}) {
+		passed = false
+	}
 	passed = passed && containsNoneFold(text, forbiddenObservabilityMarkers())
 	summary := fmt.Sprintf("got HTTP %d in %dms", resp.StatusCode, latency)
 	if passed {
 		summary = fmt.Sprintf("%s; verified markers: %s", summary, strings.Join(required, ", "))
+		if name == "api-prometheus-metrics" {
+			summary += "; api_metrics_samples_positive=true"
+		}
+		if name == "rust-prometheus-metrics" {
+			summary += "; rust_metrics_samples_positive=true"
+		}
 		if name == "trace-backend-search" || name == "log-backend-trace-correlation" {
 			summary += fmt.Sprintf("; trace_id=%s, route=%s, method=%s", traceID, observedRoute, httpMethod)
 		}
@@ -709,6 +730,36 @@ func extractMatch(text string, pattern *regexp.Regexp) string {
 		return ""
 	}
 	return match[1]
+}
+
+func hasPositiveMetricSamples(text string, metricNames []string) bool {
+	for _, metricName := range metricNames {
+		if !hasPositiveMetricSample(text, metricName) {
+			return false
+		}
+	}
+	return true
+}
+
+func hasPositiveMetricSample(text, metricName string) bool {
+	for _, rawLine := range strings.Split(text, "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if line != metricName && !strings.HasPrefix(line, metricName+"{") && !strings.HasPrefix(line, metricName+" ") && !strings.HasPrefix(line, metricName+"\t") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		value, err := strconv.ParseFloat(fields[len(fields)-1], 64)
+		if err == nil && value > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func forbiddenObservabilityMarkers() []string {
