@@ -519,7 +519,7 @@ test('validateManifest strict release rejects tenant DB proof borrowed from API 
     statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
   });
   const item = manifest.items.find((candidate) => candidate.id === 'DATA-RLS-001');
-  const dbMarkers = "staging artifact current_user=scriptureforge_app non-superuser superuser=false bypassrls=false app.current_org_id app.current_org_id=11111111-1111-4111-8111-111111111111 current_setting('app.current_org_id') blocked_org_id=22222222-2222-4222-8222-222222222222 row_security=on FORCE ROW LEVEL SECURITY rls_tables_verified=9 rls_forced_tables=9 rls_policy_scope=app.current_org_id organizations users scripture_texts refresh_tokens journal_entries live_rooms room_participants ai_request_logs citation_trails same-tenant read visible cross-tenant read hidden cross-tenant write denied auth_refresh_session_rls=true auth_mfa_rls=true workspace_switch_tenant_match=true privileged_mfa_enrollment_rls=true ai_audit_rls=true generated_curriculum_audit_rls=true distinct_db_rls_artifact=true";
+  const dbMarkers = `staging artifact current_user=scriptureforge_app non-superuser superuser=false bypassrls=false app.current_org_id app.current_org_id=11111111-1111-4111-8111-111111111111 current_setting('app.current_org_id') blocked_org_id=22222222-2222-4222-8222-222222222222 row_security=on FORCE ROW LEVEL SECURITY rls_tables_verified=9 rls_forced_tables=9 rls_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails rls_policy_scope=app.current_org_id organizations users scripture_texts refresh_tokens journal_entries live_rooms room_participants ai_request_logs citation_trails ${tenantRLSTableOutcomeMarkers()} same-tenant read visible cross-tenant read hidden cross-tenant write denied auth_refresh_session_rls=true auth_mfa_rls=true workspace_switch_tenant_match=true privileged_mfa_enrollment_rls=true ai_audit_rls=true generated_curriculum_audit_rls=true distinct_db_rls_artifact=true`;
   item.evidence[0].result_summary = item.evidence[0].result_summary
     .replace(
       'owner-create-encrypted-journal same-tenant journal write accepted encrypted journal created plaintext not returned plaintext-shaped journal payload denied malformed encrypted envelope rejected, journal_id=entry-1',
@@ -4285,6 +4285,7 @@ function abuseLimitSummary(releaseCandidate) {
 
 function tenantRLSSummary(releaseCandidate) {
   const release = `release_candidate=${releaseCandidate} service_version=scriptureforge-api:${releaseCandidate} load_run_id=load-run-123`;
+  const tableOutcomes = tenantRLSTableOutcomeMarkers();
   return [
     'DATA-RLS-001 tenantprobe passed: owner-create-encrypted-journal same-tenant journal write accepted encrypted journal created plaintext not returned plaintext-shaped journal payload denied malformed encrypted envelope rejected, journal_id=entry-1',
     'blocked-journal-tenant-override-write-denied cross-tenant journal write denied tenant override rejected',
@@ -4298,8 +4299,26 @@ function tenantRLSSummary(releaseCandidate) {
     'blocked-active-rooms-excludes-created-room cross-tenant room list hidden created room absent, room_id=room-1',
     'owner-room-state same-tenant room state visible created room state returned, room_id=room-1',
     'blocked-room-state-denied cross-tenant room state denied created room state hidden, room_id=room-1',
-    "database-rls-context-proof staging artifact current_user=scriptureforge_app non-superuser superuser=false bypassrls=false app.current_org_id app.current_org_id=11111111-1111-4111-8111-111111111111 current_setting('app.current_org_id') blocked_org_id=22222222-2222-4222-8222-222222222222 row_security=on FORCE ROW LEVEL SECURITY rls_tables_verified=9 rls_forced_tables=9 rls_policy_scope=app.current_org_id organizations users scripture_texts refresh_tokens journal_entries live_rooms room_participants ai_request_logs citation_trails same-tenant read visible cross-tenant read hidden cross-tenant write denied auth_refresh_session_rls=true auth_mfa_rls=true workspace_switch_tenant_match=true privileged_mfa_enrollment_rls=true ai_audit_rls=true generated_curriculum_audit_rls=true distinct_db_rls_artifact=true",
+    `database-rls-context-proof staging artifact current_user=scriptureforge_app non-superuser superuser=false bypassrls=false app.current_org_id app.current_org_id=11111111-1111-4111-8111-111111111111 current_setting('app.current_org_id') blocked_org_id=22222222-2222-4222-8222-222222222222 row_security=on FORCE ROW LEVEL SECURITY rls_tables_verified=9 rls_forced_tables=9 rls_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails rls_policy_scope=app.current_org_id organizations users scripture_texts refresh_tokens journal_entries live_rooms room_participants ai_request_logs citation_trails ${tableOutcomes} same-tenant read visible cross-tenant read hidden cross-tenant write denied auth_refresh_session_rls=true auth_mfa_rls=true workspace_switch_tenant_match=true privileged_mfa_enrollment_rls=true ai_audit_rls=true generated_curriculum_audit_rls=true distinct_db_rls_artifact=true`,
   ].map((segment) => `${segment} ${release}`).join('; ');
+}
+
+function tenantRLSTableOutcomeMarkers() {
+  return [
+    'organizations',
+    'users',
+    'scripture_texts',
+    'refresh_tokens',
+    'journal_entries',
+    'live_rooms',
+    'room_participants',
+    'ai_request_logs',
+    'citation_trails',
+  ].flatMap((table) => [
+    `rls_table_${table}_same_visible=true`,
+    `rls_table_${table}_cross_hidden=true`,
+    `rls_table_${table}_write_denied=true`,
+  ]).join(' ');
 }
 
 function webClientSummary(releaseCandidate) {

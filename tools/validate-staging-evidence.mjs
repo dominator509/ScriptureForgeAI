@@ -181,6 +181,7 @@ const tenantSegmentMarkerRequirements = new Map([
     'FORCE ROW LEVEL SECURITY',
     'rls_tables_verified=9',
     'rls_forced_tables=9',
+    'rls_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails',
     'rls_policy_scope=app.current_org_id',
     'organizations',
     'users',
@@ -191,6 +192,7 @@ const tenantSegmentMarkerRequirements = new Map([
     'room_participants',
     'ai_request_logs',
     'citation_trails',
+    ...tenantTableOutcomeMarkers(),
     'same-tenant read visible',
     'cross-tenant read hidden',
     'cross-tenant write denied',
@@ -199,6 +201,25 @@ const tenantSegmentMarkerRequirements = new Map([
     'service_version=',
   ]],
 ]);
+
+function tenantTableOutcomeMarkers() {
+  return [
+    'organizations',
+    'users',
+    'scripture_texts',
+    'refresh_tokens',
+    'journal_entries',
+    'live_rooms',
+    'room_participants',
+    'ai_request_logs',
+    'citation_trails',
+  ].flatMap((table) => [
+    `rls_table_${table}_same_visible=true`,
+    `rls_table_${table}_cross_hidden=true`,
+    `rls_table_${table}_write_denied=true`,
+  ]);
+}
+
 const tlsSegmentMarkerRequirements = new Map([
   ['api-live', ['/live', 'HTTP 200', 'release_candidate=', 'service_version=']],
   ['api-ready', ['/ready', 'HTTP 200', 'release_candidate=', 'service_version=']],

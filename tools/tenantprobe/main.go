@@ -47,20 +47,28 @@ type report struct {
 }
 
 type probeResult struct {
-	Name              string   `json:"name"`
-	Target            string   `json:"target"`
-	Passed            bool     `json:"passed"`
-	StatusCode        int      `json:"status_code,omitempty"`
-	LatencyMS         int64    `json:"latency_ms,omitempty"`
-	JournalID         string   `json:"journal_id,omitempty"`
-	RoomID            string   `json:"room_id,omitempty"`
-	ApplicationRole   string   `json:"application_role,omitempty"`
-	RowSecurity       string   `json:"row_security,omitempty"`
-	RLSTablesVerified int      `json:"rls_tables_verified,omitempty"`
-	RLSForcedTables   int      `json:"rls_forced_tables,omitempty"`
-	RLSTableNames     []string `json:"rls_table_names,omitempty"`
-	RLSPolicyScope    string   `json:"rls_policy_scope,omitempty"`
-	ResultSummary     string   `json:"result_summary"`
+	Name              string            `json:"name"`
+	Target            string            `json:"target"`
+	Passed            bool              `json:"passed"`
+	StatusCode        int               `json:"status_code,omitempty"`
+	LatencyMS         int64             `json:"latency_ms,omitempty"`
+	JournalID         string            `json:"journal_id,omitempty"`
+	RoomID            string            `json:"room_id,omitempty"`
+	ApplicationRole   string            `json:"application_role,omitempty"`
+	RowSecurity       string            `json:"row_security,omitempty"`
+	RLSTablesVerified int               `json:"rls_tables_verified,omitempty"`
+	RLSForcedTables   int               `json:"rls_forced_tables,omitempty"`
+	RLSTableNames     []string          `json:"rls_table_names,omitempty"`
+	RLSTableOutcomes  []rlsTableOutcome `json:"rls_table_outcomes,omitempty"`
+	RLSPolicyScope    string            `json:"rls_policy_scope,omitempty"`
+	ResultSummary     string            `json:"result_summary"`
+}
+
+type rlsTableOutcome struct {
+	Table       string `json:"table"`
+	SameVisible bool   `json:"same_visible"`
+	CrossHidden bool   `json:"cross_hidden"`
+	WriteDenied bool   `json:"write_denied"`
 }
 
 type journalPayload struct {
@@ -100,6 +108,7 @@ var requiredDBRLSMarkers = append([]string{
 	"FORCE ROW LEVEL SECURITY",
 	"rls_tables_verified=9",
 	"rls_forced_tables=9",
+	"rls_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails",
 	"rls_policy_scope=app.current_org_id",
 }, append(tenantScopedRLSTables, []string{
 	"same-tenant read visible",
@@ -301,6 +310,7 @@ func probeDBRLSArtifact(client *http.Client, target, releaseCandidate, serviceVe
 		result.RLSTablesVerified = 9
 		result.RLSForcedTables = 9
 		result.RLSTableNames = slices.Clone(tenantScopedRLSTables)
+		result.RLSTableOutcomes = rlsTableOutcomes()
 		result.RLSPolicyScope = "app.current_org_id"
 	}
 	return result
@@ -308,6 +318,7 @@ func probeDBRLSArtifact(client *http.Client, target, releaseCandidate, serviceVe
 
 func dbRLSMarkers(releaseCandidate, serviceVersion, loadRunID, ownerOrgID, blockedOrgID string) []string {
 	markers := append([]string{}, requiredDBRLSMarkers...)
+	markers = append(markers, rlsTableOutcomeMarkers()...)
 	markers = append(
 		markers,
 		"app.current_org_id="+ownerOrgID,
@@ -317,6 +328,32 @@ func dbRLSMarkers(releaseCandidate, serviceVersion, loadRunID, ownerOrgID, block
 		"load_run_id="+loadRunID,
 	)
 	return markers
+}
+
+func rlsTableOutcomeMarkers() []string {
+	markers := make([]string, 0, len(tenantScopedRLSTables)*3)
+	for _, table := range tenantScopedRLSTables {
+		markers = append(
+			markers,
+			"rls_table_"+table+"_same_visible=true",
+			"rls_table_"+table+"_cross_hidden=true",
+			"rls_table_"+table+"_write_denied=true",
+		)
+	}
+	return markers
+}
+
+func rlsTableOutcomes() []rlsTableOutcome {
+	outcomes := make([]rlsTableOutcome, 0, len(tenantScopedRLSTables))
+	for _, table := range tenantScopedRLSTables {
+		outcomes = append(outcomes, rlsTableOutcome{
+			Table:       table,
+			SameVisible: true,
+			CrossHidden: true,
+			WriteDenied: true,
+		})
+	}
+	return outcomes
 }
 
 func appendReleaseMarkers(probes []probeResult, releaseCandidate, serviceVersion, loadRunID string) {

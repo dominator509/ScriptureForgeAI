@@ -8,6 +8,18 @@ function securitySignoffSummary(releaseCandidate) {
   return `threat model approval complete; security/dependency_risk_register.md#DRR-001 dependency risk decision reviewed; residual risk review complete; owner/security approval recorded; release risk signoff approved; signoff_artifact_verified=true; release_candidate=${releaseCandidate}`;
 }
 
+const tenantRLSTableNames = [
+  'organizations',
+  'users',
+  'scripture_texts',
+  'refresh_tokens',
+  'journal_entries',
+  'live_rooms',
+  'room_participants',
+  'ai_request_logs',
+  'citation_trails',
+];
+
 const tenantRLSMarkerSummary = [
   'staging artifact',
   'current_user=scriptureforge_app',
@@ -22,6 +34,7 @@ const tenantRLSMarkerSummary = [
   'FORCE ROW LEVEL SECURITY',
   'rls_tables_verified=9',
   'rls_forced_tables=9',
+  'rls_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails',
   'rls_policy_scope=app.current_org_id',
   'organizations',
   'users',
@@ -41,21 +54,27 @@ const tenantRLSMarkerSummary = [
   'privileged_mfa_enrollment_rls=true',
   'ai_audit_rls=true',
   'generated_curriculum_audit_rls=true',
+  ...tenantRLSTableOutcomeMarkers(),
   'distinct_db_rls_artifact=true',
   'load_run_id=load-run-123',
 ].join(', ');
 
-const tenantRLSTableNames = [
-  'organizations',
-  'users',
-  'scripture_texts',
-  'refresh_tokens',
-  'journal_entries',
-  'live_rooms',
-  'room_participants',
-  'ai_request_logs',
-  'citation_trails',
-];
+function tenantRLSTableOutcomeMarkers() {
+  return tenantRLSTableNames.flatMap((table) => [
+    `rls_table_${table}_same_visible=true`,
+    `rls_table_${table}_cross_hidden=true`,
+    `rls_table_${table}_write_denied=true`,
+  ]);
+}
+
+function tenantRLSTableOutcomes() {
+  return tenantRLSTableNames.map((table) => ({
+    table,
+    same_visible: true,
+    cross_hidden: true,
+    write_denied: true,
+  }));
+}
 
 const tenantAPIProbeMarkerSummaries = {
   'owner-create-encrypted-journal': 'create returned HTTP 201; verified markers: same-tenant journal write accepted, encrypted journal created, plaintext not returned, plaintext-shaped journal payload denied, malformed encrypted envelope rejected, journal_id=entry-1, load_run_id=load-run-123',
@@ -146,6 +165,7 @@ function tenantRLSProbeReport(overridesByProbe = {}) {
         rls_tables_verified: 9,
         rls_forced_tables: 9,
         rls_table_names: tenantRLSTableNames,
+        rls_table_outcomes: tenantRLSTableOutcomes(),
         rls_policy_scope: 'app.current_org_id',
         result_summary: `database RLS proof returned HTTP 200; verified markers: ${tenantRLSMarkerSummary}`,
         ...(overridesByProbe['database-rls-context-proof'] ?? {}),
@@ -1452,15 +1472,17 @@ test('recordEvidence rejects tenant RLS evidence without all DB context markers'
             row_security: 'on',
             rls_tables_verified: 9,
             rls_forced_tables: 9,
+            rls_table_names: tenantRLSTableNames,
+            rls_table_outcomes: tenantRLSTableOutcomes(),
             rls_policy_scope: 'app.current_org_id',
-            result_summary: `database RLS proof returned HTTP 200; verified markers: ${tenantRLSMarkerSummary.replace('room_participants', '')}`,
+            result_summary: `database RLS proof returned HTTP 200; verified markers: ${tenantRLSMarkerSummary.replace('rls_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails, ', '')}`,
           },
         ],
       },
       'artifacts/tenantprobe.json',
       'go run ./tools/tenantprobe',
     ),
-    /result_summary must include verified marker room_participants/,
+    /result_summary must include verified marker rls_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails/,
   );
 });
 
@@ -1528,6 +1550,38 @@ test('recordEvidence rejects tenant RLS evidence without exact structured RLS ta
   );
 });
 
+test('recordEvidence rejects tenant RLS evidence without structured per-table RLS outcomes', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DATA-RLS-001' }] },
+      tenantRLSProbeReport({
+        'database-rls-context-proof': {
+          rls_table_outcomes: tenantRLSTableOutcomes().filter((outcome) => outcome.table !== 'journal_entries'),
+        },
+      }),
+      'artifacts/tenantprobe.json',
+      'go run ./tools/tenantprobe',
+    ),
+    /database-rls-context-proof must include structured rls_table_outcomes for every tenant-scoped table/,
+  );
+});
+
+test('recordEvidence rejects tenant RLS evidence without per-table outcome markers', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'DATA-RLS-001' }] },
+      tenantRLSProbeReport({
+        'database-rls-context-proof': {
+          result_summary: `database RLS proof returned HTTP 200; verified markers: ${tenantRLSMarkerSummary.replace('rls_table_journal_entries_write_denied=true, ', '')}`,
+        },
+      }),
+      'artifacts/tenantprobe.json',
+      'go run ./tools/tenantprobe',
+    ),
+    /database-rls-context-proof result_summary must include verified marker rls_table_journal_entries_write_denied=true/,
+  );
+});
+
 test('recordEvidence rejects tenant RLS evidence without staging artifact marker', () => {
   assert.throws(
     () => recordEvidence(
@@ -1564,6 +1618,8 @@ test('recordEvidence rejects tenant RLS evidence without staging artifact marker
             row_security: 'on',
             rls_tables_verified: 9,
             rls_forced_tables: 9,
+            rls_table_names: tenantRLSTableNames,
+            rls_table_outcomes: tenantRLSTableOutcomes(),
             rls_policy_scope: 'app.current_org_id',
             result_summary: `database RLS proof returned HTTP 200; verified markers: ${tenantRLSMarkerSummary.replace('staging artifact, ', '')}`,
           },

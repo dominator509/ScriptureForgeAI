@@ -1489,8 +1489,11 @@ function validateTenantRLSEvidence(report, manifest) {
       assert.equal(Number(probe.rls_tables_verified), 9, 'DATA-RLS-001 database-rls-context-proof must include structured rls_tables_verified=9');
       assert.equal(Number(probe.rls_forced_tables), 9, 'DATA-RLS-001 database-rls-context-proof must include structured rls_forced_tables=9');
       assert.equal(String(probe.rls_policy_scope ?? ''), 'app.current_org_id', 'DATA-RLS-001 database-rls-context-proof must include structured rls_policy_scope=app.current_org_id');
+      assertTenantRLSTableOutcomes(probe);
       for (const marker of [
         ...requiredTenantRLSContextMarkers,
+        `rls_table_names=${requiredAppGrantTableNames.join(',')}`,
+        ...requiredTenantRLSTableOutcomeMarkers(),
         `app.current_org_id=${ownerOrgID}`,
         `blocked_org_id=${blockedOrgID}`,
         ...reportReleaseMarkers,
@@ -1542,6 +1545,26 @@ function validateTenantRLSEvidence(report, manifest) {
   assert.equal(reportCreatedJournalID, createdJournalID, 'DATA-RLS-001 report created_journal_id must match owner-create-encrypted-journal journal_id');
   assert.equal(reportCreatedRoomID, createdRoomID, 'DATA-RLS-001 report created_room_id must match owner-create-room room_id');
   assertSingleProbeLoadRun('DATA-RLS-001', probeLoadRunIDs);
+}
+
+function requiredTenantRLSTableOutcomeMarkers() {
+  return requiredAppGrantTableNames.flatMap((table) => [
+    `rls_table_${table}_same_visible=true`,
+    `rls_table_${table}_cross_hidden=true`,
+    `rls_table_${table}_write_denied=true`,
+  ]);
+}
+
+function assertTenantRLSTableOutcomes(probe) {
+  const outcomes = Array.isArray(probe.rls_table_outcomes) ? probe.rls_table_outcomes : [];
+  assert.equal(outcomes.length, requiredAppGrantTableNames.length, 'DATA-RLS-001 database-rls-context-proof must include structured rls_table_outcomes for every tenant-scoped table');
+  for (const table of requiredAppGrantTableNames) {
+    const outcome = outcomes.find((candidate) => String(candidate?.table ?? '') === table);
+    assert.ok(outcome, `DATA-RLS-001 database-rls-context-proof missing rls_table_outcomes entry for ${table}`);
+    assert.equal(outcome.same_visible, true, `DATA-RLS-001 database-rls-context-proof ${table} must include same_visible=true`);
+    assert.equal(outcome.cross_hidden, true, `DATA-RLS-001 database-rls-context-proof ${table} must include cross_hidden=true`);
+    assert.equal(outcome.write_denied, true, `DATA-RLS-001 database-rls-context-proof ${table} must include write_denied=true`);
+  }
 }
 
 function validateMobileEvidence(report, manifest) {

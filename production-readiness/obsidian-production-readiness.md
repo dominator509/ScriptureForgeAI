@@ -156,6 +156,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Tenant Exact Release Binding Guard**: `tools/tenantprobe`, the staging evidence recorder, and strict staging manifest validation require tenant API and database/RLS proof summaries to carry exact `release_candidate=<manifest release_candidate>` plus `service_version` markers before `DATA-RLS-001` can support final readiness.
 - [x] **Tenant Pair DB Binding Guard**: `tools/tenantprobe`, the staging evidence recorder, and strict-release validation now require structured UUID-shaped `owner_org_id` and `blocked_org_id` values for different organizations, and the deployed DB/RLS proof segment must carry `app.current_org_id=<owner_org_id>` plus `blocked_org_id=<blocked_org_id>` so a stale or unrelated DB proof cannot satisfy `DATA-RLS-001`.
 - [x] **Tenant DB Structured RLS Field Guard**: `tools/tenantprobe` emits structured `application_role=scriptureforge_app`, `row_security=on`, `rls_tables_verified=9`, `rls_forced_tables=9`, and `rls_policy_scope=app.current_org_id` fields on the passing `database-rls-context-proof` probe, and the staging evidence recorder rejects reports where those fields are missing or mismatched.
+- [x] **Tenant DB Per-Table Outcome Guard**: `tools/tenantprobe`, the staging evidence recorder, and strict-release validation require `rls_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails` plus structured `rls_table_outcomes` entries proving same-visible, cross-hidden, and write-denied outcomes for every tenant-scoped table before `DATA-RLS-001` can support final readiness.
 - [x] **Local All-Table RLS Mutation Proof Guard**: `tools/run-rls-db-integration.mjs` and local gate validation now require explicit proof markers that same-tenant reads and writes pass and cross-tenant reads, inserts, updates, and deletes are denied or hidden across all nine tenant-scoped tables before local tenant isolation evidence can support readiness.
 - [x] **Local Same-Tenant RLS Update/Delete Guard**: `TestTenantRLSCoversAllTenantTables` now proves same-tenant update and delete operations affect exactly one row for every tenant-scoped table, and the local RLS proof marker contract requires `rls_same_tenant_updates_pass_all_tables=true` plus `rls_same_tenant_deletes_pass_all_tables=true`.
 - [x] **Production Room Membership RLS Wiring Guard**: `tools/validate-rls-schema.mjs` rejects production `RoomHandler` or `SocketConnection` route construction that installs a `MembershipValidator` override, and requires both default membership paths to set `app.current_org_id` through `auth.SetTenantContext` before querying `room_participants` by organization, room, and user.
@@ -371,13 +372,14 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 2
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: 17734c31d9f9781200afc2b0b9b395c4dbfa09f0
+- expected_release_candidate: f56cad131849ebd2333b28d268ed0b984ca5cdea
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: 17734c31d9f9781200afc2b0b9b395c4dbfa09f0
+    - expected_release_candidate: f56cad131849ebd2333b28d268ed0b984ca5cdea
     - actual_release_candidate: b1c70b67e157f8c382cf3b872ef943e24714a95b
   - STAGING-EVIDENCE-CONTRACT [failed]: Environment-specific pending evidence requirements are stale relative to production-readiness/staging-evidence.example.json.
+    - required: DATA-RLS-001 required_evidence must be refreshed from the checked-in example contract (5 current entries, 5 expected entries)
     - required: EXT-ZOOM-001 required_evidence must be refreshed from the checked-in example contract (11 current entries, 11 expected entries)
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
     - required: tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL and commit_sha exactly matching release_candidate=<manifest release_candidate>; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted

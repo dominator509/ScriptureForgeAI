@@ -324,6 +324,15 @@ func TestRunProvesOwnerReadAndBlockedDenial(t *testing.T) {
 	if dbRLSProbe.RLSPolicyScope != "app.current_org_id" {
 		t.Fatalf("database RLS probe did not expose structured policy scope: %+v", dbRLSProbe)
 	}
+	if len(dbRLSProbe.RLSTableOutcomes) != len(tenantScopedRLSTables) {
+		t.Fatalf("database RLS probe did not expose per-table outcomes: %+v", dbRLSProbe)
+	}
+	for i, table := range tenantScopedRLSTables {
+		outcome := dbRLSProbe.RLSTableOutcomes[i]
+		if outcome.Table != table || !outcome.SameVisible || !outcome.CrossHidden || !outcome.WriteDenied {
+			t.Fatalf("database RLS probe table outcome[%d] = %+v, want full proof for %s", i, outcome, table)
+		}
+	}
 }
 
 func TestRunFailsWhenTenantOverrideWritesAreAccepted(t *testing.T) {
@@ -599,7 +608,7 @@ func TestDBRLSArtifactRejectsLocalOnlyProof(t *testing.T) {
 
 func TestDBRLSArtifactRequiresEveryTenantScopedTable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(strings.ReplaceAll(fullDBRLSProofArtifact(), "room_participants ", "")))
+		_, _ = w.Write([]byte(strings.ReplaceAll(fullDBRLSProofArtifact(), "rls_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails ", "")))
 	}))
 	defer server.Close()
 
@@ -627,6 +636,26 @@ func TestDBRLSArtifactRequiresTableAndForceCounts(t *testing.T) {
 			result := probeDBRLSArtifactForTest(server.Client(), server.URL)
 			if result.Passed {
 				t.Fatalf("DB RLS proof passed despite missing %s marker: %+v", tc.marker, result)
+			}
+		})
+	}
+}
+
+func TestDBRLSArtifactRequiresPerTableOutcomeProof(t *testing.T) {
+	for _, marker := range []string{
+		"rls_table_journal_entries_same_visible=true ",
+		"rls_table_journal_entries_cross_hidden=true ",
+		"rls_table_journal_entries_write_denied=true ",
+	} {
+		t.Run(marker, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(strings.ReplaceAll(fullDBRLSProofArtifact(), marker, "")))
+			}))
+			defer server.Close()
+
+			result := probeDBRLSArtifactForTest(server.Client(), server.URL)
+			if result.Passed {
+				t.Fatalf("DB RLS proof passed despite missing per-table outcome marker %q: %+v", marker, result)
 			}
 		})
 	}
@@ -874,11 +903,25 @@ func TestDBRLSProofRequiresAuthAndAIAuditSemanticMarkers(t *testing.T) {
 }
 
 func fullDBRLSProofArtifact() string {
-	return `staging artifact current_user=scriptureforge_app non-superuser superuser=false bypassrls=false app.current_org_id set app.current_org_id=` + testOwnerOrgID + ` current_setting('app.current_org_id') blocked_org_id=` + testBlockedOrgID + ` row_security=on FORCE ROW LEVEL SECURITY rls_tables_verified=9 rls_forced_tables=9 rls_policy_scope=app.current_org_id organizations users scripture_texts refresh_tokens journal_entries live_rooms room_participants ai_request_logs citation_trails same-tenant read visible cross-tenant read hidden cross-tenant write denied auth_refresh_session_rls=true auth_mfa_rls=true workspace_switch_tenant_match=true privileged_mfa_enrollment_rls=true ai_audit_rls=true generated_curriculum_audit_rls=true release_candidate=sha-tenant service_version=scriptureforge-api:sha-tenant load_run_id=` + testLoadRunID
+	return `staging artifact current_user=scriptureforge_app non-superuser superuser=false bypassrls=false app.current_org_id set app.current_org_id=` + testOwnerOrgID + ` current_setting('app.current_org_id') blocked_org_id=` + testBlockedOrgID + ` row_security=on FORCE ROW LEVEL SECURITY rls_tables_verified=9 rls_forced_tables=9 rls_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails rls_policy_scope=app.current_org_id organizations users scripture_texts refresh_tokens journal_entries live_rooms room_participants ai_request_logs citation_trails ` + fullDBRLSOutcomeMarkers() + `same-tenant read visible cross-tenant read hidden cross-tenant write denied auth_refresh_session_rls=true auth_mfa_rls=true workspace_switch_tenant_match=true privileged_mfa_enrollment_rls=true ai_audit_rls=true generated_curriculum_audit_rls=true release_candidate=sha-tenant service_version=scriptureforge-api:sha-tenant load_run_id=` + testLoadRunID
 }
 
 func probeDBRLSArtifactForTest(client *http.Client, target string) probeResult {
 	return probeDBRLSArtifact(client, target, "sha-tenant", "scriptureforge-api:sha-tenant", testLoadRunID, testOwnerOrgID, testBlockedOrgID)
+}
+
+func fullDBRLSOutcomeMarkers() string {
+	var builder strings.Builder
+	for _, table := range tenantScopedRLSTables {
+		builder.WriteString("rls_table_")
+		builder.WriteString(table)
+		builder.WriteString("_same_visible=true rls_table_")
+		builder.WriteString(table)
+		builder.WriteString("_cross_hidden=true rls_table_")
+		builder.WriteString(table)
+		builder.WriteString("_write_denied=true ")
+	}
+	return builder.String()
 }
 
 func clientForHTTPServer(t *testing.T, server *httptest.Server) *http.Client {
