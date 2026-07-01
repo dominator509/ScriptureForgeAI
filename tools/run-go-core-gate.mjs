@@ -16,6 +16,13 @@ export const goTestProofMarkers = [
   'websocket_drop_metric_test=true',
   'websocket_origin_guard_test=true',
   'websocket_polling_fallback_test=true',
+  'abuse_rate_limit_routes_test=true',
+  'abuse_auth_route_limit_test=true',
+  'abuse_journal_route_limit_test=true',
+  'abuse_rooms_route_limit_test=true',
+  'abuse_websocket_route_limit_test=true',
+  'abuse_ai_route_limit_test=true',
+  'abuse_legacy_auth_alias_bucket_test=true',
   'repo_go_toolchain=true',
 ];
 
@@ -33,6 +40,30 @@ export const goTestRequiredWebSocketTests = [
   'TestRoomStateHandlerReturnsLatestEventForPollingFallback',
   'TestRoomStateHandlerRejectsNonMemberBeforePollingState',
   'TestRoomStateHandlerFailsClosedWhenStateManagerMissing',
+];
+
+export const goTestRequiredAbuseTests = [
+  'TestMountedAuthRoutesEnforceAbuseRateLimit',
+  'TestLegacyAuthAliasSharesCanonicalAbuseBucket',
+  'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/auth_register_canonical',
+  'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/auth_login_canonical',
+  'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/auth_refresh_canonical',
+  'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/auth_logout_canonical',
+  'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/auth_mfa_verify_canonical',
+  'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/auth_mfa_enroll_canonical',
+  'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/auth_workspace_switch_canonical',
+  'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/auth_register_legacy_alias',
+  'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/auth_login_legacy_alias',
+  'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/ai_canonical_study_generation',
+  'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/ai_legacy_curriculum_alias',
+  'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/journal_bootstrap',
+  'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/journal_list',
+  'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/journal_create',
+  'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/journal_read',
+  'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/rooms_create',
+  'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/rooms_active',
+  'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/rooms_state_polling',
+  'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/websocket_stream',
 ];
 
 export const goVetProofMarkers = [
@@ -106,9 +137,24 @@ export function runGoCoreGate({
 }
 
 export function validateGoTestOutput(output) {
+  const websocket = collectMissingGoTests(output, goTestRequiredWebSocketTests);
+  const abuse = collectMissingGoTests(output, goTestRequiredAbuseTests);
+  const errors = [];
+  if (websocket.skipped.length > 0 || websocket.missing.length > 0) {
+    errors.push(`WebSocket production-behavior proof (${formatMissingDetails(websocket)})`);
+  }
+  if (abuse.skipped.length > 0 || abuse.missing.length > 0) {
+    errors.push(`abuse/rate-limit route proof (${formatMissingDetails(abuse)})`);
+  }
+  if (errors.length > 0) {
+    throw new Error(`go-test-gate missing required ${errors.join('; ')}`);
+  }
+}
+
+function collectMissingGoTests(output, testNames) {
   const missing = [];
   const skipped = [];
-  for (const testName of goTestRequiredWebSocketTests) {
+  for (const testName of testNames) {
     const escaped = escapeRegExp(testName);
     if (new RegExp(`--- SKIP: ${escaped}\\b`).test(output)) {
       skipped.push(testName);
@@ -118,13 +164,14 @@ export function validateGoTestOutput(output) {
       missing.push(testName);
     }
   }
-  if (skipped.length > 0 || missing.length > 0) {
-    const details = [
-      skipped.length > 0 ? `skipped: ${skipped.join(', ')}` : '',
-      missing.length > 0 ? `missing PASS lines: ${missing.join(', ')}` : '',
-    ].filter(Boolean).join('; ');
-    throw new Error(`go-test-gate missing required WebSocket production-behavior proof (${details})`);
-  }
+  return { missing, skipped };
+}
+
+function formatMissingDetails({ missing, skipped }) {
+  return [
+    skipped.length > 0 ? `skipped: ${skipped.join(', ')}` : '',
+    missing.length > 0 ? `missing PASS lines: ${missing.join(', ')}` : '',
+  ].filter(Boolean).join('; ');
 }
 
 function escapeRegExp(value) {

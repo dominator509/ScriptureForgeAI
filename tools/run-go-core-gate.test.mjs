@@ -4,6 +4,7 @@ import {
   defaultGoBin,
   goArgsForMode,
   goTestProofMarkers,
+  goTestRequiredAbuseTests,
   goTestRequiredWebSocketTests,
   goVetProofMarkers,
   parseArgs,
@@ -45,7 +46,7 @@ test('runGoCoreGate runs go test with release proof markers', () => {
     cwd: 'repo',
     spawnSyncImpl(command, args, options) {
       calls.push({ command, args, options });
-      return { status: 0, stdout: requiredWebSocketPassOutput(), stderr: '' };
+      return { status: 0, stdout: requiredGoTestPassOutput(), stderr: '' };
     },
     env: { GOCACHE: '.gocache', GO_ENV: 'testing' },
   });
@@ -59,14 +60,26 @@ test('runGoCoreGate runs go test with release proof markers', () => {
 });
 
 test('validateGoTestOutput requires WebSocket production-behavior PASS lines', () => {
-  assert.doesNotThrow(() => validateGoTestOutput(requiredWebSocketPassOutput()));
+  assert.doesNotThrow(() => validateGoTestOutput(requiredGoTestPassOutput()));
   assert.throws(
-    () => validateGoTestOutput(requiredWebSocketPassOutput().replace('--- PASS: TestLiveRoomRejectsDisallowedOrigin', '--- SKIP: TestLiveRoomRejectsDisallowedOrigin')),
+    () => validateGoTestOutput(requiredGoTestPassOutput().replace('--- PASS: TestLiveRoomRejectsDisallowedOrigin', '--- SKIP: TestLiveRoomRejectsDisallowedOrigin')),
     /skipped: TestLiveRoomRejectsDisallowedOrigin/,
   );
   assert.throws(
-    () => validateGoTestOutput(requiredWebSocketPassOutput().replace('--- PASS: TestRoomStateHandlerFailsClosedWhenStateManagerMissing', '--- RUN: TestRoomStateHandlerFailsClosedWhenStateManagerMissing')),
+    () => validateGoTestOutput(requiredGoTestPassOutput().replace('--- PASS: TestRoomStateHandlerFailsClosedWhenStateManagerMissing', '--- RUN: TestRoomStateHandlerFailsClosedWhenStateManagerMissing')),
     /missing PASS lines: TestRoomStateHandlerFailsClosedWhenStateManagerMissing/,
+  );
+});
+
+test('validateGoTestOutput requires mounted abuse route PASS lines', () => {
+  assert.doesNotThrow(() => validateGoTestOutput(requiredGoTestPassOutput()));
+  assert.throws(
+    () => validateGoTestOutput(requiredGoTestPassOutput().replace('--- PASS: TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/journal_create', '--- SKIP: TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/journal_create')),
+    /skipped: TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles\/journal_create/,
+  );
+  assert.throws(
+    () => validateGoTestOutput(requiredGoTestPassOutput().replace('--- PASS: TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/websocket_stream', '--- RUN: TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/websocket_stream')),
+    /missing PASS lines: TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles\/websocket_stream/,
   );
 });
 
@@ -81,6 +94,19 @@ test('runGoCoreGate rejects successful go test output without required WebSocket
 
   assert.equal(result.exitCode, 1);
   assert.match(result.output, /go-test-gate missing required WebSocket production-behavior proof/);
+});
+
+test('runGoCoreGate rejects successful go test output without required abuse route proof', () => {
+  const result = runGoCoreGate({
+    mode: 'test',
+    bin: 'go',
+    spawnSyncImpl() {
+      return { status: 0, stdout: requiredWebSocketPassOutput(), stderr: '' };
+    },
+  });
+
+  assert.equal(result.exitCode, 1);
+  assert.match(result.output, /go-test-gate missing required abuse\/rate-limit route proof/);
 });
 
 test('runGoCoreGate runs go vet with static-analysis proof markers', () => {
@@ -113,4 +139,12 @@ test('runGoCoreGate propagates failing Go output', () => {
 
 function requiredWebSocketPassOutput() {
   return `${goTestRequiredWebSocketTests.map((testName) => `--- PASS: ${testName} (0.00s)`).join('\n')}\nok scriptureforge/internal/ports\n`;
+}
+
+function requiredAbusePassOutput() {
+  return `${goTestRequiredAbuseTests.map((testName) => `--- PASS: ${testName} (0.00s)`).join('\n')}\nok scriptureforge/cmd/platform-engine\n`;
+}
+
+function requiredGoTestPassOutput() {
+  return `${requiredWebSocketPassOutput()}${requiredAbusePassOutput()}`;
 }
