@@ -1925,10 +1925,14 @@ function validateSecurityEvidence(report, manifest) {
   const expectedProbeCount = requiredArtifactProbes.size + (requiresDBUser ? 1 : 0);
   const probes = Array.isArray(report.probes) ? report.probes : [];
   assert.equal(probes.length, expectedProbeCount, 'security report must include exactly the required probes for requested evidence items');
+  const reportLoadRunID = String(report.load_run_id ?? '').trim()
+    || summaryMarkerValue(String(probes[0]?.result_summary ?? ''), 'load_run_id');
+  assert.ok(reportLoadRunID, 'security report must include load_run_id');
 
   let sawDBUser = false;
   const secretArtifactTargets = [];
   const securityRoleARNs = new Map();
+  const probeLoadRunIDs = new Set();
   for (const probe of probes) {
     assert.equal(probe.passed, true, `${probe.name} must pass`);
     if (requiredArtifactProbes.has(probe.name)) {
@@ -1945,6 +1949,9 @@ function validateSecurityEvidence(report, manifest) {
           `${probe.name} result_summary must include verified marker ${marker}`,
         );
       }
+      assertSummaryIncludesMarkers(probe.name, summary, [
+        assertProbeLoadRunBinding(probe.name, summary, reportLoadRunID, probeLoadRunIDs),
+      ]);
       if (securityRoleARNProbeNames.has(probe.name)) {
         const summaryRoleARN = concreteIAMRoleARN(summary);
         const structuredRoleARN = String(probe.role_arn ?? '').trim();
@@ -2005,6 +2012,9 @@ function validateSecurityEvidence(report, manifest) {
           `database-scoped-user result_summary must include verified marker ${marker}`,
         );
       }
+      assertSummaryIncludesMarkers('database-scoped-user', summary, [
+        assertProbeLoadRunBinding('database-scoped-user', summary, reportLoadRunID, probeLoadRunIDs),
+      ]);
       continue;
     }
     assert.fail(`security report includes unexpected or duplicate probe ${probe.name}`);
@@ -2017,6 +2027,7 @@ function validateSecurityEvidence(report, manifest) {
   if (requiresDBUser) {
     assert.equal(sawDBUser, true, 'SEC-DBUSER-001 report missing database-scoped-user probe');
   }
+  assertSingleProbeLoadRun('security report', probeLoadRunIDs);
 }
 
 function assertEqualSecurityRoleARNs(roleARNs) {

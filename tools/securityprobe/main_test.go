@@ -14,7 +14,8 @@ import (
 
 const securityReleaseCandidate = "abc123"
 const securityServiceVersion = "scriptureforge-api:abc123"
-const securityReleaseMarkersText = " release_candidate=" + securityReleaseCandidate + " service_version=" + securityServiceVersion
+const securityLoadRunID = "security-run-123"
+const securityReleaseMarkersText = " release_candidate=" + securityReleaseCandidate + " service_version=" + securityServiceVersion + " load_run_id=" + securityLoadRunID
 const securityServiceAccountIdentityText = "staging artifact namespace=staging service_account=scriptureforge-api role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets"
 
 func stagingSecurityConfig(timeout time.Duration) config {
@@ -27,6 +28,7 @@ func stagingSecurityConfig(timeout time.Duration) config {
 		AccessTestURL:     "https://security-artifacts.staging.scriptureforge.ai/security/access-test",
 		ReleaseCandidate:  securityReleaseCandidate,
 		ServiceVersion:    securityServiceVersion,
+		LoadRunID:         securityLoadRunID,
 		Timeout:           timeout,
 	}
 }
@@ -44,8 +46,18 @@ func TestRunRequiresReleaseIdentity(t *testing.T) {
 	cfg.ReleaseCandidate = ""
 	var output bytes.Buffer
 	err := run(cfg, &output)
-	if err == nil || !strings.Contains(err.Error(), "release-candidate and service-version") {
+	if err == nil || !strings.Contains(err.Error(), "release-candidate, service-version, and load-run-id") {
 		t.Fatalf("expected release identity requirement error, got %v", err)
+	}
+}
+
+func TestRunRequiresLoadRunID(t *testing.T) {
+	cfg := stagingSecurityConfig(time.Second)
+	cfg.LoadRunID = ""
+	var output bytes.Buffer
+	err := run(cfg, &output)
+	if err == nil || !strings.Contains(err.Error(), "load-run-id") {
+		t.Fatalf("expected load-run-id requirement error, got %v", err)
 	}
 }
 
@@ -154,12 +166,15 @@ managed by secrets-store.csi.k8s.io ownerReferences secrets-store.csi.k8s.io/man
 	if result.ReleaseCandidate != securityReleaseCandidate || result.ServiceVersion != securityServiceVersion {
 		t.Fatalf("unexpected release identity: %+v", result)
 	}
+	if result.LoadRunID != securityLoadRunID {
+		t.Fatalf("unexpected load run identity: %+v", result)
+	}
 	expectedMarkers := map[string][]string{
-		"irsa-service-account":            {"staging artifact", "namespace=staging", "service_account=scriptureforge-api", "role_arn=arn:aws:iam::", "role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets", "eks.amazonaws.com/role-arn", "scriptureforge", "trust policy", "sts:AssumeRoleWithWebIdentity", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion},
-		"secret-provider-class":           {"staging artifact", "namespace=staging", "service_account=scriptureforge-api", "role_arn=arn:aws:iam::", "role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets", "SecretProviderClass", "secrets-store.csi.k8s.io", "provider", "aws", "objects", "objectName", "objectType", "secretsmanager", "objectAlias", "jmesPath", "secretObjects", "type", "Opaque", "DATABASE_URL", "JWT_SECRET_KEY", "OPENAI_API_KEY", "ZOOM_WEBHOOK_SECRET_TOKEN", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion},
-		"synced-secret-metadata-redacted": {"staging artifact", "namespace=staging", "scriptureforge-runtime-secrets", "type", "Opaque", "DATABASE_URL", "JWT_SECRET_KEY", "OPENAI_API_KEY", "ZOOM_WEBHOOK_SECRET_TOKEN", "redacted", "stringData absent", "managed by secrets-store.csi.k8s.io", "ownerReferences", "secrets-store.csi.k8s.io/managed=true", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion},
-		"iam-secrets-policy":              {"staging artifact", "role_arn=arn:aws:iam::", "role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets", "secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret", "arn:aws:secretsmanager:", "scoped resource", "no wildcard resources", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion},
-		"scoped-secrets-access-test":      {"staging artifact", "namespace=staging", "service_account=scriptureforge-api", "role_arn=arn:aws:iam::", "role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets", "allowed", "configured secret", "denied", "unscoped secret", "AccessDenied", "distinct_secret_artifacts=true", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion},
+		"irsa-service-account":            {"staging artifact", "namespace=staging", "service_account=scriptureforge-api", "role_arn=arn:aws:iam::", "role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets", "eks.amazonaws.com/role-arn", "scriptureforge", "trust policy", "sts:AssumeRoleWithWebIdentity", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion, "load_run_id=" + securityLoadRunID},
+		"secret-provider-class":           {"staging artifact", "namespace=staging", "service_account=scriptureforge-api", "role_arn=arn:aws:iam::", "role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets", "SecretProviderClass", "secrets-store.csi.k8s.io", "provider", "aws", "objects", "objectName", "objectType", "secretsmanager", "objectAlias", "jmesPath", "secretObjects", "type", "Opaque", "DATABASE_URL", "JWT_SECRET_KEY", "OPENAI_API_KEY", "ZOOM_WEBHOOK_SECRET_TOKEN", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion, "load_run_id=" + securityLoadRunID},
+		"synced-secret-metadata-redacted": {"staging artifact", "namespace=staging", "scriptureforge-runtime-secrets", "type", "Opaque", "DATABASE_URL", "JWT_SECRET_KEY", "OPENAI_API_KEY", "ZOOM_WEBHOOK_SECRET_TOKEN", "redacted", "stringData absent", "managed by secrets-store.csi.k8s.io", "ownerReferences", "secrets-store.csi.k8s.io/managed=true", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion, "load_run_id=" + securityLoadRunID},
+		"iam-secrets-policy":              {"staging artifact", "role_arn=arn:aws:iam::", "role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets", "secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret", "arn:aws:secretsmanager:", "scoped resource", "no wildcard resources", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion, "load_run_id=" + securityLoadRunID},
+		"scoped-secrets-access-test":      {"staging artifact", "namespace=staging", "service_account=scriptureforge-api", "role_arn=arn:aws:iam::", "role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets", "allowed", "configured secret", "denied", "unscoped secret", "AccessDenied", "distinct_secret_artifacts=true", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion, "load_run_id=" + securityLoadRunID},
 	}
 	for _, probe := range result.Probes {
 		for _, marker := range expectedMarkers[probe.Name] {

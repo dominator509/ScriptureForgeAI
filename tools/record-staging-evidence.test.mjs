@@ -6502,7 +6502,7 @@ test('recordEvidence rejects database user evidence without non-admin role proof
             app_grant_tables: 9,
             app_grant_table_names: dbAppGrantTableNames.split(','),
             app_grants: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
-            result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false',
+            result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false; verified markers: load_run_id=load-run-123',
           },
         ],
       },

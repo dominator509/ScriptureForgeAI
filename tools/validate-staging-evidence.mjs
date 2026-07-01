@@ -250,11 +250,11 @@ const abuseRateLimitProfileSegments = [
 ];
 const concreteIAMRoleARNPattern = /\brole_arn=arn:aws:iam::[0-9]{12}:role\/[A-Za-z0-9+=,.@_/-]+\b/i;
 const securitySegmentMarkerRequirements = new Map([
-  ['irsa-service-account', ['staging artifact', 'namespace=staging', 'service_account=scriptureforge-api', 'role_arn=arn:aws:iam::', 'eks.amazonaws.com/role-arn', 'scriptureforge', 'trust policy', 'sts:AssumeRoleWithWebIdentity', 'release_candidate=', 'service_version=']],
-  ['secret-provider-class', ['staging artifact', 'namespace=staging', 'service_account=scriptureforge-api', 'role_arn=arn:aws:iam::', 'SecretProviderClass', 'secrets-store.csi.k8s.io', 'provider', 'aws', 'objects', 'objectName', 'objectType', 'secretsmanager', 'objectAlias', 'jmesPath', 'secretObjects', 'type', 'Opaque', 'DATABASE_URL', 'JWT_SECRET_KEY', 'OPENAI_API_KEY', 'ZOOM_WEBHOOK_SECRET_TOKEN', 'release_candidate=', 'service_version=']],
-  ['synced-secret-metadata-redacted', ['staging artifact', 'namespace=staging', 'scriptureforge-runtime-secrets', 'type', 'Opaque', 'DATABASE_URL', 'JWT_SECRET_KEY', 'OPENAI_API_KEY', 'ZOOM_WEBHOOK_SECRET_TOKEN', 'redacted', 'stringData absent', 'managed by secrets-store.csi.k8s.io', 'ownerReferences', 'secrets-store.csi.k8s.io/managed=true', 'release_candidate=', 'service_version=']],
-  ['iam-secrets-policy', ['staging artifact', 'role_arn=arn:aws:iam::', 'secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret', 'arn:aws:secretsmanager:', 'scoped resource', 'no wildcard resources', 'release_candidate=', 'service_version=']],
-  ['scoped-secrets-access-test', ['staging artifact', 'namespace=staging', 'service_account=scriptureforge-api', 'role_arn=arn:aws:iam::', 'allowed', 'configured secret', 'denied', 'unscoped secret', 'AccessDenied', 'distinct_secret_artifacts=true', 'release_candidate=', 'service_version=']],
+  ['irsa-service-account', ['staging artifact', 'namespace=staging', 'service_account=scriptureforge-api', 'role_arn=arn:aws:iam::', 'eks.amazonaws.com/role-arn', 'scriptureforge', 'trust policy', 'sts:AssumeRoleWithWebIdentity', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['secret-provider-class', ['staging artifact', 'namespace=staging', 'service_account=scriptureforge-api', 'role_arn=arn:aws:iam::', 'SecretProviderClass', 'secrets-store.csi.k8s.io', 'provider', 'aws', 'objects', 'objectName', 'objectType', 'secretsmanager', 'objectAlias', 'jmesPath', 'secretObjects', 'type', 'Opaque', 'DATABASE_URL', 'JWT_SECRET_KEY', 'OPENAI_API_KEY', 'ZOOM_WEBHOOK_SECRET_TOKEN', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['synced-secret-metadata-redacted', ['staging artifact', 'namespace=staging', 'scriptureforge-runtime-secrets', 'type', 'Opaque', 'DATABASE_URL', 'JWT_SECRET_KEY', 'OPENAI_API_KEY', 'ZOOM_WEBHOOK_SECRET_TOKEN', 'redacted', 'stringData absent', 'managed by secrets-store.csi.k8s.io', 'ownerReferences', 'secrets-store.csi.k8s.io/managed=true', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['iam-secrets-policy', ['staging artifact', 'role_arn=arn:aws:iam::', 'secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret', 'arn:aws:secretsmanager:', 'scoped resource', 'no wildcard resources', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['scoped-secrets-access-test', ['staging artifact', 'namespace=staging', 'service_account=scriptureforge-api', 'role_arn=arn:aws:iam::', 'allowed', 'configured secret', 'denied', 'unscoped secret', 'AccessDenied', 'distinct_secret_artifacts=true', 'release_candidate=', 'service_version=', 'load_run_id=']],
 ]);
 const securityRoleARNSegments = new Set([
   'irsa-service-account',
@@ -278,7 +278,7 @@ const strictSecretLeakMarkers = [
   '-----begin',
 ];
 const dbUserSegmentMarkerRequirements = new Map([
-  ['database-scoped-user', ['staging artifact', 'connected as', 'scriptureforge_app', 'current_user=scriptureforge_app', 'superuser=false', 'bypassrls=false', 'createrole=false', 'createdb=false', 'privileged_operation_denied=true', 'app_grants_verified=true', 'app_grant_tables=9', 'app_grant_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails', 'app_grants=SELECT,INSERT,UPDATE,DELETE', 'release_candidate=', 'service_version=']],
+  ['database-scoped-user', ['staging artifact', 'connected as', 'scriptureforge_app', 'current_user=scriptureforge_app', 'superuser=false', 'bypassrls=false', 'createrole=false', 'createdb=false', 'privileged_operation_denied=true', 'app_grants_verified=true', 'app_grant_tables=9', 'app_grant_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails', 'app_grants=SELECT,INSERT,UPDATE,DELETE', 'release_candidate=', 'service_version=', 'load_run_id=']],
 ]);
 const dbUserPrincipalBindingPattern = /database-scoped-user(?=[^;]*connected as "?scriptureforge_app"?)(?=[^;]*current_user=scriptureforge_app)/i;
 const resilienceSegmentMarkerRequirements = new Map([
@@ -1414,6 +1414,7 @@ function validateStrictReleaseItemEvidence(item, manifest) {
   }
   if (item.id === 'SEC-SECRETS-001') {
     const securityRoleARNs = new Map();
+    const securityLoadRunIDs = new Set();
     for (const [segment, markers] of securitySegmentMarkerRequirements) {
       const segmentSatisfied = evidence.some((artifact) => {
         const summary = String(artifact.result_summary ?? '');
@@ -1439,8 +1440,12 @@ function validateStrictReleaseItemEvidence(item, manifest) {
         );
         securityRoleARNs.set(segment, roleARN);
       }
+      const loadRunID = summarySegmentCapture(findEvidenceSegment(evidence, segment), segment, /\bload_run_id=([^\s,;]+)/i);
+      assert.ok(loadRunID, `SEC-SECRETS-001 strict release evidence must include load_run_id on ${segment}`);
+      securityLoadRunIDs.add(loadRunID);
     }
     assertEqualStrictSecurityRoleARNs(securityRoleARNs);
+    assert.equal(securityLoadRunIDs.size, 1, 'SEC-SECRETS-001 strict release evidence load_run_id values must all match');
     assertNoStrictSecretLeaks(evidence);
   }
   if (item.id === 'SEC-DBUSER-001') {

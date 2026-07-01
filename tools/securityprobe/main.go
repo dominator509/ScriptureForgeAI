@@ -29,6 +29,7 @@ type config struct {
 	DatabaseURL       string
 	ReleaseCandidate  string
 	ServiceVersion    string
+	LoadRunID         string
 	Timeout           time.Duration
 }
 
@@ -39,6 +40,7 @@ type report struct {
 	ThresholdPass    bool          `json:"threshold_pass"`
 	ReleaseCandidate string        `json:"release_candidate"`
 	ServiceVersion   string        `json:"service_version"`
+	LoadRunID        string        `json:"load_run_id"`
 	Probes           []probeResult `json:"probes"`
 	EvidenceItems    []string      `json:"evidence_items"`
 }
@@ -97,6 +99,7 @@ func parseFlags() config {
 	flag.StringVar(&cfg.DatabaseURL, "database-url", os.Getenv("STAGING_DATABASE_URL"), "staging application DATABASE_URL; never emitted in the report")
 	flag.StringVar(&cfg.ReleaseCandidate, "release-candidate", os.Getenv("STAGING_RELEASE_CANDIDATE"), "exact git SHA or release candidate represented by this security evidence")
 	flag.StringVar(&cfg.ServiceVersion, "service-version", os.Getenv("STAGING_SECURITY_SERVICE_VERSION"), "exact API/service version represented by this security evidence")
+	flag.StringVar(&cfg.LoadRunID, "load-run-id", os.Getenv("STAGING_LOAD_RUN_ID"), "staging evidence run identifier shared by security artifact and database-user proof")
 	flag.DurationVar(&cfg.Timeout, "timeout", 5*time.Second, "per-probe timeout")
 	flag.Parse()
 	return cfg
@@ -123,8 +126,9 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 	}
 	cfg.ReleaseCandidate = strings.TrimSpace(cfg.ReleaseCandidate)
 	cfg.ServiceVersion = strings.TrimSpace(cfg.ServiceVersion)
-	if cfg.ReleaseCandidate == "" || cfg.ServiceVersion == "" {
-		return errors.New("security proof requires release-candidate and service-version")
+	cfg.LoadRunID = strings.TrimSpace(cfg.LoadRunID)
+	if cfg.ReleaseCandidate == "" || cfg.ServiceVersion == "" || cfg.LoadRunID == "" {
+		return errors.New("security proof requires release-candidate, service-version, and load-run-id")
 	}
 	var err error
 	if cfg.ProbeSecrets {
@@ -167,6 +171,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 	releaseMarkers := []string{
 		"release_candidate=" + cfg.ReleaseCandidate,
 		"service_version=" + cfg.ServiceVersion,
+		"load_run_id=" + cfg.LoadRunID,
 	}
 	if cfg.ProbeSecrets {
 		probes = append(probes,
@@ -189,6 +194,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 		ThresholdPass:    true,
 		ReleaseCandidate: cfg.ReleaseCandidate,
 		ServiceVersion:   cfg.ServiceVersion,
+		LoadRunID:        cfg.LoadRunID,
 		Probes:           probes,
 		EvidenceItems:    evidenceItems,
 	}
