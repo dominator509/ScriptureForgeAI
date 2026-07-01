@@ -38,13 +38,14 @@
       "status": "pending_external",
       "description": "DNS, ACM, ALB ingress, HTTPS redirect, and TLS policy are proven against deployed API and web hostnames.",
       "required_evidence": [
-        "tools/stagingprobe JSON report with DEPLOY-TLS-001 evidence item, report-level load_run_id=<same load run>, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers",
+        "tools/stagingprobe JSON report with DEPLOY-TLS-001 evidence item, report-level ssl_labs_artifact_url=<https artifact>, load_run_id=<same load run>, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers",
         "HTTPS DNS lookup artifact for deployed API and web hostnames tied to exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run>",
         "HTTPS ACM certificate status and TLS policy artifact tied to exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run>",
-        "DNS and ACM/TLS artifacts must be canonical-distinct HTTPS URLs, not one combined proof artifact or URL alias",
+        "HTTPS SSL Labs scan artifact proving A+ grade for deployed API and web hostnames with ssl_labs_grade=A+, grade=A+, api_hostname=<api host>, web_hostname=<web host>, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run>",
+        "DNS, ACM/TLS, and SSL Labs artifacts must be canonical-distinct HTTPS URLs, not one combined proof artifact or URL alias",
         "HTTPS probe output for API live/readiness, API TLS, web root, and web TLS with exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers",
         "HTTP to HTTPS redirect probe output with exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers",
-        "stagingprobe result_summary marker list for API live/readiness, TLS, and redirect probes with exact release_candidate=<manifest release_candidate>, service_version, and matching load_run_id=<same load run>; mixed-run summaries, non-HTTPS, reserved example/test/invalid hosts, local, loopback, private-network, unspecified, or link-local API/web targets and TLS artifact URLs are not accepted"
+        "stagingprobe result_summary marker list for API live/readiness, TLS, redirect, and ssl-labs-a-plus probes with exact release_candidate=<manifest release_candidate>, service_version, matching load_run_id=<same load run>, SSL Labs A+ markers, and SSL Labs hostnames matching the deployed certificate hostnames; mixed-run summaries, non-HTTPS, reserved example/test/invalid hosts, local, loopback, private-network, unspecified, link-local API/web targets, TLS artifact URLs, or non-A+ SSL Labs grades are not accepted"
       ]
     },
     {

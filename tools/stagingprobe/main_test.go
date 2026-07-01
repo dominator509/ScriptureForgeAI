@@ -247,13 +247,14 @@ func TestProbeArtifactContainsRejectsMarkerLightOrMockArtifacts(t *testing.T) {
 func TestRunProducesFailingReportWhenProbeFails(t *testing.T) {
 	var output bytes.Buffer
 	err := run(config{
-		APIBase:          "https://api.staging.scriptureforge.ai",
-		DNSArtifactURL:   "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt",
-		ACMArtifactURL:   "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
-		ReleaseCandidate: stagingProbeReleaseCandidate,
-		ServiceVersion:   stagingProbeServiceVersion,
-		LoadRunID:        stagingProbeLoadRunID,
-		Timeout:          50 * time.Millisecond,
+		APIBase:            "https://api.staging.scriptureforge.ai",
+		DNSArtifactURL:     "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt",
+		ACMArtifactURL:     "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+		SSLLabsArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt",
+		ReleaseCandidate:   stagingProbeReleaseCandidate,
+		ServiceVersion:     stagingProbeServiceVersion,
+		LoadRunID:          stagingProbeLoadRunID,
+		Timeout:            50 * time.Millisecond,
 	}, &output)
 	if err == nil {
 		t.Fatal("expected failed probe to fail run")
@@ -265,7 +266,7 @@ func TestRunProducesFailingReportWhenProbeFails(t *testing.T) {
 	if result.ThresholdPass {
 		t.Fatalf("failing probe reported pass: %+v", result)
 	}
-	if result.DNSArtifact == "" || result.ACMArtifact == "" {
+	if result.DNSArtifact == "" || result.ACMArtifact == "" || result.SSLLabsArtifact == "" {
 		t.Fatalf("failing report omitted TLS artifacts: %+v", result)
 	}
 }
@@ -276,18 +277,29 @@ func TestRunRequiresTLSArtifactURLs(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "dns-artifact-url") {
 		t.Fatalf("expected DNS artifact URL error, got %v", err)
 	}
+	output.Reset()
+	err = run(config{
+		APIBase:        "https://api.staging.scriptureforge.ai",
+		DNSArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt",
+		ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+		Timeout:        time.Second,
+	}, &output)
+	if err == nil || !strings.Contains(err.Error(), "ssl-labs-artifact-url") {
+		t.Fatalf("expected SSL Labs artifact URL error, got %v", err)
+	}
 }
 
 func TestStagingProbeDoesNotEmitKubernetesEvidenceItem(t *testing.T) {
 	var output bytes.Buffer
 	err := run(config{
-		APIBase:          "https://api.staging.scriptureforge.ai",
-		DNSArtifactURL:   "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt",
-		ACMArtifactURL:   "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
-		ReleaseCandidate: stagingProbeReleaseCandidate,
-		ServiceVersion:   stagingProbeServiceVersion,
-		LoadRunID:        stagingProbeLoadRunID,
-		Timeout:          50 * time.Millisecond,
+		APIBase:            "https://api.staging.scriptureforge.ai",
+		DNSArtifactURL:     "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt",
+		ACMArtifactURL:     "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+		SSLLabsArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt",
+		ReleaseCandidate:   stagingProbeReleaseCandidate,
+		ServiceVersion:     stagingProbeServiceVersion,
+		LoadRunID:          stagingProbeLoadRunID,
+		Timeout:            50 * time.Millisecond,
 	}, &output)
 	if err == nil {
 		t.Fatal("expected failed network probe to fail run")
@@ -307,17 +319,18 @@ func TestStagingProbeDoesNotEmitKubernetesEvidenceItem(t *testing.T) {
 func TestStagingProbeDoesNotEmitDedicatedExternalServiceEvidenceItems(t *testing.T) {
 	var output bytes.Buffer
 	err := run(config{
-		APIBase:           "https://api.staging.scriptureforge.ai",
-		DNSArtifactURL:    "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt",
-		ACMArtifactURL:    "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
-		ReleaseCandidate:  stagingProbeReleaseCandidate,
-		ServiceVersion:    stagingProbeServiceVersion,
-		LoadRunID:         stagingProbeLoadRunID,
-		ProbeZoom:         true,
-		ProbeAI:           true,
-		AIBearerToken:     "staging-token",
-		ZoomWebhookSecret: "staging-secret",
-		Timeout:           50 * time.Millisecond,
+		APIBase:            "https://api.staging.scriptureforge.ai",
+		DNSArtifactURL:     "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt",
+		ACMArtifactURL:     "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+		SSLLabsArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt",
+		ReleaseCandidate:   stagingProbeReleaseCandidate,
+		ServiceVersion:     stagingProbeServiceVersion,
+		LoadRunID:          stagingProbeLoadRunID,
+		ProbeZoom:          true,
+		ProbeAI:            true,
+		AIBearerToken:      "staging-token",
+		ZoomWebhookSecret:  "staging-secret",
+		Timeout:            50 * time.Millisecond,
 	}, &output)
 	if err == nil {
 		t.Fatal("expected failed network probe to fail run")
@@ -336,11 +349,12 @@ func TestStagingProbeDoesNotEmitDedicatedExternalServiceEvidenceItems(t *testing
 func TestRunRequiresWebSmokeArtifactsForWebEvidence(t *testing.T) {
 	var output bytes.Buffer
 	err := run(config{
-		APIBase:        "https://api.staging.scriptureforge.ai",
-		WebBase:        "https://app.staging.scriptureforge.ai",
-		DNSArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt",
-		ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
-		Timeout:        time.Second,
+		APIBase:            "https://api.staging.scriptureforge.ai",
+		WebBase:            "https://app.staging.scriptureforge.ai",
+		DNSArtifactURL:     "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt",
+		ACMArtifactURL:     "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+		SSLLabsArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt",
+		Timeout:            time.Second,
 	}, &output)
 	if err == nil || !strings.Contains(err.Error(), "web-auth-smoke-url") {
 		t.Fatalf("expected web auth smoke artifact URL error, got %v", err)
@@ -353,6 +367,7 @@ func TestRunIncludesWebSmokeArtifactsInReport(t *testing.T) {
 		WebBase:            "https://app.staging.scriptureforge.ai",
 		DNSArtifactURL:     "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt",
 		ACMArtifactURL:     "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+		SSLLabsArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt",
 		WebAuthSmokeURL:    "https://staging-artifacts.staging.scriptureforge.ai/web/auth-smoke.txt",
 		WebJournalSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/journal-smoke.txt",
 		WebRoomSmokeURL:    "https://staging-artifacts.staging.scriptureforge.ai/web/room-smoke.txt",
@@ -388,6 +403,7 @@ func TestRunRejectsDuplicateWebSmokeArtifactURLs(t *testing.T) {
 		WebBase:            "https://app.staging.scriptureforge.ai",
 		DNSArtifactURL:     "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt",
 		ACMArtifactURL:     "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+		SSLLabsArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt",
 		WebAuthSmokeURL:    "https://staging-artifacts.staging.scriptureforge.ai/web/shared-smoke.txt",
 		WebJournalSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/shared-smoke.txt",
 		WebRoomSmokeURL:    "https://staging-artifacts.staging.scriptureforge.ai/web/room-smoke.txt",
@@ -404,13 +420,14 @@ func TestRunRejectsDuplicateWebSmokeArtifactURLs(t *testing.T) {
 func TestRunRejectsCanonicalDuplicateTLSArtifactURLs(t *testing.T) {
 	var output bytes.Buffer
 	err := run(config{
-		APIBase:          "https://api.staging.scriptureforge.ai",
-		DNSArtifactURL:   "https://STAGING-ARTIFACTS.staging.scriptureforge.ai:443/tls/shared-proof.txt?b=2&a=1",
-		ACMArtifactURL:   "https://staging-artifacts.staging.scriptureforge.ai/tls/shared-proof.txt?a=1&b=2#certificate",
-		ReleaseCandidate: stagingProbeReleaseCandidate,
-		ServiceVersion:   stagingProbeServiceVersion,
-		LoadRunID:        stagingProbeLoadRunID,
-		Timeout:          50 * time.Millisecond,
+		APIBase:            "https://api.staging.scriptureforge.ai",
+		DNSArtifactURL:     "https://STAGING-ARTIFACTS.staging.scriptureforge.ai:443/tls/shared-proof.txt?b=2&a=1",
+		ACMArtifactURL:     "https://staging-artifacts.staging.scriptureforge.ai/tls/shared-proof.txt?a=1&b=2#certificate",
+		SSLLabsArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt",
+		ReleaseCandidate:   stagingProbeReleaseCandidate,
+		ServiceVersion:     stagingProbeServiceVersion,
+		LoadRunID:          stagingProbeLoadRunID,
+		Timeout:            50 * time.Millisecond,
 	}, &output)
 	if err == nil || !strings.Contains(err.Error(), "TLS artifacts must be distinct") {
 		t.Fatalf("expected canonical duplicate TLS artifact URL error, got %v", err)
@@ -423,6 +440,7 @@ func TestRunRejectsCanonicalDuplicateWebSmokeArtifactURLs(t *testing.T) {
 		WebBase:            "https://app.staging.scriptureforge.ai",
 		DNSArtifactURL:     "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt",
 		ACMArtifactURL:     "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+		SSLLabsArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt",
 		WebAuthSmokeURL:    "https://STAGING-ARTIFACTS.staging.scriptureforge.ai:443/web/shared-smoke.txt?b=2&a=1",
 		WebJournalSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/shared-smoke.txt?a=1&b=2#journal",
 		WebRoomSmokeURL:    "https://staging-artifacts.staging.scriptureforge.ai/web/room-smoke.txt",
@@ -439,10 +457,11 @@ func TestRunRejectsCanonicalDuplicateWebSmokeArtifactURLs(t *testing.T) {
 func TestRunRequiresReleaseIdentityForTLSAndWebEvidence(t *testing.T) {
 	var apiOutput bytes.Buffer
 	apiErr := run(config{
-		APIBase:        "https://api.staging.scriptureforge.ai",
-		DNSArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt",
-		ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
-		Timeout:        time.Second,
+		APIBase:            "https://api.staging.scriptureforge.ai",
+		DNSArtifactURL:     "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt",
+		ACMArtifactURL:     "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+		SSLLabsArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt",
+		Timeout:            time.Second,
 	}, &apiOutput)
 	if apiErr == nil || !strings.Contains(apiErr.Error(), "release-candidate") {
 		t.Fatalf("expected release-candidate error for API TLS evidence, got %v", apiErr)
@@ -453,6 +472,7 @@ func TestRunRequiresReleaseIdentityForTLSAndWebEvidence(t *testing.T) {
 		WebBase:            "https://app.staging.scriptureforge.ai",
 		DNSArtifactURL:     "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt",
 		ACMArtifactURL:     "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+		SSLLabsArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt",
 		WebAuthSmokeURL:    "https://staging-artifacts.staging.scriptureforge.ai/web/auth-smoke.txt",
 		WebJournalSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/journal-smoke.txt",
 		WebRoomSmokeURL:    "https://staging-artifacts.staging.scriptureforge.ai/web/room-smoke.txt",
@@ -466,12 +486,13 @@ func TestRunRequiresReleaseIdentityForTLSAndWebEvidence(t *testing.T) {
 func TestRunRequiresLoadRunIDForTLSAndWebEvidence(t *testing.T) {
 	var output bytes.Buffer
 	err := run(config{
-		APIBase:          "https://api.staging.scriptureforge.ai",
-		DNSArtifactURL:   "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt",
-		ACMArtifactURL:   "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
-		ReleaseCandidate: stagingProbeReleaseCandidate,
-		ServiceVersion:   stagingProbeServiceVersion,
-		Timeout:          time.Second,
+		APIBase:            "https://api.staging.scriptureforge.ai",
+		DNSArtifactURL:     "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt",
+		ACMArtifactURL:     "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+		SSLLabsArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt",
+		ReleaseCandidate:   stagingProbeReleaseCandidate,
+		ServiceVersion:     stagingProbeServiceVersion,
+		Timeout:            time.Second,
 	}, &output)
 	if err == nil || !strings.Contains(err.Error(), "load-run-id") {
 		t.Fatalf("expected load-run-id error for TLS evidence, got %v", err)
@@ -486,27 +507,32 @@ func TestRunRejectsLocalBaseAndArtifactTargets(t *testing.T) {
 	}{
 		{
 			name: "local API base",
-			cfg:  config{APIBase: "https://127.0.0.1:8443", DNSArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt", ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt", ReleaseCandidate: stagingProbeReleaseCandidate, ServiceVersion: stagingProbeServiceVersion, Timeout: time.Second},
+			cfg: config{APIBase: "https://127.0.0.1:8443", DNSArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt", ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+				SSLLabsArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt", ReleaseCandidate: stagingProbeReleaseCandidate, ServiceVersion: stagingProbeServiceVersion, Timeout: time.Second},
 			want: "api-base",
 		},
 		{
 			name: "private API base",
-			cfg:  config{APIBase: "https://10.0.0.25", DNSArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt", ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt", ReleaseCandidate: stagingProbeReleaseCandidate, ServiceVersion: stagingProbeServiceVersion, Timeout: time.Second},
+			cfg: config{APIBase: "https://10.0.0.25", DNSArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt", ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+				SSLLabsArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt", ReleaseCandidate: stagingProbeReleaseCandidate, ServiceVersion: stagingProbeServiceVersion, Timeout: time.Second},
 			want: "api-base",
 		},
 		{
 			name: "local web base",
-			cfg:  config{WebBase: "https://localhost", DNSArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt", ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt", WebAuthSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/auth-smoke.txt", WebJournalSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/journal-smoke.txt", WebRoomSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/room-smoke.txt", ReleaseCandidate: stagingProbeReleaseCandidate, ServiceVersion: stagingProbeServiceVersion, Timeout: time.Second},
+			cfg: config{WebBase: "https://localhost", DNSArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt", ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+				SSLLabsArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt", WebAuthSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/auth-smoke.txt", WebJournalSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/journal-smoke.txt", WebRoomSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/room-smoke.txt", ReleaseCandidate: stagingProbeReleaseCandidate, ServiceVersion: stagingProbeServiceVersion, Timeout: time.Second},
 			want: "web-base",
 		},
 		{
 			name: "link-local web base",
-			cfg:  config{WebBase: "https://169.254.10.20", DNSArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt", ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt", WebAuthSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/auth-smoke.txt", WebJournalSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/journal-smoke.txt", WebRoomSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/room-smoke.txt", ReleaseCandidate: stagingProbeReleaseCandidate, ServiceVersion: stagingProbeServiceVersion, Timeout: time.Second},
+			cfg: config{WebBase: "https://169.254.10.20", DNSArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt", ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+				SSLLabsArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt", WebAuthSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/auth-smoke.txt", WebJournalSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/journal-smoke.txt", WebRoomSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/room-smoke.txt", ReleaseCandidate: stagingProbeReleaseCandidate, ServiceVersion: stagingProbeServiceVersion, Timeout: time.Second},
 			want: "web-base",
 		},
 		{
 			name: "local DNS artifact",
-			cfg:  config{APIBase: "https://api.staging.scriptureforge.ai", DNSArtifactURL: "https://localhost/tls/dns.txt", ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt", ReleaseCandidate: stagingProbeReleaseCandidate, ServiceVersion: stagingProbeServiceVersion, Timeout: time.Second},
+			cfg: config{APIBase: "https://api.staging.scriptureforge.ai", DNSArtifactURL: "https://localhost/tls/dns.txt", ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+				SSLLabsArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt", ReleaseCandidate: stagingProbeReleaseCandidate, ServiceVersion: stagingProbeServiceVersion, Timeout: time.Second},
 			want: "dns-artifact-url",
 		},
 		{
@@ -516,32 +542,38 @@ func TestRunRejectsLocalBaseAndArtifactTargets(t *testing.T) {
 		},
 		{
 			name: "local web smoke artifact",
-			cfg:  config{WebBase: "https://app.staging.scriptureforge.ai", DNSArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt", ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt", WebAuthSmokeURL: "https://127.0.0.1/web/auth-smoke.txt", WebJournalSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/journal-smoke.txt", WebRoomSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/room-smoke.txt", ReleaseCandidate: stagingProbeReleaseCandidate, ServiceVersion: stagingProbeServiceVersion, Timeout: time.Second},
+			cfg: config{WebBase: "https://app.staging.scriptureforge.ai", DNSArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt", ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+				SSLLabsArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt", WebAuthSmokeURL: "https://127.0.0.1/web/auth-smoke.txt", WebJournalSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/journal-smoke.txt", WebRoomSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/room-smoke.txt", ReleaseCandidate: stagingProbeReleaseCandidate, ServiceVersion: stagingProbeServiceVersion, Timeout: time.Second},
 			want: "web-auth-smoke-url",
 		},
 		{
 			name: "private web smoke artifact",
-			cfg:  config{WebBase: "https://app.staging.scriptureforge.ai", DNSArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt", ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt", WebAuthSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/auth-smoke.txt", WebJournalSmokeURL: "https://172.16.20.5/web/journal-smoke.txt", WebRoomSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/room-smoke.txt", ReleaseCandidate: stagingProbeReleaseCandidate, ServiceVersion: stagingProbeServiceVersion, Timeout: time.Second},
+			cfg: config{WebBase: "https://app.staging.scriptureforge.ai", DNSArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt", ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+				SSLLabsArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt", WebAuthSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/auth-smoke.txt", WebJournalSmokeURL: "https://172.16.20.5/web/journal-smoke.txt", WebRoomSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/room-smoke.txt", ReleaseCandidate: stagingProbeReleaseCandidate, ServiceVersion: stagingProbeServiceVersion, Timeout: time.Second},
 			want: "web-journal-smoke-url",
 		},
 		{
 			name: "reserved API base",
-			cfg:  config{APIBase: "https://api.staging.example", DNSArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt", ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt", ReleaseCandidate: stagingProbeReleaseCandidate, ServiceVersion: stagingProbeServiceVersion, Timeout: time.Second},
+			cfg: config{APIBase: "https://api.staging.example", DNSArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt", ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+				SSLLabsArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt", ReleaseCandidate: stagingProbeReleaseCandidate, ServiceVersion: stagingProbeServiceVersion, Timeout: time.Second},
 			want: "api-base",
 		},
 		{
 			name: "reserved web base",
-			cfg:  config{WebBase: "https://app.example.com", DNSArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt", ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt", WebAuthSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/auth-smoke.txt", WebJournalSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/journal-smoke.txt", WebRoomSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/room-smoke.txt", ReleaseCandidate: stagingProbeReleaseCandidate, ServiceVersion: stagingProbeServiceVersion, Timeout: time.Second},
+			cfg: config{WebBase: "https://app.example.com", DNSArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt", ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+				SSLLabsArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt", WebAuthSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/auth-smoke.txt", WebJournalSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/journal-smoke.txt", WebRoomSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/room-smoke.txt", ReleaseCandidate: stagingProbeReleaseCandidate, ServiceVersion: stagingProbeServiceVersion, Timeout: time.Second},
 			want: "web-base",
 		},
 		{
 			name: "reserved DNS artifact",
-			cfg:  config{APIBase: "https://api.staging.scriptureforge.ai", DNSArtifactURL: "https://artifacts.staging.test/tls/dns.txt", ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt", ReleaseCandidate: stagingProbeReleaseCandidate, ServiceVersion: stagingProbeServiceVersion, Timeout: time.Second},
+			cfg: config{APIBase: "https://api.staging.scriptureforge.ai", DNSArtifactURL: "https://artifacts.staging.test/tls/dns.txt", ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+				SSLLabsArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt", ReleaseCandidate: stagingProbeReleaseCandidate, ServiceVersion: stagingProbeServiceVersion, Timeout: time.Second},
 			want: "dns-artifact-url",
 		},
 		{
 			name: "reserved web smoke artifact",
-			cfg:  config{WebBase: "https://app.staging.scriptureforge.ai", DNSArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt", ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt", WebAuthSmokeURL: "https://staging-artifacts.invalid/web/auth-smoke.txt", WebJournalSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/journal-smoke.txt", WebRoomSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/room-smoke.txt", ReleaseCandidate: stagingProbeReleaseCandidate, ServiceVersion: stagingProbeServiceVersion, Timeout: time.Second},
+			cfg: config{WebBase: "https://app.staging.scriptureforge.ai", DNSArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt", ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+				SSLLabsArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt", WebAuthSmokeURL: "https://staging-artifacts.invalid/web/auth-smoke.txt", WebJournalSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/journal-smoke.txt", WebRoomSmokeURL: "https://staging-artifacts.staging.scriptureforge.ai/web/room-smoke.txt", ReleaseCandidate: stagingProbeReleaseCandidate, ServiceVersion: stagingProbeServiceVersion, Timeout: time.Second},
 			want: "web-auth-smoke-url",
 		},
 	} {
@@ -644,11 +676,12 @@ func TestProbeAIStudyGenerationUsesBearerToken(t *testing.T) {
 func TestRunRequiresBearerForAIProbe(t *testing.T) {
 	var output bytes.Buffer
 	err := run(config{
-		APIBase:        "https://api.staging.scriptureforge.ai",
-		DNSArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt",
-		ACMArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
-		ProbeAI:        true,
-		Timeout:        time.Second,
+		APIBase:            "https://api.staging.scriptureforge.ai",
+		DNSArtifactURL:     "https://staging-artifacts.staging.scriptureforge.ai/tls/dns.txt",
+		ACMArtifactURL:     "https://staging-artifacts.staging.scriptureforge.ai/tls/acm.txt",
+		SSLLabsArtifactURL: "https://staging-artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt",
+		ProbeAI:            true,
+		Timeout:            time.Second,
 	}, &output)
 	if err == nil || !strings.Contains(err.Error(), "ai-bearer-token") {
 		t.Fatalf("expected missing bearer error, got %v", err)

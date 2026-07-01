@@ -1071,6 +1071,36 @@ test('validateManifest strict release rejects TLS evidence without concrete cert
   );
 });
 
+test('validateManifest strict release rejects TLS evidence without SSL Labs A+ proof', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'DEPLOY-TLS-001');
+  item.evidence[0].result_summary = item.evidence[0].result_summary
+    .replace(/; ssl-labs-a-plus[^;]+/, '');
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /DEPLOY-TLS-001 strict release evidence must include a tools\/stagingprobe JSON report/,
+  );
+});
+
+test('validateManifest strict release rejects SSL Labs proof for a different hostname', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'DEPLOY-TLS-001');
+  item.evidence[0].result_summary = item.evidence[0].result_summary
+    .replace('api_hostname=api.staging.scriptureforge.ai', 'api_hostname=other.staging.scriptureforge.ai');
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /DEPLOY-TLS-001 ssl-labs-a-plus api_hostname must match api-tls cert_hostname/,
+  );
+});
+
 test('validateManifest strict release rejects web redirect proof borrowed from API redirect segment', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
@@ -4342,6 +4372,7 @@ function tlsSummary(releaseCandidate) {
     'web-root web root HTTP 200',
     'web-tls TLS certificate cert_not_after cert_hostname=app.staging.scriptureforge.ai cert_issuer=Amazon_RSA_2048_M02',
     'web-http-redirect HTTP HTTPS redirect',
+    'ssl-labs-a-plus staging artifact SSL Labs grade=A+ ssl_labs_grade=A+ api_hostname=api.staging.scriptureforge.ai web_hostname=app.staging.scriptureforge.ai',
   ].map((segment) => `${segment} ${release}`).join('; ');
 }
 

@@ -26,6 +26,7 @@ type config struct {
 	WebBase            string
 	DNSArtifactURL     string
 	ACMArtifactURL     string
+	SSLLabsArtifactURL string
 	WebAuthSmokeURL    string
 	WebJournalSmokeURL string
 	WebRoomSmokeURL    string
@@ -46,6 +47,7 @@ type report struct {
 	WebTarget         string        `json:"web_target,omitempty"`
 	DNSArtifact       string        `json:"dns_artifact_url"`
 	ACMArtifact       string        `json:"acm_artifact_url"`
+	SSLLabsArtifact   string        `json:"ssl_labs_artifact_url"`
 	WebAuthSmoke      string        `json:"web_auth_smoke_url,omitempty"`
 	WebJournalSmoke   string        `json:"web_journal_smoke_url,omitempty"`
 	WebRoomSmoke      string        `json:"web_room_smoke_url,omitempty"`
@@ -100,6 +102,7 @@ func parseFlags() config {
 	flag.StringVar(&cfg.WebBase, "web-base", "", "deployed web base URL, for example https://app.staging.example")
 	flag.StringVar(&cfg.DNSArtifactURL, "dns-artifact-url", os.Getenv("STAGING_DNS_ARTIFACT_URL"), "HTTPS artifact proving deployed DNS records for API/web hostnames")
 	flag.StringVar(&cfg.ACMArtifactURL, "acm-artifact-url", os.Getenv("STAGING_ACM_ARTIFACT_URL"), "HTTPS artifact proving ACM certificate status and TLS policy")
+	flag.StringVar(&cfg.SSLLabsArtifactURL, "ssl-labs-artifact-url", os.Getenv("STAGING_SSL_LABS_ARTIFACT_URL"), "HTTPS artifact proving SSL Labs A+ grade for deployed API/web hostnames")
 	flag.StringVar(&cfg.WebAuthSmokeURL, "web-auth-smoke-url", os.Getenv("STAGING_WEB_AUTH_SMOKE_URL"), "HTTPS browser smoke artifact proving web login/register against staging")
 	flag.StringVar(&cfg.WebJournalSmokeURL, "web-journal-smoke-url", os.Getenv("STAGING_WEB_JOURNAL_SMOKE_URL"), "HTTPS browser smoke artifact proving web journal save/load against staging")
 	flag.StringVar(&cfg.WebRoomSmokeURL, "web-room-smoke-url", os.Getenv("STAGING_WEB_ROOM_SMOKE_URL"), "HTTPS browser smoke artifact proving web room create/select/WebSocket against staging")
@@ -131,9 +134,14 @@ func run(cfg config, output io.Writer) error {
 	if err != nil {
 		return err
 	}
+	sslLabsArtifact, err := normalizeArtifactURL(cfg.SSLLabsArtifactURL, "ssl-labs-artifact-url")
+	if err != nil {
+		return err
+	}
 	if err := validateDistinctArtifactURLs("TLS artifacts", map[string]string{
-		"dns-artifact-url": dnsArtifact,
-		"acm-artifact-url": acmArtifact,
+		"dns-artifact-url":      dnsArtifact,
+		"acm-artifact-url":      acmArtifact,
+		"ssl-labs-artifact-url": sslLabsArtifact,
 	}); err != nil {
 		return err
 	}
@@ -184,11 +192,13 @@ func run(cfg config, output io.Writer) error {
 	client := &http.Client{Timeout: cfg.Timeout}
 	results := make([]probeResult, 0, 6)
 	evidenceItems := []string{"DEPLOY-TLS-001"}
+	sslLabsMarkers := append([]string{"staging artifact", "SSL Labs", "grade=A+", "ssl_labs_grade=A+"}, releaseMarkers...)
 	if cfg.APIBase != "" {
 		apiBase, err := normalizeBaseURL(cfg.APIBase)
 		if err != nil {
 			return fmt.Errorf("api-base: %w", err)
 		}
+		sslLabsMarkers = append(sslLabsMarkers, "api_hostname="+mustHostname(apiBase))
 		results = append(results, probeHTTP(client, "api-live", joinURL(apiBase, "/live"), http.StatusOK, releaseMarkers))
 		results = append(results, probeHTTP(client, "api-ready", joinURL(apiBase, "/ready"), http.StatusOK, releaseMarkers))
 		results = append(results, probeTLS("api-tls", apiBase, cfg.Timeout, releaseMarkers))
@@ -210,6 +220,7 @@ func run(cfg config, output io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("web-base: %w", err)
 		}
+		sslLabsMarkers = append(sslLabsMarkers, "web_hostname="+mustHostname(webBase))
 		results = append(results, probeHTTP(client, "web-root", webBase, http.StatusOK, releaseMarkers))
 		results = append(results, probeTLS("web-tls", webBase, cfg.Timeout, releaseMarkers))
 		results = append(results, probeHTTPSRedirect(client, "web-http-redirect", webBase, releaseMarkers))
@@ -220,6 +231,7 @@ func run(cfg config, output io.Writer) error {
 		evidenceItems = appendEvidenceItem(evidenceItems, "CLIENT-WEB-001")
 		cfg.WebBase = webBase
 	}
+	results = append(results, probeArtifactContains(client, "ssl-labs-a-plus", sslLabsArtifact, sslLabsMarkers))
 	webUserID, webOrganizationID, webJournalID, webRoomID := linkedWebSmokeIDs(results)
 
 	result := report{
@@ -228,6 +240,7 @@ func run(cfg config, output io.Writer) error {
 		WebTarget:         cfg.WebBase,
 		DNSArtifact:       dnsArtifact,
 		ACMArtifact:       acmArtifact,
+		SSLLabsArtifact:   sslLabsArtifact,
 		WebAuthSmoke:      webAuthSmoke,
 		WebJournalSmoke:   webJournalSmoke,
 		WebRoomSmoke:      webRoomSmoke,
@@ -381,6 +394,14 @@ func isReservedPlaceholderHost(host string) bool {
 
 func joinURL(base, path string) string {
 	return strings.TrimRight(base, "/") + path
+}
+
+func mustHostname(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(parsed.Hostname())
 }
 
 func appendEvidenceItem(items []string, item string) []string {

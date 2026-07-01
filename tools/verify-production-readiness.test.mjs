@@ -985,6 +985,7 @@ function strictEvidenceSummary(id, releaseCandidate = sha) {
       'web-root web root HTTP 200',
       'web-tls TLS certificate cert_not_after cert_hostname=app.staging.scriptureforge.ai cert_issuer=Amazon_RSA_2048_M02',
       'web-http-redirect HTTP HTTPS redirect',
+      'ssl-labs-a-plus staging artifact SSL Labs grade=A+ ssl_labs_grade=A+ api_hostname=api.staging.scriptureforge.ai web_hostname=app.staging.scriptureforge.ai',
     ].map((segment) => `${segment} ${release}`).join('; ');
   }
   if (id === 'DEPLOY-K8S-001') {

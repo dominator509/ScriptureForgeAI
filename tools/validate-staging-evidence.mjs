@@ -237,6 +237,7 @@ const tlsSegmentMarkerRequirements = new Map([
   ['web-root', ['web root', 'HTTP 200', 'release_candidate=', 'service_version=']],
   ['web-tls', ['TLS', 'certificate', 'cert_not_after', 'cert_hostname=', 'cert_issuer=', 'release_candidate=', 'service_version=']],
   ['web-http-redirect', ['HTTP', 'HTTPS', 'redirect', 'release_candidate=', 'service_version=']],
+  ['ssl-labs-a-plus', ['staging artifact', 'SSL Labs', 'grade=A+', 'ssl_labs_grade=A+', 'release_candidate=', 'service_version=']],
 ]);
 const webClientSegmentMarkerRequirements = new Map([
   ['web-root', ['web root', 'HTTP 200']],
@@ -508,6 +509,10 @@ export const strictProbeFamilies = {
       'web root',
       'web-tls',
       'web-http-redirect',
+      'ssl-labs-a-plus',
+      'SSL Labs',
+      'grade=A+',
+      'ssl_labs_grade=A+',
       'release_candidate',
       'service_version',
       'load_run_id=',
@@ -1518,6 +1523,7 @@ function validateStrictReleaseItemEvidence(item, manifest) {
     }
     assert.equal(tlsLoadRunIDs.size, 1, 'DEPLOY-TLS-001 strict release evidence load_run_id values must all match');
     assertStrictTLSCertificateIdentity(evidence, 'DEPLOY-TLS-001', ['api-tls', 'web-tls']);
+    assertStrictSSLLabsHostnameBinding(evidence);
   }
   if (item.id === 'CLIENT-WEB-001') {
     const webLoadRunIDs = new Set();
@@ -2442,6 +2448,26 @@ function assertStrictTLSCertificateIdentity(evidence, itemID, segments) {
       segmentText,
       tlsCertIssuerPattern,
       `${itemID} ${segment} must include concrete cert_issuer=<issuer>`,
+    );
+  }
+}
+
+function assertStrictSSLLabsHostnameBinding(evidence) {
+  const sslLabsSegment = findEvidenceSegment(evidence, 'ssl-labs-a-plus');
+  assert.ok(sslLabsSegment, 'DEPLOY-TLS-001 strict release evidence must include ssl-labs-a-plus segment');
+  for (const [tlsSegment, marker] of [
+    ['api-tls', 'api_hostname'],
+    ['web-tls', 'web_hostname'],
+  ]) {
+    const tlsSegmentText = findEvidenceSegment(evidence, tlsSegment);
+    assert.ok(tlsSegmentText, `DEPLOY-TLS-001 strict release evidence must include ${tlsSegment} segment`);
+    const certHostname = tlsSegmentText.match(tlsCertHostnamePattern)?.[1]?.toLowerCase() ?? '';
+    assert.ok(certHostname, `DEPLOY-TLS-001 ${tlsSegment} must include concrete cert_hostname=<hostname>`);
+    const sslLabsHostname = extractTextMarker(sslLabsSegment, marker, 'DEPLOY-TLS-001 ssl-labs-a-plus').toLowerCase();
+    assert.equal(
+      sslLabsHostname,
+      certHostname,
+      `DEPLOY-TLS-001 ssl-labs-a-plus ${marker} must match ${tlsSegment} cert_hostname`,
     );
   }
 }

@@ -281,7 +281,21 @@ const stagingProbeMarkerSummaries = {
   'web-root': 'got HTTP 200; verified markers: web-root, web root, HTTP 200, release_candidate=abc123, service_version=scriptureforge-web:abc123, load_run_id=load-run-123',
   'web-tls': 'TLS1.3 certificate valid; verified markers: web-tls, TLS, certificate, cert_not_after, cert_hostname=app.staging.scriptureforge.ai, cert_issuer=Amazon_RSA_2048_M02, release_candidate=abc123, service_version=scriptureforge-web:abc123, load_run_id=load-run-123',
   'web-http-redirect': 'got HTTP 301 redirect; verified markers: web-http-redirect, HTTP, HTTPS, redirect, release_candidate=abc123, service_version=scriptureforge-web:abc123, load_run_id=load-run-123',
+  'ssl-labs-a-plus': 'got HTTP 200; staging artifact; verified markers: ssl-labs-a-plus, SSL Labs, grade=A+, ssl_labs_grade=A+, api_hostname=api.staging.scriptureforge.ai, web_hostname=app.staging.scriptureforge.ai, release_candidate=abc123, service_version=scriptureforge-web:abc123, load_run_id=load-run-123',
 };
+
+const sslLabsArtifactURL = 'https://artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt';
+
+function sslLabsProbe(overrides = {}) {
+  return {
+    name: 'ssl-labs-a-plus',
+    passed: true,
+    target: sslLabsArtifactURL,
+    status_code: 200,
+    result_summary: stagingProbeMarkerSummaries['ssl-labs-a-plus'],
+    ...overrides,
+  };
+}
 
 const resilienceProbeMarkerSummaries = {
   'api-ready-before-rollback': 'got HTTP 200; staging artifact; verified markers: ready, service_version, deployment_environment, pre_rollback_version, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123; pre_rollback_version=release-1',
@@ -843,6 +857,7 @@ test('recordEvidence marks referenced manifest items as passed with artifact det
     load_run_id: 'load-run-123',
     dns_artifact_url: 'https://artifacts.staging.scriptureforge.ai/tls/dns.txt',
     acm_artifact_url: 'https://artifacts.staging.scriptureforge.ai/tls/acm.txt',
+    ssl_labs_artifact_url: 'https://artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt',
     web_target: 'https://app.staging.scriptureforge.ai',
     web_auth_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/auth-smoke.txt',
     web_journal_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/journal-smoke.txt',
@@ -852,6 +867,7 @@ test('recordEvidence marks referenced manifest items as passed with artifact det
       { name: 'web-root', passed: true, target: 'https://app.staging.scriptureforge.ai', status_code: 200, result_summary: stagingProbeMarkerSummaries['web-root'] },
       { name: 'web-tls', passed: true, target: 'https://app.staging.scriptureforge.ai', tls_version: 'TLS1.3', cert_not_after: '2026-12-25T00:00:00Z', cert_hostname: 'app.staging.scriptureforge.ai', cert_issuer: 'Amazon_RSA_2048_M02', result_summary: stagingProbeMarkerSummaries['web-tls'] },
       { name: 'web-http-redirect', passed: true, target: 'http://app.staging.scriptureforge.ai', status_code: 301, redirect_to: 'https://app.staging.scriptureforge.ai', result_summary: stagingProbeMarkerSummaries['web-http-redirect'] },
+      { name: 'ssl-labs-a-plus', passed: true, target: 'https://artifacts.staging.scriptureforge.ai/tls/ssl-labs.txt', status_code: 200, result_summary: stagingProbeMarkerSummaries['ssl-labs-a-plus'] },
       ...webSmokeProbes('abc123', 'scriptureforge-web:abc123'),
     ],
   };
@@ -863,7 +879,7 @@ test('recordEvidence marks referenced manifest items as passed with artifact det
     assert.equal(item.evidence.length, 1);
     assert.equal(item.evidence[0].artifact, 'artifacts/stagingprobe.json');
     assert.equal(item.evidence[0].command_or_probe, 'go run ./tools/stagingprobe');
-    assert.match(item.evidence[0].result_summary, /6 probes passed/);
+    assert.match(item.evidence[0].result_summary, /7 probes passed/);
   }
 });
 
@@ -4692,6 +4708,7 @@ test('recordEvidence records production-grade TLS and web reachability evidence'
       web_target: 'https://app.staging.scriptureforge.ai',
       dns_artifact_url: 'https://artifacts.staging.scriptureforge.ai/tls/dns.txt',
       acm_artifact_url: 'https://artifacts.staging.scriptureforge.ai/tls/acm.txt',
+      ssl_labs_artifact_url: sslLabsArtifactURL,
       web_auth_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/auth-smoke.txt',
       web_journal_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/journal-smoke.txt',
       web_room_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/room-smoke.txt',
@@ -4704,6 +4721,7 @@ test('recordEvidence records production-grade TLS and web reachability evidence'
         { name: 'web-root', passed: true, target: 'https://app.staging.scriptureforge.ai', status_code: 200, result_summary: stagingProbeMarkerSummaries['web-root'] },
         { name: 'web-tls', passed: true, target: 'https://app.staging.scriptureforge.ai', tls_version: 'TLS1.3', cert_not_after: '2026-12-25T00:00:00Z', cert_hostname: 'app.staging.scriptureforge.ai', cert_issuer: 'Amazon_RSA_2048_M02', result_summary: stagingProbeMarkerSummaries['web-tls'] },
         { name: 'web-http-redirect', passed: true, target: 'http://app.staging.scriptureforge.ai', status_code: 301, redirect_to: 'https://app.staging.scriptureforge.ai', result_summary: stagingProbeMarkerSummaries['web-http-redirect'] },
+        sslLabsProbe(),
         ...webSmokeProbes('abc123', 'scriptureforge-web:abc123'),
       ],
     },
@@ -4729,6 +4747,7 @@ test('recordEvidence rejects TLS evidence with only summary load run identity', 
         api_target: 'https://api.staging.scriptureforge.ai',
         dns_artifact_url: 'https://artifacts.staging.scriptureforge.ai/tls/dns.txt',
         acm_artifact_url: 'https://artifacts.staging.scriptureforge.ai/tls/acm.txt',
+        ssl_labs_artifact_url: sslLabsArtifactURL,
         probes: [
           { name: 'api-live', passed: true, target: 'https://api.staging.scriptureforge.ai/live', status_code: 200, result_summary: stagingProbeMarkerSummaries['api-live'] },
           { name: 'api-ready', passed: true, target: 'https://api.staging.scriptureforge.ai/ready', status_code: 200, result_summary: stagingProbeMarkerSummaries['api-ready'] },
@@ -4787,11 +4806,13 @@ test('recordEvidence rejects TLS evidence without structured certificate hostnam
         api_target: 'https://api.staging.scriptureforge.ai',
         dns_artifact_url: 'https://artifacts.staging.scriptureforge.ai/tls/dns.txt',
         acm_artifact_url: 'https://artifacts.staging.scriptureforge.ai/tls/acm.txt',
+        ssl_labs_artifact_url: sslLabsArtifactURL,
         probes: [
           { name: 'api-live', passed: true, target: 'https://api.staging.scriptureforge.ai/live', status_code: 200, result_summary: stagingProbeMarkerSummaries['api-live'] },
           { name: 'api-ready', passed: true, target: 'https://api.staging.scriptureforge.ai/ready', status_code: 200, result_summary: stagingProbeMarkerSummaries['api-ready'] },
           { name: 'api-tls', passed: true, target: 'https://api.staging.scriptureforge.ai', tls_version: 'TLS1.3', cert_not_after: '2026-12-25T00:00:00Z', cert_issuer: 'Amazon_RSA_2048_M02', result_summary: stagingProbeMarkerSummaries['api-tls'] },
           { name: 'api-http-redirect', passed: true, target: 'http://api.staging.scriptureforge.ai', status_code: 301, redirect_to: 'https://api.staging.scriptureforge.ai', result_summary: stagingProbeMarkerSummaries['api-http-redirect'] },
+          sslLabsProbe(),
         ],
       },
       'artifacts/stagingprobe.json',
@@ -4815,11 +4836,13 @@ test('recordEvidence rejects TLS evidence whose certificate hostname does not ma
         api_target: 'https://api.staging.scriptureforge.ai',
         dns_artifact_url: 'https://artifacts.staging.scriptureforge.ai/tls/dns.txt',
         acm_artifact_url: 'https://artifacts.staging.scriptureforge.ai/tls/acm.txt',
+        ssl_labs_artifact_url: sslLabsArtifactURL,
         probes: [
           { name: 'api-live', passed: true, target: 'https://api.staging.scriptureforge.ai/live', status_code: 200, result_summary: stagingProbeMarkerSummaries['api-live'] },
           { name: 'api-ready', passed: true, target: 'https://api.staging.scriptureforge.ai/ready', status_code: 200, result_summary: stagingProbeMarkerSummaries['api-ready'] },
           { name: 'api-tls', passed: true, target: 'https://api.staging.scriptureforge.ai', tls_version: 'TLS1.3', cert_not_after: '2026-12-25T00:00:00Z', cert_hostname: 'app.staging.scriptureforge.ai', cert_issuer: 'Amazon_RSA_2048_M02', result_summary: stagingProbeMarkerSummaries['api-tls'].replace('cert_hostname=api.staging.scriptureforge.ai', 'cert_hostname=app.staging.scriptureforge.ai') },
           { name: 'api-http-redirect', passed: true, target: 'http://api.staging.scriptureforge.ai', status_code: 301, redirect_to: 'https://api.staging.scriptureforge.ai', result_summary: stagingProbeMarkerSummaries['api-http-redirect'] },
+          sslLabsProbe(),
         ],
       },
       'artifacts/stagingprobe.json',
@@ -4843,6 +4866,7 @@ test('recordEvidence rejects TLS evidence with canonical duplicate DNS and ACM a
         api_target: 'https://api.staging.scriptureforge.ai',
         dns_artifact_url: 'https://ARTIFACTS.staging.scriptureforge.ai:443/tls/shared-proof.txt?b=2&a=1',
         acm_artifact_url: 'https://artifacts.staging.scriptureforge.ai/tls/shared-proof.txt?a=1&b=2#certificate',
+        ssl_labs_artifact_url: sslLabsArtifactURL,
         probes: [
           { name: 'api-live', passed: true, target: 'https://api.staging.scriptureforge.ai/live', status_code: 200, result_summary: stagingProbeMarkerSummaries['api-live'] },
           { name: 'api-ready', passed: true, target: 'https://api.staging.scriptureforge.ai/ready', status_code: 200, result_summary: stagingProbeMarkerSummaries['api-ready'] },
@@ -4883,6 +4907,7 @@ test('recordEvidence rejects TLS evidence for a different release candidate', ()
         api_target: 'https://api.staging.scriptureforge.ai',
         dns_artifact_url: 'https://artifacts.staging.scriptureforge.ai/tls/dns.txt',
         acm_artifact_url: 'https://artifacts.staging.scriptureforge.ai/tls/acm.txt',
+        ssl_labs_artifact_url: sslLabsArtifactURL,
         probes: [
           { name: 'api-live', passed: true, target: 'https://api.staging.scriptureforge.ai/live', status_code: 200, result_summary: staleSummaries['api-live'] },
           { name: 'api-ready', passed: true, target: 'https://api.staging.scriptureforge.ai/ready', status_code: 200, result_summary: staleSummaries['api-ready'] },
@@ -4911,10 +4936,12 @@ test('recordEvidence rejects TLS evidence without API readiness proof', () => {
         api_target: 'https://api.staging.scriptureforge.ai',
         dns_artifact_url: 'https://artifacts.staging.scriptureforge.ai/tls/dns.txt',
         acm_artifact_url: 'https://artifacts.staging.scriptureforge.ai/tls/acm.txt',
+        ssl_labs_artifact_url: sslLabsArtifactURL,
         probes: [
           { name: 'api-live', passed: true, target: 'https://api.staging.scriptureforge.ai/live', status_code: 200, result_summary: stagingProbeMarkerSummaries['api-live'] },
           { name: 'api-tls', passed: true, target: 'https://api.staging.scriptureforge.ai', tls_version: 'TLS1.3', cert_not_after: '2026-12-25T00:00:00Z', cert_hostname: 'api.staging.scriptureforge.ai', cert_issuer: 'Amazon_RSA_2048_M02', result_summary: stagingProbeMarkerSummaries['api-tls'] },
           { name: 'api-http-redirect', passed: true, target: 'http://api.staging.scriptureforge.ai', status_code: 301, redirect_to: 'https://api.staging.scriptureforge.ai', result_summary: stagingProbeMarkerSummaries['api-http-redirect'] },
+          sslLabsProbe(),
         ],
       },
       'artifacts/stagingprobe.json',
@@ -4944,6 +4971,7 @@ test('recordEvidence rejects TLS and web reports without verified marker summari
         web_target: 'https://app.staging.scriptureforge.ai',
         dns_artifact_url: 'https://artifacts.staging.scriptureforge.ai/tls/dns.txt',
         acm_artifact_url: 'https://artifacts.staging.scriptureforge.ai/tls/acm.txt',
+        ssl_labs_artifact_url: sslLabsArtifactURL,
         web_auth_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/auth-smoke.txt',
         web_journal_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/journal-smoke.txt',
         web_room_smoke_url: 'https://artifacts.staging.scriptureforge.ai/web/room-smoke.txt',
@@ -4956,6 +4984,7 @@ test('recordEvidence rejects TLS and web reports without verified marker summari
           { name: 'web-root', passed: true, target: 'https://app.staging.scriptureforge.ai', status_code: 200, result_summary: stagingProbeMarkerSummaries['web-root'] },
           { name: 'web-tls', passed: true, target: 'https://app.staging.scriptureforge.ai', tls_version: 'TLS1.3', cert_not_after: '2026-12-25T00:00:00Z', cert_hostname: 'app.staging.scriptureforge.ai', cert_issuer: 'Amazon_RSA_2048_M02', result_summary: stagingProbeMarkerSummaries['web-tls'] },
           { name: 'web-http-redirect', passed: true, target: 'http://app.staging.scriptureforge.ai', status_code: 301, redirect_to: 'https://app.staging.scriptureforge.ai', result_summary: stagingProbeMarkerSummaries['web-http-redirect'] },
+          sslLabsProbe(),
           ...webSmokeProbes('abc123', 'scriptureforge-web:abc123'),
         ],
       },

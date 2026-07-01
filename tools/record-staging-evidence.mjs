@@ -299,6 +299,7 @@ const requiredStagingProbeSummaryMarkers = new Map([
   ['web-root', ['web-root', 'web root', 'HTTP 200']],
   ['web-tls', ['web-tls', 'TLS', 'certificate', 'cert_not_after', 'cert_hostname=', 'cert_issuer=']],
   ['web-http-redirect', ['web-http-redirect', 'HTTP', 'HTTPS', 'redirect']],
+  ['ssl-labs-a-plus', ['staging artifact', 'SSL Labs', 'grade=A+', 'ssl_labs_grade=A+']],
 ]);
 
 const requiredResilienceProbeSummaryMarkers = new Map([
@@ -925,6 +926,7 @@ function validateTLSEvidence(report, manifest) {
   for (const [field, label] of [
     ['dns_artifact_url', 'DNS'],
     ['acm_artifact_url', 'ACM'],
+    ['ssl_labs_artifact_url', 'SSL Labs'],
   ]) {
     const artifactURL = String(report[field] ?? '');
     assert.match(artifactURL, /^https:\/\//, `DEPLOY-TLS-001 report must include HTTPS ${field}`);
@@ -933,6 +935,7 @@ function validateTLSEvidence(report, manifest) {
   assertDistinctReportURLs('DEPLOY-TLS-001', [
     ['dns_artifact_url', String(report.dns_artifact_url ?? '')],
     ['acm_artifact_url', String(report.acm_artifact_url ?? '')],
+    ['ssl_labs_artifact_url', String(report.ssl_labs_artifact_url ?? '')],
   ]);
   const probes = Array.isArray(report.probes) ? report.probes : [];
   const probesByName = new Map(probes.map((probe) => [probe.name, probe]));
@@ -955,6 +958,18 @@ function validateTLSEvidence(report, manifest) {
     assertTLSProbe(probesByName, 'web-tls', webTarget, reportReleaseMarkers);
     assertRedirectProbe(probesByName, 'web-http-redirect', reportReleaseMarkers);
   }
+  const sslLabsProbe = probesByName.get('ssl-labs-a-plus');
+  assert.ok(sslLabsProbe, 'DEPLOY-TLS-001 report must include ssl-labs-a-plus probe');
+  assert.equal(sslLabsProbe.passed, true, 'ssl-labs-a-plus must pass');
+  assert.equal(String(sslLabsProbe.target ?? ''), String(report.ssl_labs_artifact_url ?? ''), 'ssl-labs-a-plus target must match ssl_labs_artifact_url');
+  const sslLabsMarkers = ['ssl-labs-a-plus', ...(requiredStagingProbeSummaryMarkers.get('ssl-labs-a-plus') ?? []), ...reportReleaseMarkers];
+  if (apiTarget) {
+    sslLabsMarkers.push(`api_hostname=${new URL(apiTarget).hostname.toLowerCase()}`);
+  }
+  if (webTarget) {
+    sslLabsMarkers.push(`web_hostname=${new URL(webTarget).hostname.toLowerCase()}`);
+  }
+  assertSummaryIncludesMarkers('ssl-labs-a-plus', String(sslLabsProbe.result_summary ?? ''), sslLabsMarkers);
   for (const probe of probes) {
     const summary = String(probe.result_summary ?? '');
     if (summary.includes('release_candidate=') || summary.includes('load_run_id=')) {
