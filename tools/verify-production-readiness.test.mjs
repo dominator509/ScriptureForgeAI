@@ -967,6 +967,7 @@ function passedEvidenceFor(id, releaseCandidate = sha) {
     result_summary: strictEvidenceSummary(id, releaseCandidate),
     ...(id === 'ABUSE-LIMIT-001' ? { structured_report: abuseRateLimitStructuredReport() } : {}),
     ...(id === 'DATA-RLS-001' ? { structured_report: tenantRLSStructuredReport() } : {}),
+    ...(id === 'RUST-GRPC-001' ? { structured_report: rustGRPCRuntimeStructuredReport() } : {}),
     ...(id === 'EXT-AI-001' ? { structured_report: aiGenerationAuditStructuredReport() } : {}),
     ...(id === 'EXT-ZOOM-001' ? { structured_report: zoomResilienceWebhookStructuredReport() } : {}),
   };
@@ -1149,6 +1150,24 @@ function abuseRateLimitStructuredReport() {
         refresh_token_scoped: name === 'auth-refresh-rate-limit',
         websocket_upgrade: name === 'websocket-rate-limit',
       })),
+    },
+  };
+}
+
+function rustGRPCRuntimeStructuredReport() {
+  return {
+    rust_grpc_runtime_proof: {
+      deployment_environment: 'staging',
+      grpc_target: 'scriptureforge-rust-engine.staging.svc.cluster.local:50051',
+      metrics_target: 'https://rust-metrics.staging.scriptureforge.ai/metrics',
+      api_metrics_target: 'https://api.staging.scriptureforge.ai/metrics',
+      load_run_id: 'load-run-123',
+      health_status: 'SERVING',
+      service_name: 'scriptureforge.engine.ScriptureEngine',
+      embedding_requests: 1,
+      vector_search_requests: 1,
+      api_rust_vector_search_ops: 1,
+      api_rust_vector_search_seconds: 0.042,
     },
   };
 }

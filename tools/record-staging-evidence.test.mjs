@@ -2852,6 +2852,21 @@ test('recordEvidence records production-grade Rust gRPC evidence', () => {
   );
 
   assert.equal(updated.items[0].status, 'passed');
+  assert.deepEqual(updated.items[0].evidence[0].structured_report, {
+    rust_grpc_runtime_proof: {
+      deployment_environment: 'staging',
+      grpc_target: 'scriptureforge-rust-engine.staging.svc.cluster.local:50051',
+      metrics_target: 'http://scriptureforge-rust-engine.staging.svc.cluster.local:9102/metrics',
+      api_metrics_target: 'https://api.staging.scriptureforge.ai/metrics',
+      load_run_id: 'rust-run-123',
+      health_status: 'SERVING',
+      service_name: 'scriptureforge.engine.ScriptureEngine',
+      embedding_requests: 1,
+      vector_search_requests: 1,
+      api_rust_vector_search_ops: 1,
+      api_rust_vector_search_seconds: 0.042,
+    },
+  });
 });
 
 test('recordEvidence rejects Rust gRPC evidence without report load run identity', () => {

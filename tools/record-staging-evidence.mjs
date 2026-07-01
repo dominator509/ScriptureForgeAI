@@ -2772,6 +2772,9 @@ function structuredEvidenceForReport(itemID, report) {
   if (itemID === 'DATA-RLS-001') {
     return structuredTenantRLSEvidenceForReport(report);
   }
+  if (itemID === 'RUST-GRPC-001') {
+    return structuredRustEvidenceForReport(report);
+  }
   if (itemID === 'EXT-AI-001') {
     return structuredAIEvidenceForReport(report);
   }
@@ -2829,6 +2832,31 @@ function structuredTenantRLSEvidenceForReport(report) {
           write_denied: outcome?.write_denied === true,
         }))
         : [],
+    },
+  };
+}
+
+function structuredRustEvidenceForReport(report) {
+  const probes = Array.isArray(report.probes) ? report.probes : [];
+  const health = probes.find((probe) => probe.name === 'rust-grpc-health');
+  const metrics = probes.find((probe) => probe.name === 'rust-metrics');
+  const apiMetrics = probes.find((probe) => probe.name === 'api-rust-integration-metrics');
+  assert.ok(health, 'RUST-GRPC-001 structured evidence requires rust-grpc-health probe');
+  assert.ok(metrics, 'RUST-GRPC-001 structured evidence requires rust-metrics probe');
+  assert.ok(apiMetrics, 'RUST-GRPC-001 structured evidence requires api-rust-integration-metrics probe');
+  return {
+    rust_grpc_runtime_proof: {
+      deployment_environment: String(report.deployment_environment ?? ''),
+      grpc_target: String(report.grpc_target ?? ''),
+      metrics_target: String(report.metrics_target ?? ''),
+      api_metrics_target: String(report.api_metrics_target ?? ''),
+      load_run_id: String(report.load_run_id ?? ''),
+      health_status: String(health.status ?? ''),
+      service_name: String(health.service_name ?? 'scriptureforge.engine.ScriptureEngine'),
+      embedding_requests: Number(metrics.embedding_requests),
+      vector_search_requests: Number(metrics.vector_search_requests),
+      api_rust_vector_search_ops: Number(apiMetrics.api_rust_vector_search_ops),
+      api_rust_vector_search_seconds: Number(apiMetrics.api_rust_vector_search_seconds),
     },
   };
 }

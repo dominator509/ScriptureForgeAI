@@ -151,7 +151,7 @@ const obsRustMetricsPattern = /rust-prometheus-metrics(?=[^;]*staging artifact)(
 const rustEmbeddingRequestsPattern = /\bembedding_requests=([1-9][0-9]*(?:\.[0-9]+)?)\b/i;
 const rustVectorSearchRequestsPattern = /\bvector_search_requests=([1-9][0-9]*(?:\.[0-9]+)?)\b/i;
 const apiRustVectorSearchOpsPattern = /\bapi_rust_vector_search_ops=([1-9][0-9]*(?:\.[0-9]+)?)\b/i;
-const apiRustVectorSearchSecondsPattern = /\bapi_rust_vector_search_seconds=(?:0\.[0-9]*[1-9][0-9]*|[1-9][0-9]*(?:\.[0-9]+)?)\b/i;
+const apiRustVectorSearchSecondsPattern = /\bapi_rust_vector_search_seconds=(0\.[0-9]*[1-9][0-9]*|[1-9][0-9]*(?:\.[0-9]+)?)\b/i;
 const obsTraceSearchPattern = /trace-backend-search(?=[^;]*staging artifact)(?=[^;]*scriptureforge-api)(?=[^;]*scriptureforge-rust-engine)(?=[^;]*route=\/)(?=[^;]*method=[A-Z]+)(?=[^;]*release_candidate=)(?=[^;]*load_run_id=)/i;
 const obsLogCorrelationPattern = /log-backend-trace-correlation(?=[^;]*staging artifact)(?=[^;]*trace_id)(?=[^;]*scriptureforge-api)(?=[^;]*scriptureforge-rust-engine)(?=[^;]*route=\/)(?=[^;]*method=[A-Z]+)(?=[^;]*timestamp=[^\s,;]+)(?=[^;]*severity=[A-Za-z0-9_.:-]+)(?=[^;]*service_version)(?=[^;]*deployment_environment)(?=[^;]*tenant_id=[A-Za-z0-9_.:-]+)(?=[^;]*user_id=[A-Za-z0-9_.:-]+)(?=[^;]*role=[A-Za-z0-9_.:-]+)(?=[^;]*distinct_otel_artifacts=true)(?=[^;]*release_candidate=)(?=[^;]*load_run_id=)/i;
 const obsDashboardImportPattern = /dashboard-import(?=[^;]*staging artifact)(?=[^;]*ScriptureForge)(?=[^;]*scriptureforge_http_requests_total)(?=[^;]*scriptureforge_http_request_duration_seconds_sum)(?=[^;]*websocket_active_connections_count)(?=[^;]*room_broadcast)(?=[^;]*ai_inference_duration_seconds)(?=[^;]*scriptureforge_rust_engine_)(?=[^;]*trace_id)(?=[^;]*release_candidate=)(?=[^;]*load_run_id=)/i;
@@ -1744,6 +1744,11 @@ function validateStrictReleaseItemEvidence(item, manifest) {
     ));
     assert.ok(rustLoadRunIDs.every(Boolean), 'RUST-GRPC-001 strict release evidence must include load_run_id on every Rust segment');
     assert.equal(new Set(rustLoadRunIDs).size, 1, 'RUST-GRPC-001 strict release evidence load_run_id values must all match');
+    assertStrictRustStructuredReport(evidence, {
+      healthSegment: findEvidenceSegment(evidence, 'rust-grpc-health'),
+      metricsSegment: rustMetricsSegment,
+      apiMetricsSegment: apiRustMetricsSegment,
+    });
   }
   if (item.id === 'CLIENT-MOBILE-001') {
     const mobileLoadRunIDs = new Set();
@@ -2384,6 +2389,36 @@ function extractTextMarker(segmentText, marker, itemID) {
   const match = pattern.exec(segmentText);
   assert.ok(match, `${itemID} strict release evidence must include ${marker}`);
   return String(match[1] ?? '').trim();
+}
+
+function assertStrictRustStructuredReport(evidence, segments) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.rust_grpc_runtime_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    'RUST-GRPC-001 strict release evidence must include exactly one structured rust_grpc_runtime_proof report',
+  );
+  const report = structuredReports[0];
+  const deploymentEnvironment = extractTextMarker(segments.healthSegment, 'deployment_environment', 'RUST-GRPC-001 structured report health binding');
+  const loadRunID = extractTextMarker(segments.healthSegment, 'load_run_id', 'RUST-GRPC-001 structured report health binding');
+  const embeddingRequests = segments.metricsSegment.match(rustEmbeddingRequestsPattern)?.[1] ?? '';
+  const vectorSearchRequests = segments.metricsSegment.match(rustVectorSearchRequestsPattern)?.[1] ?? '';
+  const apiRustVectorSearchOps = segments.apiMetricsSegment.match(apiRustVectorSearchOpsPattern)?.[1] ?? '';
+  const apiRustVectorSearchSeconds = segments.apiMetricsSegment.match(apiRustVectorSearchSecondsPattern)?.[1] ?? '';
+
+  assert.equal(String(report.deployment_environment ?? ''), deploymentEnvironment, 'RUST-GRPC-001 structured report deployment_environment must match rust-grpc-health marker');
+  assert.equal(String(report.load_run_id ?? ''), loadRunID, 'RUST-GRPC-001 structured report load_run_id must match rust-grpc-health marker');
+  assert.ok(String(report.grpc_target ?? '').trim(), 'RUST-GRPC-001 structured report grpc_target must not be empty');
+  assert.ok(String(report.metrics_target ?? '').trim(), 'RUST-GRPC-001 structured report metrics_target must not be empty');
+  assert.ok(String(report.api_metrics_target ?? '').trim(), 'RUST-GRPC-001 structured report api_metrics_target must not be empty');
+  assert.equal(String(report.health_status ?? ''), 'SERVING', 'RUST-GRPC-001 structured report health_status must be SERVING');
+  assert.equal(String(report.service_name ?? ''), 'scriptureforge.engine.ScriptureEngine', 'RUST-GRPC-001 structured report service_name must identify ScriptureEngine');
+  assert.equal(Number(report.embedding_requests), Number(embeddingRequests), 'RUST-GRPC-001 structured report embedding_requests must match rust-metrics marker');
+  assert.equal(Number(report.vector_search_requests), Number(vectorSearchRequests), 'RUST-GRPC-001 structured report vector_search_requests must match rust-metrics marker');
+  assert.equal(Number(report.api_rust_vector_search_ops), Number(apiRustVectorSearchOps), 'RUST-GRPC-001 structured report api_rust_vector_search_ops must match api-rust-integration-metrics marker');
+  assert.equal(Number(report.api_rust_vector_search_seconds), Number(apiRustVectorSearchSeconds), 'RUST-GRPC-001 structured report api_rust_vector_search_seconds must match api-rust-integration-metrics marker');
 }
 
 function assertStrictAIStructuredReport(evidence, segments) {

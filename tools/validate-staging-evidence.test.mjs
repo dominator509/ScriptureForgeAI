@@ -2475,6 +2475,62 @@ test('validateManifest strict release rejects Rust evidence without deployment e
   );
 });
 
+test('validateManifest strict release rejects Rust evidence without structured runtime proof', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'RUST-GRPC-001');
+  delete item.evidence[0].structured_report;
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /RUST-GRPC-001 strict release evidence must include exactly one structured rust_grpc_runtime_proof report/,
+  );
+});
+
+test('validateManifest strict release rejects Rust structured proof with drifted deployment environment', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'RUST-GRPC-001');
+  item.evidence[0].structured_report.rust_grpc_runtime_proof.deployment_environment = 'prod';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /RUST-GRPC-001 structured report deployment_environment must match rust-grpc-health marker/,
+  );
+});
+
+test('validateManifest strict release rejects Rust structured proof with drifted Rust metric count', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'RUST-GRPC-001');
+  item.evidence[0].structured_report.rust_grpc_runtime_proof.embedding_requests = 2;
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /RUST-GRPC-001 structured report embedding_requests must match rust-metrics marker/,
+  );
+});
+
+test('validateManifest strict release rejects Rust structured proof with drifted API metric count', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'RUST-GRPC-001');
+  item.evidence[0].structured_report.rust_grpc_runtime_proof.api_rust_vector_search_ops = 2;
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /RUST-GRPC-001 structured report api_rust_vector_search_ops must match api-rust-integration-metrics marker/,
+  );
+});
+
 test('validateManifest strict release rejects mobile evidence without native crypto and staging config markers', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
@@ -4740,6 +4796,7 @@ function passedEvidenceFor(id) {
       : `${id} passed`,
     ...(id === 'ABUSE-LIMIT-001' ? { structured_report: abuseRateLimitStructuredReport() } : {}),
     ...(id === 'DATA-RLS-001' ? { structured_report: tenantRLSStructuredReport() } : {}),
+    ...(id === 'RUST-GRPC-001' ? { structured_report: rustGRPCRuntimeStructuredReport() } : {}),
     ...(id === 'EXT-AI-001' ? { structured_report: aiGenerationAuditStructuredReport() } : {}),
     ...(id === 'EXT-ZOOM-001' ? { structured_report: zoomResilienceWebhookStructuredReport() } : {}),
   };
@@ -4773,6 +4830,24 @@ function abuseRateLimitStructuredReport() {
         refresh_token_scoped: name === 'auth-refresh-rate-limit',
         websocket_upgrade: name === 'websocket-rate-limit',
       })),
+    },
+  };
+}
+
+function rustGRPCRuntimeStructuredReport() {
+  return {
+    rust_grpc_runtime_proof: {
+      deployment_environment: 'staging',
+      grpc_target: 'scriptureforge-rust-engine.staging.svc.cluster.local:50051',
+      metrics_target: 'https://rust-metrics.staging.scriptureforge.ai/metrics',
+      api_metrics_target: 'https://api.staging.scriptureforge.ai/metrics',
+      load_run_id: 'load-run-123',
+      health_status: 'SERVING',
+      service_name: 'scriptureforge.engine.ScriptureEngine',
+      embedding_requests: 1,
+      vector_search_requests: 1,
+      api_rust_vector_search_ops: 1,
+      api_rust_vector_search_seconds: 0.042,
     },
   };
 }
