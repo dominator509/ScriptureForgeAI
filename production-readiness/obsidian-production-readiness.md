@@ -194,6 +194,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Web AES-GCM IV Freshness Guard**: `web/src/lib/crypto.smoke.mts`, `tools/verify-journal-crypto.mjs`, and `tools/validate-local-gate-report.mjs` now require repeated same-plaintext journal encryptions to produce fresh IVs and different ciphertext with `web_crypto_unique_iv=true` proof before local web crypto smoke evidence can pass.
 - [x] **Mobile AES-GCM IV Freshness Guard**: `runJournalCryptoSelfTest()`, `mobile/src/lib/crypto.smoke.mts`, `tools/verify-journal-crypto.mjs`, `tools/mobileprobe`, staging evidence recording, and strict-release validation now require `unique_iv=true`/`unique IV` proof so native mobile AES-GCM evidence must show fresh IV material for repeated journal encryptions; `tools/mobileprobe` also emits structured `unique_iv: true`, and the staging evidence recorder rejects `CLIENT-MOBILE-001` native crypto reports that omit or falsify that JSON field.
 - [x] **Mobile Native Crypto Lifecycle Structured Evidence Guard**: `tools/mobileprobe` now emits structured `key_disposed`, `disposed_handle_rejected`, `revoked_key_rejected`, `passphrase_buffer_zeroized`, `salt_buffer_zeroized`, and `plaintext_buffer_zeroized` booleans, and staging evidence recording plus strict-release validation require the matching exact markers in the `mobile-native-crypto-smoke` segment before `CLIENT-MOBILE-001` can support final readiness.
+- [x] **Mobile Self-Test Lifecycle Marker Guard**: `runJournalCryptoSelfTest()` now emits `key_disposed=true` and `disposed_handle_rejected=true` directly from the app-runtime self-test, and mobile smoke plus `tools/verify-journal-crypto.mjs` reject self-test output that lacks those production evidence markers.
 - [x] **Mobile AES-GCM Salt Binding Guard**: `runJournalCryptoSelfTest()` now emits concrete `associated_data_salt_id=<id>` and `associated_data_salt_version=<n>` markers, and `tools/verify-journal-crypto.mjs` rejects drift that stops binding AES-GCM associated data to backend salt metadata.
 - [x] **Client Associated-Data Input Guard**: web and mobile `journalAssociatedData()` now reject blank salt IDs plus non-positive or non-integer salt versions before building AES-GCM associated data, and client smoke/verifier gates require `*_crypto_associated_data_input_guard=true` markers.
 - [x] **Client Smoke Crypto Marker Parity Guard**: `tools/validate-local-gate-report.mjs` now requires local web/mobile smoke rows to preserve the current crypto smoke markers for associated-data input guards, IV freshness, revoked-key rejection, import-failure cleanup, native-required self-test fail-closed behavior, and mobile runtime buffer zeroization, so stale smoke logs cannot satisfy local gate evidence after crypto hardening changes.
@@ -374,11 +375,11 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - non_manifest_blockers: 2
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: 2f0b7b9b469ccac72d3721354f8f747d2df132fc
+- expected_release_candidate: 66ab41f6c85dc19ecb6a9fec34933a224e5d37da
 - release_candidate_matches_expected: no
 - blocking items:
   - RELEASE-CANDIDATE-SHA [failed]: Staging evidence manifest release_candidate does not match the expected release SHA.
-    - expected_release_candidate: 2f0b7b9b469ccac72d3721354f8f747d2df132fc
+    - expected_release_candidate: 66ab41f6c85dc19ecb6a9fec34933a224e5d37da
     - actual_release_candidate: b1c70b67e157f8c382cf3b872ef943e24714a95b
   - STAGING-EVIDENCE-CONTRACT [failed]: Environment-specific pending evidence requirements are stale relative to production-readiness/staging-evidence.example.json.
     - required: DEPLOY-TF-001 required_evidence must be refreshed from the checked-in example contract (6 current entries, 6 expected entries)

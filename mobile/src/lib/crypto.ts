@@ -424,7 +424,15 @@ export async function runJournalCryptoSelfTest(): Promise<JournalCryptoSelfTestR
     if (!revokedKeyRejected) {
       throw new Error('journal crypto self-test did not revoke stale raw key references');
     }
-    markers.push('key_disposal=true', 'key disposed', 'disposed handle rejected', 'revoked_key_rejected=true', 'stale raw key rejected');
+    markers.push(
+      'key_disposed=true',
+      'key_disposal=true',
+      'key disposed',
+      'disposed_handle_rejected=true',
+      'disposed handle rejected',
+      'revoked_key_rejected=true',
+      'stale raw key rejected',
+    );
 
     return {
       ...status,
