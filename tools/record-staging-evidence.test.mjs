@@ -181,6 +181,8 @@ const securityProbeMarkerSummaries = {
   'scoped-secrets-access-test': 'got HTTP 200; verified markers: staging artifact, namespace=staging, service_account=scriptureforge-api, role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets, allowed, configured secret, denied, unscoped secret, AccessDenied, distinct_secret_artifacts=true, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
 };
 
+const dbAppGrantTableNames = 'organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails';
+
 const deploymentProbeMarkerSummaries = {
   'terraform-remote-backend-init': 'got HTTP 200; staging artifact; verified markers: terraform, s3, backend, bucket, key, encrypt=true, dynamodb_table, successfully initialized, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
   'terraform-staging-plan': 'got HTTP 200; staging artifact; verified markers: Terraform, Plan:, aws_eks_cluster, aws_eks_node_group, aws_rds_cluster, aws_elasticache_replication_group, aws_ecr_repository, kubernetes_deployment, kubernetes_ingress_v1, kubernetes_horizontal_pod_autoscaler_v2, kubernetes_pod_disruption_budget_v1, kubernetes_manifest, aws_iam_role, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
@@ -5939,8 +5941,9 @@ test('recordEvidence records production-grade security evidence', () => {
             privileged_operation_denied: true,
             app_grants_verified: true,
             app_grant_tables: 9,
+            app_grant_table_names: dbAppGrantTableNames.split(','),
             app_grants: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
-          result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grants=SELECT,INSERT,UPDATE,DELETE; verified markers: staging artifact, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+          result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grant_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails app_grants=SELECT,INSERT,UPDATE,DELETE; verified markers: staging artifact, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
         },
       ],
     },
@@ -5974,8 +5977,9 @@ test('recordEvidence rejects DB user evidence without structured current user pr
             privileged_operation_denied: true,
             app_grants_verified: true,
             app_grant_tables: 9,
+            app_grant_table_names: dbAppGrantTableNames.split(','),
             app_grants: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
-            result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grants=SELECT,INSERT,UPDATE,DELETE; verified markers: staging artifact, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+            result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grant_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails app_grants=SELECT,INSERT,UPDATE,DELETE; verified markers: staging artifact, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
           },
         ],
       },
@@ -6496,6 +6500,7 @@ test('recordEvidence rejects database user evidence without non-admin role proof
             privileged_operation_denied: true,
             app_grants_verified: true,
             app_grant_tables: 9,
+            app_grant_table_names: dbAppGrantTableNames.split(','),
             app_grants: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
             result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false',
           },
@@ -6531,8 +6536,9 @@ test('recordEvidence rejects database user evidence without scriptureforge_app p
             privileged_operation_denied: true,
             app_grants_verified: true,
             app_grant_tables: 9,
+            app_grant_table_names: dbAppGrantTableNames.split(','),
             app_grants: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
-            result_summary: 'connected as "tenant_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grants=SELECT,INSERT,UPDATE,DELETE; verified markers: staging artifact, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+            result_summary: 'connected as "tenant_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grant_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails app_grants=SELECT,INSERT,UPDATE,DELETE; verified markers: staging artifact, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
           },
         ],
       },
@@ -6566,6 +6572,7 @@ test('recordEvidence rejects database user evidence without bypass RLS denial pr
             privileged_operation_denied: true,
             app_grants_verified: true,
             app_grant_tables: 9,
+            app_grant_table_names: dbAppGrantTableNames.split(','),
             app_grants: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
             result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false createrole=false createdb=false privileged_operation_denied=true; verified markers: staging artifact, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
           },
@@ -6601,6 +6608,7 @@ test('recordEvidence rejects database user evidence without denied privileged op
             privileged_operation_denied: true,
             app_grants_verified: true,
             app_grant_tables: 9,
+            app_grant_table_names: dbAppGrantTableNames.split(','),
             app_grants: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
             result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false; verified markers: staging artifact, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
           },
@@ -6636,6 +6644,7 @@ test('recordEvidence rejects database user evidence without application grant pr
             privileged_operation_denied: true,
             app_grants_verified: true,
             app_grant_tables: 9,
+            app_grant_table_names: dbAppGrantTableNames.split(','),
             app_grants: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
             result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true; verified markers: staging artifact, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
           },
@@ -6645,6 +6654,42 @@ test('recordEvidence rejects database user evidence without application grant pr
       'go run ./tools/securityprobe -probe-db-user',
     ),
     /database-scoped-user summary must prove app_grants_verified=true/,
+  );
+});
+
+test('recordEvidence rejects database user evidence without application grant table names', () => {
+  assert.throws(
+    () => recordEvidence(
+      { items: [{ id: 'SEC-DBUSER-001', status: 'pending_external' }] },
+      {
+        observed_at: '2026-06-25T12:00:00Z',
+        threshold_pass: true,
+        release_candidate: 'abc123',
+        service_version: 'scriptureforge-api:abc123',
+        evidence_items: ['SEC-DBUSER-001'],
+        probes: [
+          {
+            name: 'database-scoped-user',
+            passed: true,
+            target: 'redacted-database-url',
+            current_user: 'scriptureforge_app',
+            superuser: false,
+            bypassrls: false,
+            createrole: false,
+            createdb: false,
+            privileged_operation_denied: true,
+            app_grants_verified: true,
+            app_grant_tables: 9,
+            app_grant_table_names: ['organizations'],
+            app_grants: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
+            result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grants=SELECT,INSERT,UPDATE,DELETE; verified markers: staging artifact, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+          },
+        ],
+      },
+      'artifacts/securityprobe-db.json',
+      'go run ./tools/securityprobe -probe-db-user',
+    ),
+    /database-scoped-user structured app_grant_table_names must match required tenant tables/,
   );
 });
 
@@ -6671,8 +6716,9 @@ test('recordEvidence rejects database user evidence without staging artifact pro
             privileged_operation_denied: true,
             app_grants_verified: true,
             app_grant_tables: 9,
+            app_grant_table_names: dbAppGrantTableNames.split(','),
             app_grants: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
-            result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grants=SELECT,INSERT,UPDATE,DELETE; verified markers: release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+            result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grant_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails app_grants=SELECT,INSERT,UPDATE,DELETE; verified markers: release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
           },
         ],
       },
@@ -6706,8 +6752,9 @@ test('recordEvidence rejects database user evidence for a different release cand
             privileged_operation_denied: true,
             app_grants_verified: true,
             app_grant_tables: 9,
+            app_grant_table_names: dbAppGrantTableNames.split(','),
             app_grants: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
-            result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grants=SELECT,INSERT,UPDATE,DELETE; verified markers: staging artifact, release_candidate=def456, service_version=scriptureforge-api:def456',
+            result_summary: 'connected as "scriptureforge_app" in 25ms; current_user=scriptureforge_app superuser=false bypassrls=false createrole=false createdb=false privileged_operation_denied=true app_grants_verified=true app_grant_tables=9 app_grant_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails app_grants=SELECT,INSERT,UPDATE,DELETE; verified markers: staging artifact, release_candidate=def456, service_version=scriptureforge-api:def456',
           },
         ],
       },

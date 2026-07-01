@@ -160,6 +160,17 @@ const requiredTenantAPIProbeSummaryMarkers = new Map([
 ]);
 
 const concreteIAMRoleARNPattern = /\brole_arn=arn:aws:iam::[0-9]{12}:role\/[A-Za-z0-9+=,.@_/-]+\b/i;
+const requiredAppGrantTableNames = [
+  'organizations',
+  'users',
+  'scripture_texts',
+  'refresh_tokens',
+  'journal_entries',
+  'live_rooms',
+  'room_participants',
+  'ai_request_logs',
+  'citation_trails',
+];
 
 const requiredSecurityProbeSummaryMarkers = new Map([
   ['irsa-service-account', ['staging artifact', 'namespace=staging', 'service_account=scriptureforge-api', 'role_arn=arn:aws:iam::', 'eks.amazonaws.com/role-arn', 'scriptureforge', 'trust policy', 'sts:AssumeRoleWithWebIdentity']],
@@ -1964,6 +1975,7 @@ function validateSecurityEvidence(report, manifest) {
       assert.equal(probe.privileged_operation_denied, true, 'database-scoped-user structured privileged_operation_denied must be true');
       assert.equal(probe.app_grants_verified, true, 'database-scoped-user structured app_grants_verified must be true');
       assert.equal(probe.app_grant_tables, 9, 'database-scoped-user structured app_grant_tables must be 9');
+      assert.deepEqual(probe.app_grant_table_names, requiredAppGrantTableNames, 'database-scoped-user structured app_grant_table_names must match required tenant tables');
       assert.deepEqual(probe.app_grants, ['SELECT', 'INSERT', 'UPDATE', 'DELETE'], 'database-scoped-user structured app_grants must be SELECT,INSERT,UPDATE,DELETE');
       assert.match(summary, /current_user=scriptureforge_app/i, 'database-scoped-user summary must prove current_user=scriptureforge_app');
       assert.match(summary, /superuser=false/i, 'database-scoped-user summary must prove superuser=false');
@@ -1973,6 +1985,7 @@ function validateSecurityEvidence(report, manifest) {
       assert.match(summary, /privileged_operation_denied=true/i, 'database-scoped-user summary must prove privileged_operation_denied=true');
       assert.match(summary, /app_grants_verified=true/i, 'database-scoped-user summary must prove app_grants_verified=true');
       assert.match(summary, /app_grant_tables=9/i, 'database-scoped-user summary must prove app_grant_tables=9');
+      assert.match(summary, /app_grant_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails/i, 'database-scoped-user summary must prove required app grant table names');
       assert.match(summary, /app_grants=SELECT,INSERT,UPDATE,DELETE/i, 'database-scoped-user summary must prove SELECT,INSERT,UPDATE,DELETE app grants');
       assert.ok(
         summary.toLowerCase().includes('staging artifact'),
