@@ -99,6 +99,7 @@ func TestTenantRLSCoversAllTenantTables(t *testing.T) {
 		{table: "citation_trails", predicate: "id = $1", ownID: tenantCitationB, blockedID: tenantCitationA},
 	})
 	assertSameTenantWritesPassAllTables(ctx, t, db)
+	assertSameTenantUpdatesAndDeletesPassAllTables(ctx, t, db)
 
 	setTenantForTest(ctx, t, db, tenantOrgA, func(ctx context.Context, tx pgx.Tx) {
 		requireRLSWriteDenied(t, ctx, tx, `INSERT INTO organizations (id, name) VALUES ($1, 'Cross Tenant Org')`, tenantWriteProbe)
@@ -152,6 +153,31 @@ func assertSameTenantWritesPassAllTables(ctx context.Context, t *testing.T, db *
 		if _, err := tx.Exec(ctx, `RELEASE SAVEPOINT rls_same_tenant_write_probe`); err != nil {
 			t.Fatalf("release same-tenant write savepoint: %v", err)
 		}
+	})
+}
+
+func assertSameTenantUpdatesAndDeletesPassAllTables(ctx context.Context, t *testing.T, db *pgxpool.Pool) {
+	t.Helper()
+	setTenantForTest(ctx, t, db, tenantOrgA, func(ctx context.Context, tx pgx.Tx) {
+		requireRLSMutationAffects(t, ctx, tx, "organizations", "same-tenant update visible", `UPDATE organizations SET name = 'Tenant A Updated' WHERE id = $1`, tenantOrgA)
+		requireRLSMutationAffects(t, ctx, tx, "users", "same-tenant update visible", `UPDATE users SET email = 'tenant-a-updated@example.test' WHERE id = $1`, tenantUserA)
+		requireRLSMutationAffects(t, ctx, tx, "scripture_texts", "same-tenant update visible", `UPDATE scripture_texts SET content = 'Tenant A scripture updated' WHERE id = $1`, tenantScriptureA)
+		requireRLSMutationAffects(t, ctx, tx, "refresh_tokens", "same-tenant update visible", `UPDATE refresh_tokens SET revoked_at = now() WHERE id = $1`, tenantRefreshA)
+		requireRLSMutationAffects(t, ctx, tx, "journal_entries", "same-tenant update visible", `UPDATE journal_entries SET ciphertext = 'cipher-a-updated' WHERE id = $1`, tenantJournalA)
+		requireRLSMutationAffects(t, ctx, tx, "live_rooms", "same-tenant update visible", `UPDATE live_rooms SET title = 'Tenant A Room Updated' WHERE id = $1`, tenantRoomA)
+		requireRLSMutationAffects(t, ctx, tx, "room_participants", "same-tenant update visible", `UPDATE room_participants SET joined_at = now() WHERE room_id = $1 AND user_id = $2`, tenantRoomA, tenantUserA)
+		requireRLSMutationAffects(t, ctx, tx, "ai_request_logs", "same-tenant update visible", `UPDATE ai_request_logs SET status = 'failed' WHERE id = $1`, tenantAILogA)
+		requireRLSMutationAffects(t, ctx, tx, "citation_trails", "same-tenant update visible", `UPDATE citation_trails SET verified = false WHERE id = $1`, tenantCitationA)
+
+		requireRLSMutationAffects(t, ctx, tx, "citation_trails", "same-tenant delete visible", `DELETE FROM citation_trails WHERE id = $1`, tenantCitationA)
+		requireRLSMutationAffects(t, ctx, tx, "ai_request_logs", "same-tenant delete visible", `DELETE FROM ai_request_logs WHERE id = $1`, tenantAILogA)
+		requireRLSMutationAffects(t, ctx, tx, "room_participants", "same-tenant delete visible", `DELETE FROM room_participants WHERE room_id = $1 AND user_id = $2`, tenantRoomA, tenantUserA)
+		requireRLSMutationAffects(t, ctx, tx, "live_rooms", "same-tenant delete visible", `DELETE FROM live_rooms WHERE id = $1`, tenantRoomA)
+		requireRLSMutationAffects(t, ctx, tx, "journal_entries", "same-tenant delete visible", `DELETE FROM journal_entries WHERE id = $1`, tenantJournalA)
+		requireRLSMutationAffects(t, ctx, tx, "refresh_tokens", "same-tenant delete visible", `DELETE FROM refresh_tokens WHERE id = $1`, tenantRefreshA)
+		requireRLSMutationAffects(t, ctx, tx, "scripture_texts", "same-tenant delete visible", `DELETE FROM scripture_texts WHERE id = $1`, tenantScriptureA)
+		requireRLSMutationAffects(t, ctx, tx, "users", "same-tenant delete visible", `DELETE FROM users WHERE id = $1`, tenantUserA)
+		requireRLSMutationAffects(t, ctx, tx, "organizations", "same-tenant delete visible", `DELETE FROM organizations WHERE id = $1`, tenantOrgA)
 	})
 }
 
@@ -228,5 +254,25 @@ func requireRLSMutationHidden(t *testing.T, ctx context.Context, tx pgx.Tx, tabl
 	}
 	if tag.RowsAffected() != 0 {
 		t.Fatalf("%s for %s affected %d rows, want 0", label, table, tag.RowsAffected())
+	}
+}
+
+func requireRLSMutationAffects(t *testing.T, ctx context.Context, tx pgx.Tx, table, label, sql string, args ...any) {
+	t.Helper()
+	if _, err := tx.Exec(ctx, `SAVEPOINT rls_same_tenant_mutation_probe`); err != nil {
+		t.Fatalf("create same-tenant mutation savepoint: %v", err)
+	}
+	tag, err := tx.Exec(ctx, sql, args...)
+	if _, rollbackErr := tx.Exec(ctx, `ROLLBACK TO SAVEPOINT rls_same_tenant_mutation_probe`); rollbackErr != nil {
+		t.Fatalf("rollback same-tenant mutation savepoint: %v", rollbackErr)
+	}
+	if _, releaseErr := tx.Exec(ctx, `RELEASE SAVEPOINT rls_same_tenant_mutation_probe`); releaseErr != nil {
+		t.Fatalf("release same-tenant mutation savepoint: %v", releaseErr)
+	}
+	if err != nil {
+		t.Fatalf("%s for %s failed unexpectedly: %v", label, table, err)
+	}
+	if tag.RowsAffected() != 1 {
+		t.Fatalf("%s for %s affected %d rows, want 1", label, table, tag.RowsAffected())
 	}
 }

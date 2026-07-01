@@ -156,9 +156,13 @@ export function validateRLSSchema(migrationText, tableRLSTestText, handlerRLSTes
   }
   for (const requiredTableProof of [
     'assertTenantScopedRowVisibility',
+    'assertSameTenantUpdatesAndDeletesPassAllTables',
     'same-tenant read visible',
+    'same-tenant update visible',
+    'same-tenant delete visible',
     'cross-tenant read hidden',
     'requireRLSWriteDenied',
+    'requireRLSMutationAffects',
     'requireRLSMutationHidden',
     'cross-tenant update hidden',
     'cross-tenant delete hidden',

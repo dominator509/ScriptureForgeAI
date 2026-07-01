@@ -220,3 +220,13 @@ test('validateRLSSchema rejects missing table-level update/delete RLS proof mark
     /requireRLSMutationHidden/,
   );
 });
+
+test('validateRLSSchema rejects missing same-tenant table mutation proof markers', async () => {
+  const { migrationText, tableRLSTestText, handlerRLSTestText, portHandlerRLSTestText, aiAuditRLSTestText } = await fixtures();
+  const broken = tableRLSTestText.replaceAll('requireRLSMutationAffects', 'requireRLSMutation');
+  assert.notEqual(broken, tableRLSTestText, 'test fixture must remove same-tenant mutation proof marker');
+  assert.throws(
+    () => validateRLSSchema(migrationText, broken, handlerRLSTestText, portHandlerRLSTestText, aiAuditRLSTestText),
+    /requireRLSMutationAffects/,
+  );
+});

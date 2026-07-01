@@ -62,6 +62,8 @@ test('rlsDBProofMarkers include semantic tenant isolation coverage markers', () 
     'rls_table_citation_trails=true',
     'rls_same_tenant_reads_pass_all_tables=true',
     'rls_same_tenant_writes_pass_all_tables=true',
+    'rls_same_tenant_updates_pass_all_tables=true',
+    'rls_same_tenant_deletes_pass_all_tables=true',
     'rls_cross_tenant_reads_denied_all_tables=true',
     'rls_cross_tenant_inserts_denied_all_tables=true',
     'rls_cross_tenant_updates_hidden_all_tables=true',
