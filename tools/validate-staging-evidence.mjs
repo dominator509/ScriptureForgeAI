@@ -2267,6 +2267,10 @@ function validateStrictReleaseItemEvidence(item, manifest) {
       traceSegmentMethod,
       'OBS-OTEL-001 strict release trace/log segments must reference the same HTTP method',
     );
+    assertStrictObservabilityOTELStructuredReport(evidence, {
+      traceSegment,
+      logSegment,
+    });
   }
   if (item.id === 'OBS-ALERT-001') {
     const missingDashboardImportProof = evidence.some((artifact) => {
@@ -2309,6 +2313,8 @@ function validateStrictReleaseItemEvidence(item, manifest) {
       false,
       'OBS-ALERT-001 strict release evidence must include retention markers on telemetry-retention-policy',
     );
+    const deliverySegment = findEvidenceSegment(evidence, 'alert-delivery-status');
+    assertStrictObservabilityAlertStructuredReport(evidence, { deliverySegment });
   }
 }
 
@@ -2464,6 +2470,85 @@ function assertStrictMobileStructuredReport(evidence, segments) {
   assert.equal(String(report.ws_base_url ?? ''), segments.configSegment.match(mobileWSBaseURLPattern)?.[1] ?? '', 'CLIENT-MOBILE-001 structured report ws_base_url must match config summary marker');
   assert.equal(report.require_native_crypto, true, 'CLIENT-MOBILE-001 structured report require_native_crypto must be true');
   assert.equal(String(report.deployment_environment ?? ''), 'staging', 'CLIENT-MOBILE-001 structured report deployment_environment must be staging');
+}
+
+function assertStrictObservabilityOTELStructuredReport(evidence, segments) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.observability_otel_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    'OBS-OTEL-001 strict release evidence must include exactly one structured observability_otel_proof report',
+  );
+  const report = structuredReports[0];
+  const traceID = extractStandaloneTraceID(segments.traceSegment, 'trace-backend-search');
+  const logTraceID = extractStandaloneTraceID(segments.logSegment, 'log-backend-trace-correlation');
+  const traceRoute = extractTextMarker(segments.traceSegment, 'route', 'OBS-OTEL-001 structured report trace binding');
+  const logRoute = extractTextMarker(segments.logSegment, 'route', 'OBS-OTEL-001 structured report log binding');
+  const traceMethod = extractTextMarker(segments.traceSegment, 'method', 'OBS-OTEL-001 structured report trace binding').toUpperCase();
+  const logMethod = extractTextMarker(segments.logSegment, 'method', 'OBS-OTEL-001 structured report log binding').toUpperCase();
+  const tenantID = extractTextMarker(segments.logSegment, 'tenant_id', 'OBS-OTEL-001 structured report log binding');
+  const userID = extractTextMarker(segments.logSegment, 'user_id', 'OBS-OTEL-001 structured report log binding');
+  const role = extractTextMarker(segments.logSegment, 'role', 'OBS-OTEL-001 structured report log binding');
+  const loadRunID = extractTextMarker(segments.traceSegment, 'load_run_id', 'OBS-OTEL-001 structured report trace binding');
+  const releaseCandidate = extractTextMarker(segments.traceSegment, 'release_candidate', 'OBS-OTEL-001 structured report trace binding');
+  const serviceVersion = extractTextMarker(segments.traceSegment, 'service_version', 'OBS-OTEL-001 structured report trace binding');
+
+  assert.equal(String(report.release_candidate ?? ''), releaseCandidate, 'OBS-OTEL-001 structured report release_candidate must match trace marker');
+  assert.equal(String(report.service_version ?? ''), serviceVersion, 'OBS-OTEL-001 structured report service_version must match trace marker');
+  assert.equal(String(report.load_run_id ?? ''), loadRunID, 'OBS-OTEL-001 structured report load_run_id must match trace marker');
+  assert.equal(String(report.trace_id ?? ''), traceID, 'OBS-OTEL-001 structured report trace_id must match trace marker');
+  assert.equal(String(report.observed_route ?? ''), traceRoute, 'OBS-OTEL-001 structured report observed_route must match trace route marker');
+  assert.equal(String(report.http_method ?? '').toUpperCase(), traceMethod, 'OBS-OTEL-001 structured report http_method must match trace method marker');
+  assert.equal(String(report.tenant_id ?? ''), tenantID, 'OBS-OTEL-001 structured report tenant_id must match log marker');
+  assert.equal(String(report.user_id ?? ''), userID, 'OBS-OTEL-001 structured report user_id must match log marker');
+  assert.equal(String(report.role ?? ''), role, 'OBS-OTEL-001 structured report role must match log marker');
+  assert.ok(String(report.collector_target ?? '').trim(), 'OBS-OTEL-001 structured report collector_target must not be empty');
+  assert.ok(String(report.api_metrics_target ?? '').trim(), 'OBS-OTEL-001 structured report api_metrics_target must not be empty');
+  assert.ok(String(report.rust_metrics_target ?? '').trim(), 'OBS-OTEL-001 structured report rust_metrics_target must not be empty');
+  assert.ok(String(report.trace_query_target ?? '').trim(), 'OBS-OTEL-001 structured report trace_query_target must not be empty');
+  assert.ok(String(report.log_query_target ?? '').trim(), 'OBS-OTEL-001 structured report log_query_target must not be empty');
+  assert.equal(String(report.trace_query_trace_id ?? ''), traceID, 'OBS-OTEL-001 structured report trace_query_trace_id must match trace marker');
+  assert.equal(String(report.log_query_trace_id ?? ''), logTraceID, 'OBS-OTEL-001 structured report log_query_trace_id must match log marker');
+  assert.equal(String(report.trace_query_route ?? ''), traceRoute, 'OBS-OTEL-001 structured report trace_query_route must match trace route marker');
+  assert.equal(String(report.log_query_route ?? ''), logRoute, 'OBS-OTEL-001 structured report log_query_route must match log route marker');
+  assert.equal(String(report.trace_query_http_method ?? '').toUpperCase(), traceMethod, 'OBS-OTEL-001 structured report trace_query_http_method must match trace method marker');
+  assert.equal(String(report.log_query_http_method ?? '').toUpperCase(), logMethod, 'OBS-OTEL-001 structured report log_query_http_method must match log method marker');
+  assert.equal(String(report.log_tenant_id ?? ''), tenantID, 'OBS-OTEL-001 structured report log_tenant_id must match log marker');
+  assert.equal(String(report.log_user_id ?? ''), userID, 'OBS-OTEL-001 structured report log_user_id must match log marker');
+  assert.equal(String(report.log_role ?? ''), role, 'OBS-OTEL-001 structured report log_role must match log marker');
+}
+
+function assertStrictObservabilityAlertStructuredReport(evidence, segments) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.observability_alert_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    'OBS-ALERT-001 strict release evidence must include exactly one structured observability_alert_proof report',
+  );
+  const report = structuredReports[0];
+  const alertName = extractTextMarker(segments.deliverySegment, 'alertname', 'OBS-ALERT-001 structured report delivery binding');
+  const alertReceiver = extractTextMarker(segments.deliverySegment, 'receiver', 'OBS-ALERT-001 structured report delivery binding');
+  const deliveryID = extractTextMarker(segments.deliverySegment, 'delivery_id', 'OBS-ALERT-001 structured report delivery binding');
+  const loadRunID = extractTextMarker(segments.deliverySegment, 'load_run_id', 'OBS-ALERT-001 structured report delivery binding');
+  const releaseCandidate = extractTextMarker(segments.deliverySegment, 'release_candidate', 'OBS-ALERT-001 structured report delivery binding');
+  const serviceVersion = extractTextMarker(segments.deliverySegment, 'service_version', 'OBS-ALERT-001 structured report delivery binding');
+
+  assert.equal(String(report.release_candidate ?? ''), releaseCandidate, 'OBS-ALERT-001 structured report release_candidate must match delivery marker');
+  assert.equal(String(report.service_version ?? ''), serviceVersion, 'OBS-ALERT-001 structured report service_version must match delivery marker');
+  assert.equal(String(report.load_run_id ?? ''), loadRunID, 'OBS-ALERT-001 structured report load_run_id must match delivery marker');
+  assert.equal(String(report.alert_name ?? ''), alertName, 'OBS-ALERT-001 structured report alert_name must match delivery marker');
+  assert.equal(String(report.alert_receiver ?? ''), alertReceiver, 'OBS-ALERT-001 structured report alert_receiver must match delivery marker');
+  assert.ok(String(report.dashboard_target ?? '').trim(), 'OBS-ALERT-001 structured report dashboard_target must not be empty');
+  assert.ok(String(report.alert_rules_target ?? '').trim(), 'OBS-ALERT-001 structured report alert_rules_target must not be empty');
+  assert.ok(String(report.alert_delivery_target ?? '').trim(), 'OBS-ALERT-001 structured report alert_delivery_target must not be empty');
+  assert.ok(String(report.retention_target ?? '').trim(), 'OBS-ALERT-001 structured report retention_target must not be empty');
+  assert.equal(String(report.delivery_alert_name ?? ''), alertName, 'OBS-ALERT-001 structured report delivery_alert_name must match delivery marker');
+  assert.equal(String(report.delivery_alert_receiver ?? ''), alertReceiver, 'OBS-ALERT-001 structured report delivery_alert_receiver must match delivery marker');
+  assert.equal(String(report.delivery_id ?? ''), deliveryID, 'OBS-ALERT-001 structured report delivery_id must match delivery marker');
 }
 
 function assertStrictAIStructuredReport(evidence, segments) {

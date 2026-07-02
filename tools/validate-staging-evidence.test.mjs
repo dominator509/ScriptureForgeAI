@@ -2153,6 +2153,20 @@ test('validateManifest strict release rejects OTEL evidence without segment load
   );
 });
 
+test('validateManifest strict release rejects OTEL evidence with drifted structured trace identity', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'OBS-OTEL-001');
+  item.evidence[0].structured_report.observability_otel_proof.trace_id = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /OBS-OTEL-001 structured report trace_id must match trace marker/,
+  );
+});
+
 test('validateManifest strict release rejects alert evidence without dashboard alert and retention markers', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
@@ -2164,6 +2178,20 @@ test('validateManifest strict release rejects alert evidence without dashboard a
   assert.throws(
     () => validateManifest(manifest, { strictRelease: true }),
     /OBS-ALERT-001 strict release evidence must include a tools\/observabilityprobe JSON report/,
+  );
+});
+
+test('validateManifest strict release rejects alert evidence with drifted structured delivery ID', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'OBS-ALERT-001');
+  item.evidence[0].structured_report.observability_alert_proof.delivery_id = 'am-delivery-drift';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /OBS-ALERT-001 structured report delivery_id must match delivery marker/,
   );
 });
 
@@ -4940,6 +4968,8 @@ function passedEvidenceFor(id) {
     ...(id === 'CLIENT-MOBILE-001' ? { structured_report: mobileNativeCryptoStructuredReport() } : {}),
     ...(id === 'EXT-AI-001' ? { structured_report: aiGenerationAuditStructuredReport() } : {}),
     ...(id === 'EXT-ZOOM-001' ? { structured_report: zoomResilienceWebhookStructuredReport() } : {}),
+    ...(id === 'OBS-OTEL-001' ? { structured_report: observabilityOTELStructuredReport() } : {}),
+    ...(id === 'OBS-ALERT-001' ? { structured_report: observabilityAlertStructuredReport() } : {}),
     ...(id === 'PERF-HTTP-001' ? { structured_report: httpLoadThresholdStructuredReport() } : {}),
     ...(['PERF-WS-001', 'DATA-REDIS-001'].includes(id) ? { structured_report: websocketRedisSequenceStructuredReport() } : {}),
   };
@@ -5202,6 +5232,55 @@ function tenantRLSStructuredReport() {
         cross_hidden: true,
         write_denied: true,
       })),
+    },
+  };
+}
+
+function observabilityOTELStructuredReport() {
+  return {
+    observability_otel_proof: {
+      release_candidate: '0123456789abcdef0123456789abcdef01234567',
+      service_version: 'scriptureforge-api:0123456789abcdef0123456789abcdef01234567',
+      load_run_id: 'load-run-123',
+      trace_id: '11112222333344445555666677778888',
+      observed_route: '/api/v1/ai/generate/study',
+      http_method: 'POST',
+      tenant_id: 'org-staging',
+      user_id: 'user-staging',
+      role: 'admin',
+      collector_target: 'https://observability.staging.scriptureforge.ai/collector-otlp-config',
+      api_metrics_target: 'https://observability.staging.scriptureforge.ai/api-prometheus-metrics',
+      rust_metrics_target: 'https://observability.staging.scriptureforge.ai/rust-prometheus-metrics',
+      trace_query_target: 'https://traces.staging.scriptureforge.ai/search?trace_id=11112222333344445555666677778888',
+      log_query_target: 'https://logs.staging.scriptureforge.ai/search?trace_id=11112222333344445555666677778888',
+      trace_query_trace_id: '11112222333344445555666677778888',
+      log_query_trace_id: '11112222333344445555666677778888',
+      trace_query_route: '/api/v1/ai/generate/study',
+      log_query_route: '/api/v1/ai/generate/study',
+      trace_query_http_method: 'POST',
+      log_query_http_method: 'POST',
+      log_tenant_id: 'org-staging',
+      log_user_id: 'user-staging',
+      log_role: 'admin',
+    },
+  };
+}
+
+function observabilityAlertStructuredReport() {
+  return {
+    observability_alert_proof: {
+      release_candidate: '0123456789abcdef0123456789abcdef01234567',
+      service_version: 'scriptureforge-api:0123456789abcdef0123456789abcdef01234567',
+      load_run_id: 'load-run-123',
+      alert_name: 'ScriptureForgeHighErrorRate',
+      alert_receiver: 'staging-release',
+      dashboard_target: 'https://observability.staging.scriptureforge.ai/dashboard-import',
+      alert_rules_target: 'https://observability.staging.scriptureforge.ai/alert-rules-loaded',
+      alert_delivery_target: 'https://observability.staging.scriptureforge.ai/alert-delivery-status',
+      retention_target: 'https://observability.staging.scriptureforge.ai/telemetry-retention-policy',
+      delivery_alert_name: 'ScriptureForgeHighErrorRate',
+      delivery_alert_receiver: 'staging-release',
+      delivery_id: 'am-delivery-123',
     },
   };
 }

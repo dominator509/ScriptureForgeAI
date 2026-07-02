@@ -6301,6 +6301,49 @@ test('recordEvidence records production-grade observability evidence', () => {
 
   assert.equal(updated.items[0].status, 'passed');
   assert.equal(updated.items[1].status, 'passed');
+  assert.deepEqual(updated.items[0].evidence[0].structured_report, {
+    observability_otel_proof: {
+      release_candidate: 'abc123',
+      service_version: 'scriptureforge-api:abc123',
+      load_run_id: 'load-run-123',
+      trace_id: observabilityTraceID,
+      observed_route: '/api/v1/ai/generate/study',
+      http_method: 'POST',
+      tenant_id: 'org-staging',
+      user_id: 'user-staging',
+      role: 'admin',
+      collector_target: 'https://observability.staging.scriptureforge.ai/collector-otlp-config',
+      api_metrics_target: 'https://observability.staging.scriptureforge.ai/api-prometheus-metrics',
+      rust_metrics_target: 'https://observability.staging.scriptureforge.ai/rust-prometheus-metrics',
+      trace_query_target: `https://traces.staging.scriptureforge.ai/search?trace_id=${observabilityTraceID}`,
+      log_query_target: `https://logs.staging.scriptureforge.ai/search?trace_id=${observabilityTraceID}`,
+      trace_query_trace_id: observabilityTraceID,
+      log_query_trace_id: observabilityTraceID,
+      trace_query_route: '/api/v1/ai/generate/study',
+      log_query_route: '/api/v1/ai/generate/study',
+      trace_query_http_method: 'POST',
+      log_query_http_method: 'POST',
+      log_tenant_id: 'org-staging',
+      log_user_id: 'user-staging',
+      log_role: 'admin',
+    },
+  });
+  assert.deepEqual(updated.items[1].evidence[0].structured_report, {
+    observability_alert_proof: {
+      release_candidate: 'abc123',
+      service_version: 'scriptureforge-api:abc123',
+      load_run_id: 'load-run-123',
+      alert_name: 'ScriptureForgeHighErrorRate',
+      alert_receiver: 'staging-release',
+      dashboard_target: 'https://observability.staging.scriptureforge.ai/dashboard-import',
+      alert_rules_target: 'https://observability.staging.scriptureforge.ai/alert-rules-loaded',
+      alert_delivery_target: 'https://observability.staging.scriptureforge.ai/alert-delivery-status',
+      retention_target: 'https://observability.staging.scriptureforge.ai/telemetry-retention-policy',
+      delivery_alert_name: 'ScriptureForgeHighErrorRate',
+      delivery_alert_receiver: 'staging-release',
+      delivery_id: 'am-delivery-123',
+    },
+  });
 });
 
 test('recordEvidence rejects observability evidence without probe load run markers', () => {

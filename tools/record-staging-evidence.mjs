@@ -2790,6 +2790,12 @@ function structuredEvidenceForReport(itemID, report) {
   if (itemID === 'EXT-ZOOM-001') {
     return structuredZoomEvidenceForReport(report);
   }
+  if (itemID === 'OBS-OTEL-001') {
+    return structuredObservabilityOTELEvidenceForReport(report);
+  }
+  if (itemID === 'OBS-ALERT-001') {
+    return structuredObservabilityAlertEvidenceForReport(report);
+  }
   return null;
 }
 
@@ -2866,6 +2872,75 @@ function structuredRustEvidenceForReport(report) {
       vector_search_requests: Number(metrics.vector_search_requests),
       api_rust_vector_search_ops: Number(apiMetrics.api_rust_vector_search_ops),
       api_rust_vector_search_seconds: Number(apiMetrics.api_rust_vector_search_seconds),
+    },
+  };
+}
+
+function structuredObservabilityOTELEvidenceForReport(report) {
+  const probes = Array.isArray(report.probes) ? report.probes : [];
+  const collector = probes.find((probe) => probe.name === 'collector-otlp-config');
+  const apiMetrics = probes.find((probe) => probe.name === 'api-prometheus-metrics');
+  const rustMetrics = probes.find((probe) => probe.name === 'rust-prometheus-metrics');
+  const trace = probes.find((probe) => probe.name === 'trace-backend-search');
+  const log = probes.find((probe) => probe.name === 'log-backend-trace-correlation');
+  assert.ok(collector, 'OBS-OTEL-001 structured evidence requires collector-otlp-config probe');
+  assert.ok(apiMetrics, 'OBS-OTEL-001 structured evidence requires api-prometheus-metrics probe');
+  assert.ok(rustMetrics, 'OBS-OTEL-001 structured evidence requires rust-prometheus-metrics probe');
+  assert.ok(trace, 'OBS-OTEL-001 structured evidence requires trace-backend-search probe');
+  assert.ok(log, 'OBS-OTEL-001 structured evidence requires log-backend-trace-correlation probe');
+  return {
+    observability_otel_proof: {
+      release_candidate: String(report.release_candidate ?? ''),
+      service_version: String(report.service_version ?? ''),
+      load_run_id: String(report.load_run_id ?? ''),
+      trace_id: String(report.trace_id ?? ''),
+      observed_route: String(report.observed_route ?? ''),
+      http_method: String(report.http_method ?? '').toUpperCase(),
+      tenant_id: String(report.tenant_id ?? ''),
+      user_id: String(report.user_id ?? ''),
+      role: String(report.role ?? ''),
+      collector_target: String(collector.target ?? ''),
+      api_metrics_target: String(apiMetrics.target ?? ''),
+      rust_metrics_target: String(rustMetrics.target ?? ''),
+      trace_query_target: String(trace.target ?? ''),
+      log_query_target: String(log.target ?? ''),
+      trace_query_trace_id: String(trace.trace_id ?? ''),
+      log_query_trace_id: String(log.trace_id ?? ''),
+      trace_query_route: String(trace.observed_route ?? ''),
+      log_query_route: String(log.observed_route ?? ''),
+      trace_query_http_method: String(trace.http_method ?? '').toUpperCase(),
+      log_query_http_method: String(log.http_method ?? '').toUpperCase(),
+      log_tenant_id: String(log.tenant_id ?? ''),
+      log_user_id: String(log.user_id ?? ''),
+      log_role: String(log.role ?? ''),
+    },
+  };
+}
+
+function structuredObservabilityAlertEvidenceForReport(report) {
+  const probes = Array.isArray(report.probes) ? report.probes : [];
+  const dashboard = probes.find((probe) => probe.name === 'dashboard-import');
+  const rules = probes.find((probe) => probe.name === 'alert-rules-loaded');
+  const delivery = probes.find((probe) => probe.name === 'alert-delivery-status');
+  const retention = probes.find((probe) => probe.name === 'telemetry-retention-policy');
+  assert.ok(dashboard, 'OBS-ALERT-001 structured evidence requires dashboard-import probe');
+  assert.ok(rules, 'OBS-ALERT-001 structured evidence requires alert-rules-loaded probe');
+  assert.ok(delivery, 'OBS-ALERT-001 structured evidence requires alert-delivery-status probe');
+  assert.ok(retention, 'OBS-ALERT-001 structured evidence requires telemetry-retention-policy probe');
+  return {
+    observability_alert_proof: {
+      release_candidate: String(report.release_candidate ?? ''),
+      service_version: String(report.service_version ?? ''),
+      load_run_id: String(report.load_run_id ?? ''),
+      alert_name: String(report.alert_name ?? ''),
+      alert_receiver: String(report.alert_receiver ?? ''),
+      dashboard_target: String(dashboard.target ?? ''),
+      alert_rules_target: String(rules.target ?? ''),
+      alert_delivery_target: String(delivery.target ?? ''),
+      retention_target: String(retention.target ?? ''),
+      delivery_alert_name: String(delivery.alert_name ?? ''),
+      delivery_alert_receiver: String(delivery.alert_receiver ?? ''),
+      delivery_id: String(delivery.delivery_id ?? ''),
     },
   };
 }
