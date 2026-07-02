@@ -2912,6 +2912,12 @@ function assertStrictRollbackStructuredReport(evidence, segments) {
   assert.ok(String(report.rollout_target ?? '').trim(), 'DR-ROLLBACK-001 structured report rollout_target must not be empty');
   assert.ok(String(report.after_ready_target ?? '').trim(), 'DR-ROLLBACK-001 structured report after_ready_target must not be empty');
   assert.ok(String(report.degradation_target ?? '').trim(), 'DR-ROLLBACK-001 structured report degradation_target must not be empty');
+  assertStrictStructuredTargets('DR-ROLLBACK-001', [
+    ['before_ready_target', report.before_ready_target],
+    ['rollout_target', report.rollout_target],
+    ['after_ready_target', report.after_ready_target],
+    ['degradation_target', report.degradation_target],
+  ]);
   assert.equal(String(report.pre_rollback_version ?? ''), preRollbackVersion, 'DR-ROLLBACK-001 structured report pre_rollback_version must match readiness marker');
   assert.equal(String(report.post_rollback_version ?? ''), postRollbackVersion, 'DR-ROLLBACK-001 structured report post_rollback_version must match readiness marker');
   assert.equal(String(report.rolled_back_from ?? ''), rolledBackFrom, 'DR-ROLLBACK-001 structured report rolled_back_from must match readiness marker');
@@ -2949,6 +2955,11 @@ function assertStrictBackupRestoreStructuredReport(evidence, segments) {
   assert.ok(String(report.backup_snapshot_target ?? '').trim(), 'DR-BACKUP-001 structured report backup_snapshot_target must not be empty');
   assert.ok(String(report.restore_drill_target ?? '').trim(), 'DR-BACKUP-001 structured report restore_drill_target must not be empty');
   assert.ok(String(report.restored_database_smoke_target ?? '').trim(), 'DR-BACKUP-001 structured report restored_database_smoke_target must not be empty');
+  assertStrictStructuredTargets('DR-BACKUP-001', [
+    ['backup_snapshot_target', report.backup_snapshot_target],
+    ['restore_drill_target', report.restore_drill_target],
+    ['restored_database_smoke_target', report.restored_database_smoke_target],
+  ]);
   assert.equal(String(report.snapshot_id ?? ''), snapshotID, 'DR-BACKUP-001 structured report snapshot_id must match backup marker');
   assert.equal(String(report.kms_key_id ?? ''), kmsKeyID, 'DR-BACKUP-001 structured report kms_key_id must match backup marker');
   assert.equal(Number(report.rpo_minutes), Number(rpoMinutes), 'DR-BACKUP-001 structured report rpo_minutes must match backup marker');

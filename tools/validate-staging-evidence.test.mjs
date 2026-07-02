@@ -3694,6 +3694,36 @@ test('validateManifest strict release rejects rollback evidence with drifted str
   );
 });
 
+test('validateManifest strict release rejects rollback structured local target', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'DR-ROLLBACK-001');
+  item.evidence[0].structured_report.rollback_degradation_proof.before_ready_target =
+    'http://localhost:8080/ready';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /DR-ROLLBACK-001 structured report before_ready_target must be an HTTPS non-local artifact URL/,
+  );
+});
+
+test('validateManifest strict release rejects rollback structured duplicate targets', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'DR-ROLLBACK-001');
+  item.evidence[0].structured_report.rollback_degradation_proof.degradation_target =
+    'https://ARTIFACTS.staging.scriptureforge.ai:443/resilience/rollback-rollout-artifact.txt';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /DR-ROLLBACK-001 structured report degradation_target must be distinct from rollout_target/,
+  );
+});
+
 test('validateManifest strict release rejects backup evidence without restore and smoke markers', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
@@ -3719,6 +3749,36 @@ test('validateManifest strict release rejects backup evidence with drifted struc
   assert.throws(
     () => validateManifest(manifest, { strictRelease: true }),
     /DR-BACKUP-001 structured report source_snapshot_id must match restore marker/,
+  );
+});
+
+test('validateManifest strict release rejects backup structured local target', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'DR-BACKUP-001');
+  item.evidence[0].structured_report.backup_restore_proof.backup_snapshot_target =
+    'https://127.0.0.1/resilience/backup-snapshot-artifact.txt';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /DR-BACKUP-001 structured report backup_snapshot_target must be an HTTPS non-local artifact URL/,
+  );
+});
+
+test('validateManifest strict release rejects backup structured duplicate targets', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'DR-BACKUP-001');
+  item.evidence[0].structured_report.backup_restore_proof.restored_database_smoke_target =
+    'https://ARTIFACTS.staging.scriptureforge.ai:443/resilience/restore-drill-artifact.txt';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /DR-BACKUP-001 structured report restored_database_smoke_target must be distinct from restore_drill_target/,
   );
 });
 
