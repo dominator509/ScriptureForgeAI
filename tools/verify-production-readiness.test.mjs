@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict';
+﻿import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -1027,7 +1027,7 @@ function strictEvidenceSummary(id, releaseCandidate = sha) {
     const release = `release_candidate=${releaseCandidate} service_version=scriptureforge-mobile:${releaseCandidate} load_run_id=load-run-123`;
     return [
       'CLIENT-MOBILE-001 mobileprobe passed: mobile-eas-or-device-run staging artifact eas build finished android ios native device installed app release channel staging expo profile staging mobile_build_id=mobile-build-123 platforms=android,ios release_channel=staging expo_profile=staging distinct_mobile_artifacts=true',
-      'mobile-native-crypto-smoke staging artifact runJournalCryptoSelfTest react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true mobile_build_id=mobile-build-123 device_os=ios device_model=iphone15pro app_runtime=installed-staging-app installed staging app runtime AES-GCM round-trip unique_iv=true unique IV tamper rejected associated data wrong associated data rejected associated_data_salt_id=journal:self-test:server-derived-salt associated_data_salt_version=1 non-extractable provider-bound key fallback-derived key rejected key disposed key_disposed=true disposed handle rejected disposed_handle_rejected=true revoked_key_rejected=true stale raw key rejected passphrase wiped passphrase buffer zeroized passphrase_buffer_zeroized=true salt wiped salt buffer zeroized salt_buffer_zeroized=true plaintext cleared plaintext buffer zeroized plaintext_buffer_zeroized=true distinct_mobile_artifacts=true',
+      'mobile-native-crypto-smoke staging artifact runJournalCryptoSelfTest react-native-quick-crypto native provider native module loaded provider status react-native-quick-crypto provider=react-native-quick-crypto native-required true native_required=true mobile_build_id=mobile-build-123 device_os=ios device_model=iphone15pro app_runtime=installed-staging-app installed staging app runtime AES-GCM round-trip aes_gcm_roundtrip=true unique_iv=true unique IV tamper rejected tamper_rejected=true associated data wrong associated data rejected associated_data_rejected=true associated_data_salt_id=journal:self-test:server-derived-salt associated_data_salt_version=1 non-extractable provider-bound key fallback-derived key rejected key disposed key_disposed=true disposed handle rejected disposed_handle_rejected=true revoked_key_rejected=true stale raw key rejected passphrase wiped passphrase buffer zeroized passphrase_buffer_zeroized=true salt wiped salt buffer zeroized salt_buffer_zeroized=true plaintext cleared plaintext buffer zeroized plaintext_buffer_zeroized=true distinct_mobile_artifacts=true',
       'mobile-staging-config staging artifact EXPO_PUBLIC_API_BASE_URL EXPO_PUBLIC_WS_BASE_URL EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging mobile_build_id=mobile-build-123 https:// wss:// staging EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai distinct_mobile_artifacts=true',
     ].map((segment) => `${segment} ${release}`).join('; ');
   }
@@ -1189,6 +1189,9 @@ function mobileNativeCryptoStructuredReport() {
       expo_profile: 'staging',
       provider: 'react-native-quick-crypto',
       native_required: true,
+      aes_gcm_roundtrip: true,
+      tamper_rejected: true,
+      associated_data_rejected: true,
       unique_iv: true,
       key_disposed: true,
       disposed_handle_rejected: true,

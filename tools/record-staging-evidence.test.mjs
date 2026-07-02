@@ -575,7 +575,7 @@ function abuseProbeReportProbes(overridesForName = () => ({})) {
 
 const mobileProbeMarkerSummaries = {
   'mobile-eas-or-device-run': 'got HTTP 200; verified markers: staging artifact, eas, build, finished, android, ios, native device, installed app, release channel staging, expo profile staging, mobile_build_id=mobile-build-123, platforms=android,ios, release_channel=staging, expo_profile=staging, release_candidate=abc123, service_version=scriptureforge-mobile:abc123, load_run_id=load-run-123, distinct_mobile_artifacts=true',
-  'mobile-native-crypto-smoke': 'got HTTP 200; verified markers: staging artifact, runJournalCryptoSelfTest, react-native-quick-crypto, native provider, native module loaded, provider status react-native-quick-crypto, provider=react-native-quick-crypto, native-required true, native_required=true, mobile_build_id=mobile-build-123, device_os=ios, device_model=iphone15pro, app_runtime=installed-staging-app, installed staging app runtime, AES-GCM, round-trip, unique_iv=true, unique IV, tamper rejected, associated data, wrong associated data rejected, associated_data_salt_id=journal:self-test:server-derived-salt, associated_data_salt_version=1, non-extractable, provider-bound key, fallback-derived key rejected, key disposed, key_disposed=true, disposed handle rejected, disposed_handle_rejected=true, revoked_key_rejected=true, stale raw key rejected, passphrase wiped, passphrase buffer zeroized, passphrase_buffer_zeroized=true, salt wiped, salt buffer zeroized, salt_buffer_zeroized=true, plaintext cleared, plaintext buffer zeroized, plaintext_buffer_zeroized=true, release_candidate=abc123, service_version=scriptureforge-mobile:abc123, load_run_id=load-run-123, distinct_mobile_artifacts=true',
+  'mobile-native-crypto-smoke': 'got HTTP 200; verified markers: staging artifact, runJournalCryptoSelfTest, react-native-quick-crypto, native provider, native module loaded, provider status react-native-quick-crypto, provider=react-native-quick-crypto, native-required true, native_required=true, mobile_build_id=mobile-build-123, device_os=ios, device_model=iphone15pro, app_runtime=installed-staging-app, installed staging app runtime, AES-GCM, round-trip, aes_gcm_roundtrip=true, unique_iv=true, unique IV, tamper rejected, tamper_rejected=true, associated data, wrong associated data rejected, associated_data_rejected=true, associated_data_salt_id=journal:self-test:server-derived-salt, associated_data_salt_version=1, non-extractable, provider-bound key, fallback-derived key rejected, key disposed, key_disposed=true, disposed handle rejected, disposed_handle_rejected=true, revoked_key_rejected=true, stale raw key rejected, passphrase wiped, passphrase buffer zeroized, passphrase_buffer_zeroized=true, salt wiped, salt buffer zeroized, salt_buffer_zeroized=true, plaintext cleared, plaintext buffer zeroized, plaintext_buffer_zeroized=true, release_candidate=abc123, service_version=scriptureforge-mobile:abc123, load_run_id=load-run-123, distinct_mobile_artifacts=true',
   'mobile-staging-config': 'got HTTP 200; verified markers: staging artifact, EXPO_PUBLIC_API_BASE_URL, EXPO_PUBLIC_WS_BASE_URL, EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true, EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging, mobile_build_id=mobile-build-123, https://, wss://, staging, EXPO_PUBLIC_API_BASE_URL=https://api.staging.scriptureforge.ai, EXPO_PUBLIC_WS_BASE_URL=wss://api.staging.scriptureforge.ai, release_candidate=abc123, service_version=scriptureforge-mobile:abc123, load_run_id=load-run-123, distinct_mobile_artifacts=true',
 };
 
@@ -618,6 +618,9 @@ function mobileCryptoProbe(overrides = {}) {
     status_code: 200,
     provider: 'react-native-quick-crypto',
     native_required: true,
+    aes_gcm_roundtrip: true,
+    tamper_rejected: true,
+    associated_data_rejected: true,
     unique_iv: true,
     key_disposed: true,
     disposed_handle_rejected: true,
@@ -2096,6 +2099,9 @@ test('recordEvidence records production-grade mobile evidence', () => {
       expo_profile: 'staging',
       provider: 'react-native-quick-crypto',
       native_required: true,
+      aes_gcm_roundtrip: true,
+      tamper_rejected: true,
+      associated_data_rejected: true,
       unique_iv: true,
       key_disposed: true,
       disposed_handle_rejected: true,
@@ -2407,6 +2413,52 @@ test('recordEvidence rejects mobile native crypto evidence without structured un
   }
 });
 
+test('recordEvidence rejects mobile native crypto evidence without structured outcome proof', () => {
+  for (const { probeOverrides, expected } of [
+    {
+      probeOverrides: { aes_gcm_roundtrip: undefined },
+      expected: /mobile-native-crypto-smoke probe must include structured aes_gcm_roundtrip=true/,
+    },
+    {
+      probeOverrides: { tamper_rejected: false },
+      expected: /mobile-native-crypto-smoke probe must include structured tamper_rejected=true/,
+    },
+    {
+      probeOverrides: { associated_data_rejected: undefined },
+      expected: /mobile-native-crypto-smoke probe must include structured associated_data_rejected=true/,
+    },
+    {
+      probeOverrides: {
+        result_summary: mobileProbeMarkerSummaries['mobile-native-crypto-smoke'].replace(', aes_gcm_roundtrip=true', ''),
+      },
+      expected: /mobile-native-crypto-smoke result_summary must include verified marker aes_gcm_roundtrip=true/,
+    },
+  ]) {
+    assert.throws(
+      () => recordEvidence(
+        { release_candidate: 'abc123', items: [{ id: 'CLIENT-MOBILE-001' }] },
+        {
+          observed_at: '2026-06-25T12:00:00Z',
+          threshold_pass: true,
+          release_candidate: 'abc123',
+          service_version: 'scriptureforge-mobile:abc123',
+          load_run_id: 'load-run-123',
+          mobile_build_id: 'mobile-build-123',
+          evidence_items: ['CLIENT-MOBILE-001'],
+          probes: [
+            mobileEASProbe(),
+            mobileCryptoProbe(probeOverrides),
+            mobileConfigProbe(),
+          ],
+        },
+        'artifacts/mobileprobe.json',
+        'go run ./tools/mobileprobe',
+      ),
+      expected,
+    );
+  }
+});
+
 test('recordEvidence rejects mobile native crypto evidence without structured lifecycle proof', () => {
   for (const { probeOverrides, expected } of [
     {
@@ -2488,7 +2540,7 @@ test('recordEvidence rejects mobile evidence without verified marker summaries',
       'artifacts/mobileprobe.json',
       'go run ./tools/mobileprobe',
     ),
-    /mobile-native-crypto-smoke result_summary must include verified marker associated_data_salt_id=/,
+    /mobile-native-crypto-smoke result_summary must include verified marker aes_gcm_roundtrip=true/,
   );
 });
 
