@@ -2605,6 +2605,63 @@ test('validateManifest strict release rejects Rust structured proof with drifted
   );
 });
 
+test('validateManifest strict release rejects Rust structured local gRPC target', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'RUST-GRPC-001');
+  item.evidence[0].structured_report.rust_grpc_runtime_proof.grpc_target = 'localhost:50051';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /RUST-GRPC-001 structured report grpc_target must be a non-local host:port target/,
+  );
+});
+
+test('validateManifest strict release rejects Rust structured malformed gRPC target', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'RUST-GRPC-001');
+  item.evidence[0].structured_report.rust_grpc_runtime_proof.grpc_target = 'https://rust-grpc.staging.scriptureforge.ai:50051';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /RUST-GRPC-001 structured report grpc_target must be a non-local host:port target/,
+  );
+});
+
+test('validateManifest strict release rejects Rust structured non-HTTPS API metrics target', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'RUST-GRPC-001');
+  item.evidence[0].structured_report.rust_grpc_runtime_proof.api_metrics_target = 'http://api.staging.scriptureforge.ai/metrics';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /RUST-GRPC-001 structured report api_metrics_target must be an HTTPS non-local artifact URL/,
+  );
+});
+
+test('validateManifest strict release rejects Rust structured duplicate metrics targets', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'RUST-GRPC-001');
+  item.evidence[0].structured_report.rust_grpc_runtime_proof.api_metrics_target =
+    'https://RUST-METRICS.staging.scriptureforge.ai:443/metrics';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /RUST-GRPC-001 structured report metrics_target and api_metrics_target must be distinct/,
+  );
+});
+
 test('validateManifest strict release rejects Rust structured proof with drifted Rust metric count', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',

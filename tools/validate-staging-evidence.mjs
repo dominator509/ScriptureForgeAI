@@ -2447,12 +2447,85 @@ function assertStrictRustStructuredReport(evidence, segments) {
   assert.ok(String(report.grpc_target ?? '').trim(), 'RUST-GRPC-001 structured report grpc_target must not be empty');
   assert.ok(String(report.metrics_target ?? '').trim(), 'RUST-GRPC-001 structured report metrics_target must not be empty');
   assert.ok(String(report.api_metrics_target ?? '').trim(), 'RUST-GRPC-001 structured report api_metrics_target must not be empty');
+  assertStrictRustStructuredTargets(report);
   assert.equal(String(report.health_status ?? ''), 'SERVING', 'RUST-GRPC-001 structured report health_status must be SERVING');
   assert.equal(String(report.service_name ?? ''), 'scriptureforge.engine.ScriptureEngine', 'RUST-GRPC-001 structured report service_name must identify ScriptureEngine');
   assert.equal(Number(report.embedding_requests), Number(embeddingRequests), 'RUST-GRPC-001 structured report embedding_requests must match rust-metrics marker');
   assert.equal(Number(report.vector_search_requests), Number(vectorSearchRequests), 'RUST-GRPC-001 structured report vector_search_requests must match rust-metrics marker');
   assert.equal(Number(report.api_rust_vector_search_ops), Number(apiRustVectorSearchOps), 'RUST-GRPC-001 structured report api_rust_vector_search_ops must match api-rust-integration-metrics marker');
   assert.equal(Number(report.api_rust_vector_search_seconds), Number(apiRustVectorSearchSeconds), 'RUST-GRPC-001 structured report api_rust_vector_search_seconds must match api-rust-integration-metrics marker');
+}
+
+function assertStrictRustStructuredTargets(report) {
+  const grpcTarget = String(report.grpc_target ?? '').trim();
+  assert.ok(isNonLocalHostPortTarget(grpcTarget), 'RUST-GRPC-001 structured report grpc_target must be a non-local host:port target');
+  const metricsTarget = String(report.metrics_target ?? '').trim();
+  assert.ok(isHTTPNonLocalArtifact(metricsTarget), 'RUST-GRPC-001 structured report metrics_target must be an HTTP(S) non-local artifact URL');
+  const apiMetricsTarget = String(report.api_metrics_target ?? '').trim();
+  assert.ok(isHTTPSNonLocalArtifact(apiMetricsTarget), 'RUST-GRPC-001 structured report api_metrics_target must be an HTTPS non-local artifact URL');
+  const metricsCanonical = canonicalStrictArtifactURL(metricsTarget);
+  const apiMetricsCanonical = canonicalStrictArtifactURL(apiMetricsTarget);
+  assert.notEqual(
+    metricsCanonical,
+    apiMetricsCanonical,
+    'RUST-GRPC-001 structured report metrics_target and api_metrics_target must be distinct',
+  );
+}
+
+function isHTTPNonLocalArtifact(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  return (url.protocol === 'https:' || url.protocol === 'http:')
+    && !isLocalOrPrivateHost(hostname);
+}
+
+function isNonLocalHostPortTarget(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw || /^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) {
+    return false;
+  }
+  let parsed;
+  try {
+    parsed = new URL(`grpc://${raw}`);
+  } catch {
+    return false;
+  }
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  return Boolean(hostname)
+    && Boolean(parsed.port)
+    && !isLocalOrPrivateAddressHost(hostname)
+    && !isReservedPlaceholderHost(hostname);
+}
+
+function isLocalOrPrivateAddressHost(hostname) {
+  const normalized = String(hostname ?? '').replace(/^\[|\]$/g, '').toLowerCase();
+  if (
+    normalized === 'localhost'
+    || normalized === '::'
+    || normalized === '::1'
+    || normalized === '0.0.0.0'
+    || normalized.startsWith('0.')
+    || normalized.startsWith('127.')
+    || normalized.startsWith('10.')
+    || normalized.startsWith('192.168.')
+    || /^169\.254\./.test(normalized)
+  ) {
+    return true;
+  }
+  const mappedIPv4 = ipv4MappedHost(normalized);
+  if (mappedIPv4) {
+    return isLocalOrPrivateAddressHost(mappedIPv4);
+  }
+  if (/^f[cd][0-9a-f]*:/i.test(normalized) || /^fe[89ab][0-9a-f]*:/i.test(normalized)) {
+    return true;
+  }
+  const private172 = normalized.match(/^172\.(\d+)\./);
+  return Boolean(private172 && Number(private172[1]) >= 16 && Number(private172[1]) <= 31);
 }
 
 function assertStrictMobileStructuredReport(evidence, segments) {
