@@ -2167,6 +2167,50 @@ test('validateManifest strict release rejects OTEL evidence with drifted structu
   );
 });
 
+test('validateManifest strict release rejects OTEL structured local target', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'OBS-OTEL-001');
+  item.evidence[0].structured_report.observability_otel_proof.collector_target = 'http://localhost:4318/v1/traces';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /OBS-OTEL-001 structured report collector_target must be an HTTPS non-local artifact URL/,
+  );
+});
+
+test('validateManifest strict release rejects OTEL structured duplicate targets', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'OBS-OTEL-001');
+  item.evidence[0].structured_report.observability_otel_proof.log_query_target =
+    'https://TRACES.staging.scriptureforge.ai:443/search?trace_id=11112222333344445555666677778888';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /OBS-OTEL-001 structured report log_query_target must be distinct from trace_query_target/,
+  );
+});
+
+test('validateManifest strict release rejects OTEL structured trace target without trace ID', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'OBS-OTEL-001');
+  item.evidence[0].structured_report.observability_otel_proof.trace_query_target =
+    'https://traces.staging.scriptureforge.ai/search?service=scriptureforge-api';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /OBS-OTEL-001 trace_query_target must include the matching trace ID/,
+  );
+});
+
 test('validateManifest strict release rejects alert evidence without dashboard alert and retention markers', () => {
   const manifest = baseManifest({
     releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
@@ -2192,6 +2236,36 @@ test('validateManifest strict release rejects alert evidence with drifted struct
   assert.throws(
     () => validateManifest(manifest, { strictRelease: true }),
     /OBS-ALERT-001 structured report delivery_id must match delivery marker/,
+  );
+});
+
+test('validateManifest strict release rejects alert structured local target', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'OBS-ALERT-001');
+  item.evidence[0].structured_report.observability_alert_proof.dashboard_target =
+    'http://127.0.0.1:3000/d/scriptureforge';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /OBS-ALERT-001 structured report dashboard_target must be an HTTPS non-local artifact URL/,
+  );
+});
+
+test('validateManifest strict release rejects alert structured duplicate targets', () => {
+  const manifest = baseManifest({
+    releaseCandidate: '0123456789abcdef0123456789abcdef01234567',
+    statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
+  });
+  const item = manifest.items.find((candidate) => candidate.id === 'OBS-ALERT-001');
+  item.evidence[0].structured_report.observability_alert_proof.retention_target =
+    'https://OBSERVABILITY.staging.scriptureforge.ai:443/alert-delivery-status';
+
+  assert.throws(
+    () => validateManifest(manifest, { strictRelease: true }),
+    /OBS-ALERT-001 structured report retention_target must be distinct from alert_delivery_target/,
   );
 });
 

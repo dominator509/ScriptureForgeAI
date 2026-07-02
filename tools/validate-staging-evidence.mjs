@@ -2532,6 +2532,15 @@ function assertStrictObservabilityOTELStructuredReport(evidence, segments) {
   assert.ok(String(report.rust_metrics_target ?? '').trim(), 'OBS-OTEL-001 structured report rust_metrics_target must not be empty');
   assert.ok(String(report.trace_query_target ?? '').trim(), 'OBS-OTEL-001 structured report trace_query_target must not be empty');
   assert.ok(String(report.log_query_target ?? '').trim(), 'OBS-OTEL-001 structured report log_query_target must not be empty');
+  assertStrictStructuredTargets('OBS-OTEL-001', [
+    ['collector_target', report.collector_target],
+    ['api_metrics_target', report.api_metrics_target],
+    ['rust_metrics_target', report.rust_metrics_target],
+    ['trace_query_target', report.trace_query_target],
+    ['log_query_target', report.log_query_target],
+  ]);
+  assertStructuredTargetIncludesTraceID('OBS-OTEL-001 trace_query_target', report.trace_query_target, traceID);
+  assertStructuredTargetIncludesTraceID('OBS-OTEL-001 log_query_target', report.log_query_target, logTraceID);
   assert.equal(String(report.trace_query_trace_id ?? ''), traceID, 'OBS-OTEL-001 structured report trace_query_trace_id must match trace marker');
   assert.equal(String(report.log_query_trace_id ?? ''), logTraceID, 'OBS-OTEL-001 structured report log_query_trace_id must match log marker');
   assert.equal(String(report.trace_query_route ?? ''), traceRoute, 'OBS-OTEL-001 structured report trace_query_route must match trace route marker');
@@ -2569,9 +2578,52 @@ function assertStrictObservabilityAlertStructuredReport(evidence, segments) {
   assert.ok(String(report.alert_rules_target ?? '').trim(), 'OBS-ALERT-001 structured report alert_rules_target must not be empty');
   assert.ok(String(report.alert_delivery_target ?? '').trim(), 'OBS-ALERT-001 structured report alert_delivery_target must not be empty');
   assert.ok(String(report.retention_target ?? '').trim(), 'OBS-ALERT-001 structured report retention_target must not be empty');
+  assertStrictStructuredTargets('OBS-ALERT-001', [
+    ['dashboard_target', report.dashboard_target],
+    ['alert_rules_target', report.alert_rules_target],
+    ['alert_delivery_target', report.alert_delivery_target],
+    ['retention_target', report.retention_target],
+  ]);
   assert.equal(String(report.delivery_alert_name ?? ''), alertName, 'OBS-ALERT-001 structured report delivery_alert_name must match delivery marker');
   assert.equal(String(report.delivery_alert_receiver ?? ''), alertReceiver, 'OBS-ALERT-001 structured report delivery_alert_receiver must match delivery marker');
   assert.equal(String(report.delivery_id ?? ''), deliveryID, 'OBS-ALERT-001 structured report delivery_id must match delivery marker');
+}
+
+function assertStrictStructuredTargets(scope, entries) {
+  const seen = new Map();
+  for (const [label, rawTarget] of entries) {
+    const target = String(rawTarget ?? '').trim();
+    assert.ok(isHTTPSNonLocalArtifact(target), `${scope} structured report ${label} must be an HTTPS non-local artifact URL`);
+    const normalized = canonicalStrictArtifactURL(target);
+    const previous = seen.get(normalized);
+    assert.ok(!previous, `${scope} structured report ${label} must be distinct from ${previous}`);
+    seen.set(normalized, label);
+  }
+}
+
+function assertStructuredTargetIncludesTraceID(label, rawTarget, traceID) {
+  const target = String(rawTarget ?? '');
+  const expectedTraceID = String(traceID ?? '').trim().toLowerCase();
+  assert.ok(expectedTraceID, `${label} trace ID binding requires a concrete trace ID`);
+  let parsed;
+  try {
+    parsed = new URL(target);
+  } catch {
+    assert.fail(`${label} must be a valid URL`);
+  }
+  const targetText = `${parsed.pathname} ${parsed.search}`.toLowerCase();
+  assert.ok(targetText.includes(expectedTraceID), `${label} must include the matching trace ID`);
+}
+
+function canonicalStrictArtifactURL(rawTarget) {
+  const parsed = new URL(String(rawTarget ?? '').trim());
+  parsed.protocol = parsed.protocol.toLowerCase();
+  const hostname = parsed.hostname.toLowerCase();
+  const port = parsed.port === '443' ? '' : parsed.port;
+  parsed.host = port ? `${hostname}:${port}` : hostname;
+  parsed.hash = '';
+  parsed.search = parsed.searchParams.toString() ? `?${parsed.searchParams.toString()}` : '';
+  return parsed.toString();
 }
 
 function assertStrictAIStructuredReport(evidence, segments) {
