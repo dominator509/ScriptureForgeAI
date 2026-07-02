@@ -2796,6 +2796,12 @@ function structuredEvidenceForReport(itemID, report) {
   if (itemID === 'OBS-ALERT-001') {
     return structuredObservabilityAlertEvidenceForReport(report);
   }
+  if (itemID === 'DR-ROLLBACK-001') {
+    return structuredRollbackEvidenceForReport(report);
+  }
+  if (itemID === 'DR-BACKUP-001') {
+    return structuredBackupRestoreEvidenceForReport(report);
+  }
   return null;
 }
 
@@ -3101,6 +3107,64 @@ function structuredZoomEvidenceForReport(report) {
       no_duplicate_side_effects: duplicate.no_duplicate_side_effects === true,
       meeting_external_id: String(mapping.meeting_external_id ?? ''),
       internal_room_id: String(mapping.internal_room_id ?? ''),
+    },
+  };
+}
+
+function structuredRollbackEvidenceForReport(report) {
+  const probes = Array.isArray(report.probes) ? report.probes : [];
+  const before = probes.find((probe) => probe.name === 'api-ready-before-rollback');
+  const rollout = probes.find((probe) => probe.name === 'rollback-rollout-artifact');
+  const after = probes.find((probe) => probe.name === 'api-ready-after-rollback');
+  const degradation = probes.find((probe) => probe.name === 'degradation-drill-artifact');
+  assert.ok(before, 'DR-ROLLBACK-001 structured evidence requires api-ready-before-rollback probe');
+  assert.ok(rollout, 'DR-ROLLBACK-001 structured evidence requires rollback-rollout-artifact probe');
+  assert.ok(after, 'DR-ROLLBACK-001 structured evidence requires api-ready-after-rollback probe');
+  assert.ok(degradation, 'DR-ROLLBACK-001 structured evidence requires degradation-drill-artifact probe');
+  return {
+    rollback_degradation_proof: {
+      release_candidate: String(report.release_candidate ?? ''),
+      service_version: String(report.service_version ?? ''),
+      load_run_id: String(report.load_run_id ?? ''),
+      before_ready_target: String(before.target ?? ''),
+      rollout_target: String(rollout.target ?? ''),
+      after_ready_target: String(after.target ?? ''),
+      degradation_target: String(degradation.target ?? ''),
+      pre_rollback_version: String(before.pre_rollback_version ?? ''),
+      post_rollback_version: String(after.post_rollback_version ?? ''),
+      rolled_back_from: String(after.rolled_back_from ?? ''),
+      rolled_back_to: String(after.rolled_back_to ?? ''),
+      ai_fault: degradation.ai_fault === true,
+      zoom_offline_fallback: degradation.zoom_offline_fallback === true,
+      non_ai_routes_healthy: degradation.non_ai_routes_healthy === true,
+      zoom_circuit_open: degradation.zoom_circuit_open === true,
+    },
+  };
+}
+
+function structuredBackupRestoreEvidenceForReport(report) {
+  const probes = Array.isArray(report.probes) ? report.probes : [];
+  const backup = probes.find((probe) => probe.name === 'backup-snapshot-artifact');
+  const restore = probes.find((probe) => probe.name === 'restore-drill-artifact');
+  const smoke = probes.find((probe) => probe.name === 'restored-database-smoke');
+  assert.ok(backup, 'DR-BACKUP-001 structured evidence requires backup-snapshot-artifact probe');
+  assert.ok(restore, 'DR-BACKUP-001 structured evidence requires restore-drill-artifact probe');
+  assert.ok(smoke, 'DR-BACKUP-001 structured evidence requires restored-database-smoke probe');
+  return {
+    backup_restore_proof: {
+      release_candidate: String(report.release_candidate ?? ''),
+      service_version: String(report.service_version ?? ''),
+      load_run_id: String(report.load_run_id ?? ''),
+      backup_snapshot_target: String(backup.target ?? ''),
+      restore_drill_target: String(restore.target ?? ''),
+      restored_database_smoke_target: String(smoke.target ?? ''),
+      snapshot_id: String(backup.snapshot_id ?? ''),
+      kms_key_id: String(backup.kms_key_id ?? ''),
+      rpo_minutes: Number(backup.rpo_minutes),
+      restore_job_id: String(restore.restore_job_id ?? ''),
+      source_snapshot_id: String(restore.source_snapshot_id ?? ''),
+      rto_minutes: Number(restore.rto_minutes),
+      restore_duration_minutes: Number(restore.restore_duration_minutes),
     },
   };
 }

@@ -973,6 +973,8 @@ function passedEvidenceFor(id, releaseCandidate = sha) {
     ...(id === 'EXT-ZOOM-001' ? { structured_report: zoomResilienceWebhookStructuredReport() } : {}),
     ...(id === 'OBS-OTEL-001' ? { structured_report: observabilityOTELStructuredReport(releaseCandidate) } : {}),
     ...(id === 'OBS-ALERT-001' ? { structured_report: observabilityAlertStructuredReport(releaseCandidate) } : {}),
+    ...(id === 'DR-ROLLBACK-001' ? { structured_report: rollbackDegradationStructuredReport(releaseCandidate) } : {}),
+    ...(id === 'DR-BACKUP-001' ? { structured_report: backupRestoreStructuredReport(releaseCandidate) } : {}),
     ...(id === 'PERF-HTTP-001' ? { structured_report: httpLoadThresholdStructuredReport() } : {}),
     ...(['PERF-WS-001', 'DATA-REDIS-001'].includes(id) ? { structured_report: websocketRedisSequenceStructuredReport() } : {}),
   };
@@ -1252,6 +1254,48 @@ function observabilityAlertStructuredReport(releaseCandidate = sha) {
       delivery_alert_name: 'ScriptureForgeHighErrorRate',
       delivery_alert_receiver: 'staging-release',
       delivery_id: 'am-delivery-123',
+    },
+  };
+}
+
+function rollbackDegradationStructuredReport(releaseCandidate = sha) {
+  return {
+    rollback_degradation_proof: {
+      release_candidate: releaseCandidate,
+      service_version: `scriptureforge-api:${releaseCandidate}`,
+      load_run_id: 'load-run-123',
+      before_ready_target: 'https://artifacts.staging.scriptureforge.ai/resilience/api-ready-before-rollback.txt',
+      rollout_target: 'https://artifacts.staging.scriptureforge.ai/resilience/rollback-rollout-artifact.txt',
+      after_ready_target: 'https://artifacts.staging.scriptureforge.ai/resilience/api-ready-after-rollback.txt',
+      degradation_target: 'https://artifacts.staging.scriptureforge.ai/resilience/degradation-drill-artifact.txt',
+      pre_rollback_version: 'release-1',
+      post_rollback_version: 'release-0',
+      rolled_back_from: 'release-1',
+      rolled_back_to: 'release-0',
+      ai_fault: true,
+      zoom_offline_fallback: true,
+      non_ai_routes_healthy: true,
+      zoom_circuit_open: true,
+    },
+  };
+}
+
+function backupRestoreStructuredReport(releaseCandidate = sha) {
+  return {
+    backup_restore_proof: {
+      release_candidate: releaseCandidate,
+      service_version: `scriptureforge-api:${releaseCandidate}`,
+      load_run_id: 'load-run-123',
+      backup_snapshot_target: 'https://artifacts.staging.scriptureforge.ai/resilience/backup-snapshot-artifact.txt',
+      restore_drill_target: 'https://artifacts.staging.scriptureforge.ai/resilience/restore-drill-artifact.txt',
+      restored_database_smoke_target: 'https://artifacts.staging.scriptureforge.ai/resilience/restored-database-smoke.txt',
+      snapshot_id: 'snap-123',
+      kms_key_id: 'arn:aws:kms:us-east-1:123456789012:key/44444444-4444-4444-8444-444444444444',
+      rpo_minutes: 15,
+      restore_job_id: 'restore-456',
+      source_snapshot_id: 'snap-123',
+      rto_minutes: 30,
+      restore_duration_minutes: 18,
     },
   };
 }

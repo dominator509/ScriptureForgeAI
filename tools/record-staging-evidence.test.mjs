@@ -8207,6 +8207,42 @@ test('recordEvidence records production-grade resilience evidence', () => {
 
   assert.equal(updated.items[0].status, 'passed');
   assert.equal(updated.items[1].status, 'passed');
+  assert.deepEqual(updated.items[0].evidence[0].structured_report, {
+    rollback_degradation_proof: {
+      release_candidate: 'abc123',
+      service_version: 'scriptureforge-api:abc123',
+      load_run_id: 'load-run-123',
+      before_ready_target: 'https://artifacts.staging.scriptureforge.ai/resilience/api-ready-before-rollback.txt',
+      rollout_target: 'https://artifacts.staging.scriptureforge.ai/resilience/rollback-rollout-artifact.txt',
+      after_ready_target: 'https://artifacts.staging.scriptureforge.ai/resilience/api-ready-after-rollback.txt',
+      degradation_target: 'https://artifacts.staging.scriptureforge.ai/resilience/degradation-drill-artifact.txt',
+      pre_rollback_version: 'release-1',
+      post_rollback_version: 'release-0',
+      rolled_back_from: 'release-1',
+      rolled_back_to: 'release-0',
+      ai_fault: true,
+      zoom_offline_fallback: true,
+      non_ai_routes_healthy: true,
+      zoom_circuit_open: true,
+    },
+  });
+  assert.deepEqual(updated.items[1].evidence[0].structured_report, {
+    backup_restore_proof: {
+      release_candidate: 'abc123',
+      service_version: 'scriptureforge-api:abc123',
+      load_run_id: 'load-run-123',
+      backup_snapshot_target: 'https://artifacts.staging.scriptureforge.ai/resilience/backup-snapshot-artifact.txt',
+      restore_drill_target: 'https://artifacts.staging.scriptureforge.ai/resilience/restore-drill-artifact.txt',
+      restored_database_smoke_target: 'https://artifacts.staging.scriptureforge.ai/resilience/restored-database-smoke.txt',
+      snapshot_id: 'snap-123',
+      kms_key_id: 'alias/scriptureforge-rds-backups',
+      rpo_minutes: 15,
+      restore_job_id: 'restore-456',
+      source_snapshot_id: 'snap-123',
+      rto_minutes: 30,
+      restore_duration_minutes: 18,
+    },
+  });
 });
 
 test('recordEvidence rejects otherwise valid resilience evidence without report load_run_id', () => {

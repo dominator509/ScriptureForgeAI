@@ -1631,10 +1631,12 @@ function validateStrictReleaseItemEvidence(item, manifest) {
       );
     }
     if (item.id === 'DR-ROLLBACK-001') {
-      assertStrictRollbackVersionLinkage(evidence);
+      const segments = assertStrictRollbackVersionLinkage(evidence);
+      assertStrictRollbackStructuredReport(evidence, segments);
     }
     if (item.id === 'DR-BACKUP-001') {
-      assertStrictBackupRestoreSnapshotLinkage(evidence);
+      const segments = assertStrictBackupRestoreSnapshotLinkage(evidence);
+      assertStrictBackupRestoreStructuredReport(evidence, segments);
     }
   }
   if (item.id === 'DEPLOY-TF-001') {
@@ -2669,8 +2671,12 @@ function extractStandaloneTraceID(segmentText, segmentName) {
 function assertStrictRollbackVersionLinkage(evidence) {
   const beforeSegment = findEvidenceSegment(evidence, 'api-ready-before-rollback');
   const afterSegment = findEvidenceSegment(evidence, 'api-ready-after-rollback');
+  const rolloutSegment = findEvidenceSegment(evidence, 'rollback-rollout-artifact');
+  const degradationSegment = findEvidenceSegment(evidence, 'degradation-drill-artifact');
   assert.ok(beforeSegment, 'DR-ROLLBACK-001 strict release evidence must include api-ready-before-rollback segment');
+  assert.ok(rolloutSegment, 'DR-ROLLBACK-001 strict release evidence must include rollback-rollout-artifact segment');
   assert.ok(afterSegment, 'DR-ROLLBACK-001 strict release evidence must include api-ready-after-rollback segment');
+  assert.ok(degradationSegment, 'DR-ROLLBACK-001 strict release evidence must include degradation-drill-artifact segment');
   const preRollbackVersion = beforeSegment.match(resiliencePreRollbackVersionPattern)?.[1] ?? '';
   const postRollbackVersion = afterSegment.match(resiliencePostRollbackVersionPattern)?.[1] ?? '';
   const rolledBackFrom = afterSegment.match(resilienceRolledBackFromPattern)?.[1] ?? '';
@@ -2694,13 +2700,21 @@ function assertStrictRollbackVersionLinkage(evidence) {
     preRollbackVersion,
     'DR-ROLLBACK-001 strict release post_rollback_version must differ from pre_rollback_version',
   );
+  return {
+    beforeSegment,
+    rolloutSegment,
+    afterSegment,
+    degradationSegment,
+  };
 }
 
 function assertStrictBackupRestoreSnapshotLinkage(evidence) {
   const backupSegment = findEvidenceSegment(evidence, 'backup-snapshot-artifact');
   const restoreSegment = findEvidenceSegment(evidence, 'restore-drill-artifact');
+  const smokeSegment = findEvidenceSegment(evidence, 'restored-database-smoke');
   assert.ok(backupSegment, 'DR-BACKUP-001 strict release evidence must include backup-snapshot-artifact segment');
   assert.ok(restoreSegment, 'DR-BACKUP-001 strict release evidence must include restore-drill-artifact segment');
+  assert.ok(smokeSegment, 'DR-BACKUP-001 strict release evidence must include restored-database-smoke segment');
   const backupSnapshotID = backupSegment.match(resilienceSnapshotIDPattern)?.[1] ?? '';
   const backupKMSKeyID = backupSegment.match(resilienceKMSKeyIDPattern)?.[1] ?? '';
   const restoreSourceSnapshotID = restoreSegment.match(resilienceSourceSnapshotIDPattern)?.[1] ?? '';
@@ -2720,6 +2734,82 @@ function assertStrictBackupRestoreSnapshotLinkage(evidence) {
     restoreDurationMinutes <= rtoMinutes,
     `DR-BACKUP-001 strict release restore_duration_minutes ${restoreDurationMinutes} must be <= rto_minutes ${rtoMinutes}`,
   );
+  return {
+    backupSegment,
+    restoreSegment,
+    smokeSegment,
+  };
+}
+
+function assertStrictRollbackStructuredReport(evidence, segments) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.rollback_degradation_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    'DR-ROLLBACK-001 strict release evidence must include exactly one structured rollback_degradation_proof report',
+  );
+  const report = structuredReports[0];
+  const releaseCandidate = extractTextMarker(segments.beforeSegment, 'release_candidate', 'DR-ROLLBACK-001 structured report before binding');
+  const serviceVersion = extractTextMarker(segments.beforeSegment, 'service_version', 'DR-ROLLBACK-001 structured report before binding');
+  const loadRunID = extractTextMarker(segments.beforeSegment, 'load_run_id', 'DR-ROLLBACK-001 structured report before binding');
+  const preRollbackVersion = extractTextMarker(segments.beforeSegment, 'pre_rollback_version', 'DR-ROLLBACK-001 structured report before binding');
+  const postRollbackVersion = extractTextMarker(segments.afterSegment, 'post_rollback_version', 'DR-ROLLBACK-001 structured report after binding');
+  const rolledBackFrom = extractTextMarker(segments.afterSegment, 'rolled_back_from', 'DR-ROLLBACK-001 structured report after binding');
+  const rolledBackTo = extractTextMarker(segments.afterSegment, 'rolled_back_to', 'DR-ROLLBACK-001 structured report after binding');
+
+  assert.equal(String(report.release_candidate ?? ''), releaseCandidate, 'DR-ROLLBACK-001 structured report release_candidate must match readiness marker');
+  assert.equal(String(report.service_version ?? ''), serviceVersion, 'DR-ROLLBACK-001 structured report service_version must match readiness marker');
+  assert.equal(String(report.load_run_id ?? ''), loadRunID, 'DR-ROLLBACK-001 structured report load_run_id must match readiness marker');
+  assert.ok(String(report.before_ready_target ?? '').trim(), 'DR-ROLLBACK-001 structured report before_ready_target must not be empty');
+  assert.ok(String(report.rollout_target ?? '').trim(), 'DR-ROLLBACK-001 structured report rollout_target must not be empty');
+  assert.ok(String(report.after_ready_target ?? '').trim(), 'DR-ROLLBACK-001 structured report after_ready_target must not be empty');
+  assert.ok(String(report.degradation_target ?? '').trim(), 'DR-ROLLBACK-001 structured report degradation_target must not be empty');
+  assert.equal(String(report.pre_rollback_version ?? ''), preRollbackVersion, 'DR-ROLLBACK-001 structured report pre_rollback_version must match readiness marker');
+  assert.equal(String(report.post_rollback_version ?? ''), postRollbackVersion, 'DR-ROLLBACK-001 structured report post_rollback_version must match readiness marker');
+  assert.equal(String(report.rolled_back_from ?? ''), rolledBackFrom, 'DR-ROLLBACK-001 structured report rolled_back_from must match readiness marker');
+  assert.equal(String(report.rolled_back_to ?? ''), rolledBackTo, 'DR-ROLLBACK-001 structured report rolled_back_to must match readiness marker');
+  assert.equal(report.ai_fault, true, 'DR-ROLLBACK-001 structured report ai_fault must be true');
+  assert.equal(report.zoom_offline_fallback, true, 'DR-ROLLBACK-001 structured report zoom_offline_fallback must be true');
+  assert.equal(report.non_ai_routes_healthy, true, 'DR-ROLLBACK-001 structured report non_ai_routes_healthy must be true');
+  assert.equal(report.zoom_circuit_open, true, 'DR-ROLLBACK-001 structured report zoom_circuit_open must be true');
+}
+
+function assertStrictBackupRestoreStructuredReport(evidence, segments) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.backup_restore_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    'DR-BACKUP-001 strict release evidence must include exactly one structured backup_restore_proof report',
+  );
+  const report = structuredReports[0];
+  const releaseCandidate = extractTextMarker(segments.backupSegment, 'release_candidate', 'DR-BACKUP-001 structured report backup binding');
+  const serviceVersion = extractTextMarker(segments.backupSegment, 'service_version', 'DR-BACKUP-001 structured report backup binding');
+  const loadRunID = extractTextMarker(segments.backupSegment, 'load_run_id', 'DR-BACKUP-001 structured report backup binding');
+  const snapshotID = extractTextMarker(segments.backupSegment, 'snapshot_id', 'DR-BACKUP-001 structured report backup binding');
+  const kmsKeyID = extractTextMarker(segments.backupSegment, 'kms_key_id', 'DR-BACKUP-001 structured report backup binding');
+  const rpoMinutes = extractNumericMarker(segments.backupSegment, 'rpo_minutes', 'DR-BACKUP-001 structured report backup binding');
+  const restoreJobID = extractTextMarker(segments.restoreSegment, 'restore_job_id', 'DR-BACKUP-001 structured report restore binding');
+  const sourceSnapshotID = segments.restoreSegment.match(resilienceSourceSnapshotIDPattern)?.[1] ?? '';
+  const rtoMinutes = extractNumericMarker(segments.restoreSegment, 'rto_minutes', 'DR-BACKUP-001 structured report restore binding');
+  const restoreDurationMinutes = extractNumericMarker(segments.restoreSegment, 'restore_duration_minutes', 'DR-BACKUP-001 structured report restore binding');
+
+  assert.equal(String(report.release_candidate ?? ''), releaseCandidate, 'DR-BACKUP-001 structured report release_candidate must match backup marker');
+  assert.equal(String(report.service_version ?? ''), serviceVersion, 'DR-BACKUP-001 structured report service_version must match backup marker');
+  assert.equal(String(report.load_run_id ?? ''), loadRunID, 'DR-BACKUP-001 structured report load_run_id must match backup marker');
+  assert.ok(String(report.backup_snapshot_target ?? '').trim(), 'DR-BACKUP-001 structured report backup_snapshot_target must not be empty');
+  assert.ok(String(report.restore_drill_target ?? '').trim(), 'DR-BACKUP-001 structured report restore_drill_target must not be empty');
+  assert.ok(String(report.restored_database_smoke_target ?? '').trim(), 'DR-BACKUP-001 structured report restored_database_smoke_target must not be empty');
+  assert.equal(String(report.snapshot_id ?? ''), snapshotID, 'DR-BACKUP-001 structured report snapshot_id must match backup marker');
+  assert.equal(String(report.kms_key_id ?? ''), kmsKeyID, 'DR-BACKUP-001 structured report kms_key_id must match backup marker');
+  assert.equal(Number(report.rpo_minutes), Number(rpoMinutes), 'DR-BACKUP-001 structured report rpo_minutes must match backup marker');
+  assert.equal(String(report.restore_job_id ?? ''), restoreJobID, 'DR-BACKUP-001 structured report restore_job_id must match restore marker');
+  assert.equal(String(report.source_snapshot_id ?? ''), sourceSnapshotID, 'DR-BACKUP-001 structured report source_snapshot_id must match restore marker');
+  assert.equal(Number(report.rto_minutes), Number(rtoMinutes), 'DR-BACKUP-001 structured report rto_minutes must match restore marker');
+  assert.equal(Number(report.restore_duration_minutes), Number(restoreDurationMinutes), 'DR-BACKUP-001 structured report restore_duration_minutes must match restore marker');
 }
 
 function assertStrictTLSCertificateIdentity(evidence, itemID, segments) {
