@@ -1,4 +1,4 @@
-﻿import assert from 'node:assert/strict';
+import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseArgs, requiredIds, strictProbeFamilies, validateManifest } from './validate-staging-evidence.mjs';
 import { ciReleaseEvidenceProofMarkers } from './write-ci-release-evidence.mjs';

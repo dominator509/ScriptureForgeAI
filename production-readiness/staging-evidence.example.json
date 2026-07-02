@@ -1,4 +1,4 @@
-﻿{
+{
   "schema_version": 1,
   "environment": "staging",
   "release_candidate": "replace-with-git-sha-or-tag",

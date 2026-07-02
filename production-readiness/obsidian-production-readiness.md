@@ -1,4 +1,4 @@
-﻿# scriptureforge-production-readiness
+# scriptureforge-production-readiness
 
 ---
 title: ScriptureForgeAI Production Readiness
