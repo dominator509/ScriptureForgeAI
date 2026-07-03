@@ -71,6 +71,26 @@ test('runRustCargoGate emits proof markers after validating cargo output', () =>
   assert.match(result.output, /rust_cargo_ambient_protoc_poisoned=true/);
 });
 
+test('runRustCargoGate falls back to repo-local cargo path when plain cargo is unavailable', () => {
+  const fallbackBin = '.\\.tools\\cargo\\bin\\cargo.exe';
+  const result = runRustCargoGate({
+    bin: 'cargo',
+    spawnSyncImpl(command, args, options) {
+      if (command === 'cargo') {
+        const error = new Error('spawn cargo ENOENT');
+        error.code = 'ENOENT';
+        return { status: 1, error };
+      }
+      assert.equal(command, fallbackBin);
+      assert.deepEqual(args, rustCargoArgs());
+      return { status: 0, stdout: requiredRustPassOutput(), stderr: '' };
+    },
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.proofName, 'rust-cargo-test');
+});
+
 test('runRustCargoGate rejects successful cargo output without proof tests', () => {
   const result = runRustCargoGate({
     bin: 'cargo',

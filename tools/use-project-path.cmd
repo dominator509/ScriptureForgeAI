@@ -6,6 +6,13 @@ if exist "%SCRIPTUREFORGE_ROOT%\.tools\go\bin" set "PATH=%SCRIPTUREFORGE_ROOT%\.
 if exist "%SCRIPTUREFORGE_ROOT%\.tools\cargo\bin" set "PATH=%SCRIPTUREFORGE_ROOT%\.tools\cargo\bin;%PATH%"
 if exist "%SCRIPTUREFORGE_ROOT%\.tools\terraform" set "PATH=%SCRIPTUREFORGE_ROOT%\.tools\terraform;%PATH%"
 if exist "%SCRIPTUREFORGE_ROOT%\.tools\bin" set "PATH=%SCRIPTUREFORGE_ROOT%\.tools\bin;%PATH%"
+if exist "%SCRIPTUREFORGE_ROOT%\.tools\rustup\toolchains\stable-x86_64-pc-windows-msvc\bin" (
+  set "PATH=%SCRIPTUREFORGE_ROOT%\.tools\rustup\toolchains\stable-x86_64-pc-windows-msvc\bin;%PATH%"
+)
+for /d %%D in ("%SCRIPTUREFORGE_ROOT%\.tools\rustup\toolchains\*") do (
+  if exist "%%~fD\bin" set "PATH=%%~fD\bin;%PATH%"
+)
+if exist "%USERPROFILE%\.cargo\bin" set "PATH=%USERPROFILE%\.cargo\bin;%PATH%"
 for %%I in ("%USERPROFILE%") do set "SCRIPTUREFORGE_USERPROFILE=%%~fI"
 if exist "%SCRIPTUREFORGE_USERPROFILE%\.local\bin" set "PATH=%SCRIPTUREFORGE_USERPROFILE%\.local\bin;%PATH%"
 if exist "C:\Users\domin\.local\bin" set "PATH=C:\Users\domin\.local\bin;%PATH%"

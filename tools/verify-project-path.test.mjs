@@ -337,8 +337,20 @@ test('Windows fallback directories include repo-local build toolchains', () => {
     'repo-local rustc bin should be searched',
   );
   assert.ok(
+    windowsFallbackDirectoriesForCommand('cargo', env, { platformName: 'win32' }).some((entry) => entry.includes('.tools\\rustup\\toolchains\\') && entry.endsWith('\\bin')),
+    'repo-local Rustup toolchain bin should be searched',
+  );
+  assert.ok(
+    windowsFallbackDirectoriesForCommand('rustc', env, { platformName: 'win32' }).some((entry) => entry.includes('.tools\\rustup\\toolchains\\') && entry.endsWith('\\bin')),
+    'repo-local rustc toolchain path should be searched',
+  );
+  assert.ok(
     windowsFallbackDirectoriesForCommand('terraform', env, { platformName: 'win32' }).some((entry) => entry.endsWith('.tools\\terraform')),
     'repo-local Terraform dir should be searched',
+  );
+  assert.ok(
+    windowsFallbackDirectoriesForCommand('protoc', env, { platformName: 'win32' }).some((entry) => entry.endsWith('.tools\\bin')),
+    'repo-local .tools\\bin should be searched',
   );
   assert.ok(
     windowsFallbackDirectoriesForCommand('gopls', env, { platformName: 'win32' }).some((entry) => entry.endsWith('go\\bin')),

@@ -1,0 +1,4 @@
+cargo:rerun-if-env-changed=PROTOC
+cargo:rerun-if-changed=C:\dev\ScriptureForgeAI\services\scripture-engine\../../proto/scripture.proto
+cargo:rerun-if-changed=C:\dev\ScriptureForgeAI\services\scripture-engine\../../proto/scripture.proto
+cargo:rerun-if-changed=C:\dev\ScriptureForgeAI\services\scripture-engine\../../proto

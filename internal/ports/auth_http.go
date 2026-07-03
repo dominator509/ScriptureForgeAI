@@ -511,8 +511,13 @@ func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 		sendAuthError(w, err.(*auth.PlatformException))
 		return
 	}
-	if _, err := tx.Exec(r.Context(), `UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE token_hash = $1 AND organization_id = $2`, hashToken(req.RefreshToken), req.OrganizationID); err != nil {
+	result, err := tx.Exec(r.Context(), `UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE token_hash = $1 AND organization_id = $2 AND revoked_at IS NULL`, hashToken(req.RefreshToken), req.OrganizationID)
+	if err != nil {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to revoke refresh token", Code: http.StatusInternalServerError})
+		return
+	}
+	if result.RowsAffected() == 0 {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid or already revoked refresh token", Code: http.StatusUnauthorized})
 		return
 	}
 	if err := tx.Commit(r.Context()); err != nil {

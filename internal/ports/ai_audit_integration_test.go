@@ -270,6 +270,125 @@ func TestGenerateCurriculumHandlerPersistsAuditRowsWithTenantRLS(t *testing.T) {
 	})
 }
 
+func TestGenerateCurriculumHandlerTenantIsolationForCrossTenantReadsAndWrites(t *testing.T) {
+	db := openAIAuditDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	seedAIAuditFixtures(ctx, t, db)
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		cleanupAIAuditFixtures(cleanupCtx, t, db)
+	})
+
+	llmServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]string{"role": "assistant", "content": "Tenant-aware study anchored in [Genesis 1:1]."}},
+			},
+		})
+	}))
+	defer llmServer.Close()
+
+	handler := &AIHandler{
+		DB:              db,
+		RAGEngine:       ai.NewRAGEngine(fakeAIVectorDB{}),
+		Verifier:        ai.NewResponseVerificationSubsystem(),
+		LLMClient:       &llm.LLMClient{APIKey: "test-key", Endpoint: llmServer.URL, Model: "test-model", HTTPClient: llmServer.Client(), MaxRetries: 0},
+		MapReduceWorker: ai.NewMapReduceWorker(4000),
+	}
+
+	requestOrgA := httptest.NewRequest(http.MethodPost, "/api/v1/ai/generate/study", strings.NewReader(`{"topic":"genesis"}`))
+	requestOrgA = requestOrgA.WithContext(context.WithValue(requestOrgA.Context(), auth.ContextKeyUser, &auth.TokenClaims{
+		UserID:         aiAuditUserA,
+		OrganizationID: aiAuditOrgA,
+		Role:           "member",
+	}))
+	recOrgA := httptest.NewRecorder()
+	handler.GenerateCurriculumHandler(recOrgA, requestOrgA)
+	if recOrgA.Code != http.StatusOK {
+		t.Fatalf("tenant A AI generation status = %d body = %s", recOrgA.Code, recOrgA.Body.String())
+	}
+
+	requestOrgARepeat := httptest.NewRequest(http.MethodPost, "/api/v1/ai/generate/study", strings.NewReader(`{"topic":"genesis"}`))
+	requestOrgARepeat = requestOrgARepeat.WithContext(context.WithValue(requestOrgARepeat.Context(), auth.ContextKeyUser, &auth.TokenClaims{
+		UserID:         aiAuditUserA,
+		OrganizationID: aiAuditOrgA,
+		Role:           "member",
+	}))
+	recOrgARepeat := httptest.NewRecorder()
+	handler.GenerateCurriculumHandler(recOrgARepeat, requestOrgARepeat)
+	if recOrgARepeat.Code != http.StatusOK {
+		t.Fatalf("tenant A second AI generation status = %d body = %s", recOrgARepeat.Code, recOrgARepeat.Body.String())
+	}
+
+	requestOrgB := httptest.NewRequest(http.MethodPost, "/api/v1/ai/generate/study", strings.NewReader(`{"topic":"john"}`))
+	requestOrgB = requestOrgB.WithContext(context.WithValue(requestOrgB.Context(), auth.ContextKeyUser, &auth.TokenClaims{
+		UserID:         aiAuditUserB,
+		OrganizationID: aiAuditOrgB,
+		Role:           "member",
+	}))
+	recOrgB := httptest.NewRecorder()
+	handler.GenerateCurriculumHandler(recOrgB, requestOrgB)
+	if recOrgB.Code != http.StatusOK {
+		t.Fatalf("tenant B AI generation status = %d body = %s", recOrgB.Code, recOrgB.Body.String())
+	}
+
+	withAIAuditTenant(ctx, t, db, aiAuditOrgA, func(ctx context.Context, tx pgx.Tx) {
+		var orgARequestCount int
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM ai_request_logs WHERE organization_id = $1 AND user_id = $2`, aiAuditOrgA, aiAuditUserA).Scan(&orgARequestCount); err != nil {
+			t.Fatalf("count tenant A AI requests: %v", err)
+		}
+		var orgACitationCount int
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM citation_trails WHERE organization_id = $1`, aiAuditOrgA).Scan(&orgACitationCount); err != nil {
+			t.Fatalf("count tenant A citation trails: %v", err)
+		}
+		if orgARequestCount != 2 {
+			t.Fatalf("tenant A AI request count = %d, want 2", orgARequestCount)
+		}
+		if orgACitationCount != 1 {
+			t.Fatalf("tenant A citation count = %d, want 1", orgACitationCount)
+		}
+	})
+
+	withAIAuditTenant(ctx, t, db, aiAuditOrgB, func(ctx context.Context, tx pgx.Tx) {
+		var orgBRequestCount int
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM ai_request_logs WHERE organization_id = $1 AND user_id = $2`, aiAuditOrgB, aiAuditUserB).Scan(&orgBRequestCount); err != nil {
+			t.Fatalf("count tenant B AI requests: %v", err)
+		}
+		var orgBCitationCount int
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM citation_trails WHERE organization_id = $1`, aiAuditOrgB).Scan(&orgBCitationCount); err != nil {
+			t.Fatalf("count tenant B citation trails: %v", err)
+		}
+		if orgBRequestCount != 1 {
+			t.Fatalf("tenant B AI request count = %d, want 1", orgBRequestCount)
+		}
+		if orgBCitationCount != 1 {
+			t.Fatalf("tenant B citation count = %d, want 1", orgBCitationCount)
+		}
+	})
+
+	withAIAuditTenant(ctx, t, db, aiAuditOrgA, func(ctx context.Context, tx pgx.Tx) {
+		var crossTenantView int
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM ai_request_logs WHERE user_id = $1`, aiAuditUserB).Scan(&crossTenantView); err != nil {
+			t.Fatalf("cross-tenant AI read check for tenant A: %v", err)
+		}
+		if crossTenantView != 0 {
+			t.Fatalf("tenant A can read tenant B AI request logs: %d", crossTenantView)
+		}
+	})
+	withAIAuditTenant(ctx, t, db, aiAuditOrgB, func(ctx context.Context, tx pgx.Tx) {
+		var crossTenantView int
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM ai_request_logs WHERE user_id = $1`, aiAuditUserA).Scan(&crossTenantView); err != nil {
+			t.Fatalf("cross-tenant AI read check for tenant B: %v", err)
+		}
+		if crossTenantView != 0 {
+			t.Fatalf("tenant B can read tenant A AI request logs: %d", crossTenantView)
+		}
+	})
+}
+
 type fakeAIVectorDB struct{}
 
 func (fakeAIVectorDB) Search(context.Context, string, string, int) ([]ai.SearchResult, error) {

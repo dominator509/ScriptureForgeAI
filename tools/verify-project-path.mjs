@@ -174,10 +174,18 @@ export function windowsFallbackDirectoriesForCommand(name, env = process.env, { 
 
   if (name === 'cargo' || name === 'rustc') {
     directories.push(pathJoin(repoRoot, '.tools', 'cargo', 'bin'));
+    directories.push(...discoverRepoRustToolchainBins(repoRoot));
+    if (userProfile) {
+      directories.push(pathJoin(userProfile, '.cargo', 'bin'));
+    }
   }
 
   if (name === 'terraform') {
     directories.push(pathJoin(repoRoot, '.tools', 'terraform'));
+  }
+
+  if (name === 'protoc') {
+    directories.push(pathJoin(repoRoot, '.tools', 'bin'));
   }
 
   if (name === 'gopls') {
@@ -251,6 +259,18 @@ function discoverChildDirectories(root) {
     return readdirSync(root, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name);
+  } catch {
+    return [];
+  }
+}
+
+function discoverRepoRustToolchainBins(repoRoot) {
+  const toolchainRoot = join(repoRoot, '.tools', 'rustup', 'toolchains');
+  try {
+    return readdirSync(toolchainRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => join(toolchainRoot, entry.name, 'bin'))
+      .filter((entry) => existsSync(entry));
   } catch {
     return [];
   }

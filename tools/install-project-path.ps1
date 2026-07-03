@@ -7,6 +7,17 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $homeProfile = [Environment]::GetFolderPath("UserProfile")
 $localAppData = [Environment]::GetFolderPath("LocalApplicationData")
+$rustupToolchainRoot = Join-Path $repoRoot ".tools\rustup\toolchains"
+
+$rustupCandidateEntries = @()
+if (Test-Path -LiteralPath $rustupToolchainRoot) {
+  foreach ($toolchain in Get-ChildItem -Path $rustupToolchainRoot -Directory) {
+    $candidateBin = Join-Path $toolchain.FullName "bin"
+    if (Test-Path -LiteralPath $candidateBin) {
+      $rustupCandidateEntries += $candidateBin
+    }
+  }
+}
 
 $candidateEntries = @(
   (Join-Path $repoRoot ".tools\go\bin"),
@@ -15,6 +26,7 @@ $candidateEntries = @(
   (Join-Path $repoRoot ".tools\bin"),
   (Join-Path $homeProfile ".local\bin"),
   "C:\Users\domin\.local\bin",
+  (Join-Path $homeProfile ".cargo\bin"),
   (Join-Path $env:USERPROFILE "go\bin"),
   (Join-Path $homeProfile "go\bin"),
   "C:\Users\domin\go\bin",
@@ -40,6 +52,10 @@ $candidateEntries = @(
   "C:\Program Files (x86)\PostgreSQL\13\bin",
   "C:\Program Files (x86)\PostgreSQL\12\bin"
 ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+
+if ($rustupCandidateEntries.Count -gt 0) {
+  $candidateEntries = @($candidateEntries + $rustupCandidateEntries)
+}
 
 $existingUserPath = [Environment]::GetEnvironmentVariable("Path", "User")
 $existingEntries = @($existingUserPath -split ";" | Where-Object { $_ -ne "" })

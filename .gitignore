@@ -14,8 +14,10 @@ target/
 .tools/
 .tmp/
 .gocache/
+.gomodcache/
 .npm-cache/
 artifacts/
+_workcopy/
 production-readiness/staging-evidence.*.json
 !production-readiness/staging-evidence.example.json
 .terraform/

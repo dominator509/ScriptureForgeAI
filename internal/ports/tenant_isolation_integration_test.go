@@ -463,6 +463,75 @@ func TestSocketStreamIsTenantScoped(t *testing.T) {
 	}
 }
 
+func TestAuthRefreshLogoutHonorTenantIsolation(t *testing.T) {
+	db := openTenantIsolationDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	seedTenantIsolationFixtures(ctx, t, db)
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		cleanupTenantIsolationFixtures(cleanupCtx, t, db)
+	})
+
+	refreshToken := createTenantScopedRefreshToken(ctx, t, db, tenantIsolationOrgA, tenantIsolationUserA)
+	if refreshToken == "" {
+		t.Fatal("tenant A refresh token should be generated")
+	}
+
+	handler := &AuthHandler{DB: db}
+
+	crossRefresh := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", strings.NewReader(`{"refresh_token":"`+refreshToken+`","organization_id":"`+tenantIsolationOrgB+`"}`))
+	crossRefreshRec := httptest.NewRecorder()
+	handler.RefreshHandler(crossRefreshRec, crossRefresh)
+	if crossRefreshRec.Code != http.StatusUnauthorized {
+		t.Fatalf("cross-tenant refresh status = %d body = %s", crossRefreshRec.Code, crossRefreshRec.Body.String())
+	}
+
+	withTenantIsolationContext(ctx, t, db, tenantIsolationOrgB, func(ctx context.Context, tx pgx.Tx) {
+		var crossTenantTokenCount int
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM refresh_tokens WHERE token_hash = $1`, hashToken(refreshToken)).Scan(&crossTenantTokenCount); err != nil {
+			t.Fatalf("query cross-tenant refresh token visibility: %v", err)
+		}
+		if crossTenantTokenCount != 0 {
+			t.Fatalf("cross-tenant token visibility leaked token count=%d", crossTenantTokenCount)
+		}
+	})
+
+	sameTenantRefresh := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", strings.NewReader(`{"refresh_token":"`+refreshToken+`","organization_id":"`+tenantIsolationOrgA+`"}`))
+	sameTenantRefreshRec := httptest.NewRecorder()
+	handler.RefreshHandler(sameTenantRefreshRec, sameTenantRefresh)
+	if sameTenantRefreshRec.Code != http.StatusOK {
+		t.Fatalf("same-tenant refresh status = %d body = %s", sameTenantRefreshRec.Code, sameTenantRefreshRec.Body.String())
+	}
+	var refreshed AuthResponse
+	if err := json.Unmarshal(sameTenantRefreshRec.Body.Bytes(), &refreshed); err != nil {
+		t.Fatalf("decode same-tenant refresh response: %v", err)
+	}
+	if refreshed.UserID != tenantIsolationUserA || refreshed.OrganizationID != tenantIsolationOrgA {
+		t.Fatalf("same-tenant refresh response unexpected identity: %+v", refreshed)
+	}
+	if refreshed.RefreshToken == "" || refreshed.Token == "" {
+		t.Fatalf("same-tenant refresh response missing tokens: %+v", refreshed)
+	}
+
+	tenantALogoutReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", strings.NewReader(`{"refresh_token":"`+refreshed.RefreshToken+`","organization_id":"`+tenantIsolationOrgA+`"}`))
+	tenantALogoutRec := httptest.NewRecorder()
+	handler.LogoutHandler(tenantALogoutRec, tenantALogoutReq)
+	if tenantALogoutRec.Code != http.StatusNoContent {
+		t.Fatalf("tenant A logout status = %d body = %s", tenantALogoutRec.Code, tenantALogoutRec.Body.String())
+	}
+
+	assertRefreshTokenRevocation(ctx, t, db, tenantIsolationOrgA, refreshed.RefreshToken, true)
+
+	crossLogout := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", strings.NewReader(`{"refresh_token":"`+refreshed.RefreshToken+`","organization_id":"`+tenantIsolationOrgB+`"}`))
+	crossLogoutRec := httptest.NewRecorder()
+	handler.LogoutHandler(crossLogoutRec, crossLogout)
+	if crossLogoutRec.Code != http.StatusUnauthorized {
+		t.Fatalf("cross-tenant logout status = %d body = %s", crossLogoutRec.Code, crossLogoutRec.Body.String())
+	}
+}
+
 type tenantIsolationStateStore struct{}
 
 func (tenantIsolationStateStore) SetRoomActiveState(context.Context, string, bool) error { return nil }
@@ -499,6 +568,38 @@ func assertCrossTenantWriteBlocked(t *testing.T, ctx context.Context, db *pgxpoo
 		}
 		if countAfter != countBefore {
 			t.Fatalf("cross-tenant write changed owner data row count: before=%d after=%d", countBefore, countAfter)
+		}
+	})
+}
+
+func createTenantScopedRefreshToken(ctx context.Context, t *testing.T, db *pgxpool.Pool, orgID, userID string) string {
+	t.Helper()
+	var token string
+	withTenantIsolationContext(ctx, t, db, orgID, func(ctx context.Context, tx pgx.Tx) {
+		var err error
+		token, err = storeRefreshToken(ctx, tx, userID, orgID, nil)
+		if err != nil {
+			t.Fatalf("create refresh token for tenant %s user %s: %v", orgID, userID, err)
+		}
+	})
+	return token
+}
+
+func assertRefreshTokenRevocation(ctx context.Context, t *testing.T, db *pgxpool.Pool, orgID, token string, revoked bool) {
+	t.Helper()
+	withTenantIsolationContext(ctx, t, db, orgID, func(ctx context.Context, tx pgx.Tx) {
+		var count int
+		var query string
+		if revoked {
+			query = `SELECT COUNT(*) FROM refresh_tokens WHERE organization_id = $1 AND token_hash = $2 AND revoked_at IS NOT NULL`
+		} else {
+			query = `SELECT COUNT(*) FROM refresh_tokens WHERE organization_id = $1 AND token_hash = $2 AND revoked_at IS NULL`
+		}
+		if err := tx.QueryRow(ctx, query, orgID, hashToken(token)).Scan(&count); err != nil {
+			t.Fatalf("query refresh token revocation state for tenant %s: %v", orgID, err)
+		}
+		if count != 1 {
+			t.Fatalf("refresh token revocation state for tenant %s token revoked=%v expected 1 row, got %d", orgID, revoked, count)
 		}
 	})
 }

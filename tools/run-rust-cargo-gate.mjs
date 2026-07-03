@@ -97,12 +97,22 @@ export function runRustCargoGate({
     ...env,
     PROTOC: '__scriptureforge_invalid_ambient_protoc__',
   };
-  const result = spawnSyncImpl(bin, args, {
+  let runBin = bin;
+  let result = spawnSyncImpl(runBin, args, {
     cwd,
     env: cargoEnv,
     encoding: 'utf8',
     shell: false,
   });
+  if (result.error?.code === 'ENOENT' && /^cargo(\.exe)?$/i.test(runBin)) {
+    runBin = defaultCargoBin(process.platform);
+    result = spawnSyncImpl(runBin, args, {
+      cwd,
+      env: cargoEnv,
+      encoding: 'utf8',
+      shell: false,
+    });
+  }
   const stdout = result.stdout ?? '';
   const stderr = result.stderr ?? '';
   const combined = `${stdout}\n${stderr}`;

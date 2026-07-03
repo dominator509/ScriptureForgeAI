@@ -6,6 +6,9 @@ languages:
   - terraform
   - markdown
   - yaml
+backend: lsp
+headless: true
+quiet: true
 encoding: "utf-8"
 line_ending:
 language_backend: LSP
@@ -18,22 +21,39 @@ additional_workspace_folders:
   - production-readiness
   - tools
 ignored_paths:
+  - _workcopy
+  - _temp_copy
+  - .cache
+  - .gomodcache
   - node_modules
   - web/node_modules
   - mobile/node_modules
   - .next
   - web/.next
+  - .serena
+  - .serena/memories
+  - .obsidian
+  - .output
   - dist
+  - out
+  - artifacts
+  - .gopath
   - coverage
+  - tmp
   - target
+  - vendor
   - services/scripture-engine/target
+  - production-readiness/target
   - .terraform
   - build/terraform/.terraform
-  - artifacts
+  - .terraform.lock.hcl
+  - build/terraform/.terraform.lock.hcl
   - .tools
   - .gocache
   - .npm-cache
+  - .tmp
   - .serena/cache
+  - .serena/logs
   - "*.tsbuildinfo"
   - "*.tfstate"
   - "*.tfstate.*"
