@@ -109,7 +109,7 @@ func (c *ZoomClient) CreateMeeting(ctx context.Context, config room.MeetingConfi
 	}
 
 	// Mock response logic if running tests
-	if token == "mock_zoom_token" {
+	if token == "mock_zoom_token" && os.Getenv("GO_ENV") == "testing" {
 		return &room.MeetingDetails{
 			ID:       "mock-meeting-123",
 			JoinURL:  "https://zoom.us/j/mock-meeting-123",
@@ -193,7 +193,7 @@ func (c *ZoomClient) TerminateMeeting(ctx context.Context, meetingID string) err
 		return err
 	}
 
-	if token == "mock_zoom_token" {
+	if token == "mock_zoom_token" && os.Getenv("GO_ENV") == "testing" {
 		return nil
 	}
 
@@ -238,7 +238,7 @@ func (c *ZoomClient) GetMeetingStatus(ctx context.Context, meetingID string) (st
 		return "", err
 	}
 
-	if token == "mock_zoom_token" {
+	if token == "mock_zoom_token" && os.Getenv("GO_ENV") == "testing" {
 		return "waiting", nil
 	}
 
