@@ -40,8 +40,10 @@ export async function deriveIsolationKey(passphrase: string, salt: string): Prom
 function bufferToBase64(buffer: ArrayBuffer): string {
     const bytes = new Uint8Array(buffer);
     let binary = '';
-    for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i]!);
+    const CHUNK_SIZE = 8192; // Safe chunk size to avoid call stack limits
+    for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+        const chunk = bytes.subarray(i, i + CHUNK_SIZE);
+        binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
     }
     return window.btoa(binary);
 }
