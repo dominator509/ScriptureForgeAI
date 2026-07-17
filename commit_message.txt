@@ -1,5 +1,0 @@
-⚡ performance improvement: batch string concatenation in bufferToBase64
-
-💡 What: Replaced iterative character appending (`+=`) in `bufferToBase64` with a chunk-based `String.fromCharCode.apply` strategy.
-🎯 Why: Iteratively appending strings created thousands of intermediate string objects which severely negatively impacted CPU and memory performance for larger buffer arrays.
-📊 Measured Improvement: Before the change, running 50 iterations of converting a 1MB payload to base64 took ~5681ms. After the change, with chunks of 8192 bytes, the same code path took ~507ms, an ~11x performance increase.
