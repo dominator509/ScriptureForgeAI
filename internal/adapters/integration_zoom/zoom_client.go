@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"sync"
 	"time"
@@ -70,7 +71,7 @@ func (c *ZoomClient) getAccessToken(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("zoom credentials are not fully configured")
 	}
 
-	url := fmt.Sprintf("https://zoom.us/oauth/token?grant_type=account_credentials&account_id=%s", c.AccountID)
+	url := fmt.Sprintf("https://zoom.us/oauth/token?grant_type=account_credentials&account_id=%s", url.QueryEscape(c.AccountID))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
 	if err != nil {
 		return "", err
@@ -203,7 +204,7 @@ func (c *ZoomClient) TerminateMeeting(ctx context.Context, meetingID string) err
 	payload := zoomActionPayload{Action: "end"}
 	body, _ := json.Marshal(payload)
 
-	url := fmt.Sprintf("https://api.zoom.us/v2/meetings/%s/status", meetingID)
+	url := fmt.Sprintf("https://api.zoom.us/v2/meetings/%s/status", url.PathEscape(meetingID))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewBuffer(body))
 	if err != nil {
 		return err
@@ -242,7 +243,7 @@ func (c *ZoomClient) GetMeetingStatus(ctx context.Context, meetingID string) (st
 		return "waiting", nil
 	}
 
-	url := fmt.Sprintf("https://api.zoom.us/v2/meetings/%s", meetingID)
+	url := fmt.Sprintf("https://api.zoom.us/v2/meetings/%s", url.PathEscape(meetingID))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", err
