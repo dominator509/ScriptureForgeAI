@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"scriptureforge/scriptureforge/proto/engine"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"scriptureforge/scriptureforge/proto/engine"
 )
 
 // SearchResult models the expected return from the scripture engine

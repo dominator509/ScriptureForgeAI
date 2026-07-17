@@ -1,8 +1,8 @@
 package unit
 
 import (
-	"testing"
 	"scriptureforge/internal/domain/ai"
+	"testing"
 )
 
 // FuzzSanitizeInput targets the active prompt ingestion filtering component
