@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"regexp"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"scriptureforge/internal/adapters/llm"
 	"scriptureforge/internal/domain/ai"
@@ -58,15 +59,23 @@ func (h *AIHandler) writeAIRequestLog(r *http.Request, claims *auth.TokenClaims,
 	if err != nil {
 		return
 	}
-	for _, match := range auditCitationRegex.FindAllString(response, -1) {
-		_, _ = tx.Exec(
-			r.Context(),
-			`INSERT INTO citation_trails (organization_id, ai_request_log_id, citation, verified)
+	matches := auditCitationRegex.FindAllString(response, -1)
+	if len(matches) > 0 {
+		b := &pgx.Batch{}
+		for _, match := range matches {
+			b.Queue(
+				`INSERT INTO citation_trails (organization_id, ai_request_log_id, citation, verified)
 			 VALUES ($1, $2, $3, TRUE)`,
-			claims.OrganizationID,
-			logID,
-			match,
-		)
+				claims.OrganizationID,
+				logID,
+				match,
+			)
+		}
+		br := tx.SendBatch(r.Context(), b)
+		for i := 0; i < len(matches); i++ {
+			_, _ = br.Exec()
+		}
+		_ = br.Close()
 	}
 	_ = tx.Commit(r.Context())
 }
