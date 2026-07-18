@@ -20,7 +20,7 @@ func TestAILogicBoundary(t *testing.T) {
 
 	// Test 1: Valid Citation provided in Context (Expected Success)
 	validContext := "VALIDATED SCRIPTURAL CONTEXT:\n\n[Genesis 1:1] In the beginning God created the heaven and the earth."
-	_, err := client.Execute(ctx, "Tell me about creation", validContext, verifier)
+	_, err := client.CreateCompletion(ctx, "Tell me about creation", validContext, verifier)
 	if err != nil {
 		pe, ok := err.(*ai.PlatformException)
 		if !ok || pe.Category != "AI_CONFIGURATION_FAULT" || !strings.Contains(pe.Message, "OPENAI_API_KEY") {

@@ -24,7 +24,7 @@ type LLMClient struct {
 	MaxRetries int
 }
 
-type openaiRequest struct {
+type CompletionRequest struct {
 	Model    string          `json:"model"`
 	Messages []openaiMessage `json:"messages"`
 	Temp     float32         `json:"temperature"`
@@ -35,7 +35,7 @@ type openaiMessage struct {
 	Content string `json:"content"`
 }
 
-type openaiResponse struct {
+type CompletionResponse struct {
 	Choices []struct {
 		Message openaiMessage `json:"message"`
 	} `json:"choices"`
@@ -90,11 +90,10 @@ func (c *LLMClient) BuildRigorousPrompt(safePrompt string, compiledContext strin
 	}
 }
 
-// Execute triggers the network call, processes the boundaries, and runs verification.
-func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledContext string, verifier *ai.ResponseVerificationSubsystem) (string, error) {
+// CreateCompletion triggers the network call, processes the boundaries, and runs verification.
+func (c *LLMClient) CreateCompletion(ctx context.Context, safePrompt string, compiledContext string, verifier *ai.ResponseVerificationSubsystem) (string, error) {
 	if c.APIKey == "" {
 		if os.Getenv("GO_ENV") == "testing" {
-			// Fail-safe for test environments lacking network connectivity
 			return "As stated, [Genesis 1:1] In the beginning God created the heaven and the earth.", nil
 		}
 		return "", &ai.PlatformException{
@@ -106,12 +105,26 @@ func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledCont
 
 	messages := c.BuildRigorousPrompt(safePrompt, compiledContext)
 
-	reqBody := openaiRequest{
+	reqBody := CompletionRequest{
 		Model:    c.Model,
 		Messages: messages,
-		Temp:     0.0, // Zero temperature for deterministic output bounding
+		Temp:     0.0,
 	}
 
+	generatedResponse, err := c.performRequest(ctx, reqBody)
+	if err != nil {
+		return "", err
+	}
+
+	// Explicit Response Verification Subsystem Integration
+	if err := verifier.Verify(generatedResponse, compiledContext); err != nil {
+		return "", err // Output score dropped, fault returned immediately
+	}
+
+	return generatedResponse, nil
+}
+
+func (c *LLMClient) performRequest(ctx context.Context, reqBody CompletionRequest) (string, error) {
 	jsonBody, err := json.Marshal(reqBody)
 	if err != nil {
 		return "", err
@@ -149,7 +162,7 @@ func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledCont
 		return "", fmt.Errorf("LLM API returned status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	var aiResp openaiResponse
+	var aiResp CompletionResponse
 	if err := json.NewDecoder(resp.Body).Decode(&aiResp); err != nil {
 		return "", err
 	}
@@ -158,12 +171,5 @@ func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledCont
 		return "", fmt.Errorf("no choices returned from LLM")
 	}
 
-	generatedResponse := aiResp.Choices[0].Message.Content
-
-	// Explicit Response Verification Subsystem Integration
-	if err := verifier.Verify(generatedResponse, compiledContext); err != nil {
-		return "", err // Output score dropped, fault returned immediately
-	}
-
-	return generatedResponse, nil
+	return aiResp.Choices[0].Message.Content, nil
 }
