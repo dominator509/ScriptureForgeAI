@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "start": "expo start",
+    "build": "npm run build:check",
     "typecheck": "tsc --noEmit",
     "smoke": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test src/lib/api.smoke.mts src/lib/crypto.smoke.mts",
     "verify:crypto": "node ../tools/verify-journal-crypto.mjs",
@@ -11,7 +12,7 @@
   },
   "dependencies": {
     "buffer": "^6.0.3",
-    "expo": "^56.0.12",
+    "expo": "^56.0.17",
     "react": "19.2.7",
     "react-native": "^0.86.0",
     "react-native-quick-crypto": "^0.7.15",
