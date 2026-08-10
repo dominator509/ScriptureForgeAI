@@ -72,7 +72,7 @@ test('runRustCargoGate emits proof markers after validating cargo output', () =>
 });
 
 test('runRustCargoGate falls back to repo-local cargo path when plain cargo is unavailable', () => {
-  const fallbackBin = '.\\.tools\\cargo\\bin\\cargo.exe';
+  const fallbackBin = defaultCargoBin(process.platform);
   const result = runRustCargoGate({
     bin: 'cargo',
     spawnSyncImpl(command, args, options) {

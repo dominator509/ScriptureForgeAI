@@ -145,12 +145,14 @@ function resolveWindowsPathManually(name) {
   return matches;
 }
 
-export function windowsFallbackDirectoriesForCommand(name, env = process.env, { platformName = platform() } = {}) {
+export function windowsFallbackDirectoriesForCommand(name, env = process.env, {
+  platformName = platform(),
+  repoRoot = process.cwd(),
+} = {}) {
   if (platformName !== 'win32') {
     return [];
   }
   const pathJoin = platformName === 'win32' ? pathWin32.join : join;
-  const repoRoot = process.cwd();
   const programFiles = [
     env.ProgramFiles,
     env['ProgramFiles(x86)'],
@@ -174,7 +176,7 @@ export function windowsFallbackDirectoriesForCommand(name, env = process.env, { 
 
   if (name === 'cargo' || name === 'rustc') {
     directories.push(pathJoin(repoRoot, '.tools', 'cargo', 'bin'));
-    directories.push(...discoverRepoRustToolchainBins(repoRoot));
+    directories.push(...discoverRepoRustToolchainBins(repoRoot, platformName));
     if (userProfile) {
       directories.push(pathJoin(userProfile, '.cargo', 'bin'));
     }
@@ -264,12 +266,14 @@ function discoverChildDirectories(root) {
   }
 }
 
-function discoverRepoRustToolchainBins(repoRoot) {
+function discoverRepoRustToolchainBins(repoRoot, platformName = platform()) {
   const toolchainRoot = join(repoRoot, '.tools', 'rustup', 'toolchains');
   try {
     return readdirSync(toolchainRoot, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
-      .map((entry) => join(toolchainRoot, entry.name, 'bin'))
+      .map((entry) => (platformName === 'win32'
+        ? pathWin32.join(repoRoot, '.tools', 'rustup', 'toolchains', entry.name, 'bin')
+        : join(toolchainRoot, entry.name, 'bin')))
       .filter((entry) => existsSync(entry));
   } catch {
     return [];

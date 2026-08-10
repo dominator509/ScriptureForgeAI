@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import test from 'node:test';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { buildPathReport, checkVendoredProtocCoverage, ciPathProofMarkers, ciStrictStagingPathProofMarkers, formatPathReport, requiredCommands, windowsFallbackDirectoriesForCommand } from './verify-project-path.mjs';
 
 test('project path report fails closed when a required command is missing', () => {
@@ -319,43 +321,50 @@ test('Windows fallback directories include RTK and GitHub CLI installs', () => {
   );
 });
 
-test('Windows fallback directories include repo-local build toolchains', () => {
+test('Windows fallback directories include repo-local build toolchains', async () => {
   const env = {
     USERPROFILE: 'C:\\Users\\domin',
   };
+  const fixtureRoot = await mkdtemp(join(tmpdir(), 'scriptureforge-path-'));
+  await mkdir(join(fixtureRoot, '.tools', 'rustup', 'toolchains', 'stable-x86_64-pc-windows-msvc', 'bin'), { recursive: true });
+  const fallbackOptions = { platformName: 'win32', repoRoot: fixtureRoot };
 
-  assert.ok(
-    windowsFallbackDirectoriesForCommand('go', env, { platformName: 'win32' }).some((entry) => entry.endsWith('.tools\\go\\bin')),
-    'repo-local Go bin should be searched',
-  );
-  assert.ok(
-    windowsFallbackDirectoriesForCommand('cargo', env, { platformName: 'win32' }).some((entry) => entry.endsWith('.tools\\cargo\\bin')),
-    'repo-local Cargo bin should be searched',
-  );
-  assert.ok(
-    windowsFallbackDirectoriesForCommand('rustc', env, { platformName: 'win32' }).some((entry) => entry.endsWith('.tools\\cargo\\bin')),
-    'repo-local rustc bin should be searched',
-  );
-  assert.ok(
-    windowsFallbackDirectoriesForCommand('cargo', env, { platformName: 'win32' }).some((entry) => entry.includes('.tools\\rustup\\toolchains\\') && entry.endsWith('\\bin')),
-    'repo-local Rustup toolchain bin should be searched',
-  );
-  assert.ok(
-    windowsFallbackDirectoriesForCommand('rustc', env, { platformName: 'win32' }).some((entry) => entry.includes('.tools\\rustup\\toolchains\\') && entry.endsWith('\\bin')),
-    'repo-local rustc toolchain path should be searched',
-  );
-  assert.ok(
-    windowsFallbackDirectoriesForCommand('terraform', env, { platformName: 'win32' }).some((entry) => entry.endsWith('.tools\\terraform')),
-    'repo-local Terraform dir should be searched',
-  );
-  assert.ok(
-    windowsFallbackDirectoriesForCommand('protoc', env, { platformName: 'win32' }).some((entry) => entry.endsWith('.tools\\bin')),
-    'repo-local .tools\\bin should be searched',
-  );
-  assert.ok(
-    windowsFallbackDirectoriesForCommand('gopls', env, { platformName: 'win32' }).some((entry) => entry.endsWith('go\\bin')),
-    'Go tool bin directories should be searched for gopls',
-  );
+  try {
+    assert.ok(
+      windowsFallbackDirectoriesForCommand('go', env, fallbackOptions).some((entry) => entry.endsWith('.tools\\go\\bin')),
+      'repo-local Go bin should be searched',
+    );
+    assert.ok(
+      windowsFallbackDirectoriesForCommand('cargo', env, fallbackOptions).some((entry) => entry.endsWith('.tools\\cargo\\bin')),
+      'repo-local Cargo bin should be searched',
+    );
+    assert.ok(
+      windowsFallbackDirectoriesForCommand('rustc', env, fallbackOptions).some((entry) => entry.endsWith('.tools\\cargo\\bin')),
+      'repo-local rustc bin should be searched',
+    );
+    assert.ok(
+      windowsFallbackDirectoriesForCommand('cargo', env, fallbackOptions).some((entry) => entry.includes('.tools\\rustup\\toolchains\\') && entry.endsWith('\\bin')),
+      'repo-local Rustup toolchain bin should be searched',
+    );
+    assert.ok(
+      windowsFallbackDirectoriesForCommand('rustc', env, fallbackOptions).some((entry) => entry.includes('.tools\\rustup\\toolchains\\') && entry.endsWith('\\bin')),
+      'repo-local rustc toolchain path should be searched',
+    );
+    assert.ok(
+      windowsFallbackDirectoriesForCommand('terraform', env, fallbackOptions).some((entry) => entry.endsWith('.tools\\terraform')),
+      'repo-local Terraform dir should be searched',
+    );
+    assert.ok(
+      windowsFallbackDirectoriesForCommand('protoc', env, fallbackOptions).some((entry) => entry.endsWith('.tools\\bin')),
+      'repo-local .tools\\bin should be searched',
+    );
+    assert.ok(
+      windowsFallbackDirectoriesForCommand('gopls', env, fallbackOptions).some((entry) => entry.endsWith('go\\bin')),
+      'Go tool bin directories should be searched for gopls',
+    );
+  } finally {
+    await rm(fixtureRoot, { recursive: true, force: true });
+  }
 });
 
 test('Windows activation scripts include older supported PostgreSQL client bins', async () => {

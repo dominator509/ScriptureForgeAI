@@ -451,7 +451,8 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 		 WHERE rt.token_hash = $1
 		   AND rt.organization_id = $2
 		   AND rt.revoked_at IS NULL
-		   AND rt.expires_at > CURRENT_TIMESTAMP`,
+		   AND rt.expires_at > CURRENT_TIMESTAMP
+		 FOR UPDATE`,
 		hashToken(req.RefreshToken),
 		req.OrganizationID,
 	).Scan(&tokenID, &userID, &orgID, &role)
@@ -461,8 +462,14 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := tx.Exec(r.Context(), `UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE id = $1`, tokenID); err != nil {
+	result, err := tx.Exec(r.Context(), `UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE id = $1 AND organization_id = $2 AND revoked_at IS NULL`, tokenID, orgID)
+	if err != nil {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to rotate refresh token", Code: http.StatusInternalServerError})
+		return
+	}
+	if result.RowsAffected() != 1 {
+		metricStatus = "invalid_or_expired"
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid or expired refresh token", Code: http.StatusUnauthorized})
 		return
 	}
 

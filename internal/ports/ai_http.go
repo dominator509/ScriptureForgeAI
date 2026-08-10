@@ -2,8 +2,10 @@ package ports
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"regexp"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"scriptureforge/internal/adapters/llm"
@@ -22,6 +24,12 @@ type AIHandler struct {
 type CurriculumRequest struct {
 	Topic string `json:"topic"`
 }
+
+const (
+	maxAIRequestBodyBytes = 64 * 1024
+	maxAITopicCharacters = 16 * 1024
+	maxAIChunks           = 64
+)
 
 func sendAIError(w http.ResponseWriter, pe *ai.PlatformException) {
 	w.Header().Set("Content-Type", "application/json")
@@ -83,8 +91,20 @@ func (h *AIHandler) GenerateCurriculumHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxAIRequestBodyBytes)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
 	var req CurriculumRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decoder.Decode(&req); err != nil {
+		if _, ok := err.(*http.MaxBytesError); ok {
+			sendAIError(w, &ai.PlatformException{Category: "PAYLOAD_FAULT", Message: "AI request payload is too large", Code: http.StatusRequestEntityTooLarge})
+			return
+		}
+		sendAIError(w, &ai.PlatformException{Category: "PAYLOAD_FAULT", Message: "Invalid request payload", Code: http.StatusBadRequest})
+		return
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
 		sendAIError(w, &ai.PlatformException{Category: "PAYLOAD_FAULT", Message: "Invalid request payload", Code: http.StatusBadRequest})
 		return
 	}
@@ -93,10 +113,18 @@ func (h *AIHandler) GenerateCurriculumHandler(w http.ResponseWriter, r *http.Req
 		sendAIError(w, &ai.PlatformException{Category: "VALIDATION_FAULT", Message: "Topic is required", Code: http.StatusBadRequest})
 		return
 	}
+	if utf8.RuneCountInString(req.Topic) > maxAITopicCharacters {
+		sendAIError(w, &ai.PlatformException{Category: "VALIDATION_FAULT", Message: "Topic exceeds the maximum length", Code: http.StatusRequestEntityTooLarge})
+		return
+	}
 
 	// 1. MapReduce Chunk Processing
 	// If the topic is an extensive textual outline, we divide it to protect context windows.
 	chunks := h.MapReduceWorker.Chunk(req.Topic)
+	if len(chunks) > maxAIChunks {
+		sendAIError(w, &ai.PlatformException{Category: "VALIDATION_FAULT", Message: "Topic produces too much work", Code: http.StatusRequestEntityTooLarge})
+		return
+	}
 	var completeCurriculum string
 
 	for _, chunk := range chunks {

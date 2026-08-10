@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -173,6 +174,47 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 	login := decodeAuthResponse(t, loginRecorder)
 	if login.RefreshToken == "" || login.RefreshToken == registered.RefreshToken {
 		t.Fatalf("login refresh token = %q, want a new opaque token", login.RefreshToken)
+	}
+
+	raceLoginRecorder := httptest.NewRecorder()
+	handler.LoginHandler(raceLoginRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/login", map[string]any{
+		"email":           authUserEmail,
+		"password":        authPassword,
+		"organization_id": authOrgID,
+	}, observer))
+	if raceLoginRecorder.Code != http.StatusOK {
+		t.Fatalf("concurrent refresh setup login status = %d body = %s", raceLoginRecorder.Code, raceLoginRecorder.Body.String())
+	}
+	raceLogin := decodeAuthResponse(t, raceLoginRecorder)
+	var refreshWG sync.WaitGroup
+	raceResults := make(chan int, 2)
+	for i := 0; i < 2; i++ {
+		refreshWG.Add(1)
+		go func() {
+			defer refreshWG.Done()
+			recorder := httptest.NewRecorder()
+			handler.RefreshHandler(recorder, authJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
+				"refresh_token":   raceLogin.RefreshToken,
+				"organization_id": authOrgID,
+			}))
+			raceResults <- recorder.Code
+		}()
+	}
+	refreshWG.Wait()
+	close(raceResults)
+	var raceSuccesses, raceDenials int
+	for status := range raceResults {
+		switch status {
+		case http.StatusOK:
+			raceSuccesses++
+		case http.StatusUnauthorized:
+			raceDenials++
+		default:
+			t.Fatalf("concurrent refresh status = %d, want one 200 and one 401", status)
+		}
+	}
+	if raceSuccesses != 1 || raceDenials != 1 {
+		t.Fatalf("concurrent refresh results successes=%d denials=%d, want 1/1", raceSuccesses, raceDenials)
 	}
 
 	refreshRecorder := httptest.NewRecorder()
