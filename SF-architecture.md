@@ -91,6 +91,7 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
     *   `POST /api/auth/login` (compatibility alias)
 *   **Data Entities:** `User`, `Organization`, `Workspace`, `Session`, `RefreshToken`.
 *   **Security Considerations:** Cryptographic salt hashing via Argon2id. Multi-factor authentication (MFA) via TOTP protocols is structurally mandatory for `Tenant_Admin` and `Super_Admin` actors.
+*   **Client Session Lifecycle:** Web and mobile clients keep the short-lived JWT in a session bridge, perform one shared refresh-token rotation on `401` responses, surface `requires_mfa` challenges without storing an empty session, and clear the session only when refresh rotation is rejected.
 *   **Failure Modes & Logic Risks:** Tenant bleeding (cross-tenant visibility via corrupted workspace session swapping). Mitigation involves appending `organization_id` implicitly to all database queries via an authenticated context wrapper, completely isolating it from direct client parameters. The authenticated organization context must be validated as a UUID before setting transaction-local `app.current_org_id` for Postgres RLS. Production RLS evidence must preserve a structured manifest proof of exact tenant table names plus same-tenant-visible, cross-tenant-hidden, and write-denied outcomes for every tenant-scoped table.
 
 ### 5.2 Role-Based Access Control (RBAC) & Permissions
@@ -123,6 +124,7 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
     *   `POST /api/webhooks/zoom`
 *   **Data Entities:** `LiveRoom`, `RoomParticipant`, `RealtimeStateEvent`, `AttendanceLog`.
 *   **Security Considerations:** Token authorization inside the initial WebSocket upgrade handshake. Socket identifiers must match active database user accounts. `ALLOWED_WS_ORIGINS` is required in staging and production; if it is missing under `DEPLOYMENT_ENVIRONMENT=staging|production|prod`, WebSocket upgrades fail closed instead of accepting localhost/no-origin fallbacks.
+*   **Client Recovery:** Web and mobile room clients reconnect the canonical WSS stream with bounded exponential backoff and poll `GET /api/v1/rooms/state/{room_id}` while disconnected; rotated access tokens trigger a stream replacement through the session bridge.
 *   **Failure Modes & Logic Risks:** State race conditions (multiple users updating fields or chat states concurrently). Mitigation relies on processing mutations through single-threaded Redis Lua scripts, achieving lockstep linear event tracking. Production evidence for live rooms must prove authenticated WSS load, contiguous Redis sequencing, reconnect behavior, and HTTP polling fallback against the same staged room state, with separate artifacts for replica distribution, reconnect, polling fallback, and Redis telemetry proof; polling fallback evidence must preserve the parsed artifact `latest_sequence` as structured `ws_polling_artifact_latest_sequence` matching the run's maximum accepted sequence.
 
 ---
@@ -426,6 +428,7 @@ The web and mobile frameworks partition client-side information states cleanly t
 *   **Server Cached Mirror State:** Driven by `@tanstack/react-query`. Captures, invalidates, and mirrors persistent backend structures (e.g., resource catalog entries, profile parameters).
 *   **Ephemeral Presentation UI State:** Driven by localized `Zustand` instances. Tracks structural client presentation values (e.g., viewport splitting coordinates, translation comparison panels, current accessibility font sizing modifiers).
 *   **Real-time Collaborative Sync Canvas:** Driven by highly reliable WebSocket pipelines hooked directly to React Context layers. Captures remote state adjustments and maps them down to local UI surfaces with zero interference to focus points.
+*   **Session and Recovery Boundary:** Zustand-backed session bridges update rotated access/refresh pairs atomically for client requests; room views use the canonical WSS stream and authenticated polling fallback, while native-device and deployed-browser behavior remains a staging validation responsibility.
 
 ### 12.2 User Interface Progressive Disclosure Strategy
 To accommodate both novice users and advanced researchers, structural UI visibility adapts dynamically based on the active display mode configuration:

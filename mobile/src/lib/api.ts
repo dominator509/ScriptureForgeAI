@@ -131,6 +131,92 @@ export interface AuthSession {
   requires_mfa?: boolean;
 }
 
+export interface RoomEvent {
+  type: string;
+  room_id: string;
+  sequence: number;
+  payload: unknown;
+  sent_at: string;
+}
+
+export interface ApiErrorBody {
+  category?: string;
+  message?: string;
+  code?: number;
+  requires_mfa?: boolean;
+  user_id?: string;
+  organization_id?: string;
+}
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly body: ApiErrorBody | string | null;
+  readonly category?: string;
+  readonly requiresMFA: boolean;
+
+  constructor(status: number, body: ApiErrorBody | string | null) {
+    const message = typeof body === 'string' ? body : body?.message || `Request failed with ${status}`;
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.body = body;
+    this.category = typeof body === 'string' ? undefined : body?.category;
+    this.requiresMFA = typeof body !== 'string' && body?.requires_mfa === true;
+  }
+}
+
+interface SessionBridge {
+  getSession: () => AuthSession | null;
+  onSessionChange: (session: AuthSession | null) => void;
+}
+
+let sessionBridge: SessionBridge | null = null;
+let refreshInFlight: Promise<AuthSession | null> | null = null;
+
+export function configureSessionBridge(bridge: SessionBridge | null): void {
+  sessionBridge = bridge;
+  refreshInFlight = null;
+}
+
+async function parseErrorBody(response: Response): Promise<ApiErrorBody | string | null> {
+  const text = await response.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as ApiErrorBody;
+  } catch {
+    return text;
+  }
+}
+
+function canRefreshForPath(path: string): boolean {
+  return !path.includes('/auth/');
+}
+
+async function rotateSession(expiredToken: string): Promise<AuthSession | null> {
+  const bridge = sessionBridge;
+  if (!bridge) return null;
+  const current = bridge.getSession();
+  if (!current?.refresh_token || !current.organization_id) return null;
+  if (current.token !== expiredToken) return current;
+  if (!refreshInFlight) {
+    refreshInFlight = refreshSession(current.refresh_token, current.organization_id)
+      .then((session) => {
+        bridge.onSessionChange(session);
+        return session;
+      })
+      .catch((error: unknown) => {
+        if (error instanceof ApiError && error.status === 401) {
+          bridge.onSessionChange(null);
+        }
+        return null;
+      })
+      .finally(() => {
+        refreshInFlight = null;
+      });
+  }
+  return refreshInFlight;
+}
+
 export interface RoomSummary {
   id: string;
   title: string;
@@ -159,14 +245,19 @@ export interface JournalBootstrap {
   salt_version: number;
 }
 
-export async function apiRequest<T>(path: string, token: string | null, init: RequestInit = {}): Promise<T> {
+export async function apiRequest<T>(path: string, token: string | null, init: RequestInit = {}, allowRefresh = true): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('Content-Type', 'application/json');
   if (token) headers.set('Authorization', `Bearer ${token}`);
   const response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
+  if (response.status === 401 && token && allowRefresh && canRefreshForPath(path)) {
+    const session = await rotateSession(token);
+    if (session?.token && session.token !== token) {
+      return apiRequest<T>(path, session.token, init, false);
+    }
+  }
   if (!response.ok) {
-    const body = await response.text();
-    throw new Error(body || `Request failed with ${response.status}`);
+    throw new ApiError(response.status, await parseErrorBody(response));
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
@@ -188,6 +279,17 @@ export async function loginAccount(
   return apiRequest<AuthSession>('/api/v1/auth/login', null, {
     method: 'POST',
     body: JSON.stringify({ email, password, organization_id: organizationId, mfa_code: mfaCode }),
+  }).catch((error: unknown) => {
+    if (error instanceof ApiError && error.requiresMFA && typeof error.body !== 'string' && error.body) {
+      return {
+        token: '',
+        refresh_token: '',
+        user_id: error.body.user_id ?? '',
+        organization_id: error.body.organization_id ?? organizationId,
+        requires_mfa: true,
+      };
+    }
+    throw error;
   });
 }
 
@@ -232,6 +334,10 @@ export async function saveJournalEntry(
 
 export async function getJournalEntry(token: string, entryID: string): Promise<EncryptedJournalEntry> {
   return apiRequest<EncryptedJournalEntry>(`/api/v1/journal_entries/${encodeURIComponent(entryID)}`, token);
+}
+
+export async function getRoomState(token: string, roomID: string): Promise<RoomEvent> {
+  return apiRequest<RoomEvent>(`/api/v1/rooms/state/${encodeURIComponent(roomID)}`, token);
 }
 
 export async function listActiveRooms(token: string): Promise<RoomSummary[]> {

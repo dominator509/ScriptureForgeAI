@@ -831,6 +831,8 @@ Status last updated: 2026-06-28
 
 2026-08-10 CI runtime hardening: `.github/workflows/security.yml` now pins current Node24-compatible action majors for checkout, Go, Node, Terraform, and artifact upload using immutable commit SHAs. `tools/validate-ci-workflow.mjs` and its regression tests reject mutable references and legacy Node20 action majors; the exact pushed run after this update remains required as fresh release evidence.
 
+2026-08-10 client lifecycle hardening: web and mobile API clients now perform single-flight refresh-token rotation after expired access tokens, preserve typed privileged MFA challenges instead of treating them as generic login failures, and reconnect canonical room streams with bounded backoff plus authenticated `GET /api/v1/rooms/state/{room_id}` polling fallback. Web smoke/typecheck and mobile smoke/typecheck pass locally; deployed browser/native staging smoke and recorded `SRC-CI-001` release evidence remain external readiness requirements.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.
@@ -848,4 +850,4 @@ Status last updated: 2026-06-28
 
 ## Current Production Readiness Verdict
 
-Not production-ready. The codebase has useful foundations and several security-aware components, and the local Go/Rust/web/Terraform/mobile-build-compatible/load-harness/observability-artifact/secret-hygiene gate matrix is much stronger, but the repo still lacks a clean pushed CI run, EAS/native mobile evidence, actual production observability collector/backend/import/alert delivery proof, staging performance/load proof, staging deployment proof, external service readiness evidence, and cloud secret-manager/remote-state proof. DRR-002 is closed locally through the repository-owned bounded Metro image-size package, but it remains a maintenance re-evaluation point for future Expo/Metro upgrades.
+Not production-ready. The codebase has useful foundations and several security-aware components, and the local Go/Rust/web/Terraform/mobile-build-compatible/load-harness/observability-artifact/secret-hygiene gate matrix is much stronger. A clean pushed CI run now passes on the current branch (`31431217220`), and client refresh/MFA/room recovery behavior is locally covered, but the repo still lacks recorded exact-release `SRC-CI-001` evidence, EAS/native mobile evidence, actual production observability collector/backend/import/alert delivery proof, staging performance/load proof, staging deployment proof, external service readiness evidence, and cloud secret-manager/remote-state proof. DRR-002 is closed locally through the repository-owned bounded Metro image-size package, but it remains a maintenance re-evaluation point for future Expo/Metro upgrades.

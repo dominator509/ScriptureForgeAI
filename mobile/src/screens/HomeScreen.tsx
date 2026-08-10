@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ScrollView, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { SecureJournalContainer } from '../components/SecureJournalContainer';
-import { createRoom, listActiveRooms, loginAccount, registerAccount } from '../lib/api';
+import { createRoom, getRoomState, listActiveRooms, loginAccount, logoutSession, registerAccount, roomStreamUrl, RoomEvent } from '../lib/api';
 import { useAppStore } from '../lib/store';
 
 export const HomeScreen: React.FC = () => {
@@ -18,6 +18,8 @@ export const HomeScreen: React.FC = () => {
   const [mfaCode, setMfaCode] = useState('');
   const [roomTitle, setRoomTitle] = useState('');
   const [status, setStatus] = useState('Sign in or register to sync rooms and journals.');
+  const [streamStatus, setStreamStatus] = useState('No room selected.');
+  const [latestEvent, setLatestEvent] = useState<RoomEvent | null>(null);
 
   const syncRooms = async (token: string) => {
     const nextRooms = await listActiveRooms(token);
@@ -31,6 +33,8 @@ export const HomeScreen: React.FC = () => {
     try {
       const nextSession = await loginAccount(email, password, organizationId, mfaCode || undefined);
       if (nextSession.requires_mfa) {
+        setSession(null);
+        setRooms([]);
         setStatus('MFA code required for this account.');
         return;
       }
@@ -77,6 +81,100 @@ export const HomeScreen: React.FC = () => {
     }
   };
 
+  const handleLogout = async () => {
+    if (!session) return;
+    const activeSession = session;
+    setSession(null);
+    setRooms([]);
+    try {
+      await logoutSession(activeSession.token, activeSession.refresh_token, activeSession.organization_id);
+      setStatus('Signed out.');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Logout failed.');
+    }
+  };
+
+  useEffect(() => {
+    if (!session || !activeRoomId) {
+      setStreamStatus('Sign in and select a room.');
+      setLatestEvent(null);
+      return undefined;
+    }
+
+    let disposed = false;
+    let socket: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let reconnectAttempt = 0;
+
+    const stopPolling = () => {
+      if (pollTimer !== null) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    };
+
+    const applyEvent = (event: RoomEvent) => {
+      if (disposed || event.room_id !== activeRoomId || !Number.isFinite(event.sequence)) return;
+      setLatestEvent(event);
+      setStreamStatus(`Room sequence ${event.sequence}`);
+    };
+
+    const pollState = async () => {
+      try {
+        const event = await getRoomState(session.token, activeRoomId);
+        if (event.sequence > 0) applyEvent(event);
+      } catch {
+        if (!disposed) setStreamStatus('Room stream and polling fallback unavailable.');
+      }
+    };
+
+    const startPolling = () => {
+      if (pollTimer !== null) return;
+      setStreamStatus('WebSocket unavailable; using polling fallback.');
+      void pollState();
+      pollTimer = setInterval(() => void pollState(), 5000);
+    };
+
+    const connect = () => {
+      if (disposed) return;
+      setStreamStatus('Connecting to room stream.');
+      socket = new WebSocket(roomStreamUrl(activeRoomId, session.token));
+      socket.onopen = () => {
+        reconnectAttempt = 0;
+        stopPolling();
+        setStreamStatus('Room stream connected.');
+        socket?.send(JSON.stringify({ type: 'presence', room_id: activeRoomId, sequence: 0, payload: { status: 'joined' } }));
+      };
+      socket.onmessage = (event) => {
+        try {
+          applyEvent(JSON.parse(event.data) as RoomEvent);
+        } catch {
+          setStreamStatus('Room stream sent an invalid event.');
+        }
+      };
+      socket.onerror = () => {
+        if (!disposed) setStreamStatus('Room stream failed; retrying.');
+      };
+      socket.onclose = () => {
+        socket = null;
+        if (disposed) return;
+        startPolling();
+        const delay = Math.min(1000 * 2 ** reconnectAttempt, 10000);
+        reconnectAttempt = Math.min(reconnectAttempt + 1, 4);
+        reconnectTimer = setTimeout(connect, delay);
+      };
+    };
+
+    connect();
+    return () => {
+      disposed = true;
+      stopPolling();
+      if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+      socket?.close();
+    };
+  }, [activeRoomId, session?.token]);
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
@@ -98,6 +196,11 @@ export const HomeScreen: React.FC = () => {
             <Text style={styles.secondaryButtonText}>Register</Text>
           </TouchableOpacity>
         </View>
+        {session && (
+          <TouchableOpacity style={styles.secondaryButton} onPress={() => void handleLogout()}>
+            <Text style={styles.secondaryButtonText}>Logout</Text>
+          </TouchableOpacity>
+        )}
         <Text style={styles.status}>{status}</Text>
       </View>
 
@@ -124,6 +227,8 @@ export const HomeScreen: React.FC = () => {
             </TouchableOpacity>
           ))
         )}
+        <Text style={styles.streamStatus}>{streamStatus}</Text>
+        {latestEvent && <Text style={styles.roomMeta}>Latest event: {latestEvent.type} #{latestEvent.sequence}</Text>}
       </View>
 
       <SecureJournalContainer />
@@ -148,6 +253,7 @@ const styles = StyleSheet.create({
   buttonText: { color: '#fff', fontWeight: '700' },
   secondaryButtonText: { color: '#3730A3', fontWeight: '700' },
   status: { marginTop: 12, color: '#2563EB', fontSize: 12 },
+  streamStatus: { marginTop: 12, color: '#047857', fontSize: 12 },
   link: { color: '#2563EB', fontWeight: '700' },
   disabled: { opacity: 0.5 },
   disabledText: { color: '#9CA3AF' },

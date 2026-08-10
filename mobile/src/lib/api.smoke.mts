@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { after, beforeEach, test } from 'node:test';
 import {
   API_BASE_URL,
+  apiRequest,
   createRoom,
+  configureSessionBridge,
   getJournalEntry,
   getJournalBootstrap,
   listActiveRooms,
@@ -38,6 +40,7 @@ const jsonResponse = (body: unknown, status = 200): Response =>
 
 beforeEach(() => {
   calls.length = 0;
+  configureSessionBridge(null);
   globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input);
     calls.push({ url, init: init ?? {} });
@@ -90,6 +93,53 @@ test('auth helpers use canonical routes, organization scoping, MFA, and bearer l
   assert.equal(loginBody.mfa_code, '123456');
   assert.equal(loginBody.organization_id, 'org-1');
   assert.equal(new Headers(calls[3]?.init.headers).get('Authorization'), 'Bearer access-token');
+});
+
+test('mobile authenticated requests rotate an expired access token and retry once', async () => {
+  let activeSession = {
+    token: 'expired-token',
+    refresh_token: 'refresh-token',
+    user_id: 'user-1',
+    organization_id: 'org-1',
+  };
+  const requestTokens: string[] = [];
+  let refreshCalls = 0;
+  configureSessionBridge({
+    getSession: () => activeSession,
+    onSessionChange: (session) => { activeSession = session!; },
+  });
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = String(input);
+    const token = new Headers(init?.headers).get('Authorization') ?? '';
+    requestTokens.push(token);
+    if (url.endsWith('/api/v1/auth/refresh')) {
+      refreshCalls += 1;
+      return jsonResponse({ token: 'fresh-token', refresh_token: 'rotated-refresh', user_id: 'user-1', organization_id: 'org-1' });
+    }
+    if (url.endsWith('/api/v1/rooms/state/room-1') && token === 'Bearer expired-token') {
+      return jsonResponse({ category: 'AUTHENTICATION_FAULT', message: 'expired', code: 401 }, 401);
+    }
+    return jsonResponse({ type: 'presence', room_id: 'room-1', sequence: 3, payload: {}, sent_at: '2026-08-10T00:00:00Z' });
+  };
+
+  const state = await apiRequest<{ sequence: number }>('/api/v1/rooms/state/room-1', 'expired-token');
+  assert.equal(state.sequence, 3);
+  assert.equal(refreshCalls, 1);
+  assert.deepEqual(requestTokens, ['Bearer expired-token', '', 'Bearer fresh-token']);
+  assert.equal(activeSession.token, 'fresh-token');
+});
+
+test('mobile login exposes the privileged MFA challenge for the UI to collect a code', async () => {
+  globalThis.fetch = async (): Promise<Response> => jsonResponse({
+    requires_mfa: true,
+    user_id: 'admin-1',
+    organization_id: 'org-1',
+  }, 401);
+
+  const session = await loginAccount('admin@example.com', 'correct horse', 'org-1');
+  assert.equal(session.requires_mfa, true);
+  assert.equal(session.token, '');
+  assert.equal(session.user_id, 'admin-1');
 });
 
 test('journal helpers send only encrypted fields and use bearer auth', async () => {

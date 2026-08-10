@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { createRoom as createRoomRequest, listRooms, RoomSummary, roomStreamUrl } from '../../lib/api';
+import { createRoom as createRoomRequest, getRoomState, listRooms, RoomEvent, RoomSummary, roomStreamUrl } from '../../lib/api';
 import { useAppStore } from '../../lib/store';
 
 export const RoomLayout: React.FC = () => {
@@ -7,6 +7,8 @@ export const RoomLayout: React.FC = () => {
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [title, setTitle] = useState('Bible Study Room');
   const [status, setStatus] = useState('');
+  const [streamStatus, setStreamStatus] = useState('No room selected');
+  const [latestEvent, setLatestEvent] = useState<RoomEvent | null>(null);
 
   const loadRooms = async () => {
     if (!token) return;
@@ -34,20 +36,84 @@ export const RoomLayout: React.FC = () => {
   }, [token]);
 
   useEffect(() => {
-    if (activeRoomId && token) {
-      const ws = new WebSocket(roomStreamUrl(activeRoomId, token));
-
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        setStatus(`Received ${data.type ?? 'room'} event`);
-      };
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'presence', room_id: activeRoomId, sequence: 0, payload: { status: 'joined' } }));
-      };
-      ws.onerror = () => setStatus('Room stream failed');
-
-      return () => ws.close();
+    if (!activeRoomId || !token) {
+      setStreamStatus('Sign in and select a room');
+      setLatestEvent(null);
+      return undefined;
     }
+
+    let disposed = false;
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | null = null;
+    let pollTimer: number | null = null;
+    let reconnectAttempt = 0;
+
+    const stopPolling = () => {
+      if (pollTimer !== null) {
+        window.clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    };
+
+    const applyEvent = (event: RoomEvent) => {
+      if (disposed || event.room_id !== activeRoomId || !Number.isFinite(event.sequence)) return;
+      setLatestEvent(event);
+      setStreamStatus(`Live stream connected at sequence ${event.sequence}`);
+    };
+
+    const pollState = async () => {
+      try {
+        const event = await getRoomState(token, activeRoomId);
+        if (event.sequence > 0) applyEvent(event);
+      } catch {
+        if (!disposed) setStreamStatus('Room stream and polling fallback unavailable');
+      }
+    };
+
+    const startPolling = () => {
+      if (pollTimer !== null) return;
+      setStreamStatus('WebSocket unavailable; using polling fallback');
+      void pollState();
+      pollTimer = window.setInterval(() => void pollState(), 5000);
+    };
+
+    const connect = () => {
+      if (disposed) return;
+      setStreamStatus('Connecting to room stream');
+      socket = new WebSocket(roomStreamUrl(activeRoomId, token));
+      socket.onopen = () => {
+        reconnectAttempt = 0;
+        stopPolling();
+        setStreamStatus('Room stream connected');
+        socket?.send(JSON.stringify({ type: 'presence', room_id: activeRoomId, sequence: 0, payload: { status: 'joined' } }));
+      };
+      socket.onmessage = (event) => {
+        try {
+          applyEvent(JSON.parse(event.data) as RoomEvent);
+        } catch {
+          setStreamStatus('Room stream sent an invalid event');
+        }
+      };
+      socket.onerror = () => {
+        if (!disposed) setStreamStatus('Room stream failed; retrying');
+      };
+      socket.onclose = () => {
+        socket = null;
+        if (disposed) return;
+        startPolling();
+        const delay = Math.min(1000 * 2 ** reconnectAttempt, 10000);
+        reconnectAttempt = Math.min(reconnectAttempt + 1, 4);
+        reconnectTimer = window.setTimeout(connect, delay);
+      };
+    };
+
+    connect();
+    return () => {
+      disposed = true;
+      stopPolling();
+      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+      socket?.close();
+    };
   }, [activeRoomId, token]);
 
   return (
@@ -76,6 +142,8 @@ export const RoomLayout: React.FC = () => {
         {activeRoomId ? (
           <div className="bg-white p-6 rounded shadow">
             <h2 className="text-lg mb-4">Active Session: {activeRoomId}</h2>
+            <p className="text-xs text-gray-500 mb-4">{streamStatus}</p>
+            {latestEvent && <p className="text-xs text-gray-600 mb-4">Latest event: {latestEvent.type} #{latestEvent.sequence}</p>}
             {currentRole === 'admin' ? (
               <p>You have presenter controls.</p>
             ) : (
