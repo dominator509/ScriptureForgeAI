@@ -20,13 +20,15 @@ const (
 // It maps the validated TokenClaims into the request context for downstream handlers.
 func RBACMiddleware(next http.Handler, requiredRole string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Support websocket ticket parameters if Authorization header is missing (Browsers can't send headers easily for WS)
+		// Browser WebSocket clients cannot set Authorization headers, so allow a
+		// temporary ticket only on the room stream route. All other routes require
+		// the bearer header and never treat arbitrary query data as credentials.
 		authHeader := r.Header.Get("Authorization")
 		var tokenString string
 
 		if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
 			tokenString = strings.TrimPrefix(authHeader, "Bearer ")
-		} else {
+		} else if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v1/rooms/stream/") {
 			tokenString = r.URL.Query().Get("ticket")
 		}
 

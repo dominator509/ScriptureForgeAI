@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,23 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
 )
+
+func TestObserverCapsHTTPMetricSeries(t *testing.T) {
+	observer := NewObserver(Options{})
+	for index := 0; index < maxHTTPMetricSeries+100; index++ {
+		observer.record(http.MethodGet, "/unmatched/"+strconv.Itoa(index), http.StatusNotFound, time.Millisecond)
+	}
+
+	observer.mu.Lock()
+	seriesCount := len(observer.requests)
+	observer.mu.Unlock()
+	if seriesCount > maxHTTPMetricSeries+1 {
+		t.Fatalf("HTTP metric series grew to %d, want at most %d", seriesCount, maxHTTPMetricSeries+1)
+	}
+	if !strings.Contains(observer.Snapshot(), `path="/:other"`) {
+		t.Fatal("HTTP metric overflow series was not recorded")
+	}
+}
 
 func TestMiddlewareAddsTraceIDStructuredLogAndMetrics(t *testing.T) {
 	var logs bytes.Buffer

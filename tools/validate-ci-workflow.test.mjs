@@ -21,10 +21,19 @@ test('validateCIWorkflow rejects missing required gates', async () => {
 
 test('validateCIWorkflow rejects missing release evidence upload', async () => {
   const text = await readFile('.github/workflows/security.yml', 'utf8');
-  const broken = text.replace('actions/upload-artifact@v4', 'actions/download-artifact@v4');
+  const broken = text.replace('actions/upload-artifact@', 'actions/download-artifact@');
   assert.throws(
     () => validateCIWorkflow(broken),
     /ci-evidence-upload/,
+  );
+});
+
+test('validateCIWorkflow rejects mutable action references', async () => {
+  const text = await readFile('.github/workflows/security.yml', 'utf8');
+  const broken = text.replace('actions/checkout@11d5960a326750d5838078e36cf38b85af677262', 'actions/checkout@v4');
+  assert.throws(
+    () => validateCIWorkflow(broken),
+    /pinned to commit SHAs/,
   );
 });
 
@@ -90,7 +99,7 @@ test('validateCIWorkflow rejects missing staging evidence PATH tool installation
     /ci-kubectl-install/,
   );
 
-  const missingAWSDownload = text.replace('https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip', 'https://example.invalid/awscli.zip');
+  const missingAWSDownload = text.replace('https://awscli.amazonaws.com/awscli-exe-linux-x86_64-2.27.41.zip', 'https://example.invalid/awscli.zip');
   assert.throws(
     () => validateCIWorkflow(missingAWSDownload),
     /ci-awscli-v2-download/,

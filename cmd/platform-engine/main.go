@@ -155,7 +155,12 @@ func setupRoutes(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisClient *redis.
 	mux.HandleFunc("/api/webhooks/zoom", zoomWebhookHandler.HandleZoomWebhook)
 
 	// Websockets (Protected)
-	socketConn := &ports.SocketConnection{DB: dbpool, StateManager: roomStateManager, Hub: roomHub}
+	socketConn := &ports.SocketConnection{
+		DB:                dbpool,
+		StateManager:      roomStateManager,
+		Hub:               roomHub,
+		ConnectionLimiter: abuse.NewDefaultActiveConnectionLimiter(),
+	}
 	mux.Handle("/api/v1/rooms/stream/", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileWebSocket, http.HandlerFunc(socketConn.HandleLiveRoom)), ""))
 
 	return observer.Middleware(&mux)

@@ -58,6 +58,8 @@ type Observer struct {
 	aiInferenceSum     map[aiInferenceMetricKey]float64
 }
 
+const maxHTTPMetricSeries = 2048
+
 type metricKey struct {
 	Method string
 	Path   string
@@ -607,6 +609,9 @@ func (o *Observer) record(method, path string, status int, duration time.Duratio
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	key := metricKey{Method: method, Path: path, Status: status}
+	if _, exists := o.requests[key]; !exists && len(o.requests) >= maxHTTPMetricSeries {
+		key = metricKey{Method: "*", Path: "/:other", Status: 0}
+	}
 	durationSeconds := duration.Seconds()
 	o.requests[key]++
 	o.durationSum[key] += durationSeconds
@@ -678,7 +683,11 @@ func routeLabel(path string) string {
 	if path == "" {
 		return "/"
 	}
-	return volatilePathSegment.ReplaceAllString(path, "/:id")
+	label := volatilePathSegment.ReplaceAllString(path, "/:id")
+	if len(label) > 256 {
+		return "/:long_path"
+	}
+	return label
 }
 
 func escapeLabel(value string) string {

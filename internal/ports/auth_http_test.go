@@ -1,6 +1,8 @@
 package ports
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +14,55 @@ import (
 	"scriptureforge/internal/domain/auth"
 	"scriptureforge/internal/domain/observability"
 )
+
+func TestAuthHandlersRejectOversizedCredentialBodiesBeforeDatabaseWork(t *testing.T) {
+	oversized := bytes.Repeat([]byte("x"), maxAuthRequestBodyBytes)
+	for _, tc := range []struct {
+		name    string
+		handler func(http.ResponseWriter, *http.Request)
+		body    []byte
+	}{
+		{
+			name:    "register",
+			handler: (&AuthHandler{}).RegisterHandler,
+			body:    append([]byte(`{"email":"member@example.test","password":"`), append(oversized, []byte(`","organization_id":"org"}`)...)...),
+		},
+		{
+			name:    "login",
+			handler: (&AuthHandler{}).LoginHandler,
+			body:    append([]byte(`{"email":"member@example.test","password":"`), append(oversized, []byte(`","organization_id":"org"}`)...)...),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/"+tc.name, bytes.NewReader(tc.body))
+			tc.handler(recorder, request)
+			if recorder.Code != http.StatusRequestEntityTooLarge {
+				t.Fatalf("oversized %s status = %d body = %s, want 413", tc.name, recorder.Code, recorder.Body.String())
+			}
+		})
+	}
+}
+
+func TestAuthHandlersRejectConcatenatedJSONAndMalformedMFACode(t *testing.T) {
+	handler := &AuthHandler{}
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"email":"member@example.test","password":"password","organization_id":"org"}{}`))
+	recorder := httptest.NewRecorder()
+	handler.LoginHandler(recorder, request)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("concatenated auth payload status = %d body = %s, want 400", recorder.Code, recorder.Body.String())
+	}
+
+	mfaRequest := httptest.NewRequest(http.MethodPost, "/api/v1/auth/mfa/verify", strings.NewReader(`{"mfa_code":"not-a-code"}`))
+	mfaRequest = mfaRequest.WithContext(context.WithValue(context.Background(), auth.ContextKeyUser, &auth.TokenClaims{
+		UserID: "user-1", OrganizationID: "org-1", Role: "admin",
+	}))
+	mfaRecorder := httptest.NewRecorder()
+	handler.MFAVerifyHandler(mfaRecorder, mfaRequest)
+	if mfaRecorder.Code != http.StatusBadRequest {
+		t.Fatalf("malformed MFA code status = %d body = %s, want 400", mfaRecorder.Code, mfaRecorder.Body.String())
+	}
+}
 
 func testAuthAccountLimiter(limit int) *abuse.Limiter {
 	limiter := abuse.NewLimiter(abuse.Policy{Profiles: map[string]abuse.Profile{

@@ -443,6 +443,32 @@ func TestPolicyFromEnvConfiguresMaxBuckets(t *testing.T) {
 	}
 }
 
+func TestActiveConnectionLimiterCapsAndReleases(t *testing.T) {
+	limiter := NewActiveConnectionLimiter(1, 2, 2)
+
+	releaseFirst, ok := limiter.Acquire("org-a", "user-a")
+	if !ok {
+		t.Fatal("first connection should be accepted")
+	}
+	if _, ok := limiter.Acquire("org-a", "user-a"); ok {
+		t.Fatal("same user should be capped")
+	}
+	releaseSecond, ok := limiter.Acquire("org-a", "user-b")
+	if !ok {
+		t.Fatal("second tenant connection should be accepted")
+	}
+	if _, ok := limiter.Acquire("org-a", "user-c"); ok {
+		t.Fatal("global connection cap should be enforced")
+	}
+
+	releaseFirst()
+	releaseFirst()
+	if _, ok := limiter.Acquire("org-a", "user-a"); !ok {
+		t.Fatal("released user connection should be reusable")
+	}
+	releaseSecond()
+}
+
 func authRequestFromProxy(forwardedFor string) *http.Request {
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
 	request.RemoteAddr = "10.0.0.25:49152"

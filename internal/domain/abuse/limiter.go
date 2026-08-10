@@ -42,6 +42,16 @@ type Limiter struct {
 	maxBuckets int
 }
 
+type ActiveConnectionLimiter struct {
+	mu             sync.Mutex
+	perUserLimit   int
+	perTenantLimit int
+	globalLimit    int
+	globalCount    int
+	users          map[string]int
+	tenants        map[string]int
+}
+
 type bucket struct {
 	count     int
 	windowEnd time.Time
@@ -119,6 +129,70 @@ func NewLimiter(policy Policy) *Limiter {
 
 func NewDefaultLimiter() *Limiter {
 	return NewLimiter(PolicyFromEnv())
+}
+
+func NewActiveConnectionLimiter(perUserLimit, perTenantLimit, globalLimit int) *ActiveConnectionLimiter {
+	if perUserLimit < 1 {
+		perUserLimit = 4
+	}
+	if perTenantLimit < 1 {
+		perTenantLimit = 100
+	}
+	if globalLimit < 1 {
+		globalLimit = 1000
+	}
+	return &ActiveConnectionLimiter{
+		perUserLimit:   perUserLimit,
+		perTenantLimit: perTenantLimit,
+		globalLimit:    globalLimit,
+		users:          map[string]int{},
+		tenants:        map[string]int{},
+	}
+}
+
+func NewDefaultActiveConnectionLimiter() *ActiveConnectionLimiter {
+	return NewActiveConnectionLimiter(
+		intFromEnv("WS_MAX_ACTIVE_CONNECTIONS_PER_USER", 4),
+		intFromEnv("WS_MAX_ACTIVE_CONNECTIONS_PER_TENANT", 100),
+		intFromEnv("WS_MAX_ACTIVE_CONNECTIONS_GLOBAL", 1000),
+	)
+}
+
+func (l *ActiveConnectionLimiter) Acquire(organizationID, userID string) (func(), bool) {
+	organizationID = strings.TrimSpace(organizationID)
+	userID = strings.TrimSpace(userID)
+	if l == nil || organizationID == "" || userID == "" {
+		return nil, false
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.globalCount >= l.globalLimit || l.tenants[organizationID] >= l.perTenantLimit || l.users[organizationID+":"+userID] >= l.perUserLimit {
+		return nil, false
+	}
+	l.globalCount++
+	l.tenants[organizationID]++
+	userKey := organizationID + ":" + userID
+	l.users[userKey]++
+
+	released := false
+	return func() {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		if released {
+			return
+		}
+		released = true
+		l.globalCount--
+		l.tenants[organizationID]--
+		l.users[userKey]--
+		if l.tenants[organizationID] == 0 {
+			delete(l.tenants, organizationID)
+		}
+		if l.users[userKey] == 0 {
+			delete(l.users, userKey)
+		}
+	}, true
 }
 
 func (l *Limiter) Check(profileName string, identity string) (Result, bool) {

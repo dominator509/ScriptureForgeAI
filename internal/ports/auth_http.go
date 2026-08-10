@@ -72,8 +72,14 @@ type MFAVerifyResponse struct {
 }
 
 const (
-	accessTokenTTL  = 15 * time.Minute
-	refreshTokenTTL = 30 * 24 * time.Hour
+	accessTokenTTL           = 15 * time.Minute
+	refreshTokenTTL          = 30 * 24 * time.Hour
+	maxAuthRequestBodyBytes  = 64 * 1024
+	maxAuthEmailBytes        = 320
+	maxAuthPasswordBytes     = 1024
+	maxAuthOrganizationBytes = 128
+	maxAuthRefreshTokenBytes = 512
+	maxAuthMFACodeBytes      = 16
 )
 
 var emailRegex = regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$`)
@@ -174,6 +180,25 @@ func privilegedRole(role string) bool {
 	}
 }
 
+func validAuthFieldLengths(email, password, organizationID string) bool {
+	return len(email) <= maxAuthEmailBytes &&
+		len(password) <= maxAuthPasswordBytes &&
+		len(organizationID) <= maxAuthOrganizationBytes
+}
+
+func validMFACode(code string) bool {
+	code = strings.TrimSpace(code)
+	if len(code) != 6 || len(code) > maxAuthMFACodeBytes {
+		return false
+	}
+	for _, digit := range code {
+		if digit < '0' || digit > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 func generateMFASecret() (string, error) {
 	raw := make([]byte, 20)
 	if _, err := rand.Read(raw); err != nil {
@@ -262,12 +287,12 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req RegisterRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid request payload", Code: http.StatusBadRequest})
+	if pe := decodeBoundedJSON(w, r, maxAuthRequestBodyBytes, &req, auth.AuthenticationFault, "Invalid request payload"); pe != nil {
+		sendAuthError(w, pe)
 		return
 	}
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
-	if !emailRegex.MatchString(req.Email) || len(req.Password) < 8 || req.OrganizationID == "" {
+	if !emailRegex.MatchString(req.Email) || len(req.Password) < 8 || req.OrganizationID == "" || !validAuthFieldLengths(req.Email, req.Password, req.OrganizationID) {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Validation failed: invalid email, short password, or missing required fields", Code: http.StatusBadRequest})
 		return
 	}
@@ -337,12 +362,12 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req LoginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid request payload", Code: http.StatusBadRequest})
+	if pe := decodeBoundedJSON(w, r, maxAuthRequestBodyBytes, &req, auth.AuthenticationFault, "Invalid request payload"); pe != nil {
+		sendAuthError(w, pe)
 		return
 	}
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
-	if req.OrganizationID == "" {
+	if req.OrganizationID == "" || req.Password == "" || !validAuthFieldLengths(req.Email, req.Password, req.OrganizationID) || (req.MFACode != "" && !validMFACode(req.MFACode)) {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Organization ID is required", Code: http.StatusBadRequest})
 		return
 	}
@@ -419,7 +444,11 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req RefreshRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RefreshToken == "" || req.OrganizationID == "" {
+	if pe := decodeBoundedJSON(w, r, maxAuthRequestBodyBytes, &req, auth.AuthenticationFault, "Invalid refresh payload"); pe != nil {
+		sendAuthError(w, pe)
+		return
+	}
+	if req.RefreshToken == "" || len(req.RefreshToken) > maxAuthRefreshTokenBytes || req.OrganizationID == "" || len(req.OrganizationID) > maxAuthOrganizationBytes {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid refresh payload", Code: http.StatusBadRequest})
 		return
 	}
@@ -500,7 +529,11 @@ func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req RefreshRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RefreshToken == "" || req.OrganizationID == "" {
+	if pe := decodeBoundedJSON(w, r, maxAuthRequestBodyBytes, &req, auth.AuthenticationFault, "Invalid logout payload"); pe != nil {
+		sendAuthError(w, pe)
+		return
+	}
+	if req.RefreshToken == "" || len(req.RefreshToken) > maxAuthRefreshTokenBytes || req.OrganizationID == "" || len(req.OrganizationID) > maxAuthOrganizationBytes {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid logout payload", Code: http.StatusBadRequest})
 		return
 	}
@@ -542,7 +575,11 @@ func (h *AuthHandler) WorkspaceSwitchHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	var req WorkspaceSwitchRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.OrganizationID) == "" {
+	if pe := decodeBoundedJSON(w, r, maxAuthRequestBodyBytes, &req, auth.AuthenticationFault, "Invalid workspace switch payload"); pe != nil {
+		sendAuthError(w, pe)
+		return
+	}
+	if strings.TrimSpace(req.OrganizationID) == "" || len(req.OrganizationID) > maxAuthOrganizationBytes {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid workspace switch payload", Code: http.StatusBadRequest})
 		return
 	}
@@ -625,7 +662,11 @@ func (h *AuthHandler) MFAVerifyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req MFAVerifyRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.MFACode) == "" {
+	if pe := decodeBoundedJSON(w, r, maxAuthRequestBodyBytes, &req, auth.AuthenticationFault, "Invalid MFA verification payload"); pe != nil {
+		sendAuthError(w, pe)
+		return
+	}
+	if !validMFACode(req.MFACode) {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid MFA verification payload", Code: http.StatusBadRequest})
 		return
 	}

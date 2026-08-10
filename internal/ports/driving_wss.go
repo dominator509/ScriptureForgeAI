@@ -14,6 +14,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"scriptureforge/internal/domain/abuse"
 	"scriptureforge/internal/domain/auth"
 	"scriptureforge/internal/domain/observability"
 )
@@ -39,6 +40,7 @@ type SocketConnection struct {
 	StateManager        roomEventStore
 	Hub                 *RoomHub
 	MembershipValidator func(r *http.Request, claims *auth.TokenClaims, roomID string) bool
+	ConnectionLimiter   *abuse.ActiveConnectionLimiter
 	hubMu               sync.Mutex
 	eventMu             sync.Mutex
 }
@@ -147,6 +149,15 @@ func (s *SocketConnection) roomHub() *RoomHub {
 	return s.Hub
 }
 
+func (s *SocketConnection) activeConnectionLimiter() *abuse.ActiveConnectionLimiter {
+	s.hubMu.Lock()
+	defer s.hubMu.Unlock()
+	if s.ConnectionLimiter == nil {
+		s.ConnectionLimiter = abuse.NewDefaultActiveConnectionLimiter()
+	}
+	return s.ConnectionLimiter
+}
+
 func (s *SocketConnection) validateRoomMembership(r *http.Request, claims *auth.TokenClaims, roomID string) bool {
 	if s.MembershipValidator != nil {
 		return s.MembershipValidator(r, claims, roomID)
@@ -207,6 +218,12 @@ func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request
 		return
 	}
 	hub := s.roomHub()
+	releaseConnection, allowed := s.activeConnectionLimiter().Acquire(claims.OrganizationID, claims.UserID)
+	if !allowed {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Too many active room connections", Code: http.StatusTooManyRequests})
+		return
+	}
+	defer releaseConnection()
 
 	upgrader := websocket.Upgrader{CheckOrigin: allowedWSOrigin}
 	conn, err := upgrader.Upgrade(w, r, nil)

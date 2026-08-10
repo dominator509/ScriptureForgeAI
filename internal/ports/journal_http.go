@@ -34,7 +34,14 @@ type JournalBootstrapResponse struct {
 	SaltVersion int    `json:"salt_version"`
 }
 
-const journalAESGCMIVBytes = 12
+const (
+	journalAESGCMIVBytes          = 12
+	maxJournalRequestBodyBytes    = 256 * 1024
+	maxJournalCiphertextBytes     = 128 * 1024
+	maxJournalCiphertextTextBytes = ((maxJournalCiphertextBytes + 2) / 3) * 4
+	maxJournalIVTextBytes         = 64
+	maxJournalSaltIDBytes         = 128
+)
 
 func observeJournalPostgres(r *http.Request, operation, status string, start time.Time) {
 	observability.ObserveDependencyFromContext(r.Context(), "postgres", operation, status, time.Since(start))
@@ -153,9 +160,14 @@ func (h *JournalHandler) createJournalEntry(w http.ResponseWriter, r *http.Reque
 	}
 
 	var req JournalPayload
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil || req.Ciphertext == "" || req.IV == "" || req.SaltID == "" {
+	if pe := decodeBoundedJSON(w, r, maxJournalRequestBodyBytes, &req, auth.AuthorizationFault, "Invalid encrypted journal payload"); pe != nil {
+		sendAuthError(w, pe)
+		return
+	}
+	if req.Ciphertext == "" || req.IV == "" || req.SaltID == "" ||
+		len(req.Ciphertext) > maxJournalCiphertextTextBytes ||
+		len(req.IV) > maxJournalIVTextBytes ||
+		len(req.SaltID) > maxJournalSaltIDBytes {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Invalid encrypted journal payload", Code: http.StatusBadRequest})
 		return
 	}
@@ -218,8 +230,11 @@ func (h *JournalHandler) createJournalEntry(w http.ResponseWriter, r *http.Reque
 }
 
 func validateEncryptedJournalPayload(payload JournalPayload) error {
+	if len(payload.Ciphertext) > maxJournalCiphertextTextBytes || len(payload.IV) > maxJournalIVTextBytes || len(payload.SaltID) > maxJournalSaltIDBytes {
+		return fmt.Errorf("Invalid encrypted journal payload")
+	}
 	ciphertext, err := decodeStrictBase64(payload.Ciphertext)
-	if err != nil || len(ciphertext) < 16 {
+	if err != nil || len(ciphertext) < 16 || len(ciphertext) > maxJournalCiphertextBytes {
 		return fmt.Errorf("Invalid encrypted journal payload")
 	}
 	iv, err := decodeStrictBase64(payload.IV)

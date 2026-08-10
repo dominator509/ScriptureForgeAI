@@ -66,3 +66,31 @@ func TestRBACMiddlewareEnrichesAccessLogWithVerifiedClaims(t *testing.T) {
 		t.Fatalf("access log route/status mismatch: %#v", entry)
 	}
 }
+
+func TestRBACMiddlewareOnlyAcceptsQueryTicketsOnRoomStreams(t *testing.T) {
+	t.Setenv("JWT_SECRET_KEY", "auth-ticket-scope-test-secret")
+	token, err := GenerateToken("user-ticket-123", "org-ticket-456", "member", time.Minute)
+	if err != nil {
+		t.Fatalf("generate token: %v", err)
+	}
+	handler := RBACMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), "")
+
+	for _, tc := range []struct {
+		name string
+		path string
+		want int
+	}{
+		{name: "ordinary API route", path: "/api/v1/rooms/active?ticket=" + token, want: http.StatusUnauthorized},
+		{name: "room stream route", path: "/api/v1/rooms/stream/room-1?ticket=" + token, want: http.StatusNoContent},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, tc.path, nil))
+			if recorder.Code != tc.want {
+				t.Fatalf("query ticket status = %d, want %d", recorder.Code, tc.want)
+			}
+		})
+	}
+}

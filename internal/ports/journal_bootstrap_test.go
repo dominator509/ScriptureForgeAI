@@ -120,3 +120,33 @@ func TestJournalCreateRejectsMalformedEncryptedEnvelopeBeforeDatabase(t *testing
 		t.Fatalf("valid encrypted envelope status = %d body = %s, want DB configuration error 500", validRecorder.Code, validRecorder.Body.String())
 	}
 }
+
+func TestJournalCreateRejectsOversizedEncryptedPayloadBeforeDatabase(t *testing.T) {
+	handler := &JournalHandler{}
+	claims := &auth.TokenClaims{UserID: "user-123", OrganizationID: "org-456", Role: "member"}
+	oversizedCiphertext := strings.Repeat("A", maxJournalCiphertextTextBytes+1)
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/journal_entries",
+		strings.NewReader(`{"ciphertext":"`+oversizedCiphertext+`","iv":"AQIDBAUGBwgJCgsM","salt_id":"journal:v1:test","salt_version":1}`),
+	)
+	request = request.WithContext(context.WithValue(request.Context(), auth.ContextKeyUser, claims))
+	recorder := httptest.NewRecorder()
+	handler.ServeJournalEntries(recorder, request)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("oversized journal ciphertext status = %d body = %s, want 400", recorder.Code, recorder.Body.String())
+	}
+
+	request = httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/journal_entries",
+		strings.NewReader(`{"ciphertext":"c2VhbGVkLWNpcGhlcnRleHQtYmxvYg==","iv":"AQIDBAUGBwgJCgsM","salt_id":"journal:v1:test","salt_version":1}`),
+	)
+	request = request.WithContext(context.WithValue(request.Context(), auth.ContextKeyUser, claims))
+	recorder = httptest.NewRecorder()
+	request.Body = http.MaxBytesReader(recorder, request.Body, 32)
+	handler.ServeJournalEntries(recorder, request)
+	if recorder.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized journal request status = %d body = %s, want 413", recorder.Code, recorder.Body.String())
+	}
+}

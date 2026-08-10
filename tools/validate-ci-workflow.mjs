@@ -24,10 +24,15 @@ export const requiredMarkers = [
   { id: 'postgres-schema', text: 'Apply Postgres Integration Schema' },
   { id: 'ci-postgres-unzip-install', text: 'sudo apt-get install -y postgresql-client unzip' },
   { id: 'ci-go-bin-path', text: 'echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"' },
-  { id: 'ci-awscli-v2-download', text: 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' },
+  { id: 'ci-awscli-v2-download', text: 'curl -fsSLo awscliv2.zip https://awscli.amazonaws.com/awscli-exe-linux-x86_64-2.27.41.zip' },
+  { id: 'ci-awscli-v2-signature', text: 'awscli-exe-linux-x86_64-2.27.41.zip.sig' },
+  { id: 'ci-awscli-v2-pgp', text: 'gpg --batch --verify awscliv2.zip.sig awscliv2.zip' },
+  { id: 'ci-awscli-v2-fingerprint', text: 'FB5DB77FD5C118B80511ADA8A6310ACC4672475C' },
   { id: 'ci-awscli-v2-install', text: 'sudo ./aws/install --update' },
   { id: 'ci-gopls-install', text: 'go install golang.org/x/tools/gopls@v0.22.0' },
-  { id: 'ci-kubectl-install', text: 'https://dl.k8s.io/release/v1.34.1/bin/linux/amd64/kubectl' },
+  { id: 'ci-kubectl-install', text: 'curl -fsSLo kubectl https://dl.k8s.io/release/v1.34.1/bin/linux/amd64/kubectl' },
+  { id: 'ci-kubectl-sha256', text: 'https://dl.k8s.io/release/v1.34.1/bin/linux/amd64/kubectl.sha256' },
+  { id: 'ci-kubectl-checksum', text: 'sha256sum --check -' },
   { id: 'ci-path-readiness', text: 'Validate CI Project PATH Readiness' },
   { id: 'strict-staging-path-readiness', text: 'node tools/verify-project-path.mjs --ci --strict-staging' },
   { id: 'rls-integration', text: 'node tools/run-rls-db-integration.mjs --bin go' },
@@ -81,7 +86,7 @@ export const requiredMarkers = [
   { id: 'ci-source-control-untracked-status', text: 'git status --short' },
   { id: 'ci-evidence-write', text: 'node tools/write-ci-release-evidence.mjs --output artifacts/ci-release-evidence.txt' },
   { id: 'ci-evidence-validate', text: 'go run ./tools/ciprobe -run-artifact-file artifacts/ci-release-evidence.txt -commit-sha "$GITHUB_SHA"' },
-  { id: 'ci-evidence-upload', text: 'actions/upload-artifact@v4' },
+  { id: 'ci-evidence-upload', text: 'actions/upload-artifact@' },
 ];
 
 const orderedEvidenceStepMarkers = [
@@ -97,6 +102,12 @@ export function validateCIWorkflow(text) {
   assert.equal(missing.length, 0, `security workflow missing required gates: ${missing.map((marker) => marker.id).join(', ')}`);
   assert.ok(text.includes('name: Security Pipeline Verification'), 'security workflow name is required');
   assert.ok(text.includes('runs-on: ubuntu-latest'), 'security workflow must run on ubuntu-latest');
+  assert.match(text, /permissions:\s+contents:\s+read/, 'security workflow must declare read-only repository permissions');
+  assert.ok(text.includes('persist-credentials: false'), 'checkout must not persist credentials for repository code execution');
+  const mutableActionRefs = [...text.matchAll(/uses:\s*([^\s#]+)/g)]
+    .map((match) => match[1])
+    .filter((reference) => !/@[0-9a-f]{40}$/i.test(reference));
+  assert.equal(mutableActionRefs.length, 0, `security workflow actions must be pinned to commit SHAs: ${mutableActionRefs.join(', ')}`);
   let previousIndex = -1;
   for (const marker of orderedEvidenceStepMarkers) {
     const currentIndex = text.indexOf(marker.text);
