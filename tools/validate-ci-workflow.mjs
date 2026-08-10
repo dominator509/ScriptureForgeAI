@@ -13,6 +13,7 @@ export const ciWorkflowProofMarkers = [
   'staging_evidence_gap_report_check=true',
   'clean_git_before_release_evidence=true',
   'release_evidence_write_validate_upload_order=true',
+  'node24_action_runtime=true',
 ];
 
 export const requiredMarkers = [
@@ -108,6 +109,15 @@ export function validateCIWorkflow(text) {
     .map((match) => match[1])
     .filter((reference) => !/@[0-9a-f]{40}$/i.test(reference));
   assert.equal(mutableActionRefs.length, 0, `security workflow actions must be pinned to commit SHAs: ${mutableActionRefs.join(', ')}`);
+  for (const [action, major] of [
+    ['actions/checkout', 'v7'],
+    ['actions/setup-go', 'v7'],
+    ['actions/setup-node', 'v7'],
+    ['hashicorp/setup-terraform', 'v4'],
+    ['actions/upload-artifact', 'v7'],
+  ]) {
+    assert.match(text, new RegExp(`uses:\\s*${action.replace('/', '\\/')}@[0-9a-f]{40}\\s*#\\s*${major}\\.`, 'm'), `${action} must use the current node24 action major`);
+  }
   let previousIndex = -1;
   for (const marker of orderedEvidenceStepMarkers) {
     const currentIndex = text.indexOf(marker.text);

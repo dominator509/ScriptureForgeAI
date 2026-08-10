@@ -829,6 +829,8 @@ Status last updated: 2026-06-28
 
 2026-08-10 mobile audit closure: the registry has no unaffected `image-size` release for the Expo 56 Metro lane, so `mobile/vendor/image-size` now provides a dependency-free, bounded compatibility implementation for Metro's safe asset formats and omits HEIF/ICNS/JXL/JXL-stream parsers. The lockfile, `tools/verify-mobile-image-size.test.mjs`, dependency-risk validator, Metro loading smoke, and mobile build/check prove the replacement; `npm audit --audit-level=high` now reports 0 high, 0 critical, and 0 total findings. DRR-002 is closed locally and must be re-evaluated on every Expo/Metro refresh.
 
+2026-08-10 CI runtime hardening: `.github/workflows/security.yml` now pins current Node24-compatible action majors for checkout, Go, Node, Terraform, and artifact upload using immutable commit SHAs. `tools/validate-ci-workflow.mjs` and its regression tests reject mutable references and legacy Node20 action majors; the exact pushed run after this update remains required as fresh release evidence.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.

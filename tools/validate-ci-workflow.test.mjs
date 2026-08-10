@@ -30,10 +30,19 @@ test('validateCIWorkflow rejects missing release evidence upload', async () => {
 
 test('validateCIWorkflow rejects mutable action references', async () => {
   const text = await readFile('.github/workflows/security.yml', 'utf8');
-  const broken = text.replace('actions/checkout@11d5960a326750d5838078e36cf38b85af677262', 'actions/checkout@v4');
+  const broken = text.replace('actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1', 'actions/checkout@v4');
   assert.throws(
     () => validateCIWorkflow(broken),
     /pinned to commit SHAs/,
+  );
+});
+
+test('validateCIWorkflow rejects legacy Node20 action majors', async () => {
+  const text = await readFile('.github/workflows/security.yml', 'utf8');
+  const broken = text.replace('actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (node24)', 'actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (node20)');
+  assert.throws(
+    () => validateCIWorkflow(broken),
+    /must use the current node24 action major/,
   );
 });
 

@@ -18,6 +18,7 @@
 - `production-readiness/serena-setup.md` remains the canonical Serena bootstrap reference for cross-language indexing.
 - Route additions/changes require a matching entry in `SF-architecture.md` under **11. API Architecture** before merge.
 - Current dependency hardening (2026-08-10): web PostCSS/nanoid and mobile leaf overrides are patched; Metro resolves the dependency-free repository-owned `mobile/vendor/image-size` compatibility package, blocks the DRR-002 parser and asset formats, and the mobile high-severity audit is green. DRR-002 is closed locally and must be re-evaluated on every Expo/Metro refresh.
+- Current CI hardening (2026-08-10): security workflow actions now use immutable pins for current Node24-compatible checkout, Go, Node, Terraform, and artifact-upload majors; workflow regression tests reject legacy Node20 action pins.
 
 ### 2.2 Serena/Obsidian API Drift Gate
 - Route/schema changes cannot merge unless they pass `node tools/validate-serena-obsidian.mjs` in local gate and CI.
