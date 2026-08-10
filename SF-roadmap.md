@@ -17,7 +17,7 @@
 - Every phase and any route/schema change must be reflected in `SF-roadmap.md`, `SF-architecture.md`, and `production-readiness/obsidian-production-readiness.md` before merge.
 - `production-readiness/serena-setup.md` remains the canonical Serena bootstrap reference for cross-language indexing.
 - Route additions/changes require a matching entry in `SF-architecture.md` under **11. API Architecture** before merge.
-- Current dependency hardening (2026-08-10): web PostCSS/nanoid and mobile leaf overrides are patched; Metro now blocks the DRR-002 image parsers and HEIC/AVIF assets, but DRR-002 remains open until the Expo 56-compatible Metro/image-size audit chain is remediated without a breaking downgrade.
+- Current dependency hardening (2026-08-10): web PostCSS/nanoid and mobile leaf overrides are patched; Metro resolves the dependency-free repository-owned `mobile/vendor/image-size` compatibility package, blocks the DRR-002 parser and asset formats, and the mobile high-severity audit is green. DRR-002 is closed locally and must be re-evaluated on every Expo/Metro refresh.
 
 ### 2.2 Serena/Obsidian API Drift Gate
 - Route/schema changes cannot merge unless they pass `node tools/validate-serena-obsidian.mjs` in local gate and CI.

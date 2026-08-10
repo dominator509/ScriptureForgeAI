@@ -19,16 +19,16 @@ This register tracks active dependency findings and recently closed decisions. I
 
 ## DRR-002: Expo/Metro transitive `image-size` denial of service advisories
 
-- Status: Open - release blocker
-- Scope: `mobile/package-lock.json`
-- Current locked versions: expo@56.0.17, `@expo/metro@56.0.0`, metro@0.84.4, image-size@1.2.1
+- Status: Closed (2026-08-10)
+- Scope: `mobile/package.json`, `mobile/package-lock.json`, `mobile/vendor/image-size`, `mobile/metro.config.js`
+- Current locked versions: expo@56.0.17, `@expo/metro@56.0.0`, metro@0.84.4, repository-owned image-size@2.0.3-scriptureforge.0
 - Source: `npm audit --audit-level=high`
-- Severity: High
+- Historical severity: High
 - Advisories: GHSA-w3rx-r6r6-pgpr and GHSA-5p2g-fcmc-qvqq, infinite-loop denial of service in ICNS/JXL/HEIF parsing.
-- Current result: leaf fixes for `brace-expansion`, `js-yaml`, `nanoid`, `postcss`, and `uuid` are applied; the mobile high-severity audit still reports 11 findings through the Metro/image-size dependency chain.
-- Remediation constraint: npm's forced fix proposes Expo 53.0.27, which is a breaking downgrade from the repo-current Expo 56 / React Native 0.86 lane. `image-size@2.0.2` is still within the affected advisory range, so a blind override would not remediate the finding.
-- Interim control: `mobile/metro.config.js` disables the vulnerable `image-size` HEIF/ICNS/JXL parsers and removes `heic`/`avif` asset extensions from Metro's accepted set. Do not process untrusted image inputs through the mobile/Metro build toolchain; keep the current Expo lane and re-check on every Expo/Metro release refresh. `tools/validate-dependency-risk.mjs` verifies these controls.
+- Current result: `npm audit --audit-level=high` reports 0 high, 0 critical, and 0 total findings after the local package is installed from the lockfile.
+- Remediation constraint: npm's forced fix proposed Expo 53.0.27, which is a breaking downgrade from the repo-current Expo 56 / React Native 0.86 lane. The available registry `image-size` releases remain within the affected advisory range, so a blind registry override was not accepted.
+- Closure evidence: `mobile/vendor/image-size` is a dependency-free, bounded compatibility implementation for Metro's BMP/GIF/JPEG/KTX/PNG/PSD/SVG/TIFF/WebP formats; HEIF/ICNS/JXL/JXL-stream are not registered. `tools/verify-mobile-image-size.test.mjs`, `tools/validate-dependency-risk.mjs`, Metro loading smoke, and mobile `build:check` pass against the refreshed install.
+- Runtime/build control: `mobile/metro.config.js` also disables the affected parser names and removes `heic`/`avif`/`heif`/`icns`/`jxl` asset extensions. Re-run the dependency and parser gates on every Expo/Metro refresh and replace the local package with a patched upstream line when one exists.
 - Risk owner: Mobile/release owner
-- Review due: 2026-08-24
-- Required closure: Adopt a patched Metro/image-size dependency line compatible with Expo 56 or complete and validate a deliberate Expo lane migration; then require `npm audit --audit-level=high` to pass.
-- Release gate: No 100% production-readiness claim while this high-severity audit finding remains open.
+- Required follow-up: Re-evaluate the local compatibility package when Expo/Metro or `image-size` releases change; no high-severity audit waiver is active.
+- Release gate: The mobile audit gate must remain green and the local package validator must remain enforced in CI.

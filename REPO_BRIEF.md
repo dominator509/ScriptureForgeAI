@@ -56,7 +56,7 @@ ScriptureForgeAI is a multi-tenant Bible study platform with authenticated works
 - Live rooms rely on authenticated membership + JWT claims plus allowed origin checks.
 - Rust gRPC service calls use mTLS plus a shared secret and verified tenant metadata in staging/production; local plaintext fallback is development-only. Rust liveness is HTTP `/healthz` on `9102` because Kubernetes gRPC probes cannot present client certificates.
 - AI and Zoom paths are expected to fail closed/degrade with explicit typed errors and auditability.
-- Dependency status: web PostCSS/nanoid and mobile leaf overrides are patched; `mobile/metro.config.js` blocks DRR-002 image parsers and HEIC/AVIF assets, but the high-severity Expo/Metro `image-size` audit blocker remains open because the available forced fix downgrades the Expo 56 lane.
+- Dependency status: web PostCSS/nanoid and mobile leaf overrides are patched; Metro now resolves the dependency-free repository-owned `mobile/vendor/image-size` compatibility package, which removes the DRR-002 high-severity audit path while `mobile/metro.config.js` keeps the affected parser and asset formats blocked.
 
 ## Do-Not-Touch / Risk Zones
 
@@ -71,4 +71,4 @@ ScriptureForgeAI is a multi-tenant Bible study platform with authenticated works
 - Staging must prove the Secrets Store CSI JSON shape for `grpc_engine_tls_credentials`, certificate rotation, Rust health/readiness, and Go-to-Rust mTLS/tenant binding with `tools/rustprobe`.
 - Production readiness still depends on clean git sync state, pushed CI evidence, and staging proof manifests.
 - Native EAS/Expo crypto behavior requires separate staged-device validation beyond local smoke checks.
-- Mobile dependency closure requires a patched Expo 56-compatible Metro/image-size line or a deliberately tested Expo migration; see `security/dependency_risk_register.md#DRR-002`.
+- Mobile dependency closure is locally closed through the tested repository-owned image-size compatibility package; re-evaluate it on every Expo/Metro refresh and see `security/dependency_risk_register.md#DRR-002`.

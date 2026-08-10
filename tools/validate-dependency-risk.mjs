@@ -9,6 +9,8 @@ export const dependencyRiskProofMarkers = [
   'drr001_mobile_runtime_not_imported=true',
   'drr002_metro_parser_formats_blocked=true',
   'drr002_mobile_asset_formats_blocked=true',
+  'drr002_local_safe_image_size=true',
+  'drr002_local_package_dependencies_empty=true',
   'high_or_worse_audit_gate_documented=true',
   'remediation_closure_documented=true',
 ];
@@ -18,6 +20,7 @@ export function validateDependencyRisk({
   register,
   runtimeSources = [],
   mobileMetroConfig = null,
+  mobileSafeImageSizePackage = null,
   today = new Date().toISOString().slice(0, 10),
 }) {
   const uuidVersion = packageVersion(lockfile, 'node_modules/uuid');
@@ -40,6 +43,9 @@ export function validateDependencyRisk({
   if (mobileMetroConfig !== null) {
     validateMobileMetroMitigation(mobileMetroConfig);
   }
+  if (mobileSafeImageSizePackage !== null) {
+    validateMobileSafeImageSizePackage(mobileSafeImageSizePackage);
+  }
 
   return {
     uuidVersion,
@@ -47,6 +53,7 @@ export function validateDependencyRisk({
     drr001Required: uuidIsStillRisk,
     drr001Status: uuidIsStillRisk ? 'accepted' : 'closed',
     drr002MitigationEnforced: mobileMetroConfig !== null,
+    drr002LocalPackageEnforced: mobileSafeImageSizePackage !== null,
   };
 }
 
@@ -68,6 +75,18 @@ export function validateMobileMetroMitigation(source) {
   assert.match(source, /config\.resolver\.assetExts\s*=\s*config\.resolver\.assetExts\.filter/, 'mobile Metro config must filter risky asset extensions');
   for (const assetExtension of ['avif', 'heic']) {
     assert.match(source, new RegExp(`['"]${assetExtension}['"]`), `mobile Metro config must block ${assetExtension} assets`);
+  }
+}
+
+export function validateMobileSafeImageSizePackage({ packageJson, source }) {
+  assert.equal(packageJson?.name, 'image-size', 'local image-size package must preserve Metro package resolution');
+  assert.ok(compareSemver(packageJson.version ?? '', '2.0.2') > 0, 'local image-size package must be newer than the affected upstream range');
+  assert.deepEqual(packageJson.dependencies ?? {}, {}, 'local image-size package must not add runtime dependencies');
+  for (const requiredSnippet of ['MAX_INPUT_BYTES', 'SAFE_TYPES', 'requireLength', 'requireRange']) {
+    assert.match(source, new RegExp(requiredSnippet), `local image-size package missing bounded parser control: ${requiredSnippet}`);
+  }
+  for (const vulnerableType of ['heif', 'icns', 'jxl', 'jxl-stream']) {
+    assert.doesNotMatch(source, new RegExp(`['"]${vulnerableType}['"]`), `local image-size package must not register ${vulnerableType}`);
   }
 }
 
@@ -148,8 +167,12 @@ async function main() {
   const register = await readFile(registerPath, 'utf8');
   const runtimeSources = await collectRuntimeSources();
   const mobileMetroConfig = await readFile('mobile/metro.config.js', 'utf8');
-  const result = validateDependencyRisk({ lockfile, register, runtimeSources, mobileMetroConfig });
-  console.log(`dependency risk validated: uuid ${result.uuidVersion}, expo ${result.expoVersion}, DRR-001 status=${result.drr001Status}, DRR-002 mitigation enforced=${result.drr002MitigationEnforced}, ${dependencyRiskProofMarkers.join(', ')}`);
+  const mobileSafeImageSizePackage = {
+    packageJson: JSON.parse(await readFile('mobile/vendor/image-size/package.json', 'utf8')),
+    source: await readFile('mobile/vendor/image-size/index.js', 'utf8'),
+  };
+  const result = validateDependencyRisk({ lockfile, register, runtimeSources, mobileMetroConfig, mobileSafeImageSizePackage });
+  console.log(`dependency risk validated: uuid ${result.uuidVersion}, expo ${result.expoVersion}, DRR-001 status=${result.drr001Status}, DRR-002 mitigation enforced=${result.drr002MitigationEnforced}, local safe image-size enforced=${result.drr002LocalPackageEnforced}, ${dependencyRiskProofMarkers.join(', ')}`);
 }
 
 async function collectRuntimeSources() {

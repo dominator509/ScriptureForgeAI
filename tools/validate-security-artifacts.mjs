@@ -103,7 +103,7 @@ export const requiredCoverage = {
     'DRR-002',
     'image-size',
     'Expo',
-    'Required closure',
+    'Required follow-up',
   ],
 };
 

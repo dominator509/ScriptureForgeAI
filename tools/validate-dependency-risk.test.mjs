@@ -4,6 +4,7 @@ import {
   compareSemver,
   validateDependencyRisk,
   validateMobileMetroMitigation,
+  validateMobileSafeImageSizePackage,
   validateNoRuntimeUUIDImports,
 } from './validate-dependency-risk.mjs';
 
@@ -126,6 +127,23 @@ test('validateMobileMetroMitigation rejects a config without parser blocks', () 
   assert.throws(
     () => validateMobileMetroMitigation('module.exports = require("expo/metro-config");'),
     /must disable vulnerable image-size parsers/,
+  );
+});
+
+test('validateMobileSafeImageSizePackage requires a bounded dependency-free safe parser', () => {
+  validateMobileSafeImageSizePackage({
+    packageJson: { name: 'image-size', version: '2.0.3-scriptureforge.0' },
+    source: 'const MAX_INPUT_BYTES = 512; const SAFE_TYPES = []; function requireLength() {} function requireRange() {}',
+  });
+});
+
+test('validateMobileSafeImageSizePackage rejects vulnerable parser registration', () => {
+  assert.throws(
+    () => validateMobileSafeImageSizePackage({
+      packageJson: { name: 'image-size', version: '2.0.3-scriptureforge.0' },
+      source: 'const MAX_INPUT_BYTES = 512; const SAFE_TYPES = ["icns"]; function requireLength() {} function requireRange() {}',
+    }),
+    /must not register icns/,
   );
 });
 
