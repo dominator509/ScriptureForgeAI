@@ -68,11 +68,11 @@ func (h *JournalHandler) ServeJournalBootstrap(w http.ResponseWriter, r *http.Re
 
 func journalSaltID(organizationID, userID string) (string, *auth.PlatformException) {
 	secret := os.Getenv("JOURNAL_SALT_SECRET")
-	if secret == "" {
-		secret = os.Getenv("JWT_SECRET_KEY")
+	if err := auth.ValidateSecretStrength("JOURNAL_SALT_SECRET", secret); err != nil {
+		return "", &auth.PlatformException{Category: auth.AuthorizationFault, Message: err.Error(), Code: http.StatusInternalServerError}
 	}
-	if secret == "" {
-		return "", &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Journal salt secret is not configured", Code: http.StatusInternalServerError}
+	if secret == os.Getenv("JWT_SECRET_KEY") {
+		return "", &auth.PlatformException{Category: auth.AuthorizationFault, Message: "JOURNAL_SALT_SECRET must be distinct from JWT_SECRET_KEY", Code: http.StatusInternalServerError}
 	}
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write([]byte(organizationID))

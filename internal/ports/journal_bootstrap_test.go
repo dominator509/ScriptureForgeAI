@@ -12,7 +12,7 @@ import (
 )
 
 func TestJournalBootstrapReturnsOpaqueStableSalt(t *testing.T) {
-	t.Setenv("JOURNAL_SALT_SECRET", "test-journal-salt-secret")
+	t.Setenv("JOURNAL_SALT_SECRET", "test-journal-salt-secret-0123456789")
 	handler := &JournalHandler{}
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/journal/bootstrap", nil)
 	claims := &auth.TokenClaims{
@@ -65,6 +65,25 @@ func TestJournalBootstrapRequiresConfiguredSecret(t *testing.T) {
 	handler.ServeJournalBootstrap(recorder, request)
 	if recorder.Code != http.StatusInternalServerError {
 		t.Fatalf("bootstrap without secret status = %d body = %s, want 500", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestJournalBootstrapDoesNotReuseJWTSecret(t *testing.T) {
+	secret := "shared-test-secret-012345678901234567"
+	t.Setenv("JOURNAL_SALT_SECRET", "")
+	t.Setenv("JWT_SECRET_KEY", secret)
+	handler := &JournalHandler{}
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/journal/bootstrap", nil)
+	request = request.WithContext(context.WithValue(request.Context(), auth.ContextKeyUser, &auth.TokenClaims{
+		UserID:         "user-123",
+		OrganizationID: "org-456",
+		Role:           "member",
+	}))
+
+	recorder := httptest.NewRecorder()
+	handler.ServeJournalBootstrap(recorder, request)
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("bootstrap with only JWT secret status = %d body = %s, want 500", recorder.Code, recorder.Body.String())
 	}
 }
 

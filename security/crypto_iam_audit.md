@@ -37,7 +37,8 @@ Local evidence is in `tools/verify-journal-crypto.mjs` and the journal RLS integ
 
 - Terraform models workload secrets as AWS Secrets Manager ARNs through `app_secret_arns`.
 - Workloads use an IRSA-annotated Kubernetes service account and a least-privilege Secrets Manager read policy scoped to the configured secret ARNs.
-- Secrets Store CSI syncs `DATABASE_URL`, `JWT_SECRET_KEY`, `OPENAI_API_KEY`, and Zoom credential values into runtime Kubernetes secrets without committing plaintext values.
+- Secrets Store CSI syncs `DATABASE_URL`, distinct high-entropy `JWT_SECRET_KEY` and `JOURNAL_SALT_SECRET` values, `OPENAI_API_KEY`, and Zoom credential values into runtime Kubernetes secrets without committing plaintext values.
+- The Go auth policy rejects JWT/journal secrets under 32 bytes; staging/production startup rejects missing, weak, or reused values, and journal bootstrap does not reuse `JWT_SECRET_KEY`.
 - Workload manifests consume `DATABASE_URL` from the synced secret and do not construct root database URLs from RDS master credentials.
 
 Local evidence is in `build/terraform`, `security/secret_handling_review.md`, and `tools/validate-deployment-skeleton.mjs`.
@@ -45,6 +46,7 @@ Local evidence is in `build/terraform`, `security/secret_handling_review.md`, an
 ## Remaining Production Closure
 
 - Prove IRSA, Secrets Store CSI, and scoped database credentials in a real staging cluster.
+- Prove separate JWT/journal secret objects, scoped IAM access, CSI sync, and rotation in a real staging cluster.
 - Capture clean pushed CI output for auth/RLS/session/security gates.
 - Complete native-device mobile crypto validation.
 - Perform cloud secret access review for GitHub Actions, AWS Secrets Manager, EKS workloads, and operator roles.

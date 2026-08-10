@@ -121,6 +121,26 @@ func loadConfig() (*Config, *PlatformException) {
 		}
 	}
 
+	if requiresConfiguredGRPCAddress() {
+		jwtSecret := os.Getenv("JWT_SECRET_KEY")
+		journalSaltSecret := os.Getenv("JOURNAL_SALT_SECRET")
+		for name, value := range map[string]string{
+			"JWT_SECRET_KEY":      jwtSecret,
+			"JOURNAL_SALT_SECRET": journalSaltSecret,
+		} {
+			if err := auth.ValidateSecretStrength(name, value); err != nil {
+				return nil, &PlatformException{Category: ConfigurationFault, Message: err.Error() + " in staging/production", Code: 500}
+			}
+		}
+		if jwtSecret == journalSaltSecret {
+			return nil, &PlatformException{
+				Category: ConfigurationFault,
+				Message:  "JOURNAL_SALT_SECRET must be distinct from JWT_SECRET_KEY in staging/production",
+				Code:     500,
+			}
+		}
+	}
+
 	return &Config{
 		DatabaseURL:              dbURL,
 		RedisURL:                 redisURL,

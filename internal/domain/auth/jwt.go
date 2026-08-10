@@ -3,10 +3,25 @@ package auth
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
+
+const MinimumSecretBytes = 32
+
+// ValidateSecretStrength keeps runtime-injected signing and derivation secrets
+// out of the weak-key path while preserving the original secret bytes.
+func ValidateSecretStrength(name, secret string) error {
+	if strings.TrimSpace(secret) == "" {
+		return fmt.Errorf("%s environment variable is missing", name)
+	}
+	if len([]byte(secret)) < MinimumSecretBytes {
+		return fmt.Errorf("%s must be at least %d bytes", name, MinimumSecretBytes)
+	}
+	return nil
+}
 
 // Define custom PlatformException types to adhere to structural requirements
 type ErrorCategory string
@@ -38,8 +53,8 @@ type TokenClaims struct {
 // getSecretKey loads the key securely from the environment, defaulting to an error if not set
 func getSecretKey() ([]byte, error) {
 	secret := os.Getenv("JWT_SECRET_KEY")
-	if secret == "" {
-		return nil, fmt.Errorf("JWT_SECRET_KEY environment variable is missing")
+	if err := ValidateSecretStrength("JWT_SECRET_KEY", secret); err != nil {
+		return nil, err
 	}
 	return []byte(secret), nil
 }

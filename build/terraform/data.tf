@@ -61,6 +61,10 @@ data "aws_secretsmanager_secret" "jwt_secret_key" {
   arn = var.app_secret_arns.jwt_secret_key
 }
 
+data "aws_secretsmanager_secret" "journal_salt_secret" {
+  arn = var.app_secret_arns.journal_salt_secret
+}
+
 data "aws_secretsmanager_secret" "database_url" {
   arn = var.app_secret_arns.database_url
 }

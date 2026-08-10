@@ -238,7 +238,7 @@ type MeetingAdapter interface {
 
 ### 9.2 Zero-Knowledge Client Journal Architecture
 To ensure ironclad security for sensitive spiritual reflections, journals utilize client-side cryptographic derivation:
-1.  During system enrollment, a 256-bit passphrase key is derived on-device from user credentials using **PBKDF2** with 600,000 iterations and a dynamic unique salt configuration.
+1.  During system enrollment, a 256-bit passphrase key is derived on-device from user credentials using **PBKDF2** with 600,000 iterations and a dynamic unique salt configuration. The backend salt identifier is derived from tenant/user scope with a dedicated `JOURNAL_SALT_SECRET`, never the JWT signing key.
 2.  Data content segments undergo symmetric encryption inside the client memory sandbox via **AES-256-GCM** prior to network transmit.
 3.  The backend persistence engine processes the ciphertext stream as an opaque binary large object (BLOB). The application servers never hold the primary encryption keys.
 

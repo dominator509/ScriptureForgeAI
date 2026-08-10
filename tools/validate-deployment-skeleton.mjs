@@ -83,7 +83,7 @@ export function validateTerraformSecretInputs(variables, tfvarsExample, app) {
   );
 
   const secretARNBlock = terraformVariableBlock(variables, 'app_secret_arns');
-  for (const key of ['database_url', 'jwt_secret_key', 'openai_api_key', 'zoom_credentials', 'grpc_engine_shared_secret', 'grpc_engine_tls_credentials']) {
+  for (const key of ['database_url', 'jwt_secret_key', 'journal_salt_secret', 'openai_api_key', 'zoom_credentials', 'grpc_engine_shared_secret', 'grpc_engine_tls_credentials']) {
     assert.match(secretARNBlock, new RegExp(`${key}\\s*=\\s*string`), `app_secret_arns missing ${key}`);
     assert.ok(
       secretARNBlock.includes(`can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.${key}))`),
@@ -268,6 +268,7 @@ requireIncludes(
     'limits   = var.web_resources.limits',
     'name = "DATABASE_URL"',
     'name = "JWT_SECRET_KEY"',
+    'name = "JOURNAL_SALT_SECRET"',
     'name = "OPENAI_API_KEY"',
     'name = "ZOOM_ACCOUNT_ID"',
     'name = "ZOOM_CLIENT_ID"',

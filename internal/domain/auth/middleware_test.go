@@ -12,7 +12,7 @@ import (
 )
 
 func TestRBACMiddlewareEnrichesAccessLogWithVerifiedClaims(t *testing.T) {
-	t.Setenv("JWT_SECRET_KEY", "auth-observability-test-secret")
+	t.Setenv("JWT_SECRET_KEY", "auth-observability-test-secret-0123456789")
 	token, err := GenerateToken("user-log-123", "org-log-456", "admin", time.Minute)
 	if err != nil {
 		t.Fatalf("generate token: %v", err)
@@ -68,7 +68,7 @@ func TestRBACMiddlewareEnrichesAccessLogWithVerifiedClaims(t *testing.T) {
 }
 
 func TestRBACMiddlewareOnlyAcceptsWebSocketSubprotocolOnRoomStreams(t *testing.T) {
-	t.Setenv("JWT_SECRET_KEY", "auth-ticket-scope-test-secret")
+	t.Setenv("JWT_SECRET_KEY", "auth-ticket-scope-test-secret-0123456789")
 	token, err := GenerateToken("user-ticket-123", "org-ticket-456", "member", time.Minute)
 	if err != nil {
 		t.Fatalf("generate token: %v", err)

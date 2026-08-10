@@ -144,6 +144,8 @@ func TestLoadConfigAcceptsExplicitProductionGRPCAddress(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://staging.example/scriptureforge")
 	t.Setenv("REDIS_URL", "rediss://staging.example:6379")
 	t.Setenv("DEPLOYMENT_ENVIRONMENT", "staging")
+	t.Setenv("JWT_SECRET_KEY", "jwt-staging-secret-012345678901234567890")
+	t.Setenv("JOURNAL_SALT_SECRET", "journal-staging-secret-012345678901234567890")
 	t.Setenv("GRPC_ENGINE_ADDRESS", "scriptureforge-rust-engine:50051")
 	t.Setenv("GRPC_ENGINE_SHARED_SECRET", "01234567890123456789012345678901")
 	t.Setenv("GRPC_ENGINE_TLS_CA_PEM", "test-ca")
@@ -175,6 +177,51 @@ func TestLoadConfigRequiresGRPCSharedSecretAndTLSInProduction(t *testing.T) {
 	if errConfig == nil || cfg != nil || !strings.Contains(errConfig.Message, "GRPC_ENGINE_SHARED_SECRET") {
 		t.Fatalf("loadConfig = cfg=%#v err=%#v, want missing gRPC shared-secret error", cfg, errConfig)
 	}
+}
+
+func TestLoadConfigRequiresStrongDistinctAuthAndJournalSecretsInProduction(t *testing.T) {
+	baseEnv := func(t *testing.T) {
+		t.Helper()
+		t.Setenv("DATABASE_URL", "postgres://staging.example/scriptureforge")
+		t.Setenv("REDIS_URL", "rediss://staging.example:6379")
+		t.Setenv("DEPLOYMENT_ENVIRONMENT", "production")
+		t.Setenv("GRPC_ENGINE_ADDRESS", "scriptureforge-rust-engine:50051")
+		t.Setenv("GRPC_ENGINE_SHARED_SECRET", "01234567890123456789012345678901")
+		t.Setenv("GRPC_ENGINE_TLS_CA_PEM", "test-ca")
+		t.Setenv("GRPC_ENGINE_TLS_CLIENT_CERT_PEM", "test-cert")
+		t.Setenv("GRPC_ENGINE_TLS_CLIENT_KEY_PEM", "test-key")
+		t.Setenv("GRPC_ENGINE_TLS_SERVER_NAME", "scriptureforge-rust-engine")
+	}
+
+	t.Run("rejects weak jwt secret", func(t *testing.T) {
+		baseEnv(t)
+		t.Setenv("JWT_SECRET_KEY", "too-short")
+		t.Setenv("JOURNAL_SALT_SECRET", "journal-production-secret-012345678901234")
+		cfg, errConfig := loadConfig()
+		if errConfig == nil || cfg != nil || !strings.Contains(errConfig.Message, "JWT_SECRET_KEY") {
+			t.Fatalf("loadConfig = cfg=%#v err=%#v, want weak JWT_SECRET_KEY rejection", cfg, errConfig)
+		}
+	})
+
+	t.Run("rejects missing journal salt secret", func(t *testing.T) {
+		baseEnv(t)
+		t.Setenv("JWT_SECRET_KEY", "jwt-production-secret-012345678901234")
+		t.Setenv("JOURNAL_SALT_SECRET", "")
+		cfg, errConfig := loadConfig()
+		if errConfig == nil || cfg != nil || !strings.Contains(errConfig.Message, "JOURNAL_SALT_SECRET") {
+			t.Fatalf("loadConfig = cfg=%#v err=%#v, want missing JOURNAL_SALT_SECRET rejection", cfg, errConfig)
+		}
+	})
+
+	t.Run("rejects key reuse", func(t *testing.T) {
+		baseEnv(t)
+		t.Setenv("JWT_SECRET_KEY", "same-production-secret-012345678901234")
+		t.Setenv("JOURNAL_SALT_SECRET", "same-production-secret-012345678901234")
+		cfg, errConfig := loadConfig()
+		if errConfig == nil || cfg != nil || !strings.Contains(errConfig.Message, "distinct") {
+			t.Fatalf("loadConfig = cfg=%#v err=%#v, want distinct-secret rejection", cfg, errConfig)
+		}
+	})
 }
 
 func TestMountedAuthRoutesEnforceAbuseRateLimit(t *testing.T) {
@@ -387,7 +434,7 @@ func TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Setenv(test.profileEnvKey, "1")
 			t.Setenv("ABUSE_LIMIT_"+strings.ToUpper(test.profileEnvName)+"_WINDOW_SECONDS", "60")
-			t.Setenv("JWT_SECRET_KEY", "route-profile-test-secret")
+			t.Setenv("JWT_SECRET_KEY", "route-profile-test-secret-0123456789")
 			router := setupRoutes(nil, nil, nil)
 			role := test.role
 			if role == "" {
@@ -428,7 +475,7 @@ func TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles(t *testing.T) {
 }
 
 func TestWorkspaceSwitchRouteEnforcesOrgMatch(t *testing.T) {
-	t.Setenv("JWT_SECRET_KEY", "route-workspace-switch-secret")
+	t.Setenv("JWT_SECRET_KEY", "route-workspace-switch-secret-0123456789")
 	orgID := "55555555-5555-4555-8555-555555555555"
 	router := setupRoutes(nil, nil, nil)
 	token, err := auth.GenerateToken("member-user-id", orgID, "member", time.Minute)

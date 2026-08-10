@@ -68,6 +68,7 @@ redis_kms_key_arn    = "arn:aws:kms:us-east-1:123456789012:alias/scriptureforge-
 app_secret_arns = {
   database_url                = "arn:aws:secretsmanager:us-east-1:123456789012:secret:scriptureforge/staging/database-url"
   jwt_secret_key              = "arn:aws:secretsmanager:us-east-1:123456789012:secret:scriptureforge/staging/jwt-secret-key"
+  journal_salt_secret         = "arn:aws:secretsmanager:us-east-1:123456789012:secret:scriptureforge/staging/journal-salt-secret"
   openai_api_key              = "arn:aws:secretsmanager:us-east-1:123456789012:secret:scriptureforge/staging/openai-api-key"
   zoom_credentials            = "arn:aws:secretsmanager:us-east-1:123456789012:secret:scriptureforge/staging/zoom-credentials"
   grpc_engine_shared_secret   = "arn:aws:secretsmanager:us-east-1:123456789012:secret:scriptureforge/staging/grpc-engine-shared-secret"

@@ -42,6 +42,7 @@ resource "kubernetes_secret" "external_secret_refs" {
   data = {
     database_url_arn                = data.aws_secretsmanager_secret.database_url.arn
     jwt_secret_key_arn              = data.aws_secretsmanager_secret.jwt_secret_key.arn
+    journal_salt_secret_arn         = data.aws_secretsmanager_secret.journal_salt_secret.arn
     openai_api_key_arn              = data.aws_secretsmanager_secret.openai_api_key.arn
     zoom_credentials_arn            = data.aws_secretsmanager_secret.zoom_credentials.arn
     grpc_engine_shared_secret_arn   = data.aws_secretsmanager_secret.grpc_engine_shared_secret.arn
@@ -82,6 +83,11 @@ resource "kubernetes_manifest" "app_secret_provider" {
             objectName  = data.aws_secretsmanager_secret.jwt_secret_key.arn
             objectType  = "secretsmanager"
             objectAlias = "jwt_secret_key"
+          },
+          {
+            objectName  = data.aws_secretsmanager_secret.journal_salt_secret.arn
+            objectType  = "secretsmanager"
+            objectAlias = "journal_salt_secret"
           },
           {
             objectName  = data.aws_secretsmanager_secret.openai_api_key.arn
@@ -155,6 +161,10 @@ resource "kubernetes_manifest" "app_secret_provider" {
             {
               objectName = "jwt_secret_key"
               key        = "JWT_SECRET_KEY"
+            },
+            {
+              objectName = "journal_salt_secret"
+              key        = "JOURNAL_SALT_SECRET"
             },
             {
               objectName = "openai_api_key"
@@ -407,6 +417,16 @@ resource "kubernetes_deployment" "api" {
               secret_key_ref {
                 name = "scriptureforge-runtime-secrets"
                 key  = "JWT_SECRET_KEY"
+              }
+            }
+          }
+
+          env {
+            name = "JOURNAL_SALT_SECRET"
+            value_from {
+              secret_key_ref {
+                name = "scriptureforge-runtime-secrets"
+                key  = "JOURNAL_SALT_SECRET"
               }
             }
           }
