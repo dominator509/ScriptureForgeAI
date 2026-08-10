@@ -269,7 +269,7 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 	metrics := observer.Snapshot()
 	for _, expected := range []string{
 		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_register",status="success"} 1`,
-		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_login",status="success"} 1`,
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_login",status="success"} 2`,
 		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_refresh",status="success"} 1`,
 		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_refresh",status="invalid_or_expired"} 4`,
 		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_logout",status="success"} 1`,
