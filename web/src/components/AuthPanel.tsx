@@ -5,7 +5,7 @@ import { login, logout, register } from '../lib/api';
 import { useAppStore } from '../lib/store';
 
 export const AuthPanel: React.FC = () => {
-  const { token, refreshToken, userId, setSession, clearSession } = useAppStore();
+  const { token, userId, setSession, clearSession } = useAppStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [organizationId, setOrganizationId] = useState('');
@@ -31,14 +31,17 @@ export const AuthPanel: React.FC = () => {
 
   const submitLogout = async () => {
     const activeToken = token;
-    const activeRefreshToken = refreshToken;
     const activeOrganizationId = useAppStore.getState().organizationId;
-    clearSession();
-    if (!activeToken || !activeRefreshToken || !activeOrganizationId) return;
+    if (!activeToken || !activeOrganizationId) {
+      clearSession();
+      return;
+    }
     try {
-      await logout(activeToken, activeRefreshToken, activeOrganizationId);
+      await logout(activeToken, null, activeOrganizationId);
     } catch (err) {
       setStatus(err instanceof Error ? err.message : 'Logout failed');
+    } finally {
+      clearSession();
     }
   };
 

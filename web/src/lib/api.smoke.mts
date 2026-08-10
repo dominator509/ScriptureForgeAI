@@ -82,7 +82,7 @@ test('auth helpers use canonical v1 routes and bearer logout revocation', async 
   assert.equal((await register(credentials)).token, 'access-token');
   assert.equal((await login(credentials)).refresh_token, 'refresh-token');
   assert.equal((await refreshSession('old-refresh', 'org-1')).organization_id, 'org-1');
-  await logout('access-token', 'refresh-token', 'org-1');
+  await logout('access-token', null, 'org-1');
 
   assert.deepEqual(
     calls.map((call) => [call.url, call.init.method ?? 'GET']),
@@ -97,7 +97,7 @@ test('auth helpers use canonical v1 routes and bearer logout revocation', async 
   assert.equal(new Headers(calls[0]?.init.headers).get('X-ScriptureForge-Client'), 'web');
   assert.equal(calls[0]?.init.credentials, 'include');
   assert.equal(JSON.parse(String(calls.at(2)?.init.body)).organization_id, 'org-1');
-  assert.equal(JSON.parse(String(calls.at(3)?.init.body)).organization_id, 'org-1');
+  assert.deepEqual(JSON.parse(String(calls.at(3)?.init.body)), { organization_id: 'org-1' });
 });
 
 test('web authenticated requests rotate an expired access token and retry once', async () => {
