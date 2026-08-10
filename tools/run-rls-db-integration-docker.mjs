@@ -80,6 +80,12 @@ export async function runDockerRLSDBIntegration({
   rlsRunner = runRLSDBIntegration,
   env = process.env,
 } = {}) {
+  const dockerAvailable = await ensureDockerAvailable(runner);
+  if (!dockerAvailable) {
+    throw new Error(
+      'Docker is unavailable in this environment. Start the Docker daemon or run node tools/run-rls-db-integration.mjs with DATABASE_URL set to a migrated database.'
+    );
+  }
   await ensureContainerNameAvailable(config, runner);
   await runner(buildDockerRunCommand(config, workspaceRoot));
   try {
@@ -109,6 +115,15 @@ export async function runDockerRLSDBIntegration({
     if (!config.keep) {
       await runner(['docker', 'rm', '-f', config.containerName], { allowFailure: true });
     }
+  }
+}
+
+async function ensureDockerAvailable(runner) {
+  try {
+    const result = await runner(['docker', '--version'], { allowFailure: true, quiet: true });
+    return result.exitCode === 0;
+  } catch {
+    return false;
   }
 }
 

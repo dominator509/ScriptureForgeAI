@@ -122,27 +122,29 @@ test('validateRLSDBGoTestOutput accepts verbose output only when every required 
 });
 
 test('validateRLSDBGoTestOutput rejects missing required RLS tests', () => {
+  const missingTest = rlsDBRequiredTests[0] ?? 'TenantScopedJournalHandlersEnforceRLS';
   const output = `${requiredRLSPackageOutput()}\n${rlsDBRequiredTests
-    .filter((marker) => marker !== 'TenantScopedJournalHandlersEnforceRLS')
+    .filter((marker) => marker !== missingTest)
     .map((marker) => `=== RUN   Test${marker}\n--- PASS: Test${marker} (0.01s)`)
     .join('\n')}`;
 
   assert.throws(
     () => validateRLSDBGoTestOutput(output),
-    /must include PASS for TestTenantScopedJournalHandlersEnforceRLS/,
+    new RegExp(`must include PASS for Test${missingTest}`),
   );
 });
 
 test('validateRLSDBGoTestOutput rejects skipped required RLS tests', () => {
+  const skippedTest = rlsDBRequiredTests[1] ?? 'RoomHandlersHonorTenantIsolation';
   const output = `${requiredRLSPackageOutput()}\n${rlsDBRequiredTests
-    .map((marker) => marker === 'RoomHandlersHonorTenantIsolation'
+    .map((marker) => marker === skippedTest
       ? `=== RUN   Test${marker}\n--- SKIP: Test${marker} (0.01s)`
       : `=== RUN   Test${marker}\n--- PASS: Test${marker} (0.01s)`)
     .join('\n')}`;
 
   assert.throws(
     () => validateRLSDBGoTestOutput(output),
-    /must include PASS for TestRoomHandlersHonorTenantIsolation/,
+    new RegExp(`must include PASS for Test${skippedTest}`),
   );
 });
 

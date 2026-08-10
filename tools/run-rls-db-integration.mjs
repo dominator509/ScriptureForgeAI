@@ -4,22 +4,24 @@ import { resolve } from 'node:path';
 const isWindows = process.platform === 'win32';
 const defaultGoBin = isWindows ? '.\\.tools\\go\\bin\\go.exe' : './.tools/go/bin/go';
 
-export const rlsDBTestPattern = 'Test(TenantRLSCoversAllTenantTables|TenantScopedJournalHandlersEnforceRLS|TenantScopedRoomActiveHandlerEnforcesRLS|TenantScopedRoomStateHandlerEnforcesRLS|JournalHandlersHonorTenantIsolation|RoomHandlersHonorTenantIsolation|SocketStreamIsTenantScoped|AIRequestLogPersistsCitationsAndHonorsTenantRLS|GenerateCurriculumHandlerPersistsAuditRowsWithTenantRLS|AuthRegisterLoginRefreshRotationAndLogout|PrivilegedLoginRequiresAndVerifiesMFA|WorkspaceSwitchRequiresAuthenticatedOrgMatch|MFAEnrollAndVerifyFlowForPrivilegedUsers)';
+export const rlsDBTestPattern = 'Test(TenantRLSCoversAllTenantTables|TenantScopedJournalHandlersEnforceRLS|TenantScopedRoomActiveHandlerEnforcesRLS|TenantScopedRoomStateHandlerEnforcesRLS|AuthRegisterLoginRefreshRotationAndLogout|PrivilegedLoginRequiresAndVerifiesMFA|WorkspaceSwitchRequiresAuthenticatedOrgMatch|MFAEnrollAndVerifyFlowForPrivilegedUsers|JournalHandlersHonorTenantIsolation|RoomHandlersHonorTenantIsolation|SocketStreamIsTenantScoped|AuthRefreshLogoutHonorTenantIsolation|AIRequestLogPersistsCitationsAndHonorsTenantRLS|GenerateCurriculumHandlerPersistsAuditRowsWithTenantRLS|GenerateCurriculumHandlerTenantIsolationForCrossTenantReadsAndWrites)';
 
 export const rlsDBRequiredTests = [
   'TenantRLSCoversAllTenantTables',
   'TenantScopedJournalHandlersEnforceRLS',
   'TenantScopedRoomActiveHandlerEnforcesRLS',
   'TenantScopedRoomStateHandlerEnforcesRLS',
-  'JournalHandlersHonorTenantIsolation',
-  'RoomHandlersHonorTenantIsolation',
-  'SocketStreamIsTenantScoped',
-  'AIRequestLogPersistsCitationsAndHonorsTenantRLS',
-  'GenerateCurriculumHandlerPersistsAuditRowsWithTenantRLS',
   'AuthRegisterLoginRefreshRotationAndLogout',
   'PrivilegedLoginRequiresAndVerifiesMFA',
   'WorkspaceSwitchRequiresAuthenticatedOrgMatch',
   'MFAEnrollAndVerifyFlowForPrivilegedUsers',
+  'JournalHandlersHonorTenantIsolation',
+  'RoomHandlersHonorTenantIsolation',
+  'SocketStreamIsTenantScoped',
+  'AuthRefreshLogoutHonorTenantIsolation',
+  'AIRequestLogPersistsCitationsAndHonorsTenantRLS',
+  'GenerateCurriculumHandlerPersistsAuditRowsWithTenantRLS',
+  'GenerateCurriculumHandlerTenantIsolationForCrossTenantReadsAndWrites',
 ];
 
 export const rlsDBRequiredPackages = [

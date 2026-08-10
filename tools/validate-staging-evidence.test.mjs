@@ -5098,8 +5098,8 @@ function buildItem(id, status) {
     item.decision_ref = 'security/dependency_risk_register.md#DRR-001';
     item.owner = 'security';
     item.accepted_by = 'release-owner';
-    item.review_due_at = '2026-07-25';
-    item.expires_at = '2026-08-25';
+    item.review_due_at = '2026-12-31';
+    item.expires_at = '2027-01-31';
   }
 
   return item;

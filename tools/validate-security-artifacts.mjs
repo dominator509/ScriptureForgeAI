@@ -97,13 +97,13 @@ export const requiredCoverage = {
   'security/dependency_risk_register.md': [
     'DRR-001',
     'uuid <11.1.1',
-    'expo@56.0.12, uuid@7.0.3',
+    'expo@56.0.17, uuid@7.0.3',
     'Expo',
     'Risk decision',
     'Risk owner: Security/release owner',
     'Accepted by: Release owner and security reviewer',
-    'Review due: 2026-07-25',
-    'Expires: 2026-08-25',
+    'Review due: 2026-08-26',
+    'Expires: 2026-09-26',
     'Required closure',
   ],
 };

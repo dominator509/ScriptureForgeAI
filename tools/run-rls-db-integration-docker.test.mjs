@@ -91,6 +91,33 @@ test('runDockerRLSDBIntegration applies migrations, runs RLS tests, and cleans u
   assert.equal(observedEnv.JWT_SECRET_KEY, 'local-rls-integration-secret-for-scriptureforge');
 });
 
+test('runDockerRLSDBIntegration rejects when docker is unavailable', async () => {
+  let callCount = 0;
+  const commands = [];
+  const runner = async (command) => {
+    callCount += 1;
+    commands.push(command);
+    if (command[0] === 'docker' && command[1] === '--version') {
+      return { exitCode: 1, stdout: '', stderr: 'docker not available' };
+    }
+    if (command.includes('inspect')) return { exitCode: 0, stdout: '{}', stderr: '' };
+    return { exitCode: 0, stdout: '', stderr: '' };
+  };
+
+  await assert.rejects(
+    () => runDockerRLSDBIntegration({
+      config: defaultDockerRLSConfig,
+      runner,
+      rlsRunner: async () => 0,
+    env: {},
+  }),
+    /Docker is unavailable in this environment\./,
+  );
+  assert.equal(callCount >= 1, true);
+  assert.equal(commands.some((command) => command[0] === 'docker' && command[1] === '--version'), true);
+  assert.equal(commands.some((command) => command[0] === 'docker' && command[1] === 'container' && command[2] === 'inspect'), false);
+});
+
 test('runDockerRLSDBIntegration refuses to reuse an existing container name', async () => {
   await assert.rejects(
     () => runDockerRLSDBIntegration({
