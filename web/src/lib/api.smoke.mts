@@ -15,6 +15,7 @@ import {
   refreshSession,
   register,
   resolveWebRuntimeConfig,
+  roomStreamProtocols,
   roomStreamUrl,
   saveJournalEntry,
   WS_BASE_URL,
@@ -196,8 +197,9 @@ test('room helpers create, list, and build encoded websocket stream URLs', async
   assert.equal((await listRooms('access-token'))[0]?.id, 'room-1');
   assert.equal((await createRoom('access-token', 'Study')).title, 'Study');
 
-  const url = roomStreamUrl('room/with space', 'token/with space');
-  assert.equal(url, `${WS_BASE_URL}/api/v1/rooms/stream/room%2Fwith%20space?ticket=token%2Fwith+space`);
+  const url = roomStreamUrl('room/with space');
+  assert.equal(url, `${WS_BASE_URL}/api/v1/rooms/stream/room%2Fwith%20space`);
+  assert.deepEqual(roomStreamProtocols('token.with-space'), ['scriptureforge-bearer', 'token.with-space']);
   assert.deepEqual(
     calls.map((call) => [call.url, call.init.method ?? 'GET']),
     [

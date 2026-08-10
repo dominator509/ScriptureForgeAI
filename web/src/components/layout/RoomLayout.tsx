@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { createRoom as createRoomRequest, getRoomState, listRooms, RoomEvent, RoomSummary, roomStreamUrl } from '../../lib/api';
+import { createRoom as createRoomRequest, getRoomState, listRooms, RoomEvent, RoomSummary, roomStreamProtocols, roomStreamUrl } from '../../lib/api';
 import { useAppStore } from '../../lib/store';
 
 export const RoomLayout: React.FC = () => {
@@ -80,7 +80,7 @@ export const RoomLayout: React.FC = () => {
     const connect = () => {
       if (disposed) return;
       setStreamStatus('Connecting to room stream');
-      socket = new WebSocket(roomStreamUrl(activeRoomId, token));
+      socket = new WebSocket(roomStreamUrl(activeRoomId), roomStreamProtocols(token));
       socket.onopen = () => {
         reconnectAttempt = 0;
         stopPolling();

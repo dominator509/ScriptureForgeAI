@@ -16,20 +16,32 @@ const (
 	ContextKeyUser contextKey = "user_claims"
 )
 
+const RoomWebSocketSubprotocol = "scriptureforge-bearer"
+
+func websocketBearerToken(r *http.Request) string {
+	protocols := strings.Split(r.Header.Get("Sec-WebSocket-Protocol"), ",")
+	for index := 0; index+1 < len(protocols); index++ {
+		if strings.TrimSpace(protocols[index]) == RoomWebSocketSubprotocol {
+			return strings.TrimSpace(protocols[index+1])
+		}
+	}
+	return ""
+}
+
 // RBACMiddleware intercepts incoming HTTP requests to validate JWTs and authorize access.
 // It maps the validated TokenClaims into the request context for downstream handlers.
 func RBACMiddleware(next http.Handler, requiredRole string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Browser WebSocket clients cannot set Authorization headers, so allow a
-		// temporary ticket only on the room stream route. All other routes require
-		// the bearer header and never treat arbitrary query data as credentials.
+		// Browser WebSocket clients cannot set Authorization headers, so accept the
+		// short-lived bearer token only in the negotiated room subprotocol header.
+		// Query strings are never treated as credentials because proxies commonly log them.
 		authHeader := r.Header.Get("Authorization")
 		var tokenString string
 
 		if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
 			tokenString = strings.TrimPrefix(authHeader, "Bearer ")
 		} else if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v1/rooms/stream/") {
-			tokenString = r.URL.Query().Get("ticket")
+			tokenString = websocketBearerToken(r)
 		}
 
 		if tokenString == "" {

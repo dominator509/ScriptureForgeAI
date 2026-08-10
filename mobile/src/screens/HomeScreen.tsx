@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { SecureJournalContainer } from '../components/SecureJournalContainer';
-import { createRoom, getRoomState, listActiveRooms, loginAccount, logoutSession, registerAccount, roomStreamUrl, RoomEvent } from '../lib/api';
+import { createRoom, getRoomState, listActiveRooms, loginAccount, logoutSession, registerAccount, roomStreamProtocols, roomStreamUrl, RoomEvent } from '../lib/api';
 import { useAppStore } from '../lib/store';
 
 export const HomeScreen: React.FC = () => {
@@ -139,7 +139,7 @@ export const HomeScreen: React.FC = () => {
     const connect = () => {
       if (disposed) return;
       setStreamStatus('Connecting to room stream.');
-      socket = new WebSocket(roomStreamUrl(activeRoomId, session.token));
+      socket = new WebSocket(roomStreamUrl(activeRoomId), roomStreamProtocols(session.token));
       socket.onopen = () => {
         reconnectAttempt = 0;
         stopPolling();

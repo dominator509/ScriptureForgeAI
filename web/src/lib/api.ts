@@ -359,7 +359,12 @@ export function createRoom(token: string, title: string): Promise<RoomSummary> {
   });
 }
 
-export function roomStreamUrl(roomID: string, token: string): string {
-  const params = new URLSearchParams({ ticket: token });
-  return `${WS_BASE_URL}/api/v1/rooms/stream/${encodeURIComponent(roomID)}?${params.toString()}`;
+export const ROOM_STREAM_SUBPROTOCOL = 'scriptureforge-bearer';
+
+export function roomStreamUrl(roomID: string): string {
+  return `${WS_BASE_URL}/api/v1/rooms/stream/${encodeURIComponent(roomID)}`;
+}
+
+export function roomStreamProtocols(token: string): [string, string] {
+  return [ROOM_STREAM_SUBPROTOCOL, token];
 }

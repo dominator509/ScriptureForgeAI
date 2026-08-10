@@ -225,7 +225,10 @@ func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request
 	}
 	defer releaseConnection()
 
-	upgrader := websocket.Upgrader{CheckOrigin: allowedWSOrigin}
+	upgrader := websocket.Upgrader{
+		CheckOrigin:  allowedWSOrigin,
+		Subprotocols: []string{auth.RoomWebSocketSubprotocol},
+	}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("upgrade error:", err)

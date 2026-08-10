@@ -21,6 +21,7 @@
 - Current CI hardening (2026-08-10): security workflow actions now use immutable pins for current Node24-compatible checkout, Go, Node, Terraform, and artifact-upload majors; workflow regression tests reject legacy Node20 action pins.
 - Current client hardening (2026-08-10): web and mobile API clients now rotate expired access tokens through a single-flight refresh bridge, expose privileged MFA challenges without persisting empty sessions, and reconnect canonical room streams with bounded backoff plus authenticated polling fallback; client smoke/typecheck gates cover the contract while deployed browser/native staging proof remains external.
 - Current browser session hardening (2026-08-10): web requests identify the browser client, send credentials, and keep rotated refresh tokens in an HttpOnly SameSite=Strict cookie; mobile and compatibility callers retain the JSON body-token flow. Backend and web smoke tests cover cookie issuance, body omission, cookie fallback, and body precedence.
+- Current room credential hardening (2026-08-10): web and mobile room streams send the short-lived access JWT in the `scriptureforge-bearer` WebSocket subprotocol; backend middleware rejects `?ticket=` credentials and the room upgrader negotiates only the named protocol.
 
 ### 2.2 Serena/Obsidian API Drift Gate
 - Route/schema changes cannot merge unless they pass `node tools/validate-serena-obsidian.mjs` in local gate and CI.

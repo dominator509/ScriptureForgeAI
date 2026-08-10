@@ -67,7 +67,7 @@ func TestRBACMiddlewareEnrichesAccessLogWithVerifiedClaims(t *testing.T) {
 	}
 }
 
-func TestRBACMiddlewareOnlyAcceptsQueryTicketsOnRoomStreams(t *testing.T) {
+func TestRBACMiddlewareOnlyAcceptsWebSocketSubprotocolOnRoomStreams(t *testing.T) {
 	t.Setenv("JWT_SECRET_KEY", "auth-ticket-scope-test-secret")
 	token, err := GenerateToken("user-ticket-123", "org-ticket-456", "member", time.Minute)
 	if err != nil {
@@ -78,18 +78,24 @@ func TestRBACMiddlewareOnlyAcceptsQueryTicketsOnRoomStreams(t *testing.T) {
 	}), "")
 
 	for _, tc := range []struct {
-		name string
-		path string
-		want int
+		name      string
+		path      string
+		protocols string
+		want      int
 	}{
 		{name: "ordinary API route", path: "/api/v1/rooms/active?ticket=" + token, want: http.StatusUnauthorized},
-		{name: "room stream route", path: "/api/v1/rooms/stream/room-1?ticket=" + token, want: http.StatusNoContent},
+		{name: "room stream query token", path: "/api/v1/rooms/stream/room-1?ticket=" + token, want: http.StatusUnauthorized},
+		{name: "room stream subprotocol", path: "/api/v1/rooms/stream/room-1", protocols: RoomWebSocketSubprotocol + ", " + token, want: http.StatusNoContent},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
-			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, tc.path, nil))
+			request := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			if tc.protocols != "" {
+				request.Header.Set("Sec-WebSocket-Protocol", tc.protocols)
+			}
+			handler.ServeHTTP(recorder, request)
 			if recorder.Code != tc.want {
-				t.Fatalf("query ticket status = %d, want %d", recorder.Code, tc.want)
+				t.Fatalf("websocket auth status = %d, want %d", recorder.Code, tc.want)
 			}
 		})
 	}
