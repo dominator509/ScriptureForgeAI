@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compareSemver, validateDependencyRisk, validateNoRuntimeUUIDImports } from './validate-dependency-risk.mjs';
+import {
+  compareSemver,
+  validateDependencyRisk,
+  validateMobileMetroMitigation,
+  validateNoRuntimeUUIDImports,
+} from './validate-dependency-risk.mjs';
 
 test('compareSemver compares major, minor, and patch versions', () => {
   assert.ok(compareSemver('7.0.3', '11.1.1') < 0);
@@ -104,6 +109,23 @@ test('validateNoRuntimeUUIDImports rejects dynamic uuid imports', () => {
       { path: 'mobile/src/lib/runtime.ts', content: 'const uuid = await import("uuid");' },
     ]),
     /mobile runtime source imports uuid/,
+  );
+});
+
+test('validateMobileMetroMitigation requires vulnerable parser and asset format blocks', () => {
+  validateMobileMetroMitigation(`
+    const imageSize = require('image-size');
+    imageSize.disableTypes(['heif', 'icns', 'jxl', 'jxl-stream']);
+    config.resolver.assetExts = config.resolver.assetExts.filter((assetExtension) =>
+      !new Set(['avif', 'heic']).has(assetExtension),
+    );
+  `);
+});
+
+test('validateMobileMetroMitigation rejects a config without parser blocks', () => {
+  assert.throws(
+    () => validateMobileMetroMitigation('module.exports = require("expo/metro-config");'),
+    /must disable vulnerable image-size parsers/,
   );
 });
 

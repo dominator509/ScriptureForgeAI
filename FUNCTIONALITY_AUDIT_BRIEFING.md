@@ -825,6 +825,8 @@ Status last updated: 2026-06-28
 
 2026-08-10 dependency hardening: web PostCSS is updated to `8.5.26`, resolving the `nanoid <3.3.17` high finding; mobile overrides resolve `brace-expansion`, `js-yaml`, `nanoid`, `postcss`, and `uuid@11.1.1`, closing DRR-001 after mobile build/check and xcode CommonJS compatibility proof. The mobile `npm audit --audit-level=high` gate still reports 11 high findings through Metro's `image-size@1.2.1` path; npm's forced fix proposes the breaking Expo `53.0.27` downgrade, so DRR-002 remains an explicit production blocker rather than an unsafe forced migration.
 
+2026-08-10 mobile build-chain hardening: `mobile/metro.config.js` now disables the vulnerable `image-size` HEIF/ICNS/JXL parsers and removes HEIC/AVIF asset extensions from Metro's accepted set; `tools/validate-dependency-risk.mjs` and regression tests verify the controls. The npm audit findings remain open until a patched Expo 56-compatible dependency line is available.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.

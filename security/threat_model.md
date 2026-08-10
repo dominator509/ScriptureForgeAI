@@ -55,4 +55,4 @@ This is a repo-local threat model. It does not replace staging evidence for AWS 
 - Deployed OTLP collector/backend, dashboard import, alert delivery, and retention evidence are still missing.
 - Staging performance evidence for the 5,000 req/s and P99 under 200ms target is still missing.
 - DRR-001 is closed: the locked Expo xcode tooling path now resolves `uuid@11.1.1` with a passing CommonJS compatibility smoke.
-- DRR-002 remains an open high-severity Expo/Metro -> `image-size` denial-of-service advisory chain; no patched `image-size` release compatible with the current Expo 56 lane is available, and the forced Expo 53 downgrade is not an accepted production remediation.
+- DRR-002 remains an open high-severity Expo/Metro -> `image-size` denial-of-service advisory chain; `mobile/metro.config.js` blocks the affected parsers and HEIC/AVIF assets as an interim control, but no patched `image-size` release compatible with the current Expo 56 lane is available, and the forced Expo 53 downgrade is not an accepted production remediation.

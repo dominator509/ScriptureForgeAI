@@ -7,11 +7,19 @@ export const dependencyRiskProofMarkers = [
   'mobile_lockfile_expo_detected=true',
   'drr001_lifecycle_current=true',
   'drr001_mobile_runtime_not_imported=true',
+  'drr002_metro_parser_formats_blocked=true',
+  'drr002_mobile_asset_formats_blocked=true',
   'high_or_worse_audit_gate_documented=true',
   'remediation_closure_documented=true',
 ];
 
-export function validateDependencyRisk({ lockfile, register, runtimeSources = [], today = new Date().toISOString().slice(0, 10) }) {
+export function validateDependencyRisk({
+  lockfile,
+  register,
+  runtimeSources = [],
+  mobileMetroConfig = null,
+  today = new Date().toISOString().slice(0, 10),
+}) {
   const uuidVersion = packageVersion(lockfile, 'node_modules/uuid');
   const expoVersion = packageVersion(lockfile, 'node_modules/expo');
   assert.ok(uuidVersion, 'mobile package lock must include node_modules/uuid while DRR-001 is tracked');
@@ -29,12 +37,16 @@ export function validateDependencyRisk({ lockfile, register, runtimeSources = []
     }
   }
   validateNoRuntimeUUIDImports(runtimeSources);
+  if (mobileMetroConfig !== null) {
+    validateMobileMetroMitigation(mobileMetroConfig);
+  }
 
   return {
     uuidVersion,
     expoVersion,
     drr001Required: uuidIsStillRisk,
     drr001Status: uuidIsStillRisk ? 'accepted' : 'closed',
+    drr002MitigationEnforced: mobileMetroConfig !== null,
   };
 }
 
@@ -45,6 +57,17 @@ export function validateNoRuntimeUUIDImports(runtimeSources = []) {
       !uuidRuntimeImportPattern.test(source.content),
       `DRR-001 accepted risk must remain tooling-only; mobile runtime source imports uuid: ${source.path}`,
     );
+  }
+}
+
+export function validateMobileMetroMitigation(source) {
+  assert.match(source, /disableTypes\s*\(/, 'mobile Metro config must disable vulnerable image-size parsers');
+  for (const imageType of ['heif', 'icns', 'jxl', 'jxl-stream']) {
+    assert.match(source, new RegExp(`['"]${imageType}['"]`), `mobile Metro config must block image-size ${imageType}`);
+  }
+  assert.match(source, /config\.resolver\.assetExts\s*=\s*config\.resolver\.assetExts\.filter/, 'mobile Metro config must filter risky asset extensions');
+  for (const assetExtension of ['avif', 'heic']) {
+    assert.match(source, new RegExp(`['"]${assetExtension}['"]`), `mobile Metro config must block ${assetExtension} assets`);
   }
 }
 
@@ -124,8 +147,9 @@ async function main() {
   const lockfile = JSON.parse(await readFile(lockfilePath, 'utf8'));
   const register = await readFile(registerPath, 'utf8');
   const runtimeSources = await collectRuntimeSources();
-  const result = validateDependencyRisk({ lockfile, register, runtimeSources });
-  console.log(`dependency risk validated: uuid ${result.uuidVersion}, expo ${result.expoVersion}, DRR-001 status=${result.drr001Status}, ${dependencyRiskProofMarkers.join(', ')}`);
+  const mobileMetroConfig = await readFile('mobile/metro.config.js', 'utf8');
+  const result = validateDependencyRisk({ lockfile, register, runtimeSources, mobileMetroConfig });
+  console.log(`dependency risk validated: uuid ${result.uuidVersion}, expo ${result.expoVersion}, DRR-001 status=${result.drr001Status}, DRR-002 mitigation enforced=${result.drr002MitigationEnforced}, ${dependencyRiskProofMarkers.join(', ')}`);
 }
 
 async function collectRuntimeSources() {

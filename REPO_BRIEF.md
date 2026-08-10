@@ -56,7 +56,7 @@ ScriptureForgeAI is a multi-tenant Bible study platform with authenticated works
 - Live rooms rely on authenticated membership + JWT claims plus allowed origin checks.
 - Rust gRPC service calls use mTLS plus a shared secret and verified tenant metadata in staging/production; local plaintext fallback is development-only. Rust liveness is HTTP `/healthz` on `9102` because Kubernetes gRPC probes cannot present client certificates.
 - AI and Zoom paths are expected to fail closed/degrade with explicit typed errors and auditability.
-- Dependency status: web PostCSS/nanoid and mobile leaf overrides are patched; mobile DRR-002 remains an open high-severity Expo/Metro `image-size` audit blocker because the available forced fix downgrades the Expo 56 lane.
+- Dependency status: web PostCSS/nanoid and mobile leaf overrides are patched; `mobile/metro.config.js` blocks DRR-002 image parsers and HEIC/AVIF assets, but the high-severity Expo/Metro `image-size` audit blocker remains open because the available forced fix downgrades the Expo 56 lane.
 
 ## Do-Not-Touch / Risk Zones
 

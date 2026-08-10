@@ -27,7 +27,7 @@ This register tracks active dependency findings and recently closed decisions. I
 - Advisories: GHSA-w3rx-r6r6-pgpr and GHSA-5p2g-fcmc-qvqq, infinite-loop denial of service in ICNS/JXL/HEIF parsing.
 - Current result: leaf fixes for `brace-expansion`, `js-yaml`, `nanoid`, `postcss`, and `uuid` are applied; the mobile high-severity audit still reports 11 findings through the Metro/image-size dependency chain.
 - Remediation constraint: npm's forced fix proposes Expo 53.0.27, which is a breaking downgrade from the repo-current Expo 56 / React Native 0.86 lane. `image-size@2.0.2` is still within the affected advisory range, so a blind override would not remediate the finding.
-- Interim control: Do not process untrusted image inputs through the mobile/Metro build toolchain; keep the current Expo lane and re-check on every Expo/Metro release refresh.
+- Interim control: `mobile/metro.config.js` disables the vulnerable `image-size` HEIF/ICNS/JXL parsers and removes `heic`/`avif` asset extensions from Metro's accepted set. Do not process untrusted image inputs through the mobile/Metro build toolchain; keep the current Expo lane and re-check on every Expo/Metro release refresh. `tools/validate-dependency-risk.mjs` verifies these controls.
 - Risk owner: Mobile/release owner
 - Review due: 2026-08-24
 - Required closure: Adopt a patched Metro/image-size dependency line compatible with Expo 56 or complete and validate a deliberate Expo lane migration; then require `npm audit --audit-level=high` to pass.
