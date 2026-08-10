@@ -72,6 +72,100 @@ func TestExecuteUsesBoundedHTTPClientTimeout(t *testing.T) {
 	}
 }
 
+func TestExecuteRetriesWithFreshRequestBody(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		var request openaiRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode retry request: %v", err)
+		}
+		if request.Model != "test-model" || len(request.Messages) != 2 {
+			t.Fatalf("retry request = %#v", request)
+		}
+		if attempts == 1 {
+			http.Error(w, "transient provider failure", http.StatusBadGateway)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(openaiResponse{
+			Choices: []struct {
+				Message openaiMessage `json:"message"`
+			}{
+				{Message: openaiMessage{Role: "assistant", Content: "Grounded answer [Genesis 1:1]"}},
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := &LLMClient{
+		APIKey:     "test-key",
+		Endpoint:   server.URL,
+		Model:      "test-model",
+		HTTPClient: server.Client(),
+		MaxRetries: 1,
+	}
+	response, err := client.Execute(context.Background(), "study genesis", "[Genesis 1:1] In the beginning", ai.NewResponseVerificationSubsystem())
+	if err != nil {
+		t.Fatalf("Execute retry error: %v", err)
+	}
+	if attempts != 2 || !strings.Contains(response, "[Genesis 1:1]") {
+		t.Fatalf("retry attempts=%d response=%q, want two valid attempts", attempts, response)
+	}
+}
+
+func TestExecuteRetryStopsWhenContextIsCanceled(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		http.Error(w, "transient provider failure", http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	client := &LLMClient{
+		APIKey:     "test-key",
+		Endpoint:   server.URL,
+		Model:      "test-model",
+		HTTPClient: server.Client(),
+		MaxRetries: 1,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	_, err := client.Execute(ctx, "study genesis", "[Genesis 1:1] In the beginning", ai.NewResponseVerificationSubsystem())
+	if err == nil {
+		t.Fatal("Execute returned nil error after context cancellation")
+	}
+	pe, ok := err.(*ai.PlatformException)
+	if !ok || pe.Code != http.StatusServiceUnavailable || pe.Category != "AI_ORCHESTRATION_ENGINE_FAULT" {
+		t.Fatalf("canceled retry error = %#v, want typed 503 AI fault", err)
+	}
+	if attempts != 1 {
+		t.Fatalf("canceled retry attempts = %d, want 1", attempts)
+	}
+}
+
+func TestExecuteRejectsOversizedProviderResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(strings.Repeat("x", int(ai.MaxProviderResponseBytes+1))))
+	}))
+	defer server.Close()
+
+	client := &LLMClient{
+		APIKey:     "test-key",
+		Endpoint:   server.URL,
+		Model:      "test-model",
+		HTTPClient: server.Client(),
+		MaxRetries: 0,
+	}
+	_, err := client.Execute(context.Background(), "study genesis", "[Genesis 1:1] In the beginning", ai.NewResponseVerificationSubsystem())
+	if err == nil {
+		t.Fatal("Execute accepted an oversized provider response")
+	}
+	pe, ok := err.(*ai.PlatformException)
+	if !ok || pe.Code != http.StatusServiceUnavailable || !strings.Contains(pe.Message, "size limit") {
+		t.Fatalf("oversized response error = %#v, want bounded AI fault", err)
+	}
+}
+
 func TestExecuteRejectsCitationFreeAndHallucinatedResponses(t *testing.T) {
 	tests := []struct {
 		name            string

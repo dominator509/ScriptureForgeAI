@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -53,24 +52,13 @@ func NewLLMClient() *LLMClient {
 	if model == "" {
 		model = "gpt-4"
 	}
-	timeout := 3500 * time.Millisecond
-	if configured := os.Getenv("AI_HTTP_TIMEOUT_MS"); configured != "" {
-		if millis, err := strconv.Atoi(configured); err == nil && millis > 0 {
-			timeout = time.Duration(millis) * time.Millisecond
-		}
-	}
-	maxRetries := 1
-	if configured := os.Getenv("AI_MAX_RETRIES"); configured != "" {
-		if retries, err := strconv.Atoi(configured); err == nil && retries >= 0 {
-			maxRetries = retries
-		}
-	}
+	providerConfig := ai.LoadProviderHTTPConfig()
 	return &LLMClient{
 		APIKey:     key,
 		Endpoint:   endpoint,
 		Model:      model,
-		HTTPClient: &http.Client{Timeout: timeout},
-		MaxRetries: maxRetries,
+		HTTPClient: ai.NewProviderHTTPClient(providerConfig),
+		MaxRetries: providerConfig.MaxRetries,
 	}
 }
 
@@ -108,6 +96,14 @@ func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledCont
 			Code:     503,
 		}
 	}
+	if verifier == nil {
+		status = "configuration_error"
+		return "", &ai.PlatformException{
+			Category: "AI_CONFIGURATION_FAULT",
+			Message:  "AI response verifier is not configured",
+			Code:     503,
+		}
+	}
 
 	messages := c.BuildRigorousPrompt(safePrompt, compiledContext)
 
@@ -123,25 +119,15 @@ func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledCont
 		return "", err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Endpoint, bytes.NewBuffer(jsonBody))
-	if err != nil {
-		status = "request_build_error"
-		return "", err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.APIKey)
-
-	var resp *http.Response
-	for attempt := 0; attempt <= c.MaxRetries; attempt++ {
-		resp, err = c.HTTPClient.Do(req)
-		if err == nil {
-			break
+	resp, err := ai.DoProviderRequest(ctx, c.HTTPClient, c.MaxRetries, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Endpoint, bytes.NewReader(jsonBody))
+		if err != nil {
+			return nil, err
 		}
-		if attempt < c.MaxRetries {
-			time.Sleep(time.Duration(attempt+1) * 100 * time.Millisecond)
-		}
-	}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+		return req, nil
+	})
 	if err != nil {
 		status = "timeout_or_network_error"
 		return "", &ai.PlatformException{
@@ -153,13 +139,26 @@ func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledCont
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
 		status = strconv.Itoa(resp.StatusCode)
-		return "", fmt.Errorf("LLM API returned status %d: %s", resp.StatusCode, string(bodyBytes))
+		_, _ = ai.ReadProviderResponseBody(resp)
+		return "", &ai.PlatformException{
+			Category: "AI_ORCHESTRATION_ENGINE_FAULT",
+			Message:  fmt.Sprintf("LLM provider returned status %d", resp.StatusCode),
+			Code:     http.StatusServiceUnavailable,
+		}
 	}
 
+	bodyBytes, err := ai.ReadProviderResponseBody(resp)
+	if err != nil {
+		status = "response_too_large"
+		return "", &ai.PlatformException{
+			Category: "AI_ORCHESTRATION_ENGINE_FAULT",
+			Message:  "LLM provider response exceeded the configured size limit",
+			Code:     http.StatusServiceUnavailable,
+		}
+	}
 	var aiResp openaiResponse
-	if err := json.NewDecoder(resp.Body).Decode(&aiResp); err != nil {
+	if err := json.Unmarshal(bodyBytes, &aiResp); err != nil {
 		status = "response_decode_error"
 		return "", err
 	}

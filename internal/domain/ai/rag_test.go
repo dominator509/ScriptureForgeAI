@@ -2,6 +2,9 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -70,6 +73,44 @@ func TestGRPCScriptureClientRejectsMissingTenant(t *testing.T) {
 	client := &GRPCScriptureClient{client: &fakeScriptureEngineClient{}}
 	if _, err := client.Search(context.Background(), "", "creation", 1); err == nil {
 		t.Fatal("Search accepted an empty organization ID")
+	}
+}
+
+func TestGenerateEmbeddingRetriesWithFreshRequestBody(t *testing.T) {
+	t.Setenv("GO_ENV", "production")
+	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("AI_MAX_RETRIES", "1")
+	t.Setenv("AI_HTTP_TIMEOUT_MS", "1000")
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		var request struct {
+			Input string `json:"input"`
+			Model string `json:"model"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode embedding request: %v", err)
+		}
+		if request.Input != "creation" || request.Model != "text-embedding-3-small" {
+			t.Fatalf("embedding request = %#v", request)
+		}
+		if attempts == 1 {
+			http.Error(w, "transient embedding failure", http.StatusBadGateway)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{"embedding": []float32{0.25, 0.5}}},
+		})
+	}))
+	defer server.Close()
+	t.Setenv("AI_EMBEDDING_ENDPOINT", server.URL)
+
+	embedding, err := generateEmbedding(context.Background(), "creation")
+	if err != nil {
+		t.Fatalf("generateEmbedding retry error: %v", err)
+	}
+	if attempts != 2 || len(embedding) != 2 || embedding[0] != 0.25 || embedding[1] != 0.5 {
+		t.Fatalf("embedding attempts=%d value=%v, want two valid attempts", attempts, embedding)
 	}
 }
 

@@ -7,10 +7,8 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -153,38 +151,39 @@ func generateEmbedding(ctx context.Context, text string) ([]float32, error) {
 	if endpoint == "" {
 		endpoint = "https://api.openai.com/v1/embeddings"
 	}
-	timeout := 3500 * time.Millisecond
-	if configured := os.Getenv("AI_HTTP_TIMEOUT_MS"); configured != "" {
-		if millis, err := strconv.Atoi(configured); err == nil && millis > 0 {
-			timeout = time.Duration(millis) * time.Millisecond
-		}
-	}
-
 	reqBody := embedRequest{
 		Input: text,
 		Model: model,
 	}
 
-	jsonBody, _ := json.Marshal(reqBody)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewBuffer(jsonBody))
+	jsonBody, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-
-	client := &http.Client{Timeout: timeout}
-	resp, err := client.Do(req)
+	providerConfig := LoadProviderHTTPConfig()
+	resp, err := DoProviderRequest(ctx, NewProviderHTTPClient(providerConfig), providerConfig.MaxRetries, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(jsonBody))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		return req, nil
+	})
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("embeddings API returned status %d: %s", resp.StatusCode, string(bodyBytes))
+		_, _ = ReadProviderResponseBody(resp)
+		return nil, fmt.Errorf("embeddings provider returned status %d", resp.StatusCode)
+	}
+
+	bodyBytes, err := ReadProviderResponseBody(resp)
+	if err != nil {
+		return nil, fmt.Errorf("embeddings provider response exceeded the configured size limit: %w", err)
 	}
 
 	var embedResp struct {
@@ -193,7 +192,7 @@ func generateEmbedding(ctx context.Context, text string) ([]float32, error) {
 		} `json:"data"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&embedResp); err != nil {
+	if err := json.Unmarshal(bodyBytes, &embedResp); err != nil {
 		return nil, err
 	}
 
