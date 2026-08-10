@@ -33,6 +33,7 @@ type RegisterRequest struct {
 	Email          string `json:"email"`
 	Password       string `json:"password"`
 	OrganizationID string `json:"organization_id"`
+	RequestedRole  string `json:"role,omitempty"`
 }
 
 type LoginRequest struct {
