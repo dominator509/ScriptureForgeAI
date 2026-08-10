@@ -30,7 +30,7 @@ export const requiredMarkers = [
   { id: 'ci-awscli-v2-pgp', text: 'gpg --batch --verify awscliv2.zip.sig awscliv2.zip' },
   { id: 'ci-awscli-v2-fingerprint', text: 'FB5DB77FD5C118B80511ADA8A6310ACC4672475C' },
   { id: 'ci-awscli-v2-install', text: 'sudo ./aws/install --update' },
-  { id: 'ci-gopls-install', text: 'go install golang.org/x/tools/gopls@v0.22.0' },
+  { id: 'ci-gopls-install', text: 'go install golang.org/x/tools/gopls@v0.20.0' },
   { id: 'ci-kubectl-install', text: 'curl -fsSLo kubectl https://dl.k8s.io/release/v1.34.1/bin/linux/amd64/kubectl' },
   { id: 'ci-kubectl-sha256', text: 'https://dl.k8s.io/release/v1.34.1/bin/linux/amd64/kubectl.sha256' },
   { id: 'ci-kubectl-checksum', text: 'sha256sum --check -' },
