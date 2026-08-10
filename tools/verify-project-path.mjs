@@ -271,10 +271,16 @@ function discoverRepoRustToolchainBins(repoRoot, platformName = platform()) {
   try {
     return readdirSync(toolchainRoot, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
-      .map((entry) => (platformName === 'win32'
-        ? pathWin32.join(repoRoot, '.tools', 'rustup', 'toolchains', entry.name, 'bin')
-        : join(toolchainRoot, entry.name, 'bin')))
-      .filter((entry) => existsSync(entry));
+      .map((entry) => {
+        const binPath = join(toolchainRoot, entry.name, 'bin');
+        if (!existsSync(binPath)) {
+          return null;
+        }
+        return platformName === 'win32'
+          ? pathWin32.join(repoRoot, '.tools', 'rustup', 'toolchains', entry.name, 'bin')
+          : binPath;
+      })
+      .filter(Boolean);
   } catch {
     return [];
   }
