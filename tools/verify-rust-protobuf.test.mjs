@@ -13,6 +13,10 @@ test('validateRustProtobufSources accepts repository Rust protobuf tooling', asy
   assert.equal(result.lockfilePlatformProtocCovered, true);
   assert.equal(result.healthServiceCovered, true);
   assert.equal(result.boundedVectorSearchInputs, true);
+  assert.equal(result.grpcTlsSecurityCovered, true);
+  assert.equal(result.grpcTenantBindingCovered, true);
+  assert.equal(result.grpcTransportBoundsCovered, true);
+  assert.equal(result.rustHealthHttpCovered, true);
   assert.equal(result.rustRuntimeObservabilityCovered, true);
 });
 

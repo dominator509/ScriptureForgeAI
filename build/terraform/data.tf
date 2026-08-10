@@ -72,3 +72,11 @@ data "aws_secretsmanager_secret" "openai_api_key" {
 data "aws_secretsmanager_secret" "zoom_credentials" {
   arn = var.app_secret_arns.zoom_credentials
 }
+
+data "aws_secretsmanager_secret" "grpc_engine_shared_secret" {
+  arn = var.app_secret_arns.grpc_engine_shared_secret
+}
+
+data "aws_secretsmanager_secret" "grpc_engine_tls_credentials" {
+  arn = var.app_secret_arns.grpc_engine_tls_credentials
+}

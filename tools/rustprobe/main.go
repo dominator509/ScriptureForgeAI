@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -17,36 +19,41 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 var prometheusSamplePattern = regexp.MustCompile(`(?m)^([A-Za-z_:][A-Za-z0-9_:]*)(?:\{[^}\n]*\})?\s+([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)\s*(?:\n|$)`)
 
 type config struct {
-	GRPCAddress      string
-	MetricsURL       string
-	APIMetricsURL    string
-	ReleaseCandidate string
-	ServiceVersion   string
-	DeploymentEnv    string
-	LoadRunID        string
-	Timeout          time.Duration
-	ServiceName      string
+	GRPCAddress        string
+	GRPCCAFile         string
+	GRPCClientCertFile string
+	GRPCClientKeyFile  string
+	GRPCServerName     string
+	MetricsURL         string
+	APIMetricsURL      string
+	ReleaseCandidate   string
+	ServiceVersion     string
+	DeploymentEnv      string
+	LoadRunID          string
+	Timeout            time.Duration
+	ServiceName        string
 }
 
 type report struct {
-	ObservedAt       string        `json:"observed_at"`
-	GRPCTarget       string        `json:"grpc_target"`
-	MetricsTarget    string        `json:"metrics_target,omitempty"`
-	APIMetricsURL    string        `json:"api_metrics_target,omitempty"`
-	ThresholdPass    bool          `json:"threshold_pass"`
-	ReleaseCandidate string        `json:"release_candidate"`
-	ServiceVersion   string        `json:"service_version"`
-	DeploymentEnv    string        `json:"deployment_environment"`
-	LoadRunID        string        `json:"load_run_id"`
-	Probes           []probeResult `json:"probes"`
-	EvidenceItems    []string      `json:"evidence_items"`
+	ObservedAt           string        `json:"observed_at"`
+	GRPCTarget           string        `json:"grpc_target"`
+	GRPCTransportSecurity string       `json:"grpc_transport_security"`
+	MetricsTarget        string        `json:"metrics_target,omitempty"`
+	APIMetricsURL        string        `json:"api_metrics_target,omitempty"`
+	ThresholdPass        bool          `json:"threshold_pass"`
+	ReleaseCandidate     string        `json:"release_candidate"`
+	ServiceVersion       string        `json:"service_version"`
+	DeploymentEnv        string        `json:"deployment_environment"`
+	LoadRunID            string        `json:"load_run_id"`
+	Probes               []probeResult `json:"probes"`
+	EvidenceItems        []string      `json:"evidence_items"`
 }
 
 type probeResult struct {
@@ -74,6 +81,10 @@ func main() {
 func parseFlags() config {
 	cfg := config{}
 	flag.StringVar(&cfg.GRPCAddress, "grpc-address", "", "Rust gRPC address, for example scriptureforge-rust-engine:50051")
+	flag.StringVar(&cfg.GRPCCAFile, "grpc-ca-file", os.Getenv("GRPC_ENGINE_TLS_CA_FILE"), "PEM CA bundle used to verify the Rust gRPC server")
+	flag.StringVar(&cfg.GRPCClientCertFile, "grpc-client-cert-file", os.Getenv("GRPC_ENGINE_TLS_CLIENT_CERT_FILE"), "PEM client certificate used for Rust gRPC mTLS")
+	flag.StringVar(&cfg.GRPCClientKeyFile, "grpc-client-key-file", os.Getenv("GRPC_ENGINE_TLS_CLIENT_KEY_FILE"), "PEM client key used for Rust gRPC mTLS")
+	flag.StringVar(&cfg.GRPCServerName, "grpc-server-name", os.Getenv("GRPC_ENGINE_TLS_SERVER_NAME"), "Rust gRPC TLS server name")
 	flag.StringVar(&cfg.MetricsURL, "metrics-url", "", "optional Rust metrics URL, for example http://scriptureforge-rust-engine:9102/metrics")
 	flag.StringVar(&cfg.APIMetricsURL, "api-metrics-url", "", "deployed Go API metrics URL after an API flow has invoked the Rust engine")
 	flag.StringVar(&cfg.ReleaseCandidate, "release-candidate", os.Getenv("RELEASE_CANDIDATE"), "release candidate Git SHA or tag expected in Rust evidence")
@@ -87,10 +98,10 @@ func parseFlags() config {
 }
 
 func run(cfg config, output io.Writer) error {
-	return runWithDependencies(cfg, output, probeGRPCHealth, http.DefaultClient)
+	return runWithDependencies(cfg, output, nil, http.DefaultClient)
 }
 
-type grpcProbeFunc func(address, serviceName string, timeout time.Duration) probeResult
+type grpcProbeFunc func(config) probeResult
 
 func runWithDependencies(cfg config, output io.Writer, grpcProbe grpcProbeFunc, metricsClient *http.Client) error {
 	if cfg.GRPCAddress == "" {
@@ -129,6 +140,9 @@ func runWithDependencies(cfg config, output io.Writer, grpcProbe grpcProbeFunc, 
 		return errors.New("Rust proof requires distinct -metrics-url and -api-metrics-url targets")
 	}
 	if grpcProbe == nil {
+		if err := validateGRPCTLSConfig(cfg); err != nil {
+			return err
+		}
 		grpcProbe = probeGRPCHealth
 	}
 	if metricsClient == nil {
@@ -141,7 +155,7 @@ func runWithDependencies(cfg config, output io.Writer, grpcProbe grpcProbeFunc, 
 		fmt.Sprintf("deployment_environment=%s", cfg.DeploymentEnv),
 		fmt.Sprintf("load_run_id=%s", cfg.LoadRunID),
 	}
-	healthProbe := grpcProbe(cfg.GRPCAddress, cfg.ServiceName, cfg.Timeout)
+	healthProbe := grpcProbe(cfg)
 	if healthProbe.Passed {
 		healthProbe.ResultSummary += "; verified release markers: " + strings.Join(append([]string{"staging artifact"}, releaseMarkers...), ", ")
 	}
@@ -155,17 +169,18 @@ func runWithDependencies(cfg config, output io.Writer, grpcProbe grpcProbeFunc, 
 	}
 
 	result := report{
-		ObservedAt:       time.Now().UTC().Format("2006-01-02T15:04:05Z"),
-		GRPCTarget:       cfg.GRPCAddress,
-		MetricsTarget:    cfg.MetricsURL,
-		APIMetricsURL:    cfg.APIMetricsURL,
-		ThresholdPass:    true,
-		ReleaseCandidate: cfg.ReleaseCandidate,
-		ServiceVersion:   cfg.ServiceVersion,
-		DeploymentEnv:    cfg.DeploymentEnv,
-		LoadRunID:        cfg.LoadRunID,
-		Probes:           probes,
-		EvidenceItems:    []string{"RUST-GRPC-001"},
+		ObservedAt:            time.Now().UTC().Format("2006-01-02T15:04:05Z"),
+		GRPCTarget:            cfg.GRPCAddress,
+		GRPCTransportSecurity: "mTLS",
+		MetricsTarget:         cfg.MetricsURL,
+		APIMetricsURL:         cfg.APIMetricsURL,
+		ThresholdPass:         true,
+		ReleaseCandidate:      cfg.ReleaseCandidate,
+		ServiceVersion:        cfg.ServiceVersion,
+		DeploymentEnv:         cfg.DeploymentEnv,
+		LoadRunID:             cfg.LoadRunID,
+		Probes:                probes,
+		EvidenceItems:         []string{"RUST-GRPC-001"},
 	}
 	for _, probe := range probes {
 		if !probe.Passed {
@@ -185,32 +200,86 @@ func runWithDependencies(cfg config, output io.Writer, grpcProbe grpcProbeFunc, 
 	return nil
 }
 
-func probeGRPCHealth(address, serviceName string, timeout time.Duration) probeResult {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+func validateGRPCTLSConfig(cfg config) error {
+	missing := make([]string, 0, 4)
+	for name, value := range map[string]string{
+		"-grpc-ca-file":          cfg.GRPCCAFile,
+		"-grpc-client-cert-file": cfg.GRPCClientCertFile,
+		"-grpc-client-key-file":  cfg.GRPCClientKeyFile,
+		"-grpc-server-name":      cfg.GRPCServerName,
+	} {
+		if strings.TrimSpace(value) == "" {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("Rust gRPC staging probe requires mTLS configuration: %s", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+func grpcTransportCredentials(cfg config) (credentials.TransportCredentials, error) {
+	if err := validateGRPCTLSConfig(cfg); err != nil {
+		return nil, err
+	}
+	caPEM, err := os.ReadFile(strings.TrimSpace(cfg.GRPCCAFile))
+	if err != nil {
+		return nil, fmt.Errorf("read gRPC CA file: %w", err)
+	}
+	rootCAs := x509.NewCertPool()
+	if !rootCAs.AppendCertsFromPEM(caPEM) {
+		return nil, errors.New("gRPC CA file does not contain a valid PEM certificate")
+	}
+	clientCertPEM, err := os.ReadFile(strings.TrimSpace(cfg.GRPCClientCertFile))
+	if err != nil {
+		return nil, fmt.Errorf("read gRPC client certificate file: %w", err)
+	}
+	clientKeyPEM, err := os.ReadFile(strings.TrimSpace(cfg.GRPCClientKeyFile))
+	if err != nil {
+		return nil, fmt.Errorf("read gRPC client key file: %w", err)
+	}
+	clientCertificate, err := tls.X509KeyPair(clientCertPEM, clientKeyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("parse gRPC client certificate and key: %w", err)
+	}
+	return credentials.NewTLS(&tls.Config{
+		MinVersion:   tls.VersionTLS12,
+		RootCAs:      rootCAs,
+		Certificates: []tls.Certificate{clientCertificate},
+		ServerName:   strings.TrimSpace(cfg.GRPCServerName),
+	}), nil
+}
+
+func probeGRPCHealth(cfg config) probeResult {
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
 	defer cancel()
 	start := time.Now()
-	conn, err := grpc.DialContext(ctx, address, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
+	transportCredentials, err := grpcTransportCredentials(cfg)
+	if err != nil {
+		return failedProbe("rust-grpc-health", cfg.GRPCAddress, err.Error())
+	}
+	conn, err := grpc.DialContext(ctx, cfg.GRPCAddress, grpc.WithTransportCredentials(transportCredentials), grpc.WithBlock())
 	latency := time.Since(start).Milliseconds()
 	if err != nil {
-		return failedProbe("rust-grpc-health", address, err.Error())
+		return failedProbe("rust-grpc-health", cfg.GRPCAddress, err.Error())
 	}
 	defer conn.Close()
 
 	client := healthpb.NewHealthClient(conn)
-	response, err := client.Check(ctx, &healthpb.HealthCheckRequest{Service: serviceName})
+	response, err := client.Check(ctx, &healthpb.HealthCheckRequest{Service: cfg.ServiceName})
 	latency = time.Since(start).Milliseconds()
 	if err != nil {
-		return failedProbe("rust-grpc-health", address, err.Error())
+		return failedProbe("rust-grpc-health", cfg.GRPCAddress, err.Error())
 	}
 	status := response.GetStatus().String()
 	passed := response.GetStatus() == healthpb.HealthCheckResponse_SERVING
 	return probeResult{
 		Name:          "rust-grpc-health",
-		Target:        address,
+		Target:        cfg.GRPCAddress,
 		Passed:        passed,
 		Status:        status,
 		LatencyMS:     latency,
-		ResultSummary: fmt.Sprintf("gRPC health status %s in %dms; verified markers: grpc health, %s, SERVING", status, latency, serviceName),
+		ResultSummary: fmt.Sprintf("gRPC health status %s in %dms; verified markers: grpc health, %s, SERVING, grpc_transport_security=mTLS", status, latency, cfg.ServiceName),
 	}
 }
 

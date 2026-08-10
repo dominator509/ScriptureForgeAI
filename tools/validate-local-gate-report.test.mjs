@@ -480,10 +480,10 @@ test('validateLocalGateReport rejects dependency risk reports without proof mark
 
   const missingMarker = completeReport();
   findGate(missingMarker, 'dependency-risk-validation').stdout_tail = dependencyRiskProofOutput()
-    .replace('drr001_review_current=true', 'drr001_review_current=false');
+    .replace('drr001_lifecycle_current=true', 'drr001_lifecycle_current=false');
   assert.throws(
     () => validateLocalGateReport(missingMarker),
-    /dependency-risk-validation output must include drr001_review_current=true/,
+    /dependency-risk-validation output must include drr001_lifecycle_current=true/,
   );
 });
 
@@ -872,7 +872,7 @@ function securityArtifactsProofOutput() {
 }
 
 function dependencyRiskProofOutput() {
-  return `dependency risk validated: uuid 7.0.3, expo 56.0.17, DRR-001 required=true, ${dependencyRiskProofMarkers.join(', ')}`;
+  return `dependency risk validated: uuid 11.1.1, expo 56.0.17, DRR-001 status=closed, ${dependencyRiskProofMarkers.join(', ')}`;
 }
 
 function secretHygieneProofOutput() {

@@ -19,6 +19,10 @@ export const rustProtobufProofMarkers = [
   'lockfile_platform_protoc_covered=true',
   'health_service_covered=true',
   'bounded_vector_search_inputs=true',
+  'grpc_tls_security_covered=true',
+  'grpc_tenant_binding_covered=true',
+  'grpc_transport_bounds_covered=true',
+  'rust_health_http_covered=true',
   'rust_runtime_observability_covered=true',
 ];
 
@@ -35,7 +39,7 @@ export async function loadRustProtobufSources(files = defaultFiles) {
 export function validateRustProtobufSources(sources) {
   assert.match(sources.cargoToml, /\[build-dependencies\][\s\S]*protoc-bin-vendored\s*=\s*"3"/, 'Rust build dependencies must vendor protoc');
   assert.match(sources.cargoToml, /\[build-dependencies\][\s\S]*tonic-build\s*=\s*"0\.10"/, 'Rust build dependencies must include tonic-build');
-  assert.match(sources.cargoToml, /\[dependencies\][\s\S]*tonic\s*=\s*"0\.10"/, 'Rust dependencies must include tonic');
+  assert.match(sources.cargoToml, /\[dependencies\][\s\S]*tonic\s*=\s*\{[^}]*version\s*=\s*"0\.10"[^}]*features\s*=\s*\[[^\]]*"tls"[^\]]*\]/, 'Rust dependencies must enable tonic TLS');
   assert.match(sources.cargoToml, /\[dependencies\][\s\S]*prost\s*=\s*"0\.12"/, 'Rust dependencies must include prost');
   assert.match(sources.cargoToml, /\[dependencies\][\s\S]*sqlx\s*=\s*\{[^}]*version\s*=\s*"0\.9"[^}]*runtime-tokio[^}]*tls-rustls[^}]*postgres[^}]*uuid[^}]*\}/, 'Rust service must use the SQLx 0.9 runtime-tokio/tls-rustls dependency lane');
   assert.match(sources.cargoToml, /\[dependencies\][\s\S]*pgvector\s*=\s*\{[^}]*version\s*=\s*"0\.4"[^}]*sqlx[^}]*\}/, 'Rust service must use pgvector 0.4 with SQLx support');
@@ -80,6 +84,16 @@ export function validateRustProtobufSources(sources) {
   assert.ok(sources.rustMain.includes('ScriptureEngineServer<super::MyScriptureEngine>'), 'Rust tests must compile the generated gRPC server type');
   assert.ok(sources.rustMain.includes('validate_vector_search_request'), 'Rust service must validate vector-search requests before querying Postgres');
   assert.ok(sources.rustMain.includes('vector_search_request_rejects_unbounded_or_invalid_inputs'), 'Rust tests must reject invalid or unbounded vector-search requests');
+  assert.ok(sources.rustMain.includes('authorize_grpc_request'), 'Rust service must authenticate protected gRPC requests');
+  assert.ok(sources.rustMain.includes('GRPC_ENGINE_SHARED_SECRET'), 'Rust service must require a shared gRPC service secret in production');
+  assert.ok(sources.rustMain.includes('ServerTlsConfig'), 'Rust service must configure mTLS for production gRPC traffic');
+  assert.ok(sources.rustMain.includes('grpc_authentication_requires_service_secret_and_binds_tenant'), 'Rust tests must verify gRPC service authentication and tenant binding');
+  assert.ok(sources.rustMain.includes('resolve_organization_id'), 'Rust service must bind SQL tenant identity to authenticated metadata');
+  assert.ok(sources.rustMain.includes('max_frame_size'), 'Rust gRPC server must enforce a maximum frame size');
+  assert.ok(sources.rustMain.includes('MAX_GRPC_MESSAGE_BYTES'), 'Rust gRPC transport must define a message-size bound');
+  assert.ok(sources.rustMain.includes('GRPC_TENANT_HEADER'), 'Rust gRPC service must consume authenticated tenant metadata');
+  assert.ok(sources.rustMain.includes('grpc_security_config_is_optional_only_for_local_development'), 'Rust tests must pin local-only insecure fallback behavior');
+  assert.ok(sources.rustMain.includes('healthz'), 'Rust service must expose an HTTP health endpoint compatible with mTLS workloads');
   assert.ok(sources.rustMain.includes('const EMBEDDING_DIMENSION: usize = 1536'), 'Rust vector search must enforce the architecture embedding dimension');
   assert.ok(sources.rustMain.includes('const MAX_VECTOR_SEARCH_RESULTS: i32 = 100'), 'Rust vector search must bound top_k_results');
   assert.ok(sources.rustMain.includes('scripture_engine_service_name'), 'Rust tests must verify the generated gRPC service name');
@@ -117,6 +131,10 @@ export function validateRustProtobufSources(sources) {
     lockfilePlatformProtocCovered: true,
     healthServiceCovered: true,
     boundedVectorSearchInputs: true,
+    grpcTlsSecurityCovered: true,
+    grpcTenantBindingCovered: true,
+    grpcTransportBoundsCovered: true,
+    rustHealthHttpCovered: true,
     rustRuntimeObservabilityCovered: true,
   };
 }

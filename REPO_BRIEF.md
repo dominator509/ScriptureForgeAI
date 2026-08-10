@@ -37,6 +37,7 @@ ScriptureForgeAI is a multi-tenant Bible study platform with authenticated works
   - `cd web && npm run smoke && npm run typecheck && npm run build`
   - `cd mobile && npm run smoke && npm run build:check`
   - `cd services/scripture-engine && cargo test --locked`
+  - `go test ./tools/rustprobe -count=1`
   - `cd build/terraform && terraform fmt -check -recursive && terraform init -backend=false && terraform validate`
 - Serena/Obsidian:
   - `node tools/validate-serena-obsidian.mjs`
@@ -53,7 +54,9 @@ ScriptureForgeAI is a multi-tenant Bible study platform with authenticated works
 - Tenant isolation: Postgres RLS + `auth.SetTenantContext(ctx, tx, orgID)` for tenant-scoped DB access.
 - Journals must stay ciphertext-only at transport and persistence boundaries; pass no plaintext or passphrases to backend routes.
 - Live rooms rely on authenticated membership + JWT claims plus allowed origin checks.
+- Rust gRPC service calls use mTLS plus a shared secret and verified tenant metadata in staging/production; local plaintext fallback is development-only. Rust liveness is HTTP `/healthz` on `9102` because Kubernetes gRPC probes cannot present client certificates.
 - AI and Zoom paths are expected to fail closed/degrade with explicit typed errors and auditability.
+- Dependency status: web PostCSS/nanoid and mobile leaf overrides are patched; mobile DRR-002 remains an open high-severity Expo/Metro `image-size` audit blocker because the available forced fix downgrades the Expo 56 lane.
 
 ## Do-Not-Touch / Risk Zones
 
@@ -65,5 +68,7 @@ ScriptureForgeAI is a multi-tenant Bible study platform with authenticated works
 ## Unknowns / TODOs
 
 - Exact staging AWS inputs, remote state, DNS, and secret-manager dependencies are environment-owned.
+- Staging must prove the Secrets Store CSI JSON shape for `grpc_engine_tls_credentials`, certificate rotation, Rust health/readiness, and Go-to-Rust mTLS/tenant binding with `tools/rustprobe`.
 - Production readiness still depends on clean git sync state, pushed CI evidence, and staging proof manifests.
 - Native EAS/Expo crypto behavior requires separate staged-device validation beyond local smoke checks.
+- Mobile dependency closure requires a patched Expo 56-compatible Metro/image-size line or a deliberately tested Expo migration; see `security/dependency_risk_register.md#DRR-002`.

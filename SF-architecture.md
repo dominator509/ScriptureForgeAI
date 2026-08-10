@@ -232,7 +232,7 @@ type MeetingAdapter interface {
 
 ### 9.1 Threat Model & Boundary Designations
 *   **Trust Boundary Alpha (Client to Gateway):** Untrusted data footprint. Assumes all parameters, tokens, and payloads are explicitly hostile. Sanitization captures incoming streams.
-*   **Trust Boundary Beta (Internal Micro-network Services):** Fully verified service communication using Mutual TLS (mTLS) configurations across cluster namespaces.
+*   **Trust Boundary Beta (Internal Micro-network Services):** The repository implements mTLS server/client configuration, shared-secret authorization, and tenant metadata binding for Go-to-Rust gRPC calls. Local tests cover the handshake and request guards; cross-namespace certificate issuance, secret injection, rotation, and deployed traffic proof remain staging gates.
 
 ### 9.2 Zero-Knowledge Client Journal Architecture
 To ensure ironclad security for sensitive spiritual reflections, journals utilize client-side cryptographic derivation:

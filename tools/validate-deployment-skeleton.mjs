@@ -83,8 +83,8 @@ export function validateTerraformSecretInputs(variables, tfvarsExample, app) {
   );
 
   const secretARNBlock = terraformVariableBlock(variables, 'app_secret_arns');
-  for (const key of ['database_url', 'jwt_secret_key', 'openai_api_key', 'zoom_credentials']) {
-    assert.ok(secretARNBlock.includes(`${key}     = string`) || secretARNBlock.includes(`${key}   = string`) || secretARNBlock.includes(`${key} = string`), `app_secret_arns missing ${key}`);
+  for (const key of ['database_url', 'jwt_secret_key', 'openai_api_key', 'zoom_credentials', 'grpc_engine_shared_secret', 'grpc_engine_tls_credentials']) {
+    assert.match(secretARNBlock, new RegExp(`${key}\\s*=\\s*string`), `app_secret_arns missing ${key}`);
     assert.ok(
       secretARNBlock.includes(`can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.${key}))`),
       `app_secret_arns.${key} must be validated as a Secrets Manager ARN`,
@@ -179,6 +179,9 @@ requireIncludes(
     'jwt_secret_key',
     'openai_api_key',
     'zoom_credentials',
+    'grpc_engine_shared_secret',
+    'grpc_engine_tls_credentials',
+    'variable "grpc_engine_tls_server_name"',
     'variable "ingress_certificate_arn"',
     'variable "otel_exporter_otlp_endpoint"',
     'variable "service_version"',
@@ -224,6 +227,8 @@ requireIncludes(
     'data.aws_secretsmanager_secret.jwt_secret_key.arn',
     'data.aws_secretsmanager_secret.openai_api_key.arn',
     'data.aws_secretsmanager_secret.zoom_credentials.arn',
+    'data.aws_secretsmanager_secret.grpc_engine_shared_secret.arn',
+    'data.aws_secretsmanager_secret.grpc_engine_tls_credentials.arn',
   ],
   'terraform IAM',
 );
@@ -268,6 +273,13 @@ requireIncludes(
     'name = "ZOOM_CLIENT_ID"',
     'name = "ZOOM_CLIENT_SECRET"',
     'name = "ZOOM_WEBHOOK_SECRET_TOKEN"',
+    'name = "GRPC_ENGINE_SHARED_SECRET"',
+    'name = "GRPC_ENGINE_TLS_CA_PEM"',
+    'name = "GRPC_ENGINE_TLS_CERT_PEM"',
+    'name = "GRPC_ENGINE_TLS_KEY_PEM"',
+    'name = "GRPC_ENGINE_TLS_CLIENT_CERT_PEM"',
+    'name = "GRPC_ENGINE_TLS_CLIENT_KEY_PEM"',
+    'name  = "GRPC_ENGINE_TLS_SERVER_NAME"',
     'name  = "REDIS_URL"',
     'rediss://${aws_elasticache_replication_group.redis.primary_endpoint_address}:6379',
     'name  = "GRPC_ENGINE_ADDRESS"',
@@ -282,7 +294,8 @@ requireIncludes(
     'name  = "OTEL_EXPORTER_OTLP_INSECURE"',
     'path = "/live"',
     'path = "/ready"',
-    'grpc {',
+    'path = "/healthz"',
+    'port = 9102',
     'name  = "RUST_ENGINE_BIND_ADDRESS"',
     'value = "0.0.0.0:50051"',
     'name  = "RUST_ENGINE_METRICS_ADDRESS"',

@@ -3,23 +3,32 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 var requiredRustProbeSummaryMarkers = map[string][]string{
-	"rust-grpc-health":             {"staging artifact", "grpc health", "scriptureforge.engine.ScriptureEngine", "SERVING", "release_candidate=sha-rust", "service_version=scriptureforge-rust-engine:sha-rust", "deployment_environment=staging", "load_run_id=rust-run-123"},
+	"rust-grpc-health":             {"staging artifact", "grpc health", "scriptureforge.engine.ScriptureEngine", "SERVING", "grpc_transport_security=mTLS", "release_candidate=sha-rust", "service_version=scriptureforge-rust-engine:sha-rust", "deployment_environment=staging", "load_run_id=rust-run-123"},
 	"rust-metrics":                 {"staging artifact", "scriptureforge_rust_engine_embedding_requests_total", "scriptureforge_rust_engine_embedding_failures_total", "scriptureforge_rust_engine_vector_search_requests_total", "scriptureforge_rust_engine_vector_search_failures_total", "Prometheus metrics", "rust_metrics_samples_verified=true", "rust_embedding_requests_positive=true", "rust_vector_search_requests_positive=true", "release_candidate=sha-rust", "service_version=scriptureforge-rust-engine:sha-rust", "deployment_environment=staging", "load_run_id=rust-run-123", "embedding_requests=1", "vector_search_requests=1"},
 	"api-rust-integration-metrics": {"staging artifact", "Go API rust_engine vector_search success", "scriptureforge_dependency_operations_total", "scriptureforge_dependency_operation_duration_seconds_sum", "api_rust_metrics_samples_verified=true", "distinct_metrics_targets=true", "release_candidate=sha-rust", "service_version=scriptureforge-rust-engine:sha-rust", "deployment_environment=staging", "load_run_id=rust-run-123", "api_rust_vector_search_ops=1", "api_rust_vector_search_seconds=0.042"},
 }
@@ -49,7 +58,7 @@ func TestRunRequiresGRPCAddress(t *testing.T) {
 }
 
 func TestRunProducesRustGRPCEvidenceReport(t *testing.T) {
-	address, stop := startHealthServer(t, "scriptureforge.engine.ScriptureEngine", healthpb.HealthCheckResponse_SERVING)
+	address, tlsConfig, stop := startMTLSHealthServer(t, "scriptureforge.engine.ScriptureEngine", healthpb.HealthCheckResponse_SERVING)
 	defer stop()
 	metricsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(completeRustMetrics() + "\n" + completeAPIRustIntegrationMetrics()))
@@ -57,8 +66,13 @@ func TestRunProducesRustGRPCEvidenceReport(t *testing.T) {
 	defer metricsServer.Close()
 
 	var output bytes.Buffer
-	err := runWithDependencies(stagingRustConfig(), &output, func(_ string, serviceName string, timeout time.Duration) probeResult {
-		return probeGRPCHealth(address, serviceName, timeout)
+	err := runWithDependencies(stagingRustConfig(), &output, func(probeCfg config) probeResult {
+		probeCfg.GRPCAddress = address
+		probeCfg.GRPCCAFile = tlsConfig.GRPCCAFile
+		probeCfg.GRPCClientCertFile = tlsConfig.GRPCClientCertFile
+		probeCfg.GRPCClientKeyFile = tlsConfig.GRPCClientKeyFile
+		probeCfg.GRPCServerName = tlsConfig.GRPCServerName
+		return probeGRPCHealth(probeCfg)
 	}, clientForHTTPServer(t, metricsServer))
 	if err != nil {
 		t.Fatalf("run failed: %v\n%s", err, output.String())
@@ -79,6 +93,9 @@ func TestRunProducesRustGRPCEvidenceReport(t *testing.T) {
 	if result.DeploymentEnv != "staging" || result.LoadRunID != "rust-run-123" {
 		t.Fatalf("unexpected deployment environment: %+v", result)
 	}
+	if result.GRPCTransportSecurity != "mTLS" {
+		t.Fatalf("unexpected gRPC transport security: %+v", result)
+	}
 	assertProbeSummariesIncludeMarkers(t, result.Probes, requiredRustProbeSummaryMarkers)
 	rustMetrics := requireRustProbe(t, result.Probes, "rust-metrics")
 	if rustMetrics.EmbeddingRequests != 1 || rustMetrics.VectorSearchRequests != 1 {
@@ -87,6 +104,38 @@ func TestRunProducesRustGRPCEvidenceReport(t *testing.T) {
 	apiMetrics := requireRustProbe(t, result.Probes, "api-rust-integration-metrics")
 	if apiMetrics.APIRustVectorSearchOps != 1 || apiMetrics.APIRustVectorSearchSeconds <= 0 {
 		t.Fatalf("API rust integration probe did not expose positive structured samples: %+v", apiMetrics)
+	}
+}
+
+func TestRunRequiresGRPCTLSConfiguration(t *testing.T) {
+	var output bytes.Buffer
+	err := run(stagingRustConfig(), &output)
+	if err == nil || !strings.Contains(err.Error(), "mTLS configuration") {
+		t.Fatalf("expected mTLS configuration error, got %v", err)
+	}
+}
+
+func TestGRPCTransportCredentialsRejectsInvalidCA(t *testing.T) {
+	dir := t.TempDir()
+	caFile := dir + string(os.PathSeparator) + "ca.pem"
+	certFile := dir + string(os.PathSeparator) + "client.pem"
+	keyFile := dir + string(os.PathSeparator) + "client.key"
+	for path, contents := range map[string]string{
+		caFile:   "not pem",
+		certFile: "not pem",
+		keyFile:  "not pem",
+	} {
+		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := stagingRustConfig()
+	cfg.GRPCCAFile = caFile
+	cfg.GRPCClientCertFile = certFile
+	cfg.GRPCClientKeyFile = keyFile
+	cfg.GRPCServerName = "scriptureforge-rust-engine"
+	if _, err := grpcTransportCredentials(cfg); err == nil || !strings.Contains(err.Error(), "valid PEM certificate") {
+		t.Fatalf("expected invalid CA error, got %v", err)
 	}
 }
 
@@ -158,12 +207,17 @@ func requireRustProbe(t *testing.T, probes []probeResult, name string) probeResu
 }
 
 func TestRunFailsWhenHealthNotServing(t *testing.T) {
-	address, stop := startHealthServer(t, "scriptureforge.engine.ScriptureEngine", healthpb.HealthCheckResponse_NOT_SERVING)
+	address, tlsConfig, stop := startMTLSHealthServer(t, "scriptureforge.engine.ScriptureEngine", healthpb.HealthCheckResponse_NOT_SERVING)
 	defer stop()
 
 	var output bytes.Buffer
-	err := runWithDependencies(stagingRustConfig(), &output, func(_ string, serviceName string, timeout time.Duration) probeResult {
-		return probeGRPCHealth(address, serviceName, timeout)
+	err := runWithDependencies(stagingRustConfig(), &output, func(probeCfg config) probeResult {
+		probeCfg.GRPCAddress = address
+		probeCfg.GRPCCAFile = tlsConfig.GRPCCAFile
+		probeCfg.GRPCClientCertFile = tlsConfig.GRPCClientCertFile
+		probeCfg.GRPCClientKeyFile = tlsConfig.GRPCClientKeyFile
+		probeCfg.GRPCServerName = tlsConfig.GRPCServerName
+		return probeGRPCHealth(probeCfg)
 	}, &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(completeMetricsForURL(req.URL.String()))), Header: make(http.Header), Request: req}, nil
 	})})
@@ -420,23 +474,106 @@ func TestRunRejectsLocalOrMalformedTargets(t *testing.T) {
 	}
 }
 
-func startHealthServer(t *testing.T, service string, status healthpb.HealthCheckResponse_ServingStatus) (string, func()) {
+func startMTLSHealthServer(t *testing.T, service string, status healthpb.HealthCheckResponse_ServingStatus) (string, config, func()) {
 	t.Helper()
+	caCert, caKey, caPEM, _ := issueTestCertificate(t, "ScriptureForge Test CA", nil, true, nil, nil)
+	_, _, serverPEM, serverKeyPEM := issueTestCertificate(t, "scriptureforge-rust-engine", []string{"scriptureforge-rust-engine"}, false, caCert, caKey)
+	_, _, clientPEM, clientKeyPEM := issueTestCertificate(t, "scriptureforge-rustprobe", nil, false, caCert, caKey)
+	serverKeyPair, err := tls.X509KeyPair(append(serverPEM, caPEM...), serverKeyPEM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caPool := x509.NewCertPool()
+	caPool.AddCert(caCert)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := grpc.NewServer()
+	server := grpc.NewServer(grpc.Creds(credentials.NewTLS(&tls.Config{
+		MinVersion:   tls.VersionTLS12,
+		Certificates: []tls.Certificate{serverKeyPair},
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		ClientCAs:    caPool,
+	})))
 	healthServer := health.NewServer()
 	healthServer.SetServingStatus(service, status)
 	healthpb.RegisterHealthServer(server, healthServer)
 	go func() {
 		_ = server.Serve(listener)
 	}()
-	return listener.Addr().String(), func() {
+	dir := t.TempDir()
+	caFile := dir + string(os.PathSeparator) + "ca.pem"
+	clientCertFile := dir + string(os.PathSeparator) + "client.pem"
+	clientKeyFile := dir + string(os.PathSeparator) + "client.key"
+	for path, contents := range map[string][]byte{
+		caFile:         caPEM,
+		clientCertFile: clientPEM,
+		clientKeyFile:  clientKeyPEM,
+	} {
+		if err := os.WriteFile(path, contents, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	probeConfig := config{
+		GRPCCAFile:         caFile,
+		GRPCClientCertFile: clientCertFile,
+		GRPCClientKeyFile:  clientKeyFile,
+		GRPCServerName:     "scriptureforge-rust-engine",
+		ServiceName:        service,
+		Timeout:            time.Second,
+	}
+	return listener.Addr().String(), probeConfig, func() {
 		server.GracefulStop()
 		_ = listener.Close()
 	}
+}
+
+func issueTestCertificate(t *testing.T, commonName string, dnsNames []string, isCA bool, parent *x509.Certificate, parentKey *rsa.PrivateKey) (*x509.Certificate, *rsa.PrivateKey, []byte, []byte) {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 120))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	template := &x509.Certificate{
+		SerialNumber:          serial,
+		Subject:               pkix.Name{CommonName: commonName},
+		NotBefore:             now.Add(-time.Minute),
+		NotAfter:              now.Add(time.Hour),
+		BasicConstraintsValid: true,
+		IsCA:                  isCA,
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		DNSNames:              dnsNames,
+	}
+	if isCA {
+		template.KeyUsage |= x509.KeyUsageCertSign
+	}
+	issuer := template
+	issuerKey := key
+	if parent != nil {
+		issuer = parent
+		issuerKey = parentKey
+		if len(dnsNames) > 0 {
+			template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+		} else {
+			template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}
+		}
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, issuer, &key.PublicKey, issuerKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	certificate, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	certificatePEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	return certificate, key, certificatePEM, keyPEM
 }
 
 func TestGRPCProbeFailsUnknownAddress(t *testing.T) {
@@ -450,7 +587,11 @@ func TestGRPCProbeFailsUnknownAddress(t *testing.T) {
 	_ = listener.Close()
 	<-ctx.Done()
 
-	result := probeGRPCHealth(address, "scriptureforge.engine.ScriptureEngine", 50*time.Millisecond)
+	result := probeGRPCHealth(config{
+		GRPCAddress:    address,
+		GRPCServerName: "scriptureforge-rust-engine",
+		Timeout:        50 * time.Millisecond,
+	})
 	if result.Passed {
 		t.Fatalf("probe passed against closed listener: %+v", result)
 	}

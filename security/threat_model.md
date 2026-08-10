@@ -1,6 +1,6 @@
 # ScriptureForgeAI Production Threat Model
 
-Status last updated: 2026-06-30
+Status last updated: 2026-08-10
 
 ## Scope
 
@@ -54,4 +54,5 @@ This is a repo-local threat model. It does not replace staging evidence for AWS 
 - Native-device/EAS validation is still required for mobile AES-GCM outside Node/WebCrypto shims.
 - Deployed OTLP collector/backend, dashboard import, alert delivery, and retention evidence are still missing.
 - Staging performance evidence for the 5,000 req/s and P99 under 200ms target is still missing.
-- DRR-001 remains accepted risk for Expo tooling transitive `uuid <11.1.1` moderate advisories until Expo resolves the dependency lane or the repo deliberately migrates.
+- DRR-001 is closed: the locked Expo xcode tooling path now resolves `uuid@11.1.1` with a passing CommonJS compatibility smoke.
+- DRR-002 remains an open high-severity Expo/Metro -> `image-size` denial-of-service advisory chain; no patched `image-size` release compatible with the current Expo 56 lane is available, and the forced Expo 53 downgrade is not an accepted production remediation.

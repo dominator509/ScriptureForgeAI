@@ -5,10 +5,7 @@ import path from 'node:path';
 export const dependencyRiskProofMarkers = [
   'mobile_lockfile_uuid_detected=true',
   'mobile_lockfile_expo_detected=true',
-  'drr001_required=true',
-  'drr001_register_current=true',
-  'drr001_review_current=true',
-  'drr001_expiry_current=true',
+  'drr001_lifecycle_current=true',
   'drr001_mobile_runtime_not_imported=true',
   'high_or_worse_audit_gate_documented=true',
   'remediation_closure_documented=true',
@@ -26,15 +23,18 @@ export function validateDependencyRisk({ lockfile, register, runtimeSources = []
       assert.ok(register.includes(snippet), `dependency risk register missing ${snippet}`);
     }
     validateDRR001Dates(register, today);
-    validateNoRuntimeUUIDImports(runtimeSources);
   } else {
-    assert.ok(!register.includes('DRR-001'), `DRR-001 should be closed because locked uuid ${uuidVersion} is >= 11.1.1`);
+    for (const snippet of closedDRR001Snippets(uuidVersion, expoVersion)) {
+      assert.ok(register.includes(snippet), `dependency risk closure missing ${snippet}`);
+    }
   }
+  validateNoRuntimeUUIDImports(runtimeSources);
 
   return {
     uuidVersion,
     expoVersion,
     drr001Required: uuidIsStillRisk,
+    drr001Status: uuidIsStillRisk ? 'accepted' : 'closed',
   };
 }
 
@@ -93,6 +93,17 @@ function requiredDRR001Snippets(uuidVersion, expoVersion) {
   ];
 }
 
+function closedDRR001Snippets(uuidVersion, expoVersion) {
+  return [
+    '## DRR-001',
+    'Status: Closed',
+    `expo@${expoVersion}`,
+    `uuid@${uuidVersion}`,
+    'Closure evidence:',
+    'uuid >=11.1.1',
+  ];
+}
+
 export function compareSemver(left, right) {
   const a = parseVersion(left);
   const b = parseVersion(right);
@@ -114,7 +125,7 @@ async function main() {
   const register = await readFile(registerPath, 'utf8');
   const runtimeSources = await collectRuntimeSources();
   const result = validateDependencyRisk({ lockfile, register, runtimeSources });
-  console.log(`dependency risk validated: uuid ${result.uuidVersion}, expo ${result.expoVersion}, DRR-001 required=${result.drr001Required}, ${dependencyRiskProofMarkers.join(', ')}`);
+  console.log(`dependency risk validated: uuid ${result.uuidVersion}, expo ${result.expoVersion}, DRR-001 status=${result.drr001Status}, ${dependencyRiskProofMarkers.join(', ')}`);
 }
 
 async function collectRuntimeSources() {

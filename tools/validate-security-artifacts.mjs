@@ -35,7 +35,7 @@ export const stalePhrases = [
 
 export const requiredCoverage = {
   'security/threat_model.md': [
-    'Status last updated: 2026-06-30',
+    'Status last updated: 2026-08-10',
     'STRIDE Analysis',
     'Trust Boundaries',
     'Spoofing',
@@ -48,7 +48,7 @@ export const requiredCoverage = {
     'Denial of Service',
     'Elevation of Privilege',
     'Residual Risks Blocking Production Claim',
-    'DRR-001',
+    'DRR-001 is closed',
   ],
   'security/crypto_iam_audit.md': [
     'Privileged roles require TOTP MFA',
@@ -64,7 +64,8 @@ export const requiredCoverage = {
   'security/sast_sca_report.md': [
     'go vet ./...',
     'TruffleHog',
-    'DRR-001',
+    'DRR-001 is closed',
+    'DRR-002',
     'sqlx-postgres 0.9.0',
     'build/terraform',
     'PodDisruptionBudgets',
@@ -96,14 +97,12 @@ export const requiredCoverage = {
   ],
   'security/dependency_risk_register.md': [
     'DRR-001',
-    'uuid <11.1.1',
-    'expo@56.0.17, uuid@7.0.3',
+    'Status: Closed',
+    'expo@56.0.17, uuid@11.1.1',
+    'Closure evidence:',
+    'DRR-002',
+    'image-size',
     'Expo',
-    'Risk decision',
-    'Risk owner: Security/release owner',
-    'Accepted by: Release owner and security reviewer',
-    'Review due: 2026-08-26',
-    'Expires: 2026-09-26',
     'Required closure',
   ],
 };

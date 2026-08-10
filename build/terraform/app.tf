@@ -40,10 +40,12 @@ resource "kubernetes_secret" "external_secret_refs" {
   }
 
   data = {
-    database_url_arn     = data.aws_secretsmanager_secret.database_url.arn
-    jwt_secret_key_arn   = data.aws_secretsmanager_secret.jwt_secret_key.arn
-    openai_api_key_arn   = data.aws_secretsmanager_secret.openai_api_key.arn
-    zoom_credentials_arn = data.aws_secretsmanager_secret.zoom_credentials.arn
+    database_url_arn                = data.aws_secretsmanager_secret.database_url.arn
+    jwt_secret_key_arn              = data.aws_secretsmanager_secret.jwt_secret_key.arn
+    openai_api_key_arn              = data.aws_secretsmanager_secret.openai_api_key.arn
+    zoom_credentials_arn            = data.aws_secretsmanager_secret.zoom_credentials.arn
+    grpc_engine_shared_secret_arn   = data.aws_secretsmanager_secret.grpc_engine_shared_secret.arn
+    grpc_engine_tls_credentials_arn = data.aws_secretsmanager_secret.grpc_engine_tls_credentials.arn
   }
 
   type = "Opaque"
@@ -87,6 +89,37 @@ resource "kubernetes_manifest" "app_secret_provider" {
             objectAlias = "openai_api_key"
           },
           {
+            objectName  = data.aws_secretsmanager_secret.grpc_engine_shared_secret.arn
+            objectType  = "secretsmanager"
+            objectAlias = "grpc_engine_shared_secret"
+          },
+          {
+            objectName = data.aws_secretsmanager_secret.grpc_engine_tls_credentials.arn
+            objectType = "secretsmanager"
+            jmesPath = [
+              {
+                path        = "ca_pem"
+                objectAlias = "grpc_engine_tls_ca_pem"
+              },
+              {
+                path        = "server_cert_pem"
+                objectAlias = "grpc_engine_tls_server_cert_pem"
+              },
+              {
+                path        = "server_key_pem"
+                objectAlias = "grpc_engine_tls_server_key_pem"
+              },
+              {
+                path        = "client_cert_pem"
+                objectAlias = "grpc_engine_tls_client_cert_pem"
+              },
+              {
+                path        = "client_key_pem"
+                objectAlias = "grpc_engine_tls_client_key_pem"
+              }
+            ]
+          },
+          {
             objectName = data.aws_secretsmanager_secret.zoom_credentials.arn
             objectType = "secretsmanager"
             jmesPath = [
@@ -126,6 +159,30 @@ resource "kubernetes_manifest" "app_secret_provider" {
             {
               objectName = "openai_api_key"
               key        = "OPENAI_API_KEY"
+            },
+            {
+              objectName = "grpc_engine_shared_secret"
+              key        = "GRPC_ENGINE_SHARED_SECRET"
+            },
+            {
+              objectName = "grpc_engine_tls_ca_pem"
+              key        = "GRPC_ENGINE_TLS_CA_PEM"
+            },
+            {
+              objectName = "grpc_engine_tls_server_cert_pem"
+              key        = "GRPC_ENGINE_TLS_CERT_PEM"
+            },
+            {
+              objectName = "grpc_engine_tls_server_key_pem"
+              key        = "GRPC_ENGINE_TLS_KEY_PEM"
+            },
+            {
+              objectName = "grpc_engine_tls_client_cert_pem"
+              key        = "GRPC_ENGINE_TLS_CLIENT_CERT_PEM"
+            },
+            {
+              objectName = "grpc_engine_tls_client_key_pem"
+              key        = "GRPC_ENGINE_TLS_CLIENT_KEY_PEM"
             },
             {
               objectName = "zoom_account_id"
@@ -262,6 +319,51 @@ resource "kubernetes_deployment" "api" {
           env {
             name  = "GRPC_ENGINE_ADDRESS"
             value = "scriptureforge-rust-engine:50051"
+          }
+
+          env {
+            name = "GRPC_ENGINE_SHARED_SECRET"
+            value_from {
+              secret_key_ref {
+                name = "scriptureforge-runtime-secrets"
+                key  = "GRPC_ENGINE_SHARED_SECRET"
+              }
+            }
+          }
+
+          env {
+            name = "GRPC_ENGINE_TLS_CA_PEM"
+            value_from {
+              secret_key_ref {
+                name = "scriptureforge-runtime-secrets"
+                key  = "GRPC_ENGINE_TLS_CA_PEM"
+              }
+            }
+          }
+
+          env {
+            name = "GRPC_ENGINE_TLS_CLIENT_CERT_PEM"
+            value_from {
+              secret_key_ref {
+                name = "scriptureforge-runtime-secrets"
+                key  = "GRPC_ENGINE_TLS_CLIENT_CERT_PEM"
+              }
+            }
+          }
+
+          env {
+            name = "GRPC_ENGINE_TLS_CLIENT_KEY_PEM"
+            value_from {
+              secret_key_ref {
+                name = "scriptureforge-runtime-secrets"
+                key  = "GRPC_ENGINE_TLS_CLIENT_KEY_PEM"
+              }
+            }
+          }
+
+          env {
+            name  = "GRPC_ENGINE_TLS_SERVER_NAME"
+            value = var.grpc_engine_tls_server_name
           }
 
           env {
@@ -514,8 +616,9 @@ resource "kubernetes_deployment" "rust_engine" {
           }
 
           liveness_probe {
-            grpc {
-              port = 50051
+            http_get {
+              path = "/healthz"
+              port = 9102
             }
 
             initial_delay_seconds = 10
@@ -525,8 +628,9 @@ resource "kubernetes_deployment" "rust_engine" {
           }
 
           readiness_probe {
-            grpc {
-              port = 50051
+            http_get {
+              path = "/healthz"
+              port = 9102
             }
 
             initial_delay_seconds = 10
@@ -543,6 +647,46 @@ resource "kubernetes_deployment" "rust_engine" {
           env {
             name  = "RUST_ENGINE_METRICS_ADDRESS"
             value = "0.0.0.0:9102"
+          }
+
+          env {
+            name = "GRPC_ENGINE_SHARED_SECRET"
+            value_from {
+              secret_key_ref {
+                name = "scriptureforge-runtime-secrets"
+                key  = "GRPC_ENGINE_SHARED_SECRET"
+              }
+            }
+          }
+
+          env {
+            name = "GRPC_ENGINE_TLS_CERT_PEM"
+            value_from {
+              secret_key_ref {
+                name = "scriptureforge-runtime-secrets"
+                key  = "GRPC_ENGINE_TLS_CERT_PEM"
+              }
+            }
+          }
+
+          env {
+            name = "GRPC_ENGINE_TLS_KEY_PEM"
+            value_from {
+              secret_key_ref {
+                name = "scriptureforge-runtime-secrets"
+                key  = "GRPC_ENGINE_TLS_KEY_PEM"
+              }
+            }
+          }
+
+          env {
+            name = "GRPC_ENGINE_TLS_CA_PEM"
+            value_from {
+              secret_key_ref {
+                name = "scriptureforge-runtime-secrets"
+                key  = "GRPC_ENGINE_TLS_CA_PEM"
+              }
+            }
           }
 
           env {

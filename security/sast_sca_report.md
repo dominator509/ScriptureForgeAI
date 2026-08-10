@@ -1,6 +1,6 @@
 # Static Analysis And Supply Chain Report
 
-Status last updated: 2026-06-27
+Status last updated: 2026-08-10
 
 ## Static Application Security Testing
 
@@ -22,7 +22,9 @@ The current local remediation evidence is tracked in `FUNCTIONALITY_AUDIT_BRIEFI
 
 - Web enforces `npm audit --audit-level=moderate`.
 - Mobile enforces `npm audit --audit-level=high`.
-- The remaining mobile moderate Expo tooling advisory is tracked as accepted risk in `security/dependency_risk_register.md` as DRR-001.
+- Web dependency hardening updated the PostCSS override to `8.5.26`, which resolves the prior `nanoid <3.3.17` high finding.
+- Mobile leaf dependency hardening resolves `brace-expansion`, `js-yaml`, `nanoid`, `postcss`, and `uuid`; DRR-001 is closed in `security/dependency_risk_register.md`.
+- The mobile `npm audit --audit-level=high` gate still reports 11 high findings through the Expo/Metro -> `image-size` chain. npm's forced remediation proposes the breaking Expo `53.0.27` downgrade; this residual risk is tracked as DRR-002 and remains a production blocker.
 - Rust cargo tests pass with a vendored `protoc` build path. The prior `sqlx-postgres v0.7.4` future-incompatibility warning is remediated by the `pgvector 0.4.2` / `sqlx-postgres 0.9.0` lane, and `tools/verify-rust-protobuf.mjs` guards against regressing to the old lane.
 
 ## Infrastructure-As-Code Validation

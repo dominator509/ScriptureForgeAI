@@ -3,6 +3,8 @@ package ai
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,9 +15,17 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"scriptureforge/internal/domain/observability"
 	"scriptureforge/scriptureforge/proto/engine"
+)
+
+const (
+	grpcMaxMessageBytes     = 1024 * 1024
+	grpcAuthorizationHeader = "authorization"
+	grpcTenantHeader        = "x-scriptureforge-organization-id"
 )
 
 // SearchResult models the expected return from the scripture engine
@@ -49,18 +59,70 @@ func (u UnavailableVectorDB) Search(ctx context.Context, orgID string, query str
 
 // GRPCScriptureClient implements VectorDB using the Rust gRPC engine
 type GRPCScriptureClient struct {
-	client engine.ScriptureEngineClient
-	conn   *grpc.ClientConn
+	client       engine.ScriptureEngineClient
+	conn         *grpc.ClientConn
+	sharedSecret string
 }
 
 // NewGRPCScriptureClient connects to the Rust engine
 func NewGRPCScriptureClient(address string) (*GRPCScriptureClient, error) {
-	conn, err := grpc.Dial(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	return NewGRPCScriptureClientWithConfig(
+		address,
+		os.Getenv("GRPC_ENGINE_SHARED_SECRET"),
+		os.Getenv("GRPC_ENGINE_TLS_CA_PEM"),
+		os.Getenv("GRPC_ENGINE_TLS_CLIENT_CERT_PEM"),
+		os.Getenv("GRPC_ENGINE_TLS_CLIENT_KEY_PEM"),
+		os.Getenv("GRPC_ENGINE_TLS_SERVER_NAME"),
+	)
+}
+
+func NewGRPCScriptureClientWithConfig(address, sharedSecret, caPEM, clientCertPEM, clientKeyPEM, serverName string) (*GRPCScriptureClient, error) {
+	transportCredentials, err := grpcTransportCredentials(caPEM, clientCertPEM, clientKeyPEM, serverName)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := grpc.Dial(
+		address,
+		grpc.WithTransportCredentials(transportCredentials),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallSendMsgSize(grpcMaxMessageBytes),
+			grpc.MaxCallRecvMsgSize(grpcMaxMessageBytes),
+		),
+	)
 	if err != nil {
 		return nil, err
 	}
 	client := engine.NewScriptureEngineClient(conn)
-	return &GRPCScriptureClient{client: client, conn: conn}, nil
+	return &GRPCScriptureClient{client: client, conn: conn, sharedSecret: strings.TrimSpace(sharedSecret)}, nil
+}
+
+func grpcTransportCredentials(caPEM, clientCertPEM, clientKeyPEM, serverName string) (credentials.TransportCredentials, error) {
+	caPEM = strings.TrimSpace(caPEM)
+	clientCertPEM = strings.TrimSpace(clientCertPEM)
+	clientKeyPEM = strings.TrimSpace(clientKeyPEM)
+	serverName = strings.TrimSpace(serverName)
+	if caPEM == "" && clientCertPEM == "" && clientKeyPEM == "" {
+		return insecure.NewCredentials(), nil
+	}
+	if caPEM == "" || clientCertPEM == "" || clientKeyPEM == "" || serverName == "" {
+		return nil, fmt.Errorf("GRPC_ENGINE_TLS_CA_PEM, GRPC_ENGINE_TLS_CLIENT_CERT_PEM, GRPC_ENGINE_TLS_CLIENT_KEY_PEM, and GRPC_ENGINE_TLS_SERVER_NAME must be configured together")
+	}
+
+	rootCAs := x509.NewCertPool()
+	if !rootCAs.AppendCertsFromPEM([]byte(caPEM)) {
+		return nil, fmt.Errorf("GRPC_ENGINE_TLS_CA_PEM does not contain a valid certificate")
+	}
+	clientCertificate, err := tls.X509KeyPair([]byte(clientCertPEM), []byte(clientKeyPEM))
+	if err != nil {
+		return nil, fmt.Errorf("invalid gRPC client certificate: %w", err)
+	}
+
+	return credentials.NewTLS(&tls.Config{
+		MinVersion:   tls.VersionTLS12,
+		RootCAs:      rootCAs,
+		Certificates: []tls.Certificate{clientCertificate},
+		ServerName:   serverName,
+	}), nil
 }
 
 func (g *GRPCScriptureClient) Close() error {
@@ -144,6 +206,10 @@ func generateEmbedding(ctx context.Context, text string) ([]float32, error) {
 
 // Search maps the Go request to the Rust gRPC protobuf request
 func (g *GRPCScriptureClient) Search(ctx context.Context, orgID string, query string, topK int) ([]SearchResult, error) {
+	orgID = strings.TrimSpace(orgID)
+	if orgID == "" {
+		return nil, fmt.Errorf("organization ID is required for Rust gRPC requests")
+	}
 	started := time.Now()
 	status := "success"
 	defer func() {
@@ -164,6 +230,11 @@ func (g *GRPCScriptureClient) Search(ctx context.Context, orgID string, query st
 		MinimumSimilarityThreshold: 0.7,
 	}
 
+	metadataValues := []string{grpcTenantHeader, orgID}
+	if g.sharedSecret != "" {
+		metadataValues = append(metadataValues, grpcAuthorizationHeader, "Bearer "+g.sharedSecret)
+	}
+	ctx = metadata.AppendToOutgoingContext(ctx, metadataValues...)
 	resp, err := g.client.SearchByVector(ctx, req)
 	if err != nil {
 		status = "grpc_error"

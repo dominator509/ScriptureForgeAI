@@ -196,14 +196,20 @@ export function validateRLSSchema(
 }
 
 export function validateProductionRoomMembershipWiring(platformMainText, roomHandlerText, socketHandlerText) {
-  assert.ok(
-    /roomHandler\s*:=\s*&ports\.RoomHandler\s*{\s*DB:\s*dbpool,\s*StateManager:\s*roomStateManager\s*}/m.test(platformMainText),
-    'production RoomHandler must be constructed without a MembershipValidator override',
-  );
-  assert.ok(
-    /socketConn\s*:=\s*&ports\.SocketConnection\s*{\s*DB:\s*dbpool,\s*StateManager:\s*roomStateManager,\s*Hub:\s*roomHub\s*}/m.test(platformMainText),
-    'production SocketConnection must be constructed without a MembershipValidator override',
-  );
+	const roomHandlerConstruction = platformMainText.match(/roomHandler\s*:=\s*&ports\.RoomHandler\s*{([\s\S]*?)}/m);
+	assert.ok(roomHandlerConstruction, 'production RoomHandler must be constructed without a MembershipValidator override');
+	assert.doesNotMatch(
+		roomHandlerConstruction[1],
+		/\bMembershipValidator\s*:/m,
+		'production RoomHandler must be constructed without a MembershipValidator override',
+	);
+	const socketConstruction = platformMainText.match(/socketConn\s*:=\s*&ports\.SocketConnection\s*{([\s\S]*?)}/m);
+	assert.ok(socketConstruction, 'production SocketConnection must be constructed without a MembershipValidator override');
+	assert.doesNotMatch(
+		socketConstruction[1],
+		/\bMembershipValidator\s*:/m,
+		'production SocketConnection must be constructed without a MembershipValidator override',
+	);
   assert.ok(
     roomHandlerText.includes('func (h *RoomHandler) validateRoomMembership') &&
       roomHandlerText.includes('auth.SetTenantContext') &&

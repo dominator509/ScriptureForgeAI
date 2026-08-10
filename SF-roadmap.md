@@ -17,6 +17,7 @@
 - Every phase and any route/schema change must be reflected in `SF-roadmap.md`, `SF-architecture.md`, and `production-readiness/obsidian-production-readiness.md` before merge.
 - `production-readiness/serena-setup.md` remains the canonical Serena bootstrap reference for cross-language indexing.
 - Route additions/changes require a matching entry in `SF-architecture.md` under **11. API Architecture** before merge.
+- Current dependency hardening (2026-08-10): web PostCSS/nanoid and mobile leaf overrides are patched; mobile DRR-002 remains open until the Expo 56-compatible Metro/image-size audit chain is remediated without a breaking downgrade.
 
 ### 2.2 Serena/Obsidian API Drift Gate
 - Route/schema changes cannot merge unless they pass `node tools/validate-serena-obsidian.mjs` in local gate and CI.
@@ -142,7 +143,7 @@ Phase 03: Rust Scripture Engine
 6.	Code high-performance morphological comparison algorithms evaluating original lemmas and linguistic markers using direct CPU data allocation optimizations.
 • Acceptance Criteria: The compiled Rust processing runtime initialises and accepts concurrent request interactions over local network interfaces. The core Go service successfully dispatches network requests to the Rust application container using gRPC communication lines, completing query lookups within expected performance constraints.
 • Automated Validation & Tests: Integrate comprehensive memory safety test blocks inside the Rust workspace executing parallel data extraction operations against complex morphological text variations.
-• Security & Isolation Checks: Audit network integration flags to verify that internal microservices interaction pipelines enforce mutual transport layer authorization controls (mTLS) across boundaries.
+• Security & Isolation Checks: Go-to-Rust gRPC now requires mTLS plus a shared secret and verified organization metadata in staging/production, with bounded messages and HTTP `/healthz` probe support. Remaining work is staging certificate/secret injection, rotation, cross-namespace traffic, and captured `RUST-GRPC-001` evidence.
 • Common Failure Modes: Improper handling of connection boundaries or loose string tracking blocks leading to memory fragmentation over long processing lifetimes.
 • Anti-Drift Notes: Restrict the functional scope of the Rust service purely to processing original text variables and vector transformations. Do not map access management configurations or external endpoint tracking fields into the engine.
 Phase 04: AI Orchestrator Pipeline

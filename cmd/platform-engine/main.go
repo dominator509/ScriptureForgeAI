@@ -45,10 +45,15 @@ func (e *PlatformException) Error() string {
 }
 
 type Config struct {
-	DatabaseURL string
-	RedisURL    string
-	Port        string
-	GRPCAddress string
+	DatabaseURL              string
+	RedisURL                 string
+	Port                     string
+	GRPCAddress              string
+	GRPCSharedSecret         string
+	GRPCTLSCAPEM             string
+	GRPCTLSClientCertificate string
+	GRPCTLSClientKey         string
+	GRPCTLSServerName        string
 }
 
 func loadConfig() (*Config, *PlatformException) {
@@ -87,11 +92,45 @@ func loadConfig() (*Config, *PlatformException) {
 		grpcAddr = "localhost:50051"
 	}
 
+	grpcSharedSecret := strings.TrimSpace(os.Getenv("GRPC_ENGINE_SHARED_SECRET"))
+	grpcTLSCAPEM := os.Getenv("GRPC_ENGINE_TLS_CA_PEM")
+	grpcTLSClientCertificate := os.Getenv("GRPC_ENGINE_TLS_CLIENT_CERT_PEM")
+	grpcTLSClientKey := os.Getenv("GRPC_ENGINE_TLS_CLIENT_KEY_PEM")
+	grpcTLSServerName := strings.TrimSpace(os.Getenv("GRPC_ENGINE_TLS_SERVER_NAME"))
+	if requiresConfiguredGRPCAddress() {
+		if len(grpcSharedSecret) < 32 {
+			return nil, &PlatformException{
+				Category: ConfigurationFault,
+				Message:  "GRPC_ENGINE_SHARED_SECRET must be at least 32 bytes in staging/production",
+				Code:     500,
+			}
+		}
+		for name, value := range map[string]string{
+			"GRPC_ENGINE_TLS_CA_PEM":          grpcTLSCAPEM,
+			"GRPC_ENGINE_TLS_CLIENT_CERT_PEM": grpcTLSClientCertificate,
+			"GRPC_ENGINE_TLS_CLIENT_KEY_PEM":  grpcTLSClientKey,
+			"GRPC_ENGINE_TLS_SERVER_NAME":     grpcTLSServerName,
+		} {
+			if strings.TrimSpace(value) == "" {
+				return nil, &PlatformException{
+					Category: ConfigurationFault,
+					Message:  name + " environment variable is required in staging/production",
+					Code:     500,
+				}
+			}
+		}
+	}
+
 	return &Config{
-		DatabaseURL: dbURL,
-		RedisURL:    redisURL,
-		Port:        port,
-		GRPCAddress: grpcAddr,
+		DatabaseURL:              dbURL,
+		RedisURL:                 redisURL,
+		Port:                     port,
+		GRPCAddress:              grpcAddr,
+		GRPCSharedSecret:         grpcSharedSecret,
+		GRPCTLSCAPEM:             grpcTLSCAPEM,
+		GRPCTLSClientCertificate: grpcTLSClientCertificate,
+		GRPCTLSClientKey:         grpcTLSClientKey,
+		GRPCTLSServerName:        grpcTLSServerName,
 	}, nil
 }
 
@@ -242,7 +281,14 @@ func main() {
 	log.Println("Successfully connected to Redis pool.")
 
 	var vectorDB ai.VectorDB
-	vectorClient, err := ai.NewGRPCScriptureClient(cfg.GRPCAddress)
+	vectorClient, err := ai.NewGRPCScriptureClientWithConfig(
+		cfg.GRPCAddress,
+		cfg.GRPCSharedSecret,
+		cfg.GRPCTLSCAPEM,
+		cfg.GRPCTLSClientCertificate,
+		cfg.GRPCTLSClientKey,
+		cfg.GRPCTLSServerName,
+	)
 	if err != nil {
 		log.Printf("Warning: Failed to connect to Rust gRPC Scripture Engine at %s: %v. AI features will fail.", cfg.GRPCAddress, err)
 		vectorDB = ai.UnavailableVectorDB{Reason: "Rust gRPC Scripture Engine is unavailable"}

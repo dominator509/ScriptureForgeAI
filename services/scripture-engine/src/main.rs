@@ -11,10 +11,17 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tonic::server::NamedService;
-use tonic::{transport::Server, Request, Response, Status};
+use tonic::transport::{Certificate, Identity, Server, ServerTlsConfig};
+use tonic::{Request, Response, Status};
 
 const EMBEDDING_DIMENSION: usize = 1536;
 const MAX_VECTOR_SEARCH_RESULTS: i32 = 100;
+const MAX_GRPC_MESSAGE_BYTES: usize = 1024 * 1024;
+const MAX_ORGANIZATION_ID_BYTES: usize = 128;
+const MAX_BOOK_BYTES: usize = 128;
+const MAX_TEXT_CONTENT_BYTES: usize = 128 * 1024;
+const GRPC_AUTHORIZATION_HEADER: &str = "authorization";
+const GRPC_TENANT_HEADER: &str = "x-scriptureforge-organization-id";
 
 pub mod scriptureforge {
     pub mod engine {
@@ -36,6 +43,11 @@ pub struct RustEngineMetrics {
     vector_search_failures_total: AtomicU64,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AuthenticatedTenant {
+    organization_id: String,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 struct MetricsHttpResponse {
     status: &'static str,
@@ -53,13 +65,16 @@ impl ScriptureEngine for MyScriptureEngine {
             .embedding_requests_total
             .fetch_add(1, Ordering::Relaxed);
         let trace_id = traceparent_from_request(&request);
+        let organization_id =
+            resolve_organization_id(&request, &request.get_ref().organization_id)?;
         let req = request.into_inner();
+        validate_embed_text_request(&req)?;
         emit_log(
             "info",
             "process_text_embedding_requested",
             &[
                 ("trace_id", trace_id),
-                ("organization_id", req.organization_id.clone()),
+                ("organization_id", organization_id.clone()),
                 ("book", req.book.clone()),
                 ("chapter", req.chapter.to_string()),
                 ("verse", req.verse.to_string()),
@@ -103,13 +118,15 @@ impl ScriptureEngine for MyScriptureEngine {
             .vector_search_requests_total
             .fetch_add(1, Ordering::Relaxed);
         let trace_id = traceparent_from_request(&request);
+        let organization_id =
+            resolve_organization_id(&request, &request.get_ref().organization_id)?;
         let req = request.into_inner();
         emit_log(
             "info",
             "search_by_vector_requested",
             &[
                 ("trace_id", trace_id.clone()),
-                ("organization_id", req.organization_id.clone()),
+                ("organization_id", organization_id.clone()),
                 ("top_k_results", req.top_k_results.to_string()),
                 (
                     "minimum_similarity_threshold",
@@ -127,7 +144,7 @@ impl ScriptureEngine for MyScriptureEngine {
                 "search_by_vector_rejected",
                 &[
                     ("trace_id", trace_id.clone()),
-                    ("organization_id", req.organization_id.clone()),
+                    ("organization_id", organization_id.clone()),
                     ("error", status.message().to_string()),
                 ],
             );
@@ -140,8 +157,6 @@ impl ScriptureEngine for MyScriptureEngine {
 
         // This is functional querying mapping explicitly to Phase 1's tables
         let pool = &self.db_pool;
-        let organization_id = req.organization_id.clone();
-
         let rows = sqlx::query(
             "SELECT book, chapter, verse, content, 1 - (embedding <=> $1::vector) as similarity
              FROM scripture_texts
@@ -189,11 +204,151 @@ impl ScriptureEngine for MyScriptureEngine {
     }
 }
 
+fn requires_grpc_security() -> bool {
+    matches!(
+        std::env::var("DEPLOYMENT_ENVIRONMENT")
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase()
+            .as_str(),
+        "staging" | "production" | "prod"
+    )
+}
+
+fn grpc_shared_secret() -> Result<Option<String>, Box<dyn std::error::Error>> {
+    let secret = std::env::var("GRPC_ENGINE_SHARED_SECRET")
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    if secret.is_empty() {
+        if requires_grpc_security() {
+            return Err("GRPC_ENGINE_SHARED_SECRET is required in staging/production".into());
+        }
+        return Ok(None);
+    }
+    if secret.len() < 32 {
+        return Err("GRPC_ENGINE_SHARED_SECRET must be at least 32 bytes".into());
+    }
+    Ok(Some(secret))
+}
+
+fn grpc_tls_config() -> Result<Option<ServerTlsConfig>, Box<dyn std::error::Error>> {
+    let certificate = std::env::var("GRPC_ENGINE_TLS_CERT_PEM").unwrap_or_default();
+    let private_key = std::env::var("GRPC_ENGINE_TLS_KEY_PEM").unwrap_or_default();
+    let client_ca = std::env::var("GRPC_ENGINE_TLS_CA_PEM").unwrap_or_default();
+    let configured = [
+        certificate.as_str(),
+        private_key.as_str(),
+        client_ca.as_str(),
+    ]
+    .iter()
+    .any(|value| !value.trim().is_empty());
+
+    if !configured {
+        if requires_grpc_security() {
+            return Err(
+                "GRPC_ENGINE_TLS_CERT_PEM, GRPC_ENGINE_TLS_KEY_PEM, and GRPC_ENGINE_TLS_CA_PEM are required in staging/production".into(),
+            );
+        }
+        return Ok(None);
+    }
+
+    if certificate.trim().is_empty() || private_key.trim().is_empty() || client_ca.trim().is_empty()
+    {
+        return Err(
+            "GRPC_ENGINE_TLS_CERT_PEM, GRPC_ENGINE_TLS_KEY_PEM, and GRPC_ENGINE_TLS_CA_PEM must be configured together".into(),
+        );
+    }
+
+    Ok(Some(
+        ServerTlsConfig::new()
+            .identity(Identity::from_pem(certificate, private_key))
+            .client_ca_root(Certificate::from_pem(client_ca)),
+    ))
+}
+
+fn authorize_grpc_request(
+    mut request: Request<()>,
+    shared_secret: Option<&str>,
+) -> Result<Request<()>, Status> {
+    let Some(expected_secret) = shared_secret else {
+        return Ok(request);
+    };
+
+    let expected_header = format!("Bearer {expected_secret}");
+    let provided_header = request
+        .metadata()
+        .get(GRPC_AUTHORIZATION_HEADER)
+        .and_then(|value| value.to_str().ok());
+    if provided_header != Some(expected_header.as_str()) {
+        return Err(Status::unauthenticated("invalid gRPC service credentials"));
+    }
+
+    let organization_id = request
+        .metadata()
+        .get(GRPC_TENANT_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| Status::permission_denied("authenticated tenant metadata is required"))?
+        .to_string();
+    validate_organization_id(&organization_id)?;
+    request
+        .extensions_mut()
+        .insert(AuthenticatedTenant { organization_id });
+    Ok(request)
+}
+
+fn validate_organization_id(value: &str) -> Result<(), Status> {
+    let trimmed = value.trim();
+    if trimmed.is_empty()
+        || trimmed.len() > MAX_ORGANIZATION_ID_BYTES
+        || trimmed.chars().any(|character| character.is_control())
+    {
+        return Err(Status::invalid_argument("organization_id is invalid"));
+    }
+    Ok(())
+}
+
+fn resolve_organization_id<T>(request: &Request<T>, payload_value: &str) -> Result<String, Status> {
+    validate_organization_id(payload_value)?;
+    let payload_value = payload_value.trim();
+    if let Some(authenticated) = request.extensions().get::<AuthenticatedTenant>() {
+        if authenticated.organization_id != payload_value {
+            return Err(Status::permission_denied(
+                "organization_id does not match authenticated tenant",
+            ));
+        }
+        return Ok(authenticated.organization_id.clone());
+    }
+    Ok(payload_value.to_string())
+}
+
+fn validate_embed_text_request(request: &EmbedTextRequest) -> Result<(), Status> {
+    validate_organization_id(&request.organization_id)?;
+    if request.book.trim().is_empty() || request.book.len() > MAX_BOOK_BYTES {
+        return Err(Status::invalid_argument("book is invalid"));
+    }
+    if request.text_content.len() > MAX_TEXT_CONTENT_BYTES {
+        return Err(Status::resource_exhausted(
+            "text_content exceeds the configured limit",
+        ));
+    }
+    if request.chapter < 1 || request.verse < 1 {
+        return Err(Status::invalid_argument(
+            "chapter and verse must be positive",
+        ));
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = bind_address()?;
     let metrics_addr = metrics_address()?;
     let observability = observability_config();
+    let grpc_shared_secret = grpc_shared_secret()?;
+    let grpc_tls_config = grpc_tls_config()?;
 
     let database_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://${DB_USER}:${DB_PASS}@${DB_HOST}/${DB_NAME}".to_string());
@@ -243,9 +398,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ],
     );
 
-    Server::builder()
+    let protected_service = ScriptureEngineServer::with_interceptor(engine, move |request| {
+        authorize_grpc_request(request, grpc_shared_secret.as_deref())
+    });
+    let mut server = Server::builder()
+        .max_frame_size(MAX_GRPC_MESSAGE_BYTES as u32)
+        .max_concurrent_streams(128);
+    if let Some(tls_config) = grpc_tls_config {
+        server = server.tls_config(tls_config)?;
+    }
+    server
         .add_service(health_service)
-        .add_service(ScriptureEngineServer::new(engine))
+        .add_service(protected_service)
         .serve(addr)
         .await?;
 
@@ -332,6 +496,26 @@ fn metrics_response_for_request(request: &str, metrics: &RustEngineMetrics) -> M
         .split_whitespace();
     let method = parts.next().unwrap_or_default();
     let path = parts.next().unwrap_or_default();
+
+    if path == "/healthz" {
+        return match method {
+            "GET" => MetricsHttpResponse {
+                status: "200 OK",
+                headers: vec![],
+                body: "ok\n".to_string(),
+            },
+            "HEAD" => MetricsHttpResponse {
+                status: "200 OK",
+                headers: vec![],
+                body: String::new(),
+            },
+            _ => MetricsHttpResponse {
+                status: "405 Method Not Allowed",
+                headers: vec![("Allow", "GET, HEAD")],
+                body: "method not allowed\n".to_string(),
+            },
+        };
+    }
 
     if path != "/metrics" {
         return MetricsHttpResponse {
@@ -479,10 +663,11 @@ mod tests {
         VectorSearchResponse,
     };
     use super::{
-        bind_address, extract_trace_id, json_escape, metrics_address, metrics_response_for_request,
-        observability_config, scripture_engine_service_name, traceparent_from_request,
-        validate_vector_search_request, RustEngineMetrics, EMBEDDING_DIMENSION,
-        MAX_VECTOR_SEARCH_RESULTS,
+        authorize_grpc_request, bind_address, extract_trace_id, grpc_shared_secret,
+        grpc_tls_config, json_escape, metrics_address, metrics_response_for_request,
+        observability_config, resolve_organization_id, scripture_engine_service_name,
+        traceparent_from_request, validate_embed_text_request, validate_vector_search_request,
+        AuthenticatedTenant, RustEngineMetrics, EMBEDDING_DIMENSION, MAX_VECTOR_SEARCH_RESULTS,
     };
     use std::sync::atomic::Ordering;
     use tonic::Request;
@@ -570,6 +755,95 @@ mod tests {
         let mut bad_threshold = valid;
         bad_threshold.minimum_similarity_threshold = 1.1;
         assert!(validate_vector_search_request(&bad_threshold).is_err());
+    }
+
+    #[test]
+    fn grpc_authentication_requires_service_secret_and_binds_tenant() {
+        let mut request = Request::new(());
+        request.metadata_mut().insert(
+            "authorization",
+            "Bearer 01234567890123456789012345678901"
+                .parse()
+                .expect("authorization metadata should parse"),
+        );
+        request.metadata_mut().insert(
+            "x-scriptureforge-organization-id",
+            "org-a".parse().expect("tenant metadata should parse"),
+        );
+
+        let authorized = authorize_grpc_request(request, Some("01234567890123456789012345678901"))
+            .expect("valid service credentials should authorize");
+        assert_eq!(
+            authorized
+                .extensions()
+                .get::<AuthenticatedTenant>()
+                .expect("tenant context should be attached")
+                .organization_id,
+            "org-a"
+        );
+
+        let mismatch = Request::new(EmbedTextRequest {
+            organization_id: "org-b".into(),
+            book: "John".into(),
+            chapter: 1,
+            verse: 1,
+            text_content: "text".into(),
+        });
+        let mut mismatch = mismatch;
+        mismatch.extensions_mut().insert(AuthenticatedTenant {
+            organization_id: "org-a".into(),
+        });
+        assert!(resolve_organization_id(&mismatch, &mismatch.get_ref().organization_id).is_err());
+    }
+
+    #[test]
+    fn grpc_authentication_rejects_invalid_credentials() {
+        let mut request = Request::new(());
+        request.metadata_mut().insert(
+            "authorization",
+            "Bearer wrong-secret"
+                .parse()
+                .expect("authorization metadata should parse"),
+        );
+        assert!(
+            authorize_grpc_request(request, Some("expected-secret".repeat(4).as_str())).is_err()
+        );
+    }
+
+    #[test]
+    fn embed_request_validation_bounds_text_and_coordinates() {
+        let valid = EmbedTextRequest {
+            organization_id: "org-a".into(),
+            book: "John".into(),
+            chapter: 1,
+            verse: 1,
+            text_content: "text".into(),
+        };
+        assert!(validate_embed_text_request(&valid).is_ok());
+
+        let mut oversized = valid.clone();
+        oversized.text_content = "x".repeat(super::MAX_TEXT_CONTENT_BYTES + 1);
+        assert!(validate_embed_text_request(&oversized).is_err());
+
+        let mut invalid_coordinates = valid;
+        invalid_coordinates.chapter = 0;
+        assert!(validate_embed_text_request(&invalid_coordinates).is_err());
+    }
+
+    #[test]
+    fn grpc_security_config_is_optional_only_for_local_development() {
+        std::env::remove_var("GRPC_ENGINE_SHARED_SECRET");
+        std::env::remove_var("GRPC_ENGINE_TLS_CERT_PEM");
+        std::env::remove_var("GRPC_ENGINE_TLS_KEY_PEM");
+        std::env::remove_var("GRPC_ENGINE_TLS_CA_PEM");
+        std::env::set_var("DEPLOYMENT_ENVIRONMENT", "local");
+
+        assert!(grpc_shared_secret()
+            .expect("local security config should load")
+            .is_none());
+        assert!(grpc_tls_config()
+            .expect("local TLS config should load")
+            .is_none());
     }
 
     #[test]
@@ -687,6 +961,10 @@ mod tests {
         assert!(!post
             .body
             .contains("scriptureforge_rust_engine_embedding_requests_total"));
+
+        let health = metrics_response_for_request("GET /healthz HTTP/1.1\r\n\r\n", &metrics);
+        assert_eq!(health.status, "200 OK");
+        assert_eq!(health.body, "ok\n");
 
         let wrong_path = metrics_response_for_request("GET /health HTTP/1.1\r\n\r\n", &metrics);
         assert_eq!(wrong_path.status, "404 Not Found");

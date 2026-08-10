@@ -864,7 +864,7 @@ function stdoutForGate(id) {
   if (id === 'observability-validation') return `observability artifacts validated: ${observabilityProofMarkers.join(', ')}`;
   if (id === 'journal-crypto-validation') return `journal crypto verification passed: ${journalCryptoProofMarkers.join(', ')}`;
   if (id === 'security-artifacts-validation') return `security artifacts validated: ${securityArtifactsProofMarkers.join(', ')}`;
-  if (id === 'dependency-risk-validation') return `dependency risk validated: uuid 7.0.3, expo 56.0.17, DRR-001 required=true, ${dependencyRiskProofMarkers.join(', ')}`;
+  if (id === 'dependency-risk-validation') return `dependency risk validated: uuid 11.1.1, expo 56.0.17, DRR-001 status=closed, ${dependencyRiskProofMarkers.join(', ')}`;
   if (id === 'secret-hygiene-validation') return `secret hygiene validated across 500 text files: ${secretHygieneProofMarkers.join(', ')}`;
   if (id === 'ci-workflow-validation') return `CI workflow validated: .github/workflows/security.yml (${ciWorkflowRequiredMarkers.length} required markers): ${ciWorkflowProofMarkers.join(', ')}`;
   if (id === 'ci-evidence-gate-validation') return `CI evidence gate markers validated across ${gateDefinitions.length + 1} required entries and ${ciReleaseEvidenceProofMarkers.length + 1} proof markers: ${ciEvidenceGateProofMarkers.join(', ')}`;
@@ -1018,7 +1018,7 @@ function strictEvidenceSummary(id, releaseCandidate = sha) {
   if (id === 'RUST-GRPC-001') {
     const release = `release_candidate=${releaseCandidate} service_version=scriptureforge-rust-engine:${releaseCandidate} deployment_environment=staging load_run_id=load-run-123`;
     return [
-      'RUST-GRPC-001 rustprobe passed: rust-grpc-health staging artifact grpc health scriptureforge.engine.ScriptureEngine SERVING',
+      'RUST-GRPC-001 rustprobe passed: rust-grpc-health staging artifact grpc health scriptureforge.engine.ScriptureEngine SERVING grpc_transport_security=mTLS',
       'rust-metrics staging artifact scriptureforge_rust_engine_embedding_requests_total scriptureforge_rust_engine_embedding_failures_total scriptureforge_rust_engine_vector_search_requests_total scriptureforge_rust_engine_vector_search_failures_total Prometheus metrics rust_metrics_samples_verified=true rust_embedding_requests_positive=true rust_vector_search_requests_positive=true embedding_requests=1 vector_search_requests=1',
       'api-rust-integration-metrics staging artifact Go API rust_engine vector_search success scriptureforge_dependency_operations_total scriptureforge_dependency_operation_duration_seconds_sum api_rust_metrics_samples_verified=true distinct_metrics_targets=true api_rust_vector_search_ops=1 api_rust_vector_search_seconds=0.042',
     ].map((segment) => `${segment} ${release}`).join('; ');
@@ -1166,6 +1166,7 @@ function rustGRPCRuntimeStructuredReport() {
     rust_grpc_runtime_proof: {
       deployment_environment: 'staging',
       grpc_target: 'scriptureforge-rust-engine.staging.svc.cluster.local:50051',
+      grpc_transport_security: 'mTLS',
       metrics_target: 'https://rust-metrics.staging.scriptureforge.ai/metrics',
       api_metrics_target: 'https://api.staging.scriptureforge.ai/metrics',
       load_run_id: 'load-run-123',

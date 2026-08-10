@@ -72,7 +72,9 @@ data "aws_iam_policy_document" "app_secrets_read" {
       data.aws_secretsmanager_secret.database_url.arn,
       data.aws_secretsmanager_secret.jwt_secret_key.arn,
       data.aws_secretsmanager_secret.openai_api_key.arn,
-      data.aws_secretsmanager_secret.zoom_credentials.arn
+      data.aws_secretsmanager_secret.zoom_credentials.arn,
+      data.aws_secretsmanager_secret.grpc_engine_shared_secret.arn,
+      data.aws_secretsmanager_secret.grpc_engine_tls_credentials.arn
     ]
   }
 }

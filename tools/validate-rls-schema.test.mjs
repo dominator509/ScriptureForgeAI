@@ -279,8 +279,8 @@ test('validateProductionRoomMembershipWiring rejects production room membership 
 test('validateProductionRoomMembershipWiring rejects production socket membership overrides', async () => {
   const { platformMainText, roomHandlerText, socketHandlerText } = await fixtures();
   const broken = platformMainText.replace(
-    '&ports.SocketConnection{DB: dbpool, StateManager: roomStateManager, Hub: roomHub}',
-    '&ports.SocketConnection{DB: dbpool, StateManager: roomStateManager, Hub: roomHub, MembershipValidator: func(*http.Request, *auth.TokenClaims, string) bool { return true }}',
+    /(\tsocketConn := &ports\.SocketConnection\{[\s\S]*?ConnectionLimiter: abuse\.NewDefaultActiveConnectionLimiter\(\),\n)(\t\})/,
+    '$1\tMembershipValidator: func(*http.Request, *auth.TokenClaims, string) bool { return true },\n$2',
   );
   assert.notEqual(broken, platformMainText, 'test fixture must add a production SocketConnection membership override');
   assert.throws(

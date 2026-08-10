@@ -355,7 +355,7 @@ const kubernetesSegmentMarkerRequirements = new Map([
   ['kubernetes-workload-resources', ['staging artifact', 'namespace', 'staging', 'deployment', 'service', 'ingress', 'hpa', 'pdb', 'ready', 'available', 'targets', 'minavailable', 'readinessProbe', 'livenessProbe', 'rollingUpdate', 'maxUnavailable=0', 'minReplicas', 'maxReplicas', 'tls', 'SecretProviderClass', 'image', 'sha256:', 'release_candidate=', 'service_version=', 'load_run_id=', 'scriptureforge-api', 'scriptureforge-web', 'scriptureforge-rust-engine', 'concrete_image_digests=3', 'workload_image_digests=3', 'distinct_kubernetes_artifacts=true']],
 ]);
 const rustSegmentMarkerRequirements = new Map([
-  ['rust-grpc-health', ['staging artifact', 'grpc health', 'scriptureforge.engine.ScriptureEngine', 'SERVING', 'release_candidate=', 'service_version=', 'deployment_environment=', 'load_run_id=']],
+  ['rust-grpc-health', ['staging artifact', 'grpc health', 'scriptureforge.engine.ScriptureEngine', 'SERVING', 'grpc_transport_security=mTLS', 'release_candidate=', 'service_version=', 'deployment_environment=', 'load_run_id=']],
   ['rust-metrics', ['staging artifact', 'scriptureforge_rust_engine_embedding_requests_total', 'scriptureforge_rust_engine_embedding_failures_total', 'scriptureforge_rust_engine_vector_search_requests_total', 'scriptureforge_rust_engine_vector_search_failures_total', 'Prometheus metrics', 'rust_metrics_samples_verified=true', 'rust_embedding_requests_positive=true', 'rust_vector_search_requests_positive=true', 'release_candidate=', 'service_version=', 'deployment_environment=', 'load_run_id=']],
   ['api-rust-integration-metrics', ['staging artifact', 'Go API rust_engine vector_search success', 'scriptureforge_dependency_operations_total', 'scriptureforge_dependency_operation_duration_seconds_sum', 'api_rust_metrics_samples_verified=true', 'distinct_metrics_targets=true', 'release_candidate=', 'service_version=', 'deployment_environment=', 'load_run_id=']],
 ]);
@@ -2449,6 +2449,7 @@ function assertStrictRustStructuredReport(evidence, segments) {
   assert.ok(String(report.api_metrics_target ?? '').trim(), 'RUST-GRPC-001 structured report api_metrics_target must not be empty');
   assertStrictRustStructuredTargets(report);
   assert.equal(String(report.health_status ?? ''), 'SERVING', 'RUST-GRPC-001 structured report health_status must be SERVING');
+  assert.equal(String(report.grpc_transport_security ?? ''), 'mTLS', 'RUST-GRPC-001 structured report must retain grpc_transport_security=mTLS');
   assert.equal(String(report.service_name ?? ''), 'scriptureforge.engine.ScriptureEngine', 'RUST-GRPC-001 structured report service_name must identify ScriptureEngine');
   assert.equal(Number(report.embedding_requests), Number(embeddingRequests), 'RUST-GRPC-001 structured report embedding_requests must match rust-metrics marker');
   assert.equal(Number(report.vector_search_requests), Number(vectorSearchRequests), 'RUST-GRPC-001 structured report vector_search_requests must match rust-metrics marker');

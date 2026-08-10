@@ -478,7 +478,7 @@ const forbiddenMobileProbeSummaryMarkers = [
 ];
 
 const requiredRustProbeSummaryMarkers = new Map([
-  ['rust-grpc-health', ['staging artifact', 'grpc health', 'scriptureforge.engine.ScriptureEngine', 'SERVING']],
+  ['rust-grpc-health', ['staging artifact', 'grpc health', 'scriptureforge.engine.ScriptureEngine', 'SERVING', 'grpc_transport_security=mTLS']],
   ['rust-metrics', ['staging artifact', 'scriptureforge_rust_engine_embedding_requests_total', 'scriptureforge_rust_engine_embedding_failures_total', 'scriptureforge_rust_engine_vector_search_requests_total', 'scriptureforge_rust_engine_vector_search_failures_total', 'Prometheus metrics', 'rust_metrics_samples_verified=true', 'rust_embedding_requests_positive=true', 'rust_vector_search_requests_positive=true']],
   ['api-rust-integration-metrics', ['staging artifact', 'Go API rust_engine vector_search success', 'scriptureforge_dependency_operations_total', 'scriptureforge_dependency_operation_duration_seconds_sum', 'api_rust_metrics_samples_verified=true', 'distinct_metrics_targets=true']],
 ]);
@@ -2879,6 +2879,7 @@ function structuredRustEvidenceForReport(report) {
     rust_grpc_runtime_proof: {
       deployment_environment: String(report.deployment_environment ?? ''),
       grpc_target: String(report.grpc_target ?? ''),
+      grpc_transport_security: String(report.grpc_transport_security ?? ''),
       metrics_target: String(report.metrics_target ?? ''),
       api_metrics_target: String(report.api_metrics_target ?? ''),
       load_run_id: String(report.load_run_id ?? ''),

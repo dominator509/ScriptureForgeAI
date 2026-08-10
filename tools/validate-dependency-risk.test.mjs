@@ -20,14 +20,25 @@ test('validateDependencyRisk accepts precise DRR-001 while uuid remains vulnerab
   assert.equal(result.drr001Required, true);
 });
 
-test('validateDependencyRisk rejects stale DRR-001 after uuid remediation', () => {
+test('validateDependencyRisk accepts a closed DRR-001 after uuid remediation', () => {
+  const result = validateDependencyRisk({
+    lockfile: lockfile('11.1.1', '56.0.17'),
+    register: closedRegister('11.1.1', '56.0.17'),
+    today: '2026-06-27',
+  });
+
+  assert.equal(result.drr001Required, false);
+  assert.equal(result.drr001Status, 'closed');
+});
+
+test('validateDependencyRisk rejects an unclosed DRR-001 after uuid remediation', () => {
   assert.throws(
     () => validateDependencyRisk({
       lockfile: lockfile('11.1.1', '56.0.17'),
       register: register('7.0.3', '56.0.17'),
       today: '2026-06-27',
     }),
-    /should be closed/,
+    /dependency risk closure missing Status: Closed/,
   );
 });
 
@@ -123,5 +134,17 @@ function register(uuidVersion, expoVersion) {
 - Expires: 2026-08-25
 - Required closure: Remove this accepted risk when Expo resolves uuid >=11.1.1.
 - Release gate: Final production-readiness validation must fail if this accepted risk is expired or if the review due date has passed without a refreshed decision.
+`;
+}
+
+function closedRegister(uuidVersion, expoVersion) {
+  return `
+## DRR-001: Expo tooling transitive \`uuid <11.1.1\` advisory
+
+- Status: Closed
+- Scope: mobile/package-lock.json
+- Current locked versions: expo@${expoVersion}, uuid@${uuidVersion}
+- Closure evidence: mobile/package.json and mobile/package-lock.json resolve the Expo xcode tooling path to uuid >=11.1.1; the CommonJS xcode consumer smoke also passes.
+- Required closure: uuid >=11.1.1
 `;
 }

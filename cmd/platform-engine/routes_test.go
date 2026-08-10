@@ -105,6 +105,11 @@ func TestLoadConfigDefaultsGRPCAddressOnlyForLocalDevelopment(t *testing.T) {
 	t.Setenv("REDIS_URL", "redis://local.example:6379")
 	t.Setenv("DEPLOYMENT_ENVIRONMENT", "development")
 	t.Setenv("GRPC_ENGINE_ADDRESS", "")
+	t.Setenv("GRPC_ENGINE_SHARED_SECRET", "")
+	t.Setenv("GRPC_ENGINE_TLS_CA_PEM", "")
+	t.Setenv("GRPC_ENGINE_TLS_CLIENT_CERT_PEM", "")
+	t.Setenv("GRPC_ENGINE_TLS_CLIENT_KEY_PEM", "")
+	t.Setenv("GRPC_ENGINE_TLS_SERVER_NAME", "")
 
 	cfg, errConfig := loadConfig()
 	if errConfig != nil {
@@ -122,6 +127,7 @@ func TestLoadConfigRequiresGRPCAddressInStagingAndProduction(t *testing.T) {
 			t.Setenv("REDIS_URL", "rediss://staging.example:6379")
 			t.Setenv("DEPLOYMENT_ENVIRONMENT", environment)
 			t.Setenv("GRPC_ENGINE_ADDRESS", "")
+			t.Setenv("GRPC_ENGINE_SHARED_SECRET", "")
 
 			cfg, errConfig := loadConfig()
 			if errConfig == nil {
@@ -139,6 +145,11 @@ func TestLoadConfigAcceptsExplicitProductionGRPCAddress(t *testing.T) {
 	t.Setenv("REDIS_URL", "rediss://staging.example:6379")
 	t.Setenv("DEPLOYMENT_ENVIRONMENT", "staging")
 	t.Setenv("GRPC_ENGINE_ADDRESS", "scriptureforge-rust-engine:50051")
+	t.Setenv("GRPC_ENGINE_SHARED_SECRET", "01234567890123456789012345678901")
+	t.Setenv("GRPC_ENGINE_TLS_CA_PEM", "test-ca")
+	t.Setenv("GRPC_ENGINE_TLS_CLIENT_CERT_PEM", "test-cert")
+	t.Setenv("GRPC_ENGINE_TLS_CLIENT_KEY_PEM", "test-key")
+	t.Setenv("GRPC_ENGINE_TLS_SERVER_NAME", "scriptureforge-rust-engine")
 
 	cfg, errConfig := loadConfig()
 	if errConfig != nil {
@@ -146,6 +157,23 @@ func TestLoadConfigAcceptsExplicitProductionGRPCAddress(t *testing.T) {
 	}
 	if cfg.GRPCAddress != "scriptureforge-rust-engine:50051" {
 		t.Fatalf("GRPCAddress = %q, want scriptureforge-rust-engine:50051", cfg.GRPCAddress)
+	}
+}
+
+func TestLoadConfigRequiresGRPCSharedSecretAndTLSInProduction(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://staging.example/scriptureforge")
+	t.Setenv("REDIS_URL", "rediss://staging.example:6379")
+	t.Setenv("DEPLOYMENT_ENVIRONMENT", "production")
+	t.Setenv("GRPC_ENGINE_ADDRESS", "scriptureforge-rust-engine:50051")
+	t.Setenv("GRPC_ENGINE_SHARED_SECRET", "")
+	t.Setenv("GRPC_ENGINE_TLS_CA_PEM", "")
+	t.Setenv("GRPC_ENGINE_TLS_CLIENT_CERT_PEM", "")
+	t.Setenv("GRPC_ENGINE_TLS_CLIENT_KEY_PEM", "")
+	t.Setenv("GRPC_ENGINE_TLS_SERVER_NAME", "")
+
+	cfg, errConfig := loadConfig()
+	if errConfig == nil || cfg != nil || !strings.Contains(errConfig.Message, "GRPC_ENGINE_SHARED_SECRET") {
+		t.Fatalf("loadConfig = cfg=%#v err=%#v, want missing gRPC shared-secret error", cfg, errConfig)
 	}
 }
 
