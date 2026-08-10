@@ -11,6 +11,10 @@ const repoBriefPath = 'REPO_BRIEF.md';
 const obsidianNotePath = 'production-readiness/obsidian-production-readiness.md';
 const serenaSetupPath = 'production-readiness/serena-setup.md';
 const routeSourcePath = 'cmd/platform-engine/main.go';
+const webPackagePath = 'web/package.json';
+const mobilePackagePath = 'mobile/package.json';
+const webLockfilePath = 'web/package-lock.json';
+const mobileLockfilePath = 'mobile/package-lock.json';
 
 export const expectedSerenaLanguages = [
   'go',
@@ -149,8 +153,12 @@ export async function validateSerenaObsidianSync({ workspaceRoot = process.cwd()
   const obsidianPath = path.join(workspaceRoot, obsidianNotePath);
   const serenaSetupPathAbs = path.join(workspaceRoot, serenaSetupPath);
   const routeSourcePathAbs = path.join(workspaceRoot, routeSourcePath);
+  const webPackagePathAbs = path.join(workspaceRoot, webPackagePath);
+  const mobilePackagePathAbs = path.join(workspaceRoot, mobilePackagePath);
+  const webLockfilePathAbs = path.join(workspaceRoot, webLockfilePath);
+  const mobileLockfilePathAbs = path.join(workspaceRoot, mobileLockfilePath);
 
-  const [projectText, architectureText, roadmapText, readmeText, repoBriefText, obsidianText, serenaSetupText, routeSourceText] = await Promise.all([
+  const [projectText, architectureText, roadmapText, readmeText, repoBriefText, obsidianText, serenaSetupText, routeSourceText, webPackageText, mobilePackageText, webLockfileText, mobileLockfileText] = await Promise.all([
     readFile(projectPath, 'utf8'),
     readFile(architecturePath, 'utf8'),
     readFile(roadmapPath, 'utf8'),
@@ -159,7 +167,28 @@ export async function validateSerenaObsidianSync({ workspaceRoot = process.cwd()
     readFile(obsidianPath, 'utf8'),
     readFile(serenaSetupPathAbs, 'utf8'),
     readFile(routeSourcePathAbs, 'utf8'),
+    readFile(webPackagePathAbs, 'utf8'),
+    readFile(mobilePackagePathAbs, 'utf8'),
+    readFile(webLockfilePathAbs, 'utf8'),
+    readFile(mobileLockfilePathAbs, 'utf8'),
   ]);
+
+  const webPackage = JSON.parse(webPackageText);
+  const mobilePackage = JSON.parse(mobilePackageText);
+  const webLockfile = JSON.parse(webLockfileText);
+  const mobileLockfile = JSON.parse(mobileLockfileText);
+  const webNextVersion = exactDependencyVersion(webPackage, 'next', webPackagePath);
+  const mobileExpoVersion = exactDependencyVersion(mobilePackage, 'expo', mobilePackagePath);
+  assert.equal(
+    webLockfile.packages?.['']?.dependencies?.next,
+    webNextVersion,
+    `${webLockfilePath} root next range must match ${webPackagePath}`,
+  );
+  assert.equal(
+    mobileLockfile.packages?.['']?.dependencies?.expo,
+    mobileExpoVersion,
+    `${mobileLockfilePath} root expo range must match ${mobilePackagePath}`,
+  );
 
   const configuredLanguages = extractListFromYaml(projectText, 'languages');
   const configuredWorkspaces = extractListFromYaml(projectText, 'additional_workspace_folders');
@@ -250,6 +279,14 @@ export async function validateSerenaObsidianSync({ workspaceRoot = process.cwd()
   assert.ok(readmeText.includes('terraform -chdir=build/terraform fmt -check -recursive'), 'README Terraform fmt command must target build/terraform recursively');
   assert.ok(readmeText.includes('terraform -chdir=build/terraform validate'), 'README Terraform validate command must target build/terraform');
   assert.ok(!readmeText.includes('terraform fmt -check\n'), 'README must not document non-recursive root Terraform fmt gate');
+  assert.ok(repoBriefText.includes(`Next.js \`${webNextVersion}\``), 'REPO_BRIEF must document the exact web Next.js pin');
+  assert.ok(architectureText.includes(`Next.js ${webNextVersion}`), 'Architecture must document the exact web Next.js pin');
+}
+
+function exactDependencyVersion(packageJson, dependency, packagePath) {
+  const version = packageJson.dependencies?.[dependency];
+  assert.match(version ?? '', /^\d+\.\d+\.\d+$/, `${packagePath} ${dependency} must be an exact semver pin`);
+  return version;
 }
 
 if (import.meta.url === `file://${process.argv[1]?.replaceAll('\\', '/')}` || process.argv[1]?.endsWith('validate-serena-obsidian.mjs')) {

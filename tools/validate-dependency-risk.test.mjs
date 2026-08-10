@@ -10,21 +10,21 @@ test('compareSemver compares major, minor, and patch versions', () => {
 
 test('validateDependencyRisk accepts precise DRR-001 while uuid remains vulnerable', () => {
   const result = validateDependencyRisk({
-    lockfile: lockfile('7.0.3', '56.0.12'),
-    register: register('7.0.3', '56.0.12'),
+    lockfile: lockfile('7.0.3', '56.0.17'),
+    register: register('7.0.3', '56.0.17'),
     today: '2026-06-27',
   });
 
   assert.equal(result.uuidVersion, '7.0.3');
-  assert.equal(result.expoVersion, '56.0.12');
+  assert.equal(result.expoVersion, '56.0.17');
   assert.equal(result.drr001Required, true);
 });
 
 test('validateDependencyRisk rejects stale DRR-001 after uuid remediation', () => {
   assert.throws(
     () => validateDependencyRisk({
-      lockfile: lockfile('11.1.1', '56.0.12'),
-      register: register('7.0.3', '56.0.12'),
+      lockfile: lockfile('11.1.1', '56.0.17'),
+      register: register('7.0.3', '56.0.17'),
       today: '2026-06-27',
     }),
     /should be closed/,
@@ -34,19 +34,19 @@ test('validateDependencyRisk rejects stale DRR-001 after uuid remediation', () =
 test('validateDependencyRisk rejects incomplete DRR-001 details', () => {
   assert.throws(
     () => validateDependencyRisk({
-      lockfile: lockfile('7.0.3', '56.0.12'),
+      lockfile: lockfile('7.0.3', '56.0.17'),
       register: '## DRR-001\nuuid <11.1.1\n',
       today: '2026-06-27',
     }),
-    /missing expo@56.0.12/,
+    /missing expo@56.0.17/,
   );
 });
 
 test('validateDependencyRisk rejects expired DRR-001 accepted risk', () => {
   assert.throws(
     () => validateDependencyRisk({
-      lockfile: lockfile('7.0.3', '56.0.12'),
-      register: register('7.0.3', '56.0.12'),
+      lockfile: lockfile('7.0.3', '56.0.17'),
+      register: register('7.0.3', '56.0.17'),
       today: '2026-08-26',
     }),
     /DRR-001 accepted risk expired on 2026-08-25/,
@@ -56,8 +56,8 @@ test('validateDependencyRisk rejects expired DRR-001 accepted risk', () => {
 test('validateDependencyRisk rejects overdue DRR-001 review before expiry', () => {
   assert.throws(
     () => validateDependencyRisk({
-      lockfile: lockfile('7.0.3', '56.0.12'),
-      register: register('7.0.3', '56.0.12'),
+      lockfile: lockfile('7.0.3', '56.0.17'),
+      register: register('7.0.3', '56.0.17'),
       today: '2026-07-26',
     }),
     /DRR-001 accepted risk review is overdue as of 2026-07-25/,
@@ -67,8 +67,8 @@ test('validateDependencyRisk rejects overdue DRR-001 review before expiry', () =
 test('validateDependencyRisk rejects DRR-001 review dates after expiry', () => {
   assert.throws(
     () => validateDependencyRisk({
-      lockfile: lockfile('7.0.3', '56.0.12'),
-      register: register('7.0.3', '56.0.12').replace('Review due: 2026-07-25', 'Review due: 2026-09-01'),
+      lockfile: lockfile('7.0.3', '56.0.17'),
+      register: register('7.0.3', '56.0.17').replace('Review due: 2026-07-25', 'Review due: 2026-09-01'),
       today: '2026-06-27',
     }),
     /DRR-001 Review due must be on or before Expires/,
@@ -78,8 +78,8 @@ test('validateDependencyRisk rejects DRR-001 review dates after expiry', () => {
 test('validateDependencyRisk rejects uuid imports from mobile runtime while DRR-001 is accepted', () => {
   assert.throws(
     () => validateDependencyRisk({
-      lockfile: lockfile('7.0.3', '56.0.12'),
-      register: register('7.0.3', '56.0.12'),
+      lockfile: lockfile('7.0.3', '56.0.17'),
+      register: register('7.0.3', '56.0.17'),
       runtimeSources: [{ path: 'mobile/src/lib/runtime.ts', content: 'import { v4 } from "uuid";' }],
       today: '2026-06-27',
     }),

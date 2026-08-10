@@ -181,8 +181,8 @@ test('verifyProductionReadiness rejects accepted-risk waivers for final claims',
     signoff.decision_ref = 'security/dependency_risk_register.md#DRR-001';
     signoff.owner = 'security';
     signoff.accepted_by = 'release-owner';
-    signoff.review_due_at = '2026-07-25';
-    signoff.expires_at = '2026-08-25';
+    signoff.review_due_at = '2026-08-26';
+    signoff.expires_at = '2026-09-26';
     const { manifestPath, localGateReportPath, contractManifestPath, obsidianNotePath } = await writeReadinessInputs(dir, { manifest });
 
     await assert.rejects(
@@ -864,7 +864,7 @@ function stdoutForGate(id) {
   if (id === 'observability-validation') return `observability artifacts validated: ${observabilityProofMarkers.join(', ')}`;
   if (id === 'journal-crypto-validation') return `journal crypto verification passed: ${journalCryptoProofMarkers.join(', ')}`;
   if (id === 'security-artifacts-validation') return `security artifacts validated: ${securityArtifactsProofMarkers.join(', ')}`;
-  if (id === 'dependency-risk-validation') return `dependency risk validated: uuid 7.0.3, expo 56.0.12, DRR-001 required=true, ${dependencyRiskProofMarkers.join(', ')}`;
+  if (id === 'dependency-risk-validation') return `dependency risk validated: uuid 7.0.3, expo 56.0.17, DRR-001 required=true, ${dependencyRiskProofMarkers.join(', ')}`;
   if (id === 'secret-hygiene-validation') return `secret hygiene validated across 500 text files: ${secretHygieneProofMarkers.join(', ')}`;
   if (id === 'ci-workflow-validation') return `CI workflow validated: .github/workflows/security.yml (${ciWorkflowRequiredMarkers.length} required markers): ${ciWorkflowProofMarkers.join(', ')}`;
   if (id === 'ci-evidence-gate-validation') return `CI evidence gate markers validated across ${gateDefinitions.length + 1} required entries and ${ciReleaseEvidenceProofMarkers.length + 1} proof markers: ${ciEvidenceGateProofMarkers.join(', ')}`;

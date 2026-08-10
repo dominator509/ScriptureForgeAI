@@ -108,7 +108,7 @@ test('summarizeGaps rejects overdue signoff accepted risk instead of hiding it',
   });
 
   assert.throws(
-    () => summarizeGaps(manifest, { today: '2026-07-26' }),
+    () => summarizeGaps(manifest, { today: '2026-08-27' }),
     /SEC-SIGNOFF-001 accepted risk review_due_at must not be before validation date/,
   );
 });
@@ -143,8 +143,8 @@ test('summarizeGaps treats non-signoff accepted risk as strict release blocker',
   assert.equal(summary.blocking_items[0].decision_ref, 'security/decision.md#DEPLOY-TF-001');
   assert.equal(summary.blocking_items[0].owner, 'release-owner');
   assert.equal(summary.blocking_items[0].accepted_by, 'security-lead');
-  assert.equal(summary.blocking_items[0].review_due_at, '2026-07-25');
-  assert.equal(summary.blocking_items[0].expires_at, '2026-08-25');
+  assert.equal(summary.blocking_items[0].review_due_at, '2026-08-26');
+  assert.equal(summary.blocking_items[0].expires_at, '2026-09-26');
 });
 
 test('formatText prints counts and evidence checklist', () => {
@@ -198,8 +198,8 @@ test('formatText and formatObsidian include accepted-risk ownership details', ()
     assert.match(output, /decision_ref: security\/decision\.md#DEPLOY-TF-001/);
     assert.match(output, /owner: release-owner/);
     assert.match(output, /accepted_by: security-lead/);
-    assert.match(output, /review_due_at: 2026-07-25/);
-    assert.match(output, /expires_at: 2026-08-25/);
+    assert.match(output, /review_due_at: 2026-08-26/);
+    assert.match(output, /expires_at: 2026-09-26/);
   }
 });
 
@@ -355,8 +355,8 @@ function buildItem(id, status) {
       : `security/decision.md#${id}`;
     item.owner = 'release-owner';
     item.accepted_by = 'security-lead';
-    item.review_due_at = '2026-07-25';
-    item.expires_at = '2026-08-25';
+    item.review_due_at = '2026-08-26';
+    item.expires_at = '2026-09-26';
   }
 
   return item;

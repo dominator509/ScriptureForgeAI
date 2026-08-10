@@ -119,6 +119,16 @@ test('validateCIWorkflow rejects incomplete local tooling test coverage', async 
   );
 });
 
+test('validateCIWorkflow rejects missing Serena/Obsidian validator test coverage', async () => {
+  const text = await readFile('.github/workflows/security.yml', 'utf8');
+  const broken = text.replace(' tools/validate-serena-obsidian.test.mjs', '');
+  assert.notEqual(broken, text, 'fixture workflow must include Serena/Obsidian validator tests');
+  assert.throws(
+    () => validateCIWorkflow(broken),
+    /local-tooling-tests/,
+  );
+});
+
 test('validateCIWorkflow rejects missing npm audit wrapper test coverage', async () => {
   const text = await readFile('.github/workflows/security.yml', 'utf8');
   const broken = text.replace(' tools/run-npm-audit.test.mjs', '');

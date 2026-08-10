@@ -819,6 +819,8 @@ Status last updated: 2026-06-28
 
 2026-07-01 update: production evidence probe gate proof now requires every probe package to appear in the uncached Go test output. `tools/run-go-probe-tests.mjs` refuses to emit its source, tenant/RLS, Rust, observability, security, resilience, mobile, deployment, abuse, Zoom, AI, and load proof markers unless `go test` reports an `ok scriptureforge/tools/...` result line for each package in the batch. This strengthens local/CI probe-tool coverage only; deployed staging evidence for those systems remains pending external proof.
 
+2026-08-10 dependency pin refresh: web `next` is now exact-pinned at `16.2.12` and mobile `expo` is exact-pinned at `56.0.17` in both manifests and lockfile roots. Current repo context and dependency-risk fixtures are aligned to those versions; prior dated audit evidence remains historical. This is local reproducibility hardening and does not close the remaining external staging gates.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.

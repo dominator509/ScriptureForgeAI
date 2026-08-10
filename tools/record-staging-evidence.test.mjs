@@ -11716,8 +11716,8 @@ test('recordStatus records accepted risk decisions', () => {
     decisionRef: 'security/dependency_risk_register.md#DRR-001',
     owner: 'security',
     acceptedBy: 'release-owner',
-    reviewDueAt: '2026-07-25',
-    expiresAt: '2026-08-25',
+    reviewDueAt: '2026-08-26',
+    expiresAt: '2026-09-26',
   });
 
   const item = manifest.items[0];
@@ -11725,8 +11725,8 @@ test('recordStatus records accepted risk decisions', () => {
   assert.equal(item.decision_ref, 'security/dependency_risk_register.md#DRR-001');
   assert.equal(item.owner, 'security');
   assert.equal(item.accepted_by, 'release-owner');
-  assert.equal(item.review_due_at, '2026-07-25');
-  assert.equal(item.expires_at, '2026-08-25');
+  assert.equal(item.review_due_at, '2026-08-26');
+  assert.equal(item.expires_at, '2026-09-26');
   assert.equal(item.blocker, undefined);
 });
 

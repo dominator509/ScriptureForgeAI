@@ -872,7 +872,7 @@ function securityArtifactsProofOutput() {
 }
 
 function dependencyRiskProofOutput() {
-  return `dependency risk validated: uuid 7.0.3, expo 56.0.12, DRR-001 required=true, ${dependencyRiskProofMarkers.join(', ')}`;
+  return `dependency risk validated: uuid 7.0.3, expo 56.0.17, DRR-001 required=true, ${dependencyRiskProofMarkers.join(', ')}`;
 }
 
 function secretHygieneProofOutput() {
