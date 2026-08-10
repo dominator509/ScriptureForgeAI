@@ -347,8 +347,8 @@ func TestGenerateCurriculumHandlerTenantIsolationForCrossTenantReadsAndWrites(t 
 		if orgARequestCount != 2 {
 			t.Fatalf("tenant A AI request count = %d, want 2", orgARequestCount)
 		}
-		if orgACitationCount != 1 {
-			t.Fatalf("tenant A citation count = %d, want 1", orgACitationCount)
+		if orgACitationCount != 2 {
+			t.Fatalf("tenant A citation count = %d, want one citation trail per successful generation (2)", orgACitationCount)
 		}
 	})
 

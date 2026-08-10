@@ -43,6 +43,7 @@ type WebhookHandler struct {
 
 const maxProcessedZoomDeliveries = 4096
 const maxZoomWebhookClockSkew = 5 * time.Minute
+const maxZoomWebhookBodyBytes = 1 << 20
 
 type roomStateWriter interface {
 	SetRoomActiveState(ctx context.Context, roomID string, active bool) error
@@ -192,8 +193,13 @@ func zoomURLValidationResponse(plainToken string) (map[string]string, bool) {
 }
 
 func (h *WebhookHandler) HandleZoomWebhook(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxZoomWebhookBodyBytes)
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
+		if _, ok := err.(*http.MaxBytesError); ok {
+			w.WriteHeader(http.StatusRequestEntityTooLarge)
+			return
+		}
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}

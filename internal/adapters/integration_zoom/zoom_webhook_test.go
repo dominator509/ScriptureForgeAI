@@ -67,6 +67,19 @@ func TestZoomWebhookRejectsInvalidSignature(t *testing.T) {
 	}
 }
 
+func TestZoomWebhookRejectsOversizedBodyBeforeSignatureProcessing(t *testing.T) {
+	t.Setenv("ZOOM_WEBHOOK_SECRET_TOKEN", "secret")
+	handler := NewWebhookHandler(&fakeRoomStateManager{})
+	request := httptest.NewRequest(http.MethodPost, "/api/webhooks/zoom", bytes.NewReader(bytes.Repeat([]byte("x"), maxZoomWebhookBodyBytes+1)))
+	recorder := httptest.NewRecorder()
+
+	handler.HandleZoomWebhook(recorder, request)
+
+	if recorder.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized webhook status = %d, want 413", recorder.Code)
+	}
+}
+
 func TestZoomWebhookRejectsStaleSignedDelivery(t *testing.T) {
 	t.Setenv("ZOOM_WEBHOOK_SECRET_TOKEN", "secret")
 	stateManager := &fakeRoomStateManager{}
