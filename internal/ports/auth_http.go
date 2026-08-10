@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -75,6 +76,7 @@ type MFAVerifyResponse struct {
 const (
 	accessTokenTTL           = 15 * time.Minute
 	refreshTokenTTL          = 30 * 24 * time.Hour
+	refreshCookieName        = "scriptureforge_refresh"
 	maxAuthRequestBodyBytes  = 64 * 1024
 	maxAuthEmailBytes        = 320
 	maxAuthPasswordBytes     = 1024
@@ -84,6 +86,70 @@ const (
 )
 
 var emailRegex = regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$`)
+
+func isWebAuthClient(r *http.Request) bool {
+	return strings.EqualFold(strings.TrimSpace(r.Header.Get("X-ScriptureForge-Client")), "web")
+}
+
+func secureRefreshCookie(r *http.Request) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("DEPLOYMENT_ENVIRONMENT"))) {
+	case "staging", "production", "prod":
+		return true
+	default:
+		return r.TLS != nil
+	}
+}
+
+func setRefreshCookie(w http.ResponseWriter, r *http.Request, refreshToken string) {
+	if !isWebAuthClient(r) || refreshToken == "" {
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     refreshCookieName,
+		Value:    refreshToken,
+		Path:     "/api",
+		MaxAge:   int(refreshTokenTTL.Seconds()),
+		HttpOnly: true,
+		Secure:   secureRefreshCookie(r),
+		SameSite: http.SameSiteStrictMode,
+	})
+}
+
+func clearRefreshCookie(w http.ResponseWriter, r *http.Request) {
+	if !isWebAuthClient(r) {
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     refreshCookieName,
+		Value:    "",
+		Path:     "/api",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   secureRefreshCookie(r),
+		SameSite: http.SameSiteStrictMode,
+	})
+}
+
+func refreshTokenFromRequest(r *http.Request, bodyToken string) string {
+	if strings.TrimSpace(bodyToken) != "" {
+		return strings.TrimSpace(bodyToken)
+	}
+	cookie, err := r.Cookie(refreshCookieName)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(cookie.Value)
+}
+
+func writeAuthResponse(w http.ResponseWriter, r *http.Request, response AuthResponse, status int) {
+	setRefreshCookie(w, r, response.RefreshToken)
+	if isWebAuthClient(r) {
+		response.RefreshToken = ""
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(response)
+}
 
 func sendAuthError(w http.ResponseWriter, pe *auth.PlatformException) {
 	w.Header().Set("Content-Type", "application/json")
@@ -351,9 +417,7 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	metricStatus = "success"
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(AuthResponse{Token: token, RefreshToken: refreshToken, UserID: newUserID, OrganizationID: req.OrganizationID})
+	writeAuthResponse(w, r, AuthResponse{Token: token, RefreshToken: refreshToken, UserID: newUserID, OrganizationID: req.OrganizationID}, http.StatusCreated)
 }
 
 func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
@@ -434,8 +498,7 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	metricStatus = "success"
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(AuthResponse{Token: token, RefreshToken: refreshToken, UserID: userID, OrganizationID: orgID})
+	writeAuthResponse(w, r, AuthResponse{Token: token, RefreshToken: refreshToken, UserID: userID, OrganizationID: orgID}, http.StatusOK)
 }
 
 func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
@@ -449,6 +512,7 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 		sendAuthError(w, pe)
 		return
 	}
+	req.RefreshToken = refreshTokenFromRequest(r, req.RefreshToken)
 	if req.RefreshToken == "" || len(req.RefreshToken) > maxAuthRefreshTokenBytes || req.OrganizationID == "" || len(req.OrganizationID) > maxAuthOrganizationBytes {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid refresh payload", Code: http.StatusBadRequest})
 		return
@@ -519,8 +583,7 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	metricStatus = "success"
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(AuthResponse{Token: token, RefreshToken: refreshToken, UserID: userID, OrganizationID: orgID})
+	writeAuthResponse(w, r, AuthResponse{Token: token, RefreshToken: refreshToken, UserID: userID, OrganizationID: orgID}, http.StatusOK)
 }
 
 func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
@@ -534,6 +597,7 @@ func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 		sendAuthError(w, pe)
 		return
 	}
+	req.RefreshToken = refreshTokenFromRequest(r, req.RefreshToken)
 	if req.RefreshToken == "" || len(req.RefreshToken) > maxAuthRefreshTokenBytes || req.OrganizationID == "" || len(req.OrganizationID) > maxAuthOrganizationBytes {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid logout payload", Code: http.StatusBadRequest})
 		return
@@ -566,6 +630,7 @@ func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	metricStatus = "success"
+	clearRefreshCookie(w, r)
 	w.WriteHeader(http.StatusNoContent)
 }
 

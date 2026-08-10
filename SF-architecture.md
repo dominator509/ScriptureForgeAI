@@ -91,7 +91,7 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
     *   `POST /api/auth/login` (compatibility alias)
 *   **Data Entities:** `User`, `Organization`, `Workspace`, `Session`, `RefreshToken`.
 *   **Security Considerations:** Cryptographic salt hashing via Argon2id. Multi-factor authentication (MFA) via TOTP protocols is structurally mandatory for `Tenant_Admin` and `Super_Admin` actors.
-*   **Client Session Lifecycle:** Web and mobile clients keep the short-lived JWT in a session bridge, perform one shared refresh-token rotation on `401` responses, surface `requires_mfa` challenges without storing an empty session, and clear the session only when refresh rotation is rejected.
+*   **Client Session Lifecycle:** Web and mobile clients keep the short-lived JWT in a session bridge and perform one shared refresh-token rotation on `401` responses. Browsers receive the rotated refresh token in an HttpOnly, SameSite=Strict `/api` cookie sent with `credentials: include`; mobile retains the JSON body-token compatibility flow. Both clients surface `requires_mfa` challenges without storing an empty session and clear the session only when refresh rotation is rejected.
 *   **Failure Modes & Logic Risks:** Tenant bleeding (cross-tenant visibility via corrupted workspace session swapping). Mitigation involves appending `organization_id` implicitly to all database queries via an authenticated context wrapper, completely isolating it from direct client parameters. The authenticated organization context must be validated as a UUID before setting transaction-local `app.current_org_id` for Postgres RLS. Production RLS evidence must preserve a structured manifest proof of exact tenant table names plus same-tenant-visible, cross-tenant-hidden, and write-denied outcomes for every tenant-scoped table.
 
 ### 5.2 Role-Based Access Control (RBAC) & Permissions
@@ -375,9 +375,9 @@ CREATE INDEX idx_participants_lookup ON room_participants(room_id, user_id);
 ### 11.1 Route Strategy and Structure
 
 #### Group A: Authentication & Provisioning (`/api/v1/auth`)
-*   `POST /api/v1/auth/login`: Issue verification challenges. Returns short-lived JWT and stores HttpOnly fingerprint validation cookies.
+*   `POST /api/v1/auth/login`: Issue verification challenges. Returns a short-lived JWT and, for web clients, sets an HttpOnly, SameSite=Strict refresh-token cookie scoped to `/api`.
 *   `POST /api/v1/auth/register`: Provision member accounts with tenant-bound role defaults.
-*   `POST /api/v1/auth/refresh`: Exchange an active refresh token for a rotated access/refresh pair.
+*   `POST /api/v1/auth/refresh`: Exchange an active refresh token from the web cookie or compatibility request body for a rotated access/refresh pair; web responses omit the refresh token body.
 *   `POST /api/v1/auth/logout`: Revoke an issued refresh token.
 *   `POST /api/v1/auth/mfa/verify`: Process real-time dynamic authentication codes.
 *   `POST /api/v1/auth/mfa/enroll`: Provision a TOTP seed for privileged roles.
@@ -428,7 +428,7 @@ The web and mobile frameworks partition client-side information states cleanly t
 *   **Server Cached Mirror State:** Driven by `@tanstack/react-query`. Captures, invalidates, and mirrors persistent backend structures (e.g., resource catalog entries, profile parameters).
 *   **Ephemeral Presentation UI State:** Driven by localized `Zustand` instances. Tracks structural client presentation values (e.g., viewport splitting coordinates, translation comparison panels, current accessibility font sizing modifiers).
 *   **Real-time Collaborative Sync Canvas:** Driven by highly reliable WebSocket pipelines hooked directly to React Context layers. Captures remote state adjustments and maps them down to local UI surfaces with zero interference to focus points.
-*   **Session and Recovery Boundary:** Zustand-backed session bridges update rotated access/refresh pairs atomically for client requests; room views use the canonical WSS stream and authenticated polling fallback, while native-device and deployed-browser behavior remains a staging validation responsibility.
+*   **Session and Recovery Boundary:** Zustand-backed session bridges update rotated access tokens atomically for client requests; browser refresh custody remains in the HttpOnly cookie while mobile retains body-token compatibility. Room views use the canonical WSS stream and authenticated polling fallback, while native-device and deployed-browser behavior remains a staging validation responsibility.
 
 ### 12.2 User Interface Progressive Disclosure Strategy
 To accommodate both novice users and advanced researchers, structural UI visibility adapts dynamically based on the active display mode configuration:

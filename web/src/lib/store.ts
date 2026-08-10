@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { AuthSession, configureSessionBridge } from './api'
 
+if (typeof window !== 'undefined') window.localStorage.removeItem('refresh_token')
+
 interface AppState {
   currentRole: string
   setRole: (role: string) => void
@@ -20,7 +22,7 @@ export const useAppStore = create<AppState>()((set) => ({
   activeRoomId: null,
   setActiveRoom: (id) => set({ activeRoomId: id }),
   token: typeof window === 'undefined' ? null : window.localStorage.getItem('auth_token'),
-  refreshToken: typeof window === 'undefined' ? null : window.localStorage.getItem('refresh_token'),
+  refreshToken: null,
   userId: typeof window === 'undefined' ? null : window.localStorage.getItem('user_id'),
   organizationId: typeof window === 'undefined' ? null : window.localStorage.getItem('organization_id'),
   setSession: (session) => {
@@ -32,11 +34,11 @@ export const useAppStore = create<AppState>()((set) => ({
       set({ token: null, refreshToken: null, userId: null, organizationId: null, activeRoomId: null })
       return
     }
+    window.localStorage.removeItem('refresh_token')
     window.localStorage.setItem('auth_token', session.token)
-    window.localStorage.setItem('refresh_token', session.refresh_token)
     window.localStorage.setItem('user_id', session.user_id)
     window.localStorage.setItem('organization_id', session.organization_id)
-    set({ token: session.token, refreshToken: session.refresh_token, userId: session.user_id, organizationId: session.organization_id })
+    set({ token: session.token, refreshToken: null, userId: session.user_id, organizationId: session.organization_id })
   },
   clearSession: () => {
     window.localStorage.removeItem('auth_token')
@@ -50,10 +52,10 @@ export const useAppStore = create<AppState>()((set) => ({
 configureSessionBridge({
   getSession: () => {
     const state = useAppStore.getState()
-    if (!state.token || !state.refreshToken || !state.userId || !state.organizationId) return null
+    if (!state.token || !state.userId || !state.organizationId) return null
     return {
       token: state.token,
-      refresh_token: state.refreshToken,
+      refresh_token: state.refreshToken ?? undefined,
       user_id: state.userId,
       organization_id: state.organizationId,
     }

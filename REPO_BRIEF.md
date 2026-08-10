@@ -52,6 +52,7 @@ ScriptureForgeAI is a multi-tenant Bible study platform with authenticated works
 ## Data / Auth / External Notes
 
 - Tenant isolation: Postgres RLS + `auth.SetTenantContext(ctx, tx, orgID)` for tenant-scoped DB access.
+- Browser sessions keep refresh tokens in an HttpOnly, SameSite=Strict `/api` cookie; mobile keeps the compatibility body-token flow, and both use short-lived access tokens with rotation.
 - Journals must stay ciphertext-only at transport and persistence boundaries; pass no plaintext or passphrases to backend routes.
 - Live rooms rely on authenticated membership + JWT claims plus allowed origin checks.
 - Rust gRPC service calls use mTLS plus a shared secret and verified tenant metadata in staging/production; local plaintext fallback is development-only. Rust liveness is HTTP `/healthz` on `9102` because Kubernetes gRPC probes cannot present client certificates.

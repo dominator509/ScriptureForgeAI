@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { after, beforeEach, test } from 'node:test';
 import {
   API_BASE_URL,
+  type AuthSession,
   apiRequest,
   createRoom,
   configureSessionBridge,
@@ -92,12 +93,14 @@ test('auth helpers use canonical v1 routes and bearer logout revocation', async 
     ],
   );
   assert.equal(new Headers(calls.at(-1)?.init.headers).get('Authorization'), 'Bearer access-token');
+  assert.equal(new Headers(calls[0]?.init.headers).get('X-ScriptureForge-Client'), 'web');
+  assert.equal(calls[0]?.init.credentials, 'include');
   assert.equal(JSON.parse(String(calls.at(2)?.init.body)).organization_id, 'org-1');
   assert.equal(JSON.parse(String(calls.at(3)?.init.body)).organization_id, 'org-1');
 });
 
 test('web authenticated requests rotate an expired access token and retry once', async () => {
-  let activeSession = {
+  let activeSession: AuthSession = {
     token: 'expired-token',
     refresh_token: 'refresh-token',
     user_id: 'user-1',
@@ -141,6 +144,34 @@ test('web login exposes the privileged MFA challenge without storing an empty se
   assert.equal(session.requires_mfa, true);
   assert.equal(session.token, '');
   assert.equal(session.user_id, 'admin-1');
+});
+
+test('web refresh can rely on the HttpOnly cookie without sending a refresh token body', async () => {
+  let activeSession = {
+    token: 'expired-token',
+    user_id: 'user-1',
+    organization_id: 'org-1',
+  };
+  configureSessionBridge({
+    getSession: () => activeSession,
+    onSessionChange: (session) => { activeSession = session!; },
+  });
+  const refreshBodies: unknown[] = [];
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = String(input);
+    const token = new Headers(init?.headers).get('Authorization') ?? '';
+    if (url.endsWith('/api/v1/auth/refresh')) {
+      refreshBodies.push(JSON.parse(String(init?.body)));
+      return jsonResponse({ token: 'fresh-token', user_id: 'user-1', organization_id: 'org-1' });
+    }
+    if (url.endsWith('/api/v1/rooms/state/room-1') && token === 'Bearer expired-token') return jsonResponse({ message: 'expired' }, 401);
+    return jsonResponse({ sequence: 4 });
+  };
+
+  const result = await apiRequest<{ sequence: number }>('/api/v1/rooms/state/room-1', 'expired-token');
+  assert.equal(result.sequence, 4);
+  assert.deepEqual(refreshBodies, [{ organization_id: 'org-1' }]);
+  assert.equal(activeSession.token, 'fresh-token');
 });
 
 test('journal helpers list, save, and load encrypted payloads without plaintext fields', async () => {

@@ -116,7 +116,7 @@ export const WS_BASE_URL = runtimeConfig.wsBaseUrl;
 
 export interface AuthSession {
   token: string;
-  refresh_token: string;
+  refresh_token?: string;
   user_id: string;
   organization_id: string;
   requires_mfa?: boolean;
@@ -221,10 +221,10 @@ async function rotateSession(expiredToken: string): Promise<AuthSession | null> 
   const bridge = sessionBridge;
   if (!bridge) return null;
   const current = bridge.getSession();
-  if (!current?.refresh_token || !current.organization_id) return null;
+  if (!current?.organization_id) return null;
   if (current.token !== expiredToken) return current;
   if (!refreshInFlight) {
-    refreshInFlight = refreshSession(current.refresh_token, current.organization_id)
+    refreshInFlight = refreshSession(current.refresh_token ?? null, current.organization_id)
       .then((session) => {
         bridge.onSessionChange(session);
         return session;
@@ -250,9 +250,10 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('Content-Type', 'application/json');
+  headers.set('X-ScriptureForge-Client', 'web');
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
-  const response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
+  const response = await fetch(`${API_BASE_URL}${path}`, { ...init, credentials: 'include', headers });
   if (response.status === 401 && token && allowRefresh && canRefreshForPath(path)) {
     const session = await rotateSession(token);
     if (session?.token && session.token !== token) {
@@ -292,23 +293,25 @@ export function login(credentials: AuthCredentials): Promise<AuthSession> {
 }
 
 export function refreshSession(
-  refreshToken: string,
+  refreshToken: string | null,
   organizationId: string,
 ): Promise<AuthSession> {
+  const body = { organization_id: organizationId, ...(refreshToken ? { refresh_token: refreshToken } : {}) };
   return apiRequest<AuthSession>('/api/v1/auth/refresh', null, {
     method: 'POST',
-    body: JSON.stringify({ refresh_token: refreshToken, organization_id: organizationId }),
+    body: JSON.stringify(body),
   });
 }
 
 export function logout(
   token: string,
-  refreshToken: string,
+  refreshToken: string | null,
   organizationId: string,
 ): Promise<void> {
+  const body = { organization_id: organizationId, ...(refreshToken ? { refresh_token: refreshToken } : {}) };
   return apiRequest<void>('/api/v1/auth/logout', token, {
     method: 'POST',
-    body: JSON.stringify({ refresh_token: refreshToken, organization_id: organizationId }),
+    body: JSON.stringify(body),
   });
 }
 

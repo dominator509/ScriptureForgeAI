@@ -44,6 +44,47 @@ func TestAuthHandlersRejectOversizedCredentialBodiesBeforeDatabaseWork(t *testin
 	}
 }
 
+func TestWebAuthResponseUsesHttpOnlyRefreshCookieAndOmitsTokenBody(t *testing.T) {
+	t.Setenv("DEPLOYMENT_ENVIRONMENT", "production")
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
+	request.Header.Set("X-ScriptureForge-Client", "web")
+	recorder := httptest.NewRecorder()
+
+	writeAuthResponse(recorder, request, AuthResponse{
+		Token:          "access-token",
+		RefreshToken:   "opaque-refresh-token",
+		UserID:         "user-1",
+		OrganizationID: "org-1",
+	}, http.StatusOK)
+
+	cookies := recorder.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("web auth response cookies = %d, want one refresh cookie", len(cookies))
+	}
+	cookie := cookies[0]
+	if cookie.Name != refreshCookieName || cookie.Value != "opaque-refresh-token" || !cookie.HttpOnly || !cookie.Secure || cookie.SameSite != http.SameSiteStrictMode || cookie.Path != "/api" {
+		t.Fatalf("unexpected refresh cookie: %#v", cookie)
+	}
+	var response AuthResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatalf("decode web auth response: %v", err)
+	}
+	if response.RefreshToken != "" {
+		t.Fatalf("web auth response exposed refresh token: %q", response.RefreshToken)
+	}
+}
+
+func TestRefreshTokenFromRequestPrefersBodyAndFallsBackToWebCookie(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", nil)
+	request.AddCookie(&http.Cookie{Name: refreshCookieName, Value: "cookie-token"})
+	if got := refreshTokenFromRequest(request, ""); got != "cookie-token" {
+		t.Fatalf("cookie refresh token = %q, want cookie-token", got)
+	}
+	if got := refreshTokenFromRequest(request, "body-token"); got != "body-token" {
+		t.Fatalf("body refresh token = %q, want body-token", got)
+	}
+}
+
 func TestAuthHandlersRejectConcatenatedJSONAndMalformedMFACode(t *testing.T) {
 	handler := &AuthHandler{}
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"email":"member@example.test","password":"password","organization_id":"org"}{}`))
