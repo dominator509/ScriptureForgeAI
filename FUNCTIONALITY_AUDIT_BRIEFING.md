@@ -845,6 +845,8 @@ Status last updated: 2026-06-28
 
 2026-08-10 client request deadline hardening: web and mobile API clients now enforce a configurable 1-120 second request timeout (`NEXT_PUBLIC_API_REQUEST_TIMEOUT_MS` / `EXPO_PUBLIC_API_REQUEST_TIMEOUT_MS`, default 15 seconds), preserve the deadline across refresh/retry calls, propagate caller cancellation, and return typed `NETWORK_FAULT` timeout errors. Web/mobile smoke coverage proves stalled fetches abort and the default remains bounded; deployed latency behavior remains external staging evidence.
 
+2026-08-10 readiness dependency hardening: strict staging/production `/ready` now checks PostgreSQL and Redis plus a bounded standard gRPC health response for `scriptureforge.engine.ScriptureEngine`, so the non-blocking gRPC dial cannot make the API report ready while the AI/RAG engine is unreachable or non-serving. Local in-process tests cover serving and non-serving health states; deployed Rust health/mTLS/readiness proof remains external under `RUST-GRPC-001`.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.

@@ -168,7 +168,7 @@ func setupRoutes(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisClient *redis.
 	abuseLimiter := abuse.NewDefaultLimiter()
 	observer := observability.NewDefaultObserver()
 	mux.HandleFunc("/live", liveHandler)
-	mux.HandleFunc("/ready", readyHandler(dbpool, redisClient))
+	mux.HandleFunc("/ready", readyHandler(dbpool, redisClient, vectorDB))
 	mux.Handle("/metrics", observer.MetricsHandler())
 
 	// Auth Endpoints
@@ -231,7 +231,7 @@ func liveHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(`{"status":"ok"}`))
 }
 
-func readyHandler(dbpool *pgxpool.Pool, redisClient *redis.Client) http.HandlerFunc {
+func readyHandler(dbpool *pgxpool.Pool, redisClient *redis.Client, vectorDB ai.VectorDB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if dbpool == nil || redisClient == nil {
@@ -250,6 +250,19 @@ func readyHandler(dbpool *pgxpool.Pool, redisClient *redis.Client) http.HandlerF
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte(`{"status":"unready","reason":"redis_unavailable"}`))
 			return
+		}
+		if requiresConfiguredGRPCAddress() {
+			checker, ok := vectorDB.(ai.ReadinessChecker)
+			if !ok {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte(`{"status":"unready","reason":"scripture_engine_readiness_unavailable"}`))
+				return
+			}
+			if err := checker.CheckReadiness(ctx); err != nil {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte(`{"status":"unready","reason":"scripture_engine_unavailable"}`))
+				return
+			}
 		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ready"}`))

@@ -4,13 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/test/bufconn"
 	"scriptureforge/internal/domain/observability"
 	"scriptureforge/scriptureforge/proto/engine"
 )
@@ -85,6 +90,58 @@ func TestGRPCScriptureClientRejectsMissingTenant(t *testing.T) {
 	client := &GRPCScriptureClient{client: &fakeScriptureEngineClient{}}
 	if _, err := client.Search(context.Background(), "", "creation", 1); err == nil {
 		t.Fatal("Search accepted an empty organization ID")
+	}
+}
+
+func TestUnavailableVectorDBReadinessFailsClosed(t *testing.T) {
+	if err := (UnavailableVectorDB{}).CheckReadiness(context.Background()); err == nil {
+		t.Fatal("unavailable vector database reported ready")
+	}
+}
+
+func TestGRPCScriptureClientReadinessRequiresServingHealth(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		status grpc_health_v1.HealthCheckResponse_ServingStatus
+		wantOK bool
+	}{
+		{name: "serving", status: grpc_health_v1.HealthCheckResponse_SERVING, wantOK: true},
+		{name: "not serving", status: grpc_health_v1.HealthCheckResponse_NOT_SERVING, wantOK: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			listener := bufconn.Listen(1024 * 1024)
+			server := grpc.NewServer()
+			healthServer := health.NewServer()
+			healthServer.SetServingStatus(scriptureEngineService, test.status)
+			grpc_health_v1.RegisterHealthServer(server, healthServer)
+			go func() {
+				if err := server.Serve(listener); err != nil {
+					t.Errorf("health server failed: %v", err)
+				}
+			}()
+			t.Cleanup(func() {
+				server.Stop()
+				_ = listener.Close()
+			})
+
+			conn, err := grpc.DialContext(
+				context.Background(),
+				"bufnet",
+				grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+					return listener.Dial()
+				}),
+				grpc.WithTransportCredentials(insecure.NewCredentials()),
+			)
+			if err != nil {
+				t.Fatalf("dial health server: %v", err)
+			}
+			t.Cleanup(func() { _ = conn.Close() })
+
+			checkErr := (&GRPCScriptureClient{conn: conn}).CheckReadiness(context.Background())
+			if (checkErr == nil) != test.wantOK {
+				t.Fatalf("CheckReadiness error = %v, want success=%t", checkErr, test.wantOK)
+			}
+		})
 	}
 }
 

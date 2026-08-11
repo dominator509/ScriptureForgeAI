@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 	"scriptureforge/internal/domain/observability"
 	"scriptureforge/scriptureforge/proto/engine"
@@ -25,6 +26,8 @@ const (
 	grpcMaxMessageBytes     = 1024 * 1024
 	grpcAuthorizationHeader = "authorization"
 	grpcTenantHeader        = "x-scriptureforge-organization-id"
+	grpcReadinessTimeout    = 2 * time.Second
+	scriptureEngineService  = "scriptureforge.engine.ScriptureEngine"
 )
 
 // SearchResult models the expected return from the scripture engine
@@ -41,12 +44,22 @@ type VectorDB interface {
 	Search(ctx context.Context, orgID string, query string, topK int) ([]SearchResult, error)
 }
 
+// ReadinessChecker identifies dependencies that must be healthy before staging
+// or production traffic should be routed to the API.
+type ReadinessChecker interface {
+	CheckReadiness(ctx context.Context) error
+}
+
 type UnavailableVectorDB struct {
 	Reason string
 }
 
 func (u UnavailableVectorDB) Search(ctx context.Context, orgID string, query string, topK int) ([]SearchResult, error) {
 	return nil, newRAGSearchFault()
+}
+
+func (u UnavailableVectorDB) CheckReadiness(context.Context) error {
+	return errors.New("scripture engine is unavailable")
 }
 
 const ragUnavailableMessage = "scriptural retrieval is temporarily unavailable"
@@ -111,6 +124,26 @@ func NewGRPCScriptureClientWithConfig(address, sharedSecret, caPEM, clientCertPE
 	}
 	client := engine.NewScriptureEngineClient(conn)
 	return &GRPCScriptureClient{client: client, conn: conn, sharedSecret: strings.TrimSpace(sharedSecret), embeddingFn: generateEmbedding}, nil
+}
+
+// CheckReadiness performs a bounded standard gRPC health check. grpc.Dial is
+// intentionally non-blocking, so a successful dial alone is not readiness.
+func (c *GRPCScriptureClient) CheckReadiness(ctx context.Context) error {
+	if c == nil || c.conn == nil {
+		return errors.New("scripture engine connection is unavailable")
+	}
+	readinessCtx, cancel := context.WithTimeout(ctx, grpcReadinessTimeout)
+	defer cancel()
+	response, err := grpc_health_v1.NewHealthClient(c.conn).Check(readinessCtx, &grpc_health_v1.HealthCheckRequest{
+		Service: scriptureEngineService,
+	})
+	if err != nil {
+		return err
+	}
+	if response.GetStatus() != grpc_health_v1.HealthCheckResponse_SERVING {
+		return fmt.Errorf("scripture engine health status is %s", response.GetStatus().String())
+	}
+	return nil
 }
 
 func grpcTransportCredentials(caPEM, clientCertPEM, clientKeyPEM, serverName string) (credentials.TransportCredentials, error) {
