@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +13,12 @@ import (
 	"scriptureforge/internal/domain/ai"
 	"scriptureforge/internal/domain/observability"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
 
 func TestExecuteFailsClosedWhenAPIKeyMissingEvenInTesting(t *testing.T) {
 	t.Setenv("GO_ENV", "testing")
@@ -63,12 +70,72 @@ func TestExecuteUsesBoundedHTTPClientTimeout(t *testing.T) {
 	if pe.Category != "AI_ORCHESTRATION_ENGINE_FAULT" || pe.Code != http.StatusServiceUnavailable {
 		t.Fatalf("timeout error = %#v, want AI_ORCHESTRATION_ENGINE_FAULT 503", pe)
 	}
-	if !strings.Contains(pe.Message, "LLM request failed") {
-		t.Fatalf("timeout message = %q, want LLM request failed", pe.Message)
+	if pe.Message != "LLM request failed" {
+		t.Fatalf("timeout message = %q, want sanitized LLM request failed", pe.Message)
+	}
+	if strings.Contains(pe.Message, server.URL) || strings.Contains(pe.Message, "deadline exceeded") {
+		t.Fatalf("timeout message leaked provider details: %q", pe.Message)
 	}
 	metrics := observer.Snapshot()
 	if !strings.Contains(metrics, `scriptureforge_dependency_operations_total{dependency="ai_provider",operation="chat_completion",status="timeout_or_network_error"} 1`) {
 		t.Fatalf("AI timeout dependency metric missing:\n%s", metrics)
+	}
+}
+
+func TestExecuteRedactsNetworkErrorDetails(t *testing.T) {
+	client := &LLMClient{
+		APIKey:   "test-key",
+		Endpoint: "https://provider.example.invalid/v1/chat/completions",
+		Model:    "test-model",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("transport detail: bearer-token-should-not-leak")
+		})},
+		MaxRetries: 0,
+	}
+
+	_, err := client.Execute(context.Background(), "study genesis", "[Genesis 1:1] In the beginning", ai.NewResponseVerificationSubsystem())
+	pe, ok := err.(*ai.PlatformException)
+	if !ok {
+		t.Fatalf("network error = %T %v, want *ai.PlatformException", err, err)
+	}
+	if pe.Message != "LLM request failed" {
+		t.Fatalf("network error message = %q, want sanitized message", pe.Message)
+	}
+	if strings.Contains(pe.Message, "bearer-token") || strings.Contains(pe.Message, "provider.example.invalid") {
+		t.Fatalf("network error leaked provider details: %q", pe.Message)
+	}
+}
+
+func TestExecuteNormalizesMalformedAndEmptyProviderResponses(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		message string
+	}{
+		{name: "malformed", body: `{"choices":`, message: "LLM provider returned a malformed response"},
+		{name: "empty", body: `{"choices":[]}`, message: "LLM provider returned an empty response"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+
+			client := &LLMClient{
+				APIKey:     "test-key",
+				Endpoint:   server.URL,
+				Model:      "test-model",
+				HTTPClient: server.Client(),
+				MaxRetries: 0,
+			}
+			_, err := client.Execute(context.Background(), "study genesis", "[Genesis 1:1] In the beginning", ai.NewResponseVerificationSubsystem())
+			pe, ok := err.(*ai.PlatformException)
+			if !ok || pe.Code != http.StatusServiceUnavailable || pe.Message != tt.message {
+				t.Fatalf("%s response error = %#v, want sanitized 503 %q", tt.name, err, tt.message)
+			}
+		})
 	}
 }
 

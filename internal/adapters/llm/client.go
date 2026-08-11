@@ -116,7 +116,11 @@ func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledCont
 	jsonBody, err := json.Marshal(reqBody)
 	if err != nil {
 		status = "request_encode_error"
-		return "", err
+		return "", &ai.PlatformException{
+			Category: "AI_ORCHESTRATION_ENGINE_FAULT",
+			Message:  "LLM request could not be encoded",
+			Code:     http.StatusServiceUnavailable,
+		}
 	}
 
 	resp, err := ai.DoProviderRequest(ctx, c.HTTPClient, c.MaxRetries, func() (*http.Request, error) {
@@ -132,7 +136,7 @@ func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledCont
 		status = "timeout_or_network_error"
 		return "", &ai.PlatformException{
 			Category: "AI_ORCHESTRATION_ENGINE_FAULT",
-			Message:  fmt.Sprintf("LLM request failed: %v", err),
+			Message:  "LLM request failed",
 			Code:     503,
 		}
 	}
@@ -160,12 +164,20 @@ func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledCont
 	var aiResp openaiResponse
 	if err := json.Unmarshal(bodyBytes, &aiResp); err != nil {
 		status = "response_decode_error"
-		return "", err
+		return "", &ai.PlatformException{
+			Category: "AI_ORCHESTRATION_ENGINE_FAULT",
+			Message:  "LLM provider returned a malformed response",
+			Code:     http.StatusServiceUnavailable,
+		}
 	}
 
 	if len(aiResp.Choices) == 0 {
 		status = "empty_response"
-		return "", fmt.Errorf("no choices returned from LLM")
+		return "", &ai.PlatformException{
+			Category: "AI_ORCHESTRATION_ENGINE_FAULT",
+			Message:  "LLM provider returned an empty response",
+			Code:     http.StatusServiceUnavailable,
+		}
 	}
 
 	generatedResponse := aiResp.Choices[0].Message.Content
