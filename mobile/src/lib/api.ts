@@ -2,6 +2,7 @@ type MobileRuntimeEnv = {
   [key: string]: string | undefined;
   EXPO_PUBLIC_API_BASE_URL?: string;
   EXPO_PUBLIC_WS_BASE_URL?: string;
+  EXPO_PUBLIC_API_REQUEST_TIMEOUT_MS?: string;
   EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT?: string;
   EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO?: string;
 };
@@ -9,11 +10,13 @@ type MobileRuntimeEnv = {
 export interface MobileRuntimeConfig {
   apiBaseUrl: string;
   wsBaseUrl: string;
+  requestTimeoutMs: number;
   strictStaging: boolean;
 }
 
 const localAPIBaseURL = 'http://localhost:8080';
 const localWSBaseURL = 'ws://localhost:8080';
+const defaultAPIRequestTimeoutMs = 15000;
 
 function isStrictMobileEnvironment(env: MobileRuntimeEnv): boolean {
   const deploymentEnvironment = (env.EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT ?? '').toLowerCase();
@@ -107,21 +110,32 @@ function assertStrictMobileURL(name: string, value: string, protocol: 'https:' |
   }
 }
 
+function resolveAPIRequestTimeout(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === '') return defaultAPIRequestTimeoutMs;
+  const timeoutMs = Number(raw);
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 120000) {
+    throw new Error('EXPO_PUBLIC_API_REQUEST_TIMEOUT_MS must be an integer between 1000 and 120000');
+  }
+  return timeoutMs;
+}
+
 export function resolveMobileRuntimeConfig(env: MobileRuntimeEnv = process.env): MobileRuntimeConfig {
   const strictStaging = isStrictMobileEnvironment(env);
   const apiBaseUrl = env.EXPO_PUBLIC_API_BASE_URL ?? localAPIBaseURL;
   const wsBaseUrl = env.EXPO_PUBLIC_WS_BASE_URL ?? localWSBaseURL;
+  const requestTimeoutMs = resolveAPIRequestTimeout(env.EXPO_PUBLIC_API_REQUEST_TIMEOUT_MS);
   if (strictStaging) {
     assertNativeCryptoRequired(env);
     assertStrictMobileURL('EXPO_PUBLIC_API_BASE_URL', apiBaseUrl, 'https:');
     assertStrictMobileURL('EXPO_PUBLIC_WS_BASE_URL', wsBaseUrl, 'wss:');
   }
-  return { apiBaseUrl, wsBaseUrl, strictStaging };
+  return { apiBaseUrl, wsBaseUrl, requestTimeoutMs, strictStaging };
 }
 
 const runtimeConfig = resolveMobileRuntimeConfig();
 export const API_BASE_URL = runtimeConfig.apiBaseUrl;
 export const WS_BASE_URL = runtimeConfig.wsBaseUrl;
+export const API_REQUEST_TIMEOUT_MS = runtimeConfig.requestTimeoutMs;
 
 export interface AuthSession {
   token: string;
@@ -165,6 +179,32 @@ export class ApiError extends Error {
   }
 }
 
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const onAbort = () => controller.abort();
+  const timeoutID = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  if (init.signal?.aborted) {
+    controller.abort();
+  } else {
+    init.signal?.addEventListener('abort', onAbort, { once: true });
+  }
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (timedOut) {
+      throw new ApiError(0, { category: 'NETWORK_FAULT', message: `Request timed out after ${timeoutMs}ms` });
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutID);
+    init.signal?.removeEventListener('abort', onAbort);
+  }
+}
+
 interface SessionBridge {
   getSession: () => AuthSession | null;
   onSessionChange: (session: AuthSession | null) => void;
@@ -192,14 +232,14 @@ function canRefreshForPath(path: string): boolean {
   return !path.includes('/auth/');
 }
 
-async function rotateSession(expiredToken: string): Promise<AuthSession | null> {
+async function rotateSession(expiredToken: string, requestTimeoutMs: number): Promise<AuthSession | null> {
   const bridge = sessionBridge;
   if (!bridge) return null;
   const current = bridge.getSession();
   if (!current?.refresh_token || !current.organization_id) return null;
   if (current.token !== expiredToken) return current;
   if (!refreshInFlight) {
-    refreshInFlight = refreshSession(current.refresh_token, current.organization_id)
+    refreshInFlight = refreshSession(current.refresh_token, current.organization_id, requestTimeoutMs)
       .then((session) => {
         bridge.onSessionChange(session);
         return session;
@@ -245,15 +285,21 @@ export interface JournalBootstrap {
   salt_version: number;
 }
 
-export async function apiRequest<T>(path: string, token: string | null, init: RequestInit = {}, allowRefresh = true): Promise<T> {
+export async function apiRequest<T>(
+  path: string,
+  token: string | null,
+  init: RequestInit = {},
+  allowRefresh = true,
+  requestTimeoutMs = API_REQUEST_TIMEOUT_MS,
+): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('Content-Type', 'application/json');
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  const response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
+  const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, { ...init, headers }, requestTimeoutMs);
   if (response.status === 401 && token && allowRefresh && canRefreshForPath(path)) {
-    const session = await rotateSession(token);
+    const session = await rotateSession(token, requestTimeoutMs);
     if (session?.token && session.token !== token) {
-      return apiRequest<T>(path, session.token, init, false);
+      return apiRequest<T>(path, session.token, init, false, requestTimeoutMs);
     }
   }
   if (!response.ok) {
@@ -293,11 +339,15 @@ export async function loginAccount(
   });
 }
 
-export async function refreshSession(refreshToken: string, organizationId: string): Promise<AuthSession> {
+export async function refreshSession(
+  refreshToken: string,
+  organizationId: string,
+  requestTimeoutMs = API_REQUEST_TIMEOUT_MS,
+): Promise<AuthSession> {
   return apiRequest<AuthSession>('/api/v1/auth/refresh', null, {
     method: 'POST',
     body: JSON.stringify({ refresh_token: refreshToken, organization_id: organizationId }),
-  });
+  }, true, requestTimeoutMs);
 }
 
 export async function logoutSession(token: string, refreshToken: string, organizationId: string): Promise<void> {

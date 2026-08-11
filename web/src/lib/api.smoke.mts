@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { after, beforeEach, test } from 'node:test';
 import {
   API_BASE_URL,
+  API_REQUEST_TIMEOUT_MS,
   type AuthSession,
   apiRequest,
   createRoom,
@@ -214,7 +215,23 @@ test('web runtime config keeps local defaults only outside strict staging mode',
 
   assert.equal(config.apiBaseUrl, 'http://localhost:8080');
   assert.equal(config.wsBaseUrl, 'ws://localhost:8080');
+  assert.equal(config.requestTimeoutMs, 15000);
   assert.equal(config.strictStaging, false);
+});
+
+test('web requests abort stalled fetches with a typed network fault', async () => {
+  globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+  });
+
+  await assert.rejects(
+    apiRequest('/api/v1/rooms/active', 'access-token', {}, true, 5),
+    (error: unknown) => error instanceof Error
+      && error.name === 'ApiError'
+      && (error as { status?: number }).status === 0
+      && error.message === 'Request timed out after 5ms',
+  );
+  assert.equal(API_REQUEST_TIMEOUT_MS, 15000);
 });
 
 test('web runtime config rejects local or insecure endpoints in staging builds', () => {
