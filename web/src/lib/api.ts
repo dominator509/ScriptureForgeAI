@@ -16,6 +16,8 @@ export interface WebRuntimeConfig {
 const localAPIBaseURL = 'http://localhost:8080';
 const localWSBaseURL = 'ws://localhost:8080';
 const defaultAPIRequestTimeoutMs = 15000;
+const csrfCookieName = 'scriptureforge_csrf';
+const csrfHeaderName = 'X-CSRF-Token';
 
 function isStrictWebEnvironment(env: WebRuntimeEnv): boolean {
   const deploymentEnvironment = (env.NEXT_PUBLIC_DEPLOYMENT_ENVIRONMENT ?? '').toLowerCase();
@@ -237,10 +239,12 @@ interface SessionBridge {
 
 let sessionBridge: SessionBridge | null = null;
 let refreshInFlight: Promise<AuthSession | null> | null = null;
+let csrfTokenInFlight: Promise<string | null> | null = null;
 
 export function configureSessionBridge(bridge: SessionBridge | null): void {
   sessionBridge = bridge;
   refreshInFlight = null;
+  csrfTokenInFlight = null;
 }
 
 async function parseErrorBody(response: Response): Promise<ApiErrorBody | string | null> {
@@ -251,6 +255,46 @@ async function parseErrorBody(response: Response): Promise<ApiErrorBody | string
   } catch {
     return text;
   }
+}
+
+function readBrowserCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const prefix = `${encodeURIComponent(name)}=`;
+  for (const part of document.cookie.split(';')) {
+    const value = part.trim();
+    if (!value.startsWith(prefix)) continue;
+    return decodeURIComponent(value.slice(prefix.length));
+  }
+  return null;
+}
+
+function isUnsafeMethod(method: string): boolean {
+  return method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
+}
+
+async function ensureBrowserCSRFToken(requestTimeoutMs: number): Promise<string | null> {
+  if (typeof document === 'undefined') {
+    return null;
+  }
+  const cookieToken = readBrowserCookie(csrfCookieName);
+  if (cookieToken) return cookieToken;
+  if (!csrfTokenInFlight) {
+    csrfTokenInFlight = fetchWithTimeout(`${API_BASE_URL}/api/v1/auth/csrf`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { 'X-ScriptureForge-Client': 'web' },
+    }, requestTimeoutMs).then(async (response) => {
+      if (!response.ok) throw new ApiError(response.status, await parseErrorBody(response));
+      const body = await response.json() as { csrf_token?: string };
+      if (!body.csrf_token) {
+        throw new ApiError(0, { category: 'SECURITY_FAULT', message: 'Browser CSRF token was not issued' });
+      }
+      return body.csrf_token;
+    }).finally(() => {
+      csrfTokenInFlight = null;
+    });
+  }
+  return csrfTokenInFlight;
 }
 
 function canRefreshForPath(path: string): boolean {
@@ -293,6 +337,11 @@ export async function apiRequest<T>(
   headers.set('Content-Type', 'application/json');
   headers.set('X-ScriptureForge-Client', 'web');
   if (token) headers.set('Authorization', `Bearer ${token}`);
+  const method = (init.method ?? 'GET').toUpperCase();
+  if (isUnsafeMethod(method)) {
+    const csrfToken = await ensureBrowserCSRFToken(requestTimeoutMs);
+    if (csrfToken) headers.set(csrfHeaderName, csrfToken);
+  }
 
   const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, { ...init, credentials: 'include', headers }, requestTimeoutMs);
   if (response.status === 401 && token && allowRefresh && canRefreshForPath(path)) {

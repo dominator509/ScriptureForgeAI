@@ -472,6 +472,7 @@ func setupRoutesWithLifecycle(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisC
 
 	// Auth Endpoints
 	authHandler := &ports.AuthHandler{DB: dbpool, AccountLimiter: abuseLimiter}
+	mux.Handle("/api/v1/auth/csrf", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(csrfHandler)))
 	mux.Handle("/api/v1/auth/register", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.RegisterHandler)))
 	mux.Handle("/api/v1/auth/login", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.LoginHandler)))
 	mux.Handle("/api/v1/auth/refresh", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.RefreshHandler)))

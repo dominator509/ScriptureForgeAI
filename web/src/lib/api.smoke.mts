@@ -101,6 +101,40 @@ test('auth helpers use canonical v1 routes and bearer logout revocation', async 
   assert.deepEqual(JSON.parse(String(calls.at(3)?.init.body)), { organization_id: 'org-1' });
 });
 
+test('browser unsafe requests bootstrap and submit the double-submit CSRF token', async () => {
+  const previousDocument = (globalThis as Record<string, unknown>).document;
+  const browserDocument = { cookie: '' };
+  Object.defineProperty(globalThis, 'document', { configurable: true, value: browserDocument });
+  try {
+    const csrfToken = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = String(input);
+      calls.push({ url, init: init ?? {} });
+      if (url.endsWith('/api/v1/auth/csrf')) {
+        browserDocument.cookie = `scriptureforge_csrf=${csrfToken}`;
+        return jsonResponse({ csrf_token: csrfToken });
+      }
+      if (url.endsWith('/api/v1/auth/login')) return jsonResponse({ token: 'access-token', user_id: 'user-1', organization_id: 'org-1' });
+      return new Response('unexpected route', { status: 404 });
+    };
+
+    await login({ email: 'reader@example.com', password: 'correct horse', organization_id: 'org-1' });
+    assert.deepEqual(calls.map((call) => [call.url, call.init.method ?? 'GET']), [
+      [`${API_BASE_URL}/api/v1/auth/csrf`, 'GET'],
+      [`${API_BASE_URL}/api/v1/auth/login`, 'POST'],
+    ]);
+    assert.equal(new Headers(calls[1]?.init.headers).get('X-CSRF-Token'), csrfToken);
+    assert.equal(calls[0]?.init.credentials, 'include');
+  } finally {
+    configureSessionBridge(null);
+    if (typeof previousDocument === 'undefined') {
+      delete (globalThis as { document?: unknown }).document;
+    } else {
+      Object.defineProperty(globalThis, 'document', { configurable: true, value: previousDocument });
+    }
+  }
+});
+
 test('web authenticated requests rotate an expired access token and retry once', async () => {
   let activeSession: AuthSession = {
     token: 'expired-token',

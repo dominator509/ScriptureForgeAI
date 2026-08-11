@@ -857,6 +857,8 @@ Status last updated: 2026-06-28
 
 2026-08-11 graceful shutdown hardening: the API now marks `/ready` unready before termination, closes tracked room WebSockets with a going-away signal, rejects new room upgrades while draining, handles unexpected listener failure without `log.Fatal` cleanup bypass, and uses a validated `SHUTDOWN_TIMEOUT_MS` budget (10 seconds by default, 1-120 seconds allowed) projected through Terraform. Platform tests (66) and the room shutdown regression pass under `-race`; deployed pod termination-grace, ingress drain, and multi-replica evidence remain external.
 
+2026-08-11 browser CSRF hardening: credentialed web mutations now bootstrap `GET /api/v1/auth/csrf`, receive a browser-readable SameSite=Strict token cookie, and submit a matching `X-CSRF-Token`; the API rejects missing, malformed, or mismatched browser tokens before handler execution while native callers retain compatibility. Backend security tests cover issuance, reuse, pre-handler rejection, and native compatibility; web smoke covers browser bootstrap. Deployed cookie/CORS behavior remains external under the browser staging gate.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.

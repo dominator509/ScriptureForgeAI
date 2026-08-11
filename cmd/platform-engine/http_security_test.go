@@ -62,7 +62,7 @@ func TestAPISecurityMiddlewareSetsHeadersAndHandlesCredentialedPreflight(t *test
 	preflight := httptest.NewRequest(http.MethodOptions, "/api/v1/auth/login", nil)
 	preflight.Header.Set("Origin", "http://localhost:3000")
 	preflight.Header.Set("Access-Control-Request-Method", http.MethodPost)
-	preflight.Header.Set("Access-Control-Request-Headers", "Authorization, Content-Type, X-ScriptureForge-Client")
+	preflight.Header.Set("Access-Control-Request-Headers", "Authorization, Content-Type, X-CSRF-Token, X-ScriptureForge-Client")
 	preflightRecorder := httptest.NewRecorder()
 	handler.ServeHTTP(preflightRecorder, preflight)
 	if preflightRecorder.Code != http.StatusNoContent || called {

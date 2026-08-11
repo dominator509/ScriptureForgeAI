@@ -31,6 +31,7 @@
 - Current browser boundary hardening (2026-08-10): the API now validates the existing `ALLOWED_WS_ORIGINS` browser allowlist at strict-environment startup and reuses it for credentialed CORS. Foreign origins, invalid preflight methods/headers, and strict missing-origin configuration fail closed; API responses carry baseline security and no-store headers, with local native/no-origin compatibility preserved.
 - Current API lifecycle hardening (2026-08-10): ordinary `/api/` handlers now inherit a validated `API_REQUEST_TIMEOUT_MS` context deadline (15 seconds by default, 1-120 seconds allowed), preserving earlier client cancellation and exempting long-lived room streams whose handler-owned deadlines begin after WebSocket upgrade. Platform cancellation tests and Terraform projection are green; deployed timeout tuning remains external.
 - Current shutdown lifecycle hardening (2026-08-11): the API now marks `/ready` unready before graceful shutdown, tracks upgraded room connections, rejects new room streams while draining, closes active room sockets with a going-away signal, and uses a validated `SHUTDOWN_TIMEOUT_MS` budget (10 seconds by default, 1-120 seconds allowed). Platform and room tests pass under `-race`; deployed termination-grace and load-balancer drain behavior remains external.
+- Current browser CSRF hardening (2026-08-11): credentialed web mutations now bootstrap `GET /api/v1/auth/csrf`, receive a browser-readable SameSite=Strict token cookie, and submit the matching `X-CSRF-Token` header; the API rejects missing, malformed, or mismatched browser tokens before handler execution, while native callers retain compatibility. Go security tests and web smoke cover issuance, reuse, rejection, and client bootstrap; deployed cookie/CORS behavior remains external.
 
 ### 2.2 Serena/Obsidian API Drift Gate
 - Route/schema changes cannot merge unless they pass `node tools/validate-serena-obsidian.mjs` in local gate and CI.
@@ -40,6 +41,7 @@
   - `production-readiness/obsidian-production-readiness.md`
   - `SF-roadmap.md`
 - Canonical routes:
+  - `GET /api/v1/auth/csrf`
   - `POST /api/v1/auth/register`
   - `POST /api/v1/auth/login`
   - `POST /api/auth/register` (compatibility alias)

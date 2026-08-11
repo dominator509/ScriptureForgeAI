@@ -10,8 +10,8 @@ import (
 
 const (
 	defaultLocalBrowserOrigins = "http://localhost:3000,http://127.0.0.1:3000"
-	allowedCORSMethods         = "GET, HEAD, POST, OPTIONS"
-	allowedCORSHeaders         = "Accept, Authorization, Content-Type, X-ScriptureForge-Client"
+	allowedCORSMethods         = "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS"
+	allowedCORSHeaders         = "Accept, Authorization, Content-Type, X-CSRF-Token, X-ScriptureForge-Client"
 	exposedCORSHeaders         = "Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-Trace-ID"
 )
 
@@ -140,6 +140,10 @@ func apiSecurityMiddleware(next http.Handler) http.Handler {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
+		if browserCSRFRequired(r) && !csrfTokenMatchesRequest(r) {
+			rejectCSRF(w)
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
 }
@@ -162,6 +166,8 @@ func setAPISecurityHeaders(w http.ResponseWriter, r *http.Request) {
 func setCORSHeaders(w http.ResponseWriter, origin string) {
 	header := w.Header()
 	header.Add("Vary", "Origin")
+	header.Add("Vary", "Access-Control-Request-Method")
+	header.Add("Vary", "Access-Control-Request-Headers")
 	header.Set("Access-Control-Allow-Origin", origin)
 	header.Set("Access-Control-Allow-Credentials", "true")
 	header.Set("Access-Control-Allow-Methods", allowedCORSMethods)
@@ -172,13 +178,14 @@ func setCORSHeaders(w http.ResponseWriter, origin string) {
 
 func validCORSPreflight(r *http.Request) bool {
 	requestedMethod := strings.ToUpper(strings.TrimSpace(r.Header.Get("Access-Control-Request-Method")))
-	if requestedMethod != "" && requestedMethod != http.MethodGet && requestedMethod != http.MethodHead && requestedMethod != http.MethodPost {
+	if requestedMethod != "" && requestedMethod != http.MethodGet && requestedMethod != http.MethodHead && requestedMethod != http.MethodPost && requestedMethod != http.MethodPut && requestedMethod != http.MethodPatch && requestedMethod != http.MethodDelete {
 		return false
 	}
 	allowedHeaders := map[string]struct{}{
 		"accept":                  {},
 		"authorization":           {},
 		"content-type":            {},
+		"x-csrf-token":            {},
 		"x-scriptureforge-client": {},
 	}
 	for _, requestedHeader := range strings.Split(r.Header.Get("Access-Control-Request-Headers"), ",") {
@@ -193,8 +200,26 @@ func validCORSPreflight(r *http.Request) bool {
 	return true
 }
 
+func browserCSRFRequired(r *http.Request) bool {
+	if !strings.HasPrefix(r.URL.Path, "/api/") || !strings.EqualFold(strings.TrimSpace(r.Header.Get("X-ScriptureForge-Client")), "web") {
+		return false
+	}
+	switch r.Method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		return true
+	default:
+		return false
+	}
+}
+
 func rejectBrowserOrigin(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusForbidden)
 	_, _ = w.Write([]byte(`{"error":"origin_not_allowed"}`))
+}
+
+func rejectCSRF(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusForbidden)
+	_, _ = w.Write([]byte(`{"error":"csrf_token_invalid"}`))
 }
