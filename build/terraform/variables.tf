@@ -176,6 +176,127 @@ variable "api_http_max_header_bytes" {
   }
 }
 
+variable "api_startup_dependency_timeout_ms" {
+  description = "Maximum milliseconds the API waits for PostgreSQL and Redis during startup health checks."
+  type        = number
+  default     = 10000
+
+  validation {
+    condition     = var.api_startup_dependency_timeout_ms >= 1000 && var.api_startup_dependency_timeout_ms <= 60000
+    error_message = "api_startup_dependency_timeout_ms must be between 1000 and 60000 milliseconds."
+  }
+}
+
+variable "api_db_pool_max_conns" {
+  description = "Maximum PostgreSQL connections per API pod."
+  type        = number
+  default     = 10
+
+  validation {
+    condition     = var.api_db_pool_max_conns >= 1 && var.api_db_pool_max_conns <= 100
+    error_message = "api_db_pool_max_conns must be between 1 and 100."
+  }
+}
+
+variable "api_db_pool_min_conns" {
+  description = "Minimum PostgreSQL connections kept warm per API pod; must not exceed api_db_pool_max_conns."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.api_db_pool_min_conns >= 0 && var.api_db_pool_min_conns <= 50
+    error_message = "api_db_pool_min_conns must be between 0 and 50."
+  }
+}
+
+variable "api_db_pool_max_conn_lifetime_ms" {
+  description = "Maximum PostgreSQL connection lifetime per API pod."
+  type        = number
+  default     = 1800000
+
+  validation {
+    condition     = var.api_db_pool_max_conn_lifetime_ms >= 60000 && var.api_db_pool_max_conn_lifetime_ms <= 86400000
+    error_message = "api_db_pool_max_conn_lifetime_ms must be between 60000 and 86400000 milliseconds."
+  }
+}
+
+variable "api_db_pool_max_conn_idle_time_ms" {
+  description = "Maximum idle time for PostgreSQL connections per API pod."
+  type        = number
+  default     = 300000
+
+  validation {
+    condition     = var.api_db_pool_max_conn_idle_time_ms >= 60000 && var.api_db_pool_max_conn_idle_time_ms <= 86400000
+    error_message = "api_db_pool_max_conn_idle_time_ms must be between 60000 and 86400000 milliseconds."
+  }
+}
+
+variable "api_redis_pool_size" {
+  description = "Redis connection pool size per API pod."
+  type        = number
+  default     = 10
+
+  validation {
+    condition     = var.api_redis_pool_size >= 1 && var.api_redis_pool_size <= 100
+    error_message = "api_redis_pool_size must be between 1 and 100."
+  }
+}
+
+variable "api_redis_max_active_conns" {
+  description = "Maximum active Redis connections per API pod; must be at least api_redis_pool_size."
+  type        = number
+  default     = 10
+
+  validation {
+    condition     = var.api_redis_max_active_conns >= 1 && var.api_redis_max_active_conns <= 100
+    error_message = "api_redis_max_active_conns must be between 1 and 100."
+  }
+}
+
+variable "api_redis_pool_timeout_ms" {
+  description = "Maximum milliseconds the API waits for an available Redis connection."
+  type        = number
+  default     = 5000
+
+  validation {
+    condition     = var.api_redis_pool_timeout_ms >= 100 && var.api_redis_pool_timeout_ms <= 60000
+    error_message = "api_redis_pool_timeout_ms must be between 100 and 60000 milliseconds."
+  }
+}
+
+variable "api_redis_dial_timeout_ms" {
+  description = "Maximum milliseconds the API waits to establish a Redis connection."
+  type        = number
+  default     = 5000
+
+  validation {
+    condition     = var.api_redis_dial_timeout_ms >= 100 && var.api_redis_dial_timeout_ms <= 60000
+    error_message = "api_redis_dial_timeout_ms must be between 100 and 60000 milliseconds."
+  }
+}
+
+variable "api_redis_read_timeout_ms" {
+  description = "Maximum milliseconds the API waits for a Redis read."
+  type        = number
+  default     = 3000
+
+  validation {
+    condition     = var.api_redis_read_timeout_ms >= 100 && var.api_redis_read_timeout_ms <= 60000
+    error_message = "api_redis_read_timeout_ms must be between 100 and 60000 milliseconds."
+  }
+}
+
+variable "api_redis_write_timeout_ms" {
+  description = "Maximum milliseconds the API waits for a Redis write."
+  type        = number
+  default     = 3000
+
+  validation {
+    condition     = var.api_redis_write_timeout_ms >= 100 && var.api_redis_write_timeout_ms <= 60000
+    error_message = "api_redis_write_timeout_ms must be between 100 and 60000 milliseconds."
+  }
+}
+
 variable "web_image" {
   description = "Immutable container image digest for the Next.js web service."
   type        = string

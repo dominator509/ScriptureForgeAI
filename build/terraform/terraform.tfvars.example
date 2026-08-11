@@ -31,6 +31,21 @@ rust_engine_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/scriptureforge
 # api_http_idle_timeout_ms        = 60000
 # api_http_max_header_bytes       = 1048576
 
+# Optional API dependency startup and pool overrides. Defaults are bounded values;
+# keep api_db_pool_min_conns <= api_db_pool_max_conns and
+# api_redis_max_active_conns >= api_redis_pool_size.
+# api_startup_dependency_timeout_ms     = 10000
+# api_db_pool_max_conns                 = 10
+# api_db_pool_min_conns                 = 0
+# api_db_pool_max_conn_lifetime_ms      = 1800000
+# api_db_pool_max_conn_idle_time_ms     = 300000
+# api_redis_pool_size                   = 10
+# api_redis_max_active_conns            = 10
+# api_redis_pool_timeout_ms             = 5000
+# api_redis_dial_timeout_ms             = 5000
+# api_redis_read_timeout_ms             = 3000
+# api_redis_write_timeout_ms            = 3000
+
 database_kms_key_arn = "arn:aws:kms:us-east-1:123456789012:alias/scriptureforge-staging-rds"
 redis_kms_key_arn    = "arn:aws:kms:us-east-1:123456789012:alias/scriptureforge-staging-redis"
 

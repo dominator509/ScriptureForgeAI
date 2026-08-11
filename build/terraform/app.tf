@@ -307,6 +307,61 @@ resource "kubernetes_deployment" "api" {
             value = tostring(var.api_http_max_header_bytes)
           }
 
+          env {
+            name  = "STARTUP_DEPENDENCY_TIMEOUT_MS"
+            value = tostring(var.api_startup_dependency_timeout_ms)
+          }
+
+          env {
+            name  = "DB_POOL_MAX_CONNS"
+            value = tostring(var.api_db_pool_max_conns)
+          }
+
+          env {
+            name  = "DB_POOL_MIN_CONNS"
+            value = tostring(var.api_db_pool_min_conns)
+          }
+
+          env {
+            name  = "DB_POOL_MAX_CONN_LIFETIME_MS"
+            value = tostring(var.api_db_pool_max_conn_lifetime_ms)
+          }
+
+          env {
+            name  = "DB_POOL_MAX_CONN_IDLE_TIME_MS"
+            value = tostring(var.api_db_pool_max_conn_idle_time_ms)
+          }
+
+          env {
+            name  = "REDIS_POOL_SIZE"
+            value = tostring(var.api_redis_pool_size)
+          }
+
+          env {
+            name  = "REDIS_MAX_ACTIVE_CONNS"
+            value = tostring(var.api_redis_max_active_conns)
+          }
+
+          env {
+            name  = "REDIS_POOL_TIMEOUT_MS"
+            value = tostring(var.api_redis_pool_timeout_ms)
+          }
+
+          env {
+            name  = "REDIS_DIAL_TIMEOUT_MS"
+            value = tostring(var.api_redis_dial_timeout_ms)
+          }
+
+          env {
+            name  = "REDIS_READ_TIMEOUT_MS"
+            value = tostring(var.api_redis_read_timeout_ms)
+          }
+
+          env {
+            name  = "REDIS_WRITE_TIMEOUT_MS"
+            value = tostring(var.api_redis_write_timeout_ms)
+          }
+
           resources {
             requests = var.api_resources.requests
             limits   = var.api_resources.limits

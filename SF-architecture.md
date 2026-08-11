@@ -379,6 +379,7 @@ CREATE INDEX idx_participants_lookup ON room_participants(room_id, user_id);
 *   `GET /live`: Process liveness only; returns `200` while the HTTP server is running.
 *   `GET /ready`: Checks PostgreSQL and Redis, then in staging/production/prod performs a bounded standard gRPC health check for `scriptureforge.engine.ScriptureEngine`; unavailable or non-serving Rust readiness returns `503` without exposing transport details. Local development keeps the existing database/Redis readiness behavior so AI can remain explicitly degraded while the service is started without the engine.
 *   **HTTP transport guardrails:** The API server uses validated bounded read-header, read, write, and idle deadlines plus a finite maximum header size. WebSocket handlers replace the upgraded connection’s deadlines with their own bounded ping/read/write policy after hijacking the connection.
+*   **Dependency startup/pool guardrails:** PostgreSQL and Redis startup probes share a bounded dependency timeout; pgx and go-redis pool sizes, wait/dial/read/write timeouts, and PostgreSQL connection lifetimes are explicit environment-driven values with Terraform validation. Startup fails closed when dependencies do not respond within the configured bound.
 
 #### Group A: Authentication & Provisioning (`/api/v1/auth`)
 *   `POST /api/v1/auth/login`: Issue verification challenges. Returns a short-lived JWT and, for web clients, sets an HttpOnly, SameSite=Strict refresh-token cookie scoped to `/api`.

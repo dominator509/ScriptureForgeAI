@@ -44,6 +44,32 @@ const (
 	maxHTTPIdleTimeout           = 10 * time.Minute
 	minHTTPMaxHeaderBytes        = 4 << 10
 	maxHTTPMaxHeaderBytes        = 16 << 20
+
+	defaultStartupDependencyTimeout = 10 * time.Second
+	minStartupDependencyTimeout     = time.Second
+	maxStartupDependencyTimeout     = time.Minute
+	defaultDatabasePoolMaxConns     = int32(10)
+	defaultDatabasePoolMinConns     = int32(0)
+	minDatabasePoolMaxConns         = int64(1)
+	maxDatabasePoolMaxConns         = int64(100)
+	minDatabasePoolMinConns         = int64(0)
+	maxDatabasePoolMinConns         = int64(50)
+	defaultDatabaseConnLifetime     = 30 * time.Minute
+	defaultDatabaseConnIdleTime     = 5 * time.Minute
+	minDatabaseConnLifecycle        = time.Minute
+	maxDatabaseConnLifecycle        = 24 * time.Hour
+	defaultRedisPoolSize            = 10
+	defaultRedisMaxActiveConns      = 10
+	minRedisPoolSize                = int64(1)
+	maxRedisPoolSize                = int64(100)
+	minRedisMaxActiveConns          = int64(1)
+	maxRedisMaxActiveConns          = int64(100)
+	defaultRedisPoolTimeout         = 5 * time.Second
+	defaultRedisDialTimeout         = 5 * time.Second
+	defaultRedisReadTimeout         = 3 * time.Second
+	defaultRedisWriteTimeout        = 3 * time.Second
+	minRedisTimeout                 = 100 * time.Millisecond
+	maxRedisTimeout                 = time.Minute
 )
 
 type PlatformException struct {
@@ -61,6 +87,17 @@ type Config struct {
 	DatabaseURL              string
 	RedisURL                 string
 	Port                     string
+	StartupDependencyTimeout time.Duration
+	DatabasePoolMaxConns     int32
+	DatabasePoolMinConns     int32
+	DatabaseConnLifetime     time.Duration
+	DatabaseConnIdleTime     time.Duration
+	RedisPoolSize            int
+	RedisMaxActiveConns      int
+	RedisPoolTimeout         time.Duration
+	RedisDialTimeout         time.Duration
+	RedisReadTimeout         time.Duration
+	RedisWriteTimeout        time.Duration
 	HTTPReadHeaderTimeout    time.Duration
 	HTTPReadTimeout          time.Duration
 	HTTPWriteTimeout         time.Duration
@@ -100,6 +137,10 @@ func loadConfig() (*Config, *PlatformException) {
 	httpConfig, httpConfigErr := loadHTTPServerConfig()
 	if httpConfigErr != nil {
 		return nil, httpConfigErr
+	}
+	dependencyConfig, dependencyConfigErr := loadDependencyConfig()
+	if dependencyConfigErr != nil {
+		return nil, dependencyConfigErr
 	}
 
 	grpcAddr := os.Getenv("GRPC_ENGINE_ADDRESS")
@@ -167,6 +208,17 @@ func loadConfig() (*Config, *PlatformException) {
 		DatabaseURL:              dbURL,
 		RedisURL:                 redisURL,
 		Port:                     port,
+		StartupDependencyTimeout: dependencyConfig.StartupTimeout,
+		DatabasePoolMaxConns:     dependencyConfig.DatabasePoolMaxConns,
+		DatabasePoolMinConns:     dependencyConfig.DatabasePoolMinConns,
+		DatabaseConnLifetime:     dependencyConfig.DatabaseConnLifetime,
+		DatabaseConnIdleTime:     dependencyConfig.DatabaseConnIdleTime,
+		RedisPoolSize:            dependencyConfig.RedisPoolSize,
+		RedisMaxActiveConns:      dependencyConfig.RedisMaxActiveConns,
+		RedisPoolTimeout:         dependencyConfig.RedisPoolTimeout,
+		RedisDialTimeout:         dependencyConfig.RedisDialTimeout,
+		RedisReadTimeout:         dependencyConfig.RedisReadTimeout,
+		RedisWriteTimeout:        dependencyConfig.RedisWriteTimeout,
 		HTTPReadHeaderTimeout:    httpConfig.ReadHeaderTimeout,
 		HTTPReadTimeout:          httpConfig.ReadTimeout,
 		HTTPWriteTimeout:         httpConfig.WriteTimeout,
@@ -179,6 +231,141 @@ func loadConfig() (*Config, *PlatformException) {
 		GRPCTLSClientKey:         grpcTLSClientKey,
 		GRPCTLSServerName:        grpcTLSServerName,
 	}, nil
+}
+
+type dependencyConfig struct {
+	StartupTimeout       time.Duration
+	DatabasePoolMaxConns int32
+	DatabasePoolMinConns int32
+	DatabaseConnLifetime time.Duration
+	DatabaseConnIdleTime time.Duration
+	RedisPoolSize        int
+	RedisMaxActiveConns  int
+	RedisPoolTimeout     time.Duration
+	RedisDialTimeout     time.Duration
+	RedisReadTimeout     time.Duration
+	RedisWriteTimeout    time.Duration
+}
+
+func loadDependencyConfig() (dependencyConfig, *PlatformException) {
+	startupTimeout, err := loadDurationMilliseconds("STARTUP_DEPENDENCY_TIMEOUT_MS", defaultStartupDependencyTimeout, minStartupDependencyTimeout, maxStartupDependencyTimeout)
+	if err != nil {
+		return dependencyConfig{}, err
+	}
+	databasePoolMaxConns, err := loadInteger("DB_POOL_MAX_CONNS", int64(defaultDatabasePoolMaxConns), minDatabasePoolMaxConns, maxDatabasePoolMaxConns)
+	if err != nil {
+		return dependencyConfig{}, err
+	}
+	databasePoolMinConns, err := loadInteger("DB_POOL_MIN_CONNS", int64(defaultDatabasePoolMinConns), minDatabasePoolMinConns, maxDatabasePoolMinConns)
+	if err != nil {
+		return dependencyConfig{}, err
+	}
+	if databasePoolMinConns > databasePoolMaxConns {
+		return dependencyConfig{}, configurationFault("DB_POOL_MIN_CONNS must not exceed DB_POOL_MAX_CONNS")
+	}
+	databaseConnLifetime, err := loadDurationMilliseconds("DB_POOL_MAX_CONN_LIFETIME_MS", defaultDatabaseConnLifetime, minDatabaseConnLifecycle, maxDatabaseConnLifecycle)
+	if err != nil {
+		return dependencyConfig{}, err
+	}
+	databaseConnIdleTime, err := loadDurationMilliseconds("DB_POOL_MAX_CONN_IDLE_TIME_MS", defaultDatabaseConnIdleTime, minDatabaseConnLifecycle, maxDatabaseConnLifecycle)
+	if err != nil {
+		return dependencyConfig{}, err
+	}
+	redisPoolSize, err := loadInteger("REDIS_POOL_SIZE", int64(defaultRedisPoolSize), minRedisPoolSize, maxRedisPoolSize)
+	if err != nil {
+		return dependencyConfig{}, err
+	}
+	redisMaxActiveConns, err := loadInteger("REDIS_MAX_ACTIVE_CONNS", int64(defaultRedisMaxActiveConns), minRedisMaxActiveConns, maxRedisMaxActiveConns)
+	if err != nil {
+		return dependencyConfig{}, err
+	}
+	if redisMaxActiveConns < redisPoolSize {
+		return dependencyConfig{}, configurationFault("REDIS_MAX_ACTIVE_CONNS must not be less than REDIS_POOL_SIZE")
+	}
+	redisPoolTimeout, err := loadDurationMilliseconds("REDIS_POOL_TIMEOUT_MS", defaultRedisPoolTimeout, minRedisTimeout, maxRedisTimeout)
+	if err != nil {
+		return dependencyConfig{}, err
+	}
+	redisDialTimeout, err := loadDurationMilliseconds("REDIS_DIAL_TIMEOUT_MS", defaultRedisDialTimeout, minRedisTimeout, maxRedisTimeout)
+	if err != nil {
+		return dependencyConfig{}, err
+	}
+	redisReadTimeout, err := loadDurationMilliseconds("REDIS_READ_TIMEOUT_MS", defaultRedisReadTimeout, minRedisTimeout, maxRedisTimeout)
+	if err != nil {
+		return dependencyConfig{}, err
+	}
+	redisWriteTimeout, err := loadDurationMilliseconds("REDIS_WRITE_TIMEOUT_MS", defaultRedisWriteTimeout, minRedisTimeout, maxRedisTimeout)
+	if err != nil {
+		return dependencyConfig{}, err
+	}
+	return dependencyConfig{
+		StartupTimeout:       startupTimeout,
+		DatabasePoolMaxConns: int32(databasePoolMaxConns),
+		DatabasePoolMinConns: int32(databasePoolMinConns),
+		DatabaseConnLifetime: databaseConnLifetime,
+		DatabaseConnIdleTime: databaseConnIdleTime,
+		RedisPoolSize:        int(redisPoolSize),
+		RedisMaxActiveConns:  int(redisMaxActiveConns),
+		RedisPoolTimeout:     redisPoolTimeout,
+		RedisDialTimeout:     redisDialTimeout,
+		RedisReadTimeout:     redisReadTimeout,
+		RedisWriteTimeout:    redisWriteTimeout,
+	}, nil
+}
+
+func loadInteger(name string, defaultValue, minValue, maxValue int64) (int64, *PlatformException) {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return defaultValue, nil
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value < minValue || value > maxValue {
+		return 0, configurationFault(fmt.Sprintf("%s must be an integer between %d and %d", name, minValue, maxValue))
+	}
+	return value, nil
+}
+
+func loadDurationMilliseconds(name string, defaultValue, minValue, maxValue time.Duration) (time.Duration, *PlatformException) {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return defaultValue, nil
+	}
+	millis, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || millis < minValue.Milliseconds() || millis > maxValue.Milliseconds() {
+		return 0, configurationFault(fmt.Sprintf("%s must be an integer between %d and %d milliseconds", name, minValue.Milliseconds(), maxValue.Milliseconds()))
+	}
+	return time.Duration(millis) * time.Millisecond, nil
+}
+
+func configurationFault(message string) *PlatformException {
+	return &PlatformException{Category: ConfigurationFault, Message: message, Code: http.StatusInternalServerError}
+}
+
+func newDatabasePoolConfig(cfg *Config) (*pgxpool.Config, error) {
+	dbConfig, err := pgxpool.ParseConfig(cfg.DatabaseURL)
+	if err != nil {
+		return nil, err
+	}
+	dbConfig.MaxConns = cfg.DatabasePoolMaxConns
+	dbConfig.MinConns = cfg.DatabasePoolMinConns
+	dbConfig.MaxConnLifetime = cfg.DatabaseConnLifetime
+	dbConfig.MaxConnIdleTime = cfg.DatabaseConnIdleTime
+	dbConfig.ConnConfig.ConnectTimeout = cfg.StartupDependencyTimeout
+	return dbConfig, nil
+}
+
+func newRedisOptions(cfg *Config) (*redis.Options, error) {
+	options, err := redis.ParseURL(cfg.RedisURL)
+	if err != nil {
+		return nil, err
+	}
+	options.PoolSize = cfg.RedisPoolSize
+	options.MaxActiveConns = cfg.RedisMaxActiveConns
+	options.PoolTimeout = cfg.RedisPoolTimeout
+	options.DialTimeout = cfg.RedisDialTimeout
+	options.ReadTimeout = cfg.RedisReadTimeout
+	options.WriteTimeout = cfg.RedisWriteTimeout
+	return options, nil
 }
 
 type httpServerConfig struct {
@@ -220,19 +407,7 @@ func loadHTTPServerConfig() (httpServerConfig, *PlatformException) {
 }
 
 func loadHTTPTimeout(name string, defaultValue, minValue, maxValue time.Duration) (time.Duration, *PlatformException) {
-	raw := strings.TrimSpace(os.Getenv(name))
-	if raw == "" {
-		return defaultValue, nil
-	}
-	millis, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil || millis < minValue.Milliseconds() || millis > maxValue.Milliseconds() {
-		return 0, &PlatformException{
-			Category: ConfigurationFault,
-			Message:  fmt.Sprintf("%s must be an integer between %d and %d milliseconds", name, minValue.Milliseconds(), maxValue.Milliseconds()),
-			Code:     http.StatusInternalServerError,
-		}
-	}
-	return time.Duration(millis) * time.Millisecond, nil
+	return loadDurationMilliseconds(name, defaultValue, minValue, maxValue)
 }
 
 func loadHTTPMaxHeaderBytes() (int, *PlatformException) {
@@ -386,18 +561,29 @@ func main() {
 		}
 	}()
 
-	dbpool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	dbConfig, err := newDatabasePoolConfig(cfg)
+	if err != nil {
+		log.Fatalf("Database initialization failed: %v", err)
+	}
+	dbConfig.MaxConns = cfg.DatabasePoolMaxConns
+	dbConfig.MinConns = cfg.DatabasePoolMinConns
+	dbConfig.MaxConnLifetime = cfg.DatabaseConnLifetime
+	dbConfig.MaxConnIdleTime = cfg.DatabaseConnIdleTime
+	dbConfig.ConnConfig.ConnectTimeout = cfg.StartupDependencyTimeout
+	dbpool, err := pgxpool.NewWithConfig(ctx, dbConfig)
 	if err != nil {
 		log.Fatalf("Database initialization failed: %v", err)
 	}
 	defer dbpool.Close()
 
-	if err := dbpool.Ping(ctx); err != nil {
+	dependencyCtx, dependencyCancel := context.WithTimeout(ctx, cfg.StartupDependencyTimeout)
+	defer dependencyCancel()
+	if err := dbpool.Ping(dependencyCtx); err != nil {
 		log.Fatalf("Database ping failed: %v", err)
 	}
 	log.Println("Successfully connected to PostgreSQL pool.")
 
-	opt, err := redis.ParseURL(cfg.RedisURL)
+	opt, err := newRedisOptions(cfg)
 	if err != nil {
 		log.Fatalf("Redis initialization failed: %v", err)
 	}
@@ -405,7 +591,7 @@ func main() {
 	rdb := redis.NewClient(opt)
 	defer rdb.Close()
 
-	if err := rdb.Ping(ctx).Err(); err != nil {
+	if err := rdb.Ping(dependencyCtx).Err(); err != nil {
 		log.Fatalf("Redis ping failed: %v", err)
 	}
 	log.Println("Successfully connected to Redis pool.")

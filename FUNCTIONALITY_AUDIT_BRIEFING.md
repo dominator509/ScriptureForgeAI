@@ -849,6 +849,8 @@ Status last updated: 2026-06-28
 
 2026-08-10 HTTP transport hardening: the Go API server now applies validated bounded read-header (5s), read (30s), write (30s), and idle (60s) deadlines plus a 1 MiB header cap by default, with bounded `HTTP_*` environment overrides. Terraform projects the same validated settings into the API workload. WebSocket handlers retain their own ping/read/write deadlines after upgrade; configuration and server-construction tests cover defaults, invalid values, and applied limits.
 
+2026-08-10 startup dependency hardening: PostgreSQL and Redis startup pings now use a bounded dependency context instead of the process lifetime context. API database pool size/minimum/lifetime/idle settings and Redis pool size/max-active/wait/dial/read/write settings are explicit, range-validated environment values with bounded defaults and Terraform projections; pgx connection establishment also receives the startup bound. Platform tests cover defaults, invalid limits and relationships, malformed URLs, and applied client settings. Staging saturation/tuning and deployed dependency-failure evidence remain external production gates.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.

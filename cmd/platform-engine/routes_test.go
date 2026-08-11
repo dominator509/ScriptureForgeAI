@@ -105,6 +105,17 @@ func TestLoadConfigDefaultsGRPCAddressOnlyForLocalDevelopment(t *testing.T) {
 	t.Setenv("REDIS_URL", "redis://local.example:6379")
 	t.Setenv("DEPLOYMENT_ENVIRONMENT", "development")
 	for _, name := range []string{
+		"STARTUP_DEPENDENCY_TIMEOUT_MS",
+		"DB_POOL_MAX_CONNS",
+		"DB_POOL_MIN_CONNS",
+		"DB_POOL_MAX_CONN_LIFETIME_MS",
+		"DB_POOL_MAX_CONN_IDLE_TIME_MS",
+		"REDIS_POOL_SIZE",
+		"REDIS_MAX_ACTIVE_CONNS",
+		"REDIS_POOL_TIMEOUT_MS",
+		"REDIS_DIAL_TIMEOUT_MS",
+		"REDIS_READ_TIMEOUT_MS",
+		"REDIS_WRITE_TIMEOUT_MS",
 		"HTTP_READ_HEADER_TIMEOUT_MS",
 		"HTTP_READ_TIMEOUT_MS",
 		"HTTP_WRITE_TIMEOUT_MS",
@@ -129,6 +140,9 @@ func TestLoadConfigDefaultsGRPCAddressOnlyForLocalDevelopment(t *testing.T) {
 	}
 	if cfg.HTTPReadHeaderTimeout != defaultHTTPReadHeaderTimeout || cfg.HTTPReadTimeout != defaultHTTPReadTimeout || cfg.HTTPWriteTimeout != defaultHTTPWriteTimeout || cfg.HTTPIdleTimeout != defaultHTTPIdleTimeout || cfg.HTTPMaxHeaderBytes != defaultHTTPMaxHeaderBytes {
 		t.Fatalf("HTTP server defaults = header=%s read=%s write=%s idle=%s max_header=%d", cfg.HTTPReadHeaderTimeout, cfg.HTTPReadTimeout, cfg.HTTPWriteTimeout, cfg.HTTPIdleTimeout, cfg.HTTPMaxHeaderBytes)
+	}
+	if cfg.StartupDependencyTimeout != defaultStartupDependencyTimeout || cfg.DatabasePoolMaxConns != defaultDatabasePoolMaxConns || cfg.DatabasePoolMinConns != defaultDatabasePoolMinConns || cfg.DatabaseConnLifetime != defaultDatabaseConnLifetime || cfg.DatabaseConnIdleTime != defaultDatabaseConnIdleTime || cfg.RedisPoolSize != defaultRedisPoolSize || cfg.RedisMaxActiveConns != defaultRedisMaxActiveConns || cfg.RedisPoolTimeout != defaultRedisPoolTimeout || cfg.RedisDialTimeout != defaultRedisDialTimeout || cfg.RedisReadTimeout != defaultRedisReadTimeout || cfg.RedisWriteTimeout != defaultRedisWriteTimeout {
+		t.Fatalf("dependency defaults = %#v", cfg)
 	}
 }
 
@@ -179,6 +193,81 @@ func TestHTTPServerAppliesTransportLimits(t *testing.T) {
 	server := newHTTPServer(cfg, http.NotFoundHandler())
 	if server.ReadHeaderTimeout != cfg.HTTPReadHeaderTimeout || server.ReadTimeout != cfg.HTTPReadTimeout || server.WriteTimeout != cfg.HTTPWriteTimeout || server.IdleTimeout != cfg.HTTPIdleTimeout || server.MaxHeaderBytes != cfg.HTTPMaxHeaderBytes {
 		t.Fatalf("server transport limits = header=%s read=%s write=%s idle=%s max_header=%d", server.ReadHeaderTimeout, server.ReadTimeout, server.WriteTimeout, server.IdleTimeout, server.MaxHeaderBytes)
+	}
+}
+
+func TestLoadConfigRejectsInvalidDependencyLimits(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		env   string
+		value string
+	}{
+		{name: "startup timeout too low", env: "STARTUP_DEPENDENCY_TIMEOUT_MS", value: "999"},
+		{name: "database max connections too low", env: "DB_POOL_MAX_CONNS", value: "0"},
+		{name: "database minimum exceeds maximum", env: "DB_POOL_MIN_CONNS", value: "11"},
+		{name: "database lifetime malformed", env: "DB_POOL_MAX_CONN_LIFETIME_MS", value: "never"},
+		{name: "redis pool size too high", env: "REDIS_POOL_SIZE", value: "101"},
+		{name: "redis active connections below pool size", env: "REDIS_MAX_ACTIVE_CONNS", value: "9"},
+		{name: "redis timeout malformed", env: "REDIS_READ_TIMEOUT_MS", value: "fast"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("DATABASE_URL", "postgres://local.example/scriptureforge")
+			t.Setenv("REDIS_URL", "redis://local.example:6379")
+			t.Setenv("DEPLOYMENT_ENVIRONMENT", "development")
+			t.Setenv("DB_POOL_MAX_CONNS", "10")
+			t.Setenv("DB_POOL_MIN_CONNS", "0")
+			t.Setenv("REDIS_POOL_SIZE", "10")
+			t.Setenv("REDIS_MAX_ACTIVE_CONNS", "10")
+			t.Setenv(test.env, test.value)
+
+			cfg, errConfig := loadConfig()
+			if errConfig == nil || cfg != nil || !strings.Contains(errConfig.Message, test.env) {
+				t.Fatalf("loadConfig = cfg=%#v err=%#v, want %s configuration fault", cfg, errConfig, test.env)
+			}
+		})
+	}
+}
+
+func TestDependencyClientConfigAppliesExplicitBounds(t *testing.T) {
+	cfg := &Config{
+		DatabaseURL:              "postgres://local.example/scriptureforge",
+		StartupDependencyTimeout: 7 * time.Second,
+		DatabasePoolMaxConns:     24,
+		DatabasePoolMinConns:     2,
+		DatabaseConnLifetime:     23 * time.Minute,
+		DatabaseConnIdleTime:     4 * time.Minute,
+		RedisURL:                 "rediss://local.example:6379",
+		RedisPoolSize:            12,
+		RedisMaxActiveConns:      20,
+		RedisPoolTimeout:         6 * time.Second,
+		RedisDialTimeout:         4 * time.Second,
+		RedisReadTimeout:         3 * time.Second,
+		RedisWriteTimeout:        2 * time.Second,
+	}
+
+	dbConfig, err := newDatabasePoolConfig(cfg)
+	if err != nil {
+		t.Fatalf("newDatabasePoolConfig: %v", err)
+	}
+	if dbConfig.MaxConns != cfg.DatabasePoolMaxConns || dbConfig.MinConns != cfg.DatabasePoolMinConns || dbConfig.MaxConnLifetime != cfg.DatabaseConnLifetime || dbConfig.MaxConnIdleTime != cfg.DatabaseConnIdleTime || dbConfig.ConnConfig.ConnectTimeout != cfg.StartupDependencyTimeout {
+		t.Fatalf("database pool config = %#v", dbConfig)
+	}
+
+	redisOptions, err := newRedisOptions(cfg)
+	if err != nil {
+		t.Fatalf("newRedisOptions: %v", err)
+	}
+	if redisOptions.PoolSize != cfg.RedisPoolSize || redisOptions.MaxActiveConns != cfg.RedisMaxActiveConns || redisOptions.PoolTimeout != cfg.RedisPoolTimeout || redisOptions.DialTimeout != cfg.RedisDialTimeout || redisOptions.ReadTimeout != cfg.RedisReadTimeout || redisOptions.WriteTimeout != cfg.RedisWriteTimeout {
+		t.Fatalf("redis options = %#v", redisOptions)
+	}
+}
+
+func TestDependencyClientConfigRejectsMalformedURLs(t *testing.T) {
+	if _, err := newDatabasePoolConfig(&Config{DatabaseURL: "postgres://%zz"}); err == nil {
+		t.Fatal("newDatabasePoolConfig accepted malformed URL")
+	}
+	if _, err := newRedisOptions(&Config{RedisURL: "redis://%zz"}); err == nil {
+		t.Fatal("newRedisOptions accepted malformed URL")
 	}
 }
 
