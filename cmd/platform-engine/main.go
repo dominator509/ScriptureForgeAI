@@ -203,6 +203,9 @@ func loadConfig() (*Config, *PlatformException) {
 			}
 		}
 	}
+	if _, originConfigErr := loadAllowedBrowserOrigins(); originConfigErr != nil {
+		return nil, originConfigErr
+	}
 
 	return &Config{
 		DatabaseURL:              dbURL,
@@ -494,7 +497,7 @@ func setupRoutes(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisClient *redis.
 	}
 	mux.Handle("/api/v1/rooms/stream/", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileWebSocket, http.HandlerFunc(socketConn.HandleLiveRoom)), ""))
 
-	return observer.Middleware(&mux)
+	return apiSecurityMiddleware(observer.Middleware(&mux))
 }
 
 func liveHandler(w http.ResponseWriter, r *http.Request) {

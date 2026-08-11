@@ -851,6 +851,8 @@ Status last updated: 2026-06-28
 
 2026-08-10 startup dependency hardening: PostgreSQL and Redis startup pings now use a bounded dependency context instead of the process lifetime context. API database pool size/minimum/lifetime/idle settings and Redis pool size/max-active/wait/dial/read/write settings are explicit, range-validated environment values with bounded defaults and Terraform projections; pgx connection establishment also receives the startup bound. Platform tests cover defaults, invalid limits and relationships, malformed URLs, and applied client settings. Staging saturation/tuning and deployed dependency-failure evidence remain external production gates.
 
+2026-08-10 browser boundary hardening: the API now validates the existing `ALLOWED_WS_ORIGINS` list at strict-environment startup and reuses it as the credentialed CORS allowlist. Foreign origins, invalid preflight methods/headers, and missing strict origin configuration fail closed; API responses apply `nosniff`, frame, referrer, permissions, CSP, HSTS, and no-store controls. Platform tests cover allowed requests, credentialed preflight, foreign-origin rejection, unknown-header rejection, strict origin validation, and native requests without `Origin`. Deployed browser CORS/cookie/CSRF behavior remains external staging evidence.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.
