@@ -859,6 +859,8 @@ Status last updated: 2026-06-28
 
 2026-08-11 browser CSRF hardening: credentialed web mutations now bootstrap `GET /api/v1/auth/csrf`, receive a browser-readable SameSite=Strict token cookie, and submit a matching `X-CSRF-Token`; the API rejects missing, malformed, or mismatched browser tokens before handler execution while native callers retain compatibility. Backend security tests cover issuance, reuse, pre-handler rejection, and native compatibility; web smoke covers browser bootstrap. Deployed cookie/CORS behavior remains external under the browser staging gate.
 
+2026-08-11 room ingress hardening: `POST /api/v1/rooms/create` now uses the shared strict JSON decoder, rejects concatenated or unknown-field payloads, caps bodies at 16 KiB, and rejects room titles over 256 bytes before database or Redis work. Focused tests cover oversized, concatenated, and overlong inputs; deployed gateway/body-limit telemetry remains external.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.

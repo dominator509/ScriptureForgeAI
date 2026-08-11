@@ -27,6 +27,11 @@ type CreateRoomRequest struct {
 	Title string `json:"title"`
 }
 
+const (
+	maxRoomRequestBodyBytes = 16 * 1024
+	maxRoomTitleBytes       = 256
+)
+
 type RoomResponse struct {
 	ID        string `json:"id"`
 	Title     string `json:"title"`
@@ -88,10 +93,17 @@ func (h *RoomHandler) CreateRoomHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var req CreateRoomRequest
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil || strings.TrimSpace(req.Title) == "" {
+	if pe := decodeBoundedJSON(w, r, maxRoomRequestBodyBytes, &req, auth.AuthorizationFault, "Invalid room payload"); pe != nil {
+		sendAuthError(w, pe)
+		return
+	}
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Room title is required", Code: http.StatusBadRequest})
+		return
+	}
+	if len(title) > maxRoomTitleBytes {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Room title is too long", Code: http.StatusBadRequest})
 		return
 	}
 	if h.StateManager == nil {
@@ -128,7 +140,7 @@ func (h *RoomHandler) CreateRoomHandler(w http.ResponseWriter, r *http.Request) 
 		 RETURNING id, title, is_active, created_at::text`,
 		claims.OrganizationID,
 		claims.UserID,
-		strings.TrimSpace(req.Title),
+		title,
 	).Scan(&roomResp.ID, &roomResp.Title, &roomResp.IsActive, &roomResp.CreatedAt)
 	if err != nil {
 		observability.ObserveDependencyFromContext(r.Context(), "postgres", "room_create", dbStatus, time.Since(start))
