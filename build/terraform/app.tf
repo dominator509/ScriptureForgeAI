@@ -283,6 +283,11 @@ resource "kubernetes_deployment" "api" {
           }
 
           env {
+            name  = "API_REQUEST_TIMEOUT_MS"
+            value = tostring(var.api_request_timeout_ms)
+          }
+
+          env {
             name  = "HTTP_READ_HEADER_TIMEOUT_MS"
             value = tostring(var.api_http_read_header_timeout_ms)
           }

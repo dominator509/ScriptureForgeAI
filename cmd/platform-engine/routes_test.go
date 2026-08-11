@@ -121,6 +121,7 @@ func TestLoadConfigDefaultsGRPCAddressOnlyForLocalDevelopment(t *testing.T) {
 		"HTTP_WRITE_TIMEOUT_MS",
 		"HTTP_IDLE_TIMEOUT_MS",
 		"HTTP_MAX_HEADER_BYTES",
+		"API_REQUEST_TIMEOUT_MS",
 	} {
 		t.Setenv(name, "")
 	}
@@ -138,8 +139,8 @@ func TestLoadConfigDefaultsGRPCAddressOnlyForLocalDevelopment(t *testing.T) {
 	if cfg.GRPCAddress != "localhost:50051" {
 		t.Fatalf("local GRPCAddress = %q, want localhost:50051", cfg.GRPCAddress)
 	}
-	if cfg.HTTPReadHeaderTimeout != defaultHTTPReadHeaderTimeout || cfg.HTTPReadTimeout != defaultHTTPReadTimeout || cfg.HTTPWriteTimeout != defaultHTTPWriteTimeout || cfg.HTTPIdleTimeout != defaultHTTPIdleTimeout || cfg.HTTPMaxHeaderBytes != defaultHTTPMaxHeaderBytes {
-		t.Fatalf("HTTP server defaults = header=%s read=%s write=%s idle=%s max_header=%d", cfg.HTTPReadHeaderTimeout, cfg.HTTPReadTimeout, cfg.HTTPWriteTimeout, cfg.HTTPIdleTimeout, cfg.HTTPMaxHeaderBytes)
+	if cfg.HTTPReadHeaderTimeout != defaultHTTPReadHeaderTimeout || cfg.HTTPReadTimeout != defaultHTTPReadTimeout || cfg.HTTPWriteTimeout != defaultHTTPWriteTimeout || cfg.HTTPIdleTimeout != defaultHTTPIdleTimeout || cfg.HTTPMaxHeaderBytes != defaultHTTPMaxHeaderBytes || cfg.APIRequestTimeout != defaultAPIRequestTimeout {
+		t.Fatalf("HTTP server defaults = header=%s read=%s write=%s idle=%s max_header=%d api_request=%s", cfg.HTTPReadHeaderTimeout, cfg.HTTPReadTimeout, cfg.HTTPWriteTimeout, cfg.HTTPIdleTimeout, cfg.HTTPMaxHeaderBytes, cfg.APIRequestTimeout)
 	}
 	if cfg.StartupDependencyTimeout != defaultStartupDependencyTimeout || cfg.DatabasePoolMaxConns != defaultDatabasePoolMaxConns || cfg.DatabasePoolMinConns != defaultDatabasePoolMinConns || cfg.DatabaseConnLifetime != defaultDatabaseConnLifetime || cfg.DatabaseConnIdleTime != defaultDatabaseConnIdleTime || cfg.RedisPoolSize != defaultRedisPoolSize || cfg.RedisMaxActiveConns != defaultRedisMaxActiveConns || cfg.RedisPoolTimeout != defaultRedisPoolTimeout || cfg.RedisDialTimeout != defaultRedisDialTimeout || cfg.RedisReadTimeout != defaultRedisReadTimeout || cfg.RedisWriteTimeout != defaultRedisWriteTimeout {
 		t.Fatalf("dependency defaults = %#v", cfg)
@@ -157,6 +158,7 @@ func TestLoadConfigRejectsInvalidHTTPServerLimits(t *testing.T) {
 		{name: "write timeout malformed", env: "HTTP_WRITE_TIMEOUT_MS", value: "fast"},
 		{name: "idle timeout too low", env: "HTTP_IDLE_TIMEOUT_MS", value: "99"},
 		{name: "header bytes too low", env: "HTTP_MAX_HEADER_BYTES", value: "1024"},
+		{name: "api request timeout too low", env: "API_REQUEST_TIMEOUT_MS", value: "999"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Setenv("DATABASE_URL", "postgres://local.example/scriptureforge")
@@ -168,6 +170,7 @@ func TestLoadConfigRejectsInvalidHTTPServerLimits(t *testing.T) {
 				"HTTP_WRITE_TIMEOUT_MS",
 				"HTTP_IDLE_TIMEOUT_MS",
 				"HTTP_MAX_HEADER_BYTES",
+				"API_REQUEST_TIMEOUT_MS",
 			} {
 				t.Setenv(name, "")
 			}

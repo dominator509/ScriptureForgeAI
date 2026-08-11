@@ -853,6 +853,8 @@ Status last updated: 2026-06-28
 
 2026-08-10 browser boundary hardening: the API now validates the existing `ALLOWED_WS_ORIGINS` list at strict-environment startup and reuses it as the credentialed CORS allowlist. Foreign origins, invalid preflight methods/headers, and missing strict origin configuration fail closed; API responses apply `nosniff`, frame, referrer, permissions, CSP, HSTS, and no-store controls. Platform tests cover allowed requests, credentialed preflight, foreign-origin rejection, unknown-header rejection, strict origin validation, and native requests without `Origin`. Deployed browser CORS/cookie/CSRF behavior remains external staging evidence.
 
+2026-08-10 API request lifecycle hardening: ordinary `/api/` handlers now inherit a validated `API_REQUEST_TIMEOUT_MS` context deadline (15 seconds by default, 1-120 seconds allowed), preserve any earlier client cancellation, and leave long-lived `/api/v1/rooms/stream/{room_id}` connections to their handler-owned deadlines after upgrade. Focused platform tests cover cancellation, earlier-deadline preservation, and stream exemption; Terraform projects the setting into the API workload. Deployed timeout tuning and telemetry remain external readiness evidence.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.

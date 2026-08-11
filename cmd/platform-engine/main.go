@@ -103,6 +103,7 @@ type Config struct {
 	HTTPWriteTimeout         time.Duration
 	HTTPIdleTimeout          time.Duration
 	HTTPMaxHeaderBytes       int
+	APIRequestTimeout        time.Duration
 	GRPCAddress              string
 	GRPCSharedSecret         string
 	GRPCTLSCAPEM             string
@@ -227,6 +228,7 @@ func loadConfig() (*Config, *PlatformException) {
 		HTTPWriteTimeout:         httpConfig.WriteTimeout,
 		HTTPIdleTimeout:          httpConfig.IdleTimeout,
 		HTTPMaxHeaderBytes:       httpConfig.MaxHeaderBytes,
+		APIRequestTimeout:        httpConfig.APIRequestTimeout,
 		GRPCAddress:              grpcAddr,
 		GRPCSharedSecret:         grpcSharedSecret,
 		GRPCTLSCAPEM:             grpcTLSCAPEM,
@@ -377,6 +379,7 @@ type httpServerConfig struct {
 	WriteTimeout      time.Duration
 	IdleTimeout       time.Duration
 	MaxHeaderBytes    int
+	APIRequestTimeout time.Duration
 }
 
 func loadHTTPServerConfig() (httpServerConfig, *PlatformException) {
@@ -400,12 +403,17 @@ func loadHTTPServerConfig() (httpServerConfig, *PlatformException) {
 	if err != nil {
 		return httpServerConfig{}, err
 	}
+	apiRequestTimeout, err := loadHTTPTimeout("API_REQUEST_TIMEOUT_MS", defaultAPIRequestTimeout, minAPIRequestTimeout, maxAPIRequestTimeout)
+	if err != nil {
+		return httpServerConfig{}, err
+	}
 	return httpServerConfig{
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
 		WriteTimeout:      writeTimeout,
 		IdleTimeout:       idleTimeout,
 		MaxHeaderBytes:    maxHeaderBytes,
+		APIRequestTimeout: apiRequestTimeout,
 	}, nil
 }
 
@@ -439,6 +447,10 @@ func requiresConfiguredGRPCAddress() bool {
 }
 
 func setupRoutes(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisClient *redis.Client) http.Handler {
+	return setupRoutesWithTimeout(dbpool, vectorDB, redisClient, defaultAPIRequestTimeout)
+}
+
+func setupRoutesWithTimeout(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisClient *redis.Client, apiRequestTimeout time.Duration) http.Handler {
 	mux := http.ServeMux{}
 	abuseLimiter := abuse.NewDefaultLimiter()
 	observer := observability.NewDefaultObserver()
@@ -497,7 +509,7 @@ func setupRoutes(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisClient *redis.
 	}
 	mux.Handle("/api/v1/rooms/stream/", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileWebSocket, http.HandlerFunc(socketConn.HandleLiveRoom)), ""))
 
-	return apiSecurityMiddleware(observer.Middleware(&mux))
+	return apiRequestDeadlineMiddleware(apiSecurityMiddleware(observer.Middleware(&mux)), apiRequestTimeout)
 }
 
 func liveHandler(w http.ResponseWriter, r *http.Request) {
@@ -617,7 +629,7 @@ func main() {
 		log.Println("Successfully connected to Rust gRPC Scripture Engine.")
 	}
 
-	router := setupRoutes(dbpool, vectorDB, rdb)
+	router := setupRoutesWithTimeout(dbpool, vectorDB, rdb, cfg.APIRequestTimeout)
 	server := newHTTPServer(cfg, router)
 
 	go func() {
