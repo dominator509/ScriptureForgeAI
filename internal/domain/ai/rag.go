@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -45,14 +46,31 @@ type UnavailableVectorDB struct {
 }
 
 func (u UnavailableVectorDB) Search(ctx context.Context, orgID string, query string, topK int) ([]SearchResult, error) {
-	if u.Reason == "" {
-		u.Reason = "scripture vector engine is unavailable"
+	return nil, newRAGSearchFault()
+}
+
+const ragUnavailableMessage = "scriptural retrieval is temporarily unavailable"
+
+func newRAGSearchFault() *PlatformException {
+	return &PlatformException{
+		Category: RAGSearchFault,
+		Message:  ragUnavailableMessage,
+		Code:     http.StatusServiceUnavailable,
 	}
-	return nil, &PlatformException{
-		Category: "RAG_SEARCH_FAULT",
-		Message:  u.Reason,
-		Code:     503,
+}
+
+// sanitizeRAGSearchError keeps provider and transport details out of API errors.
+func sanitizeRAGSearchError(err error) *PlatformException {
+	var platformErr *PlatformException
+	if errors.As(err, &platformErr) && platformErr != nil && platformErr.Category == RAGSearchFault && platformErr.Code == http.StatusServiceUnavailable {
+		return &PlatformException{
+			Category: RAGSearchFault,
+			Message:  ragUnavailableMessage,
+			Code:     http.StatusServiceUnavailable,
+			TraceID:  platformErr.TraceID,
+		}
 	}
+	return newRAGSearchFault()
 }
 
 // GRPCScriptureClient implements VectorDB using the Rust gRPC engine
@@ -60,6 +78,7 @@ type GRPCScriptureClient struct {
 	client       engine.ScriptureEngineClient
 	conn         *grpc.ClientConn
 	sharedSecret string
+	embeddingFn  func(context.Context, string) ([]float32, error)
 }
 
 // NewGRPCScriptureClient connects to the Rust engine
@@ -91,7 +110,7 @@ func NewGRPCScriptureClientWithConfig(address, sharedSecret, caPEM, clientCertPE
 		return nil, err
 	}
 	client := engine.NewScriptureEngineClient(conn)
-	return &GRPCScriptureClient{client: client, conn: conn, sharedSecret: strings.TrimSpace(sharedSecret)}, nil
+	return &GRPCScriptureClient{client: client, conn: conn, sharedSecret: strings.TrimSpace(sharedSecret), embeddingFn: generateEmbedding}, nil
 }
 
 func grpcTransportCredentials(caPEM, clientCertPEM, clientKeyPEM, serverName string) (credentials.TransportCredentials, error) {
@@ -131,11 +150,7 @@ func (g *GRPCScriptureClient) Close() error {
 func generateEmbedding(ctx context.Context, text string) ([]float32, error) {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
-		if os.Getenv("GO_ENV") == "testing" {
-			// Mock 1536d vector for testing environments without network access
-			return make([]float32, 1536), nil
-		}
-		return nil, fmt.Errorf("OPENAI_API_KEY is required for embedding generation")
+		return nil, newRAGSearchFault()
 	}
 
 	type embedRequest struct {
@@ -158,7 +173,7 @@ func generateEmbedding(ctx context.Context, text string) ([]float32, error) {
 
 	jsonBody, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, err
+		return nil, newRAGSearchFault()
 	}
 
 	providerConfig := LoadProviderHTTPConfig()
@@ -172,18 +187,18 @@ func generateEmbedding(ctx context.Context, text string) ([]float32, error) {
 		return req, nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, newRAGSearchFault()
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		_, _ = ReadProviderResponseBody(resp)
-		return nil, fmt.Errorf("embeddings provider returned status %d", resp.StatusCode)
+		return nil, newRAGSearchFault()
 	}
 
 	bodyBytes, err := ReadProviderResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("embeddings provider response exceeded the configured size limit: %w", err)
+		return nil, newRAGSearchFault()
 	}
 
 	var embedResp struct {
@@ -193,11 +208,11 @@ func generateEmbedding(ctx context.Context, text string) ([]float32, error) {
 	}
 
 	if err := json.Unmarshal(bodyBytes, &embedResp); err != nil {
-		return nil, err
+		return nil, newRAGSearchFault()
 	}
 
-	if len(embedResp.Data) == 0 {
-		return nil, fmt.Errorf("no embedding returned")
+	if len(embedResp.Data) == 0 || len(embedResp.Data[0].Embedding) == 0 {
+		return nil, newRAGSearchFault()
 	}
 
 	return embedResp.Data[0].Embedding, nil
@@ -215,11 +230,15 @@ func (g *GRPCScriptureClient) Search(ctx context.Context, orgID string, query st
 		observability.ObserveDependencyFromContext(ctx, "rust_engine", "vector_search", status, time.Since(started))
 	}()
 
-	// Call OpenAI to get the actual float32 vector embedding
-	realVector, err := generateEmbedding(ctx, query)
+	// Call the configured provider in production; tests inject a local embedding function.
+	embeddingFn := g.embeddingFn
+	if embeddingFn == nil {
+		embeddingFn = generateEmbedding
+	}
+	realVector, err := embeddingFn(ctx, query)
 	if err != nil {
 		status = "embedding_error"
-		return nil, fmt.Errorf("failed to generate embedding: %v", err)
+		return nil, sanitizeRAGSearchError(err)
 	}
 
 	req := &engine.VectorSearchRequest{
@@ -237,7 +256,11 @@ func (g *GRPCScriptureClient) Search(ctx context.Context, orgID string, query st
 	resp, err := g.client.SearchByVector(ctx, req)
 	if err != nil {
 		status = "grpc_error"
-		return nil, err
+		return nil, newRAGSearchFault()
+	}
+	if resp == nil {
+		status = "grpc_error"
+		return nil, newRAGSearchFault()
 	}
 
 	var results []SearchResult
@@ -274,16 +297,12 @@ func (r *RAGEngine) CompileContext(ctx context.Context, orgID string, prompt str
 	// 2. Query Vector DB for highly relevant segments
 	results, err := r.Database.Search(ctx, orgID, safePrompt, 5)
 	if err != nil {
-		return "", &PlatformException{
-			Category: "RAG_SEARCH_FAULT",
-			Message:  fmt.Sprintf("vector search failed: %v", err),
-			Code:     500,
-		}
+		return "", sanitizeRAGSearchError(err)
 	}
 
 	if len(results) == 0 {
 		return "", &PlatformException{
-			Category: "RAG_CONTEXT_FAULT",
+			Category: RAGContextFault,
 			Message:  "insufficient contextual matches found to ground generation",
 			Code:     404,
 		}

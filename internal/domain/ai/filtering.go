@@ -8,6 +8,8 @@ type ErrorCategory string
 
 const (
 	PromptInjectionFault ErrorCategory = "PROMPT_INJECTION_FAULT"
+	RAGSearchFault       ErrorCategory = "RAG_SEARCH_FAULT"
+	RAGContextFault      ErrorCategory = "RAG_CONTEXT_FAULT"
 )
 
 type PlatformException struct {

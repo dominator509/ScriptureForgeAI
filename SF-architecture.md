@@ -111,6 +111,7 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
     *   (Planned) `POST /api/v1/ai/ask`
 *   **Data Entities:** `AIRequestLog`, `TheologicalProfile`, `CitationTrail`, `GeneratedAsset`.
 *   **Security Considerations:** Malicious prompt injection filtering, strict egress scanning to prevent generation of unauthorized content profiles, and semantic tracing vectors.
+*   **Provider Boundary:** Embedding and Rust vector-search failures are fail-closed typed `503` faults with sanitized client messages. Production constructors always use the configured embedding provider; offline tests inject an explicit local function and never activate a synthetic runtime vector.
 *   **Failure Modes & Logic Risks:** Hallucinated data parameters masking as factual biblical source references. Countermeasures involve enforcing an isolated matching system that maps LLM outputs against a fixed SQL database index of standard biblical metadata (lexicons, verses) via standard regex/deterministic matches. Any citation failing the verification step drops the output confidence level instantly to zero and triggers a system fault block.
 
 ### 5.4 Live Bible Study Rooms (Real-time Sync & Integration)

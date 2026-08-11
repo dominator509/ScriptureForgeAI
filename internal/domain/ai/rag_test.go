@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -20,6 +21,15 @@ type fakeScriptureEngineClient struct {
 	ctx      context.Context
 }
 
+type fakeVectorDB struct {
+	results []SearchResult
+	err     error
+}
+
+func (f fakeVectorDB) Search(context.Context, string, string, int) ([]SearchResult, error) {
+	return f.results, f.err
+}
+
 func (f *fakeScriptureEngineClient) ProcessTextEmbedding(context.Context, *engine.EmbedTextRequest, ...grpc.CallOption) (*engine.EmbedTextResponse, error) {
 	return nil, nil
 }
@@ -30,7 +40,6 @@ func (f *fakeScriptureEngineClient) SearchByVector(ctx context.Context, _ *engin
 }
 
 func TestGRPCScriptureClientRecordsRustEngineVectorSearchMetric(t *testing.T) {
-	t.Setenv("GO_ENV", "testing")
 	observer := observability.NewObserver(observability.Options{})
 	ctx := observability.WithObserver(context.Background(), observer)
 	fakeClient := &fakeScriptureEngineClient{
@@ -47,6 +56,9 @@ func TestGRPCScriptureClientRecordsRustEngineVectorSearchMetric(t *testing.T) {
 	client := &GRPCScriptureClient{
 		client:       fakeClient,
 		sharedSecret: "01234567890123456789012345678901",
+		embeddingFn: func(context.Context, string) ([]float32, error) {
+			return make([]float32, 1536), nil
+		},
 	}
 
 	results, err := client.Search(ctx, "org-1", "creation", 1)
@@ -73,6 +85,72 @@ func TestGRPCScriptureClientRejectsMissingTenant(t *testing.T) {
 	client := &GRPCScriptureClient{client: &fakeScriptureEngineClient{}}
 	if _, err := client.Search(context.Background(), "", "creation", 1); err == nil {
 		t.Fatal("Search accepted an empty organization ID")
+	}
+}
+
+func TestGenerateEmbeddingFailsClosedWithoutAPIKey(t *testing.T) {
+	t.Setenv("GO_ENV", "testing")
+	t.Setenv("OPENAI_API_KEY", "")
+
+	embedding, err := generateEmbedding(context.Background(), "creation")
+	if embedding != nil {
+		t.Fatalf("generateEmbedding returned a synthetic vector without a provider key: %v", embedding)
+	}
+	var platformErr *PlatformException
+	if !errors.As(err, &platformErr) {
+		t.Fatalf("generateEmbedding error = %T %v, want PlatformException", err, err)
+	}
+	if platformErr.Code != http.StatusServiceUnavailable || platformErr.Category != RAGSearchFault {
+		t.Fatalf("embedding fault = %+v, want sanitized 503 RAG fault", platformErr)
+	}
+	if strings.Contains(platformErr.Message, "OPENAI_API_KEY") {
+		t.Fatalf("embedding fault leaked provider configuration: %q", platformErr.Message)
+	}
+}
+
+func TestGRPCScriptureClientSanitizesEmbeddingFailure(t *testing.T) {
+	client := &GRPCScriptureClient{
+		client: &fakeScriptureEngineClient{},
+		embeddingFn: func(context.Context, string) ([]float32, error) {
+			return nil, errors.New("provider response contained secret details")
+		},
+	}
+
+	_, err := client.Search(context.Background(), "org-1", "creation", 1)
+	var platformErr *PlatformException
+	if !errors.As(err, &platformErr) {
+		t.Fatalf("Search error = %T %v, want PlatformException", err, err)
+	}
+	if platformErr.Code != http.StatusServiceUnavailable || strings.Contains(platformErr.Message, "secret details") {
+		t.Fatalf("Search fault = %+v, want sanitized 503", platformErr)
+	}
+}
+
+func TestRAGEngineSanitizesAndPreservesSearchFailures(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		err  error
+	}{
+		{name: "raw provider failure", err: errors.New("provider response contained secret details")},
+		{name: "typed service failure", err: &PlatformException{Category: RAGSearchFault, Message: "internal provider detail", Code: http.StatusServiceUnavailable, TraceID: "trace-1"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			engine := NewRAGEngine(fakeVectorDB{err: test.err})
+			_, err := engine.CompileContext(context.Background(), "org-1", "creation")
+			var platformErr *PlatformException
+			if !errors.As(err, &platformErr) {
+				t.Fatalf("CompileContext error = %T %v, want PlatformException", err, err)
+			}
+			if platformErr.Code != http.StatusServiceUnavailable || platformErr.Category != RAGSearchFault {
+				t.Fatalf("CompileContext fault = %+v, want sanitized 503 RAG fault", platformErr)
+			}
+			if strings.Contains(platformErr.Message, "provider") || strings.Contains(platformErr.Message, "internal") {
+				t.Fatalf("CompileContext leaked search detail: %q", platformErr.Message)
+			}
+			if test.name == "typed service failure" && platformErr.TraceID != "trace-1" {
+				t.Fatalf("CompileContext lost trace ID: %+v", platformErr)
+			}
+		})
 	}
 }
 

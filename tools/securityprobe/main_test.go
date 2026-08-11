@@ -126,6 +126,7 @@ secretObjects:
   - key: DATABASE_URL
   - key: JWT_SECRET_KEY
   - key: OPENAI_API_KEY
+  - key: JOURNAL_SALT_SECRET
   - key: ZOOM_WEBHOOK_SECRET_TOKEN`))
 		case "/synced-secret":
 			_, _ = w.Write([]byte(`staging artifact namespace=staging
@@ -135,6 +136,7 @@ data:
   DATABASE_URL: REDACTED
   JWT_SECRET_KEY: REDACTED
   OPENAI_API_KEY: REDACTED
+  JOURNAL_SALT_SECRET: REDACTED
   ZOOM_WEBHOOK_SECRET_TOKEN: REDACTED
 stringData absent
 managed by secrets-store.csi.k8s.io ownerReferences secrets-store.csi.k8s.io/managed=true`))
@@ -171,8 +173,8 @@ managed by secrets-store.csi.k8s.io ownerReferences secrets-store.csi.k8s.io/man
 	}
 	expectedMarkers := map[string][]string{
 		"irsa-service-account":            {"staging artifact", "namespace=staging", "service_account=scriptureforge-api", "role_arn=arn:aws:iam::", "role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets", "eks.amazonaws.com/role-arn", "scriptureforge", "trust policy", "sts:AssumeRoleWithWebIdentity", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion, "load_run_id=" + securityLoadRunID},
-		"secret-provider-class":           {"staging artifact", "namespace=staging", "service_account=scriptureforge-api", "role_arn=arn:aws:iam::", "role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets", "SecretProviderClass", "secrets-store.csi.k8s.io", "provider", "aws", "objects", "objectName", "objectType", "secretsmanager", "objectAlias", "jmesPath", "secretObjects", "type", "Opaque", "DATABASE_URL", "JWT_SECRET_KEY", "OPENAI_API_KEY", "ZOOM_WEBHOOK_SECRET_TOKEN", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion, "load_run_id=" + securityLoadRunID},
-		"synced-secret-metadata-redacted": {"staging artifact", "namespace=staging", "scriptureforge-runtime-secrets", "type", "Opaque", "DATABASE_URL", "JWT_SECRET_KEY", "OPENAI_API_KEY", "ZOOM_WEBHOOK_SECRET_TOKEN", "redacted", "stringData absent", "managed by secrets-store.csi.k8s.io", "ownerReferences", "secrets-store.csi.k8s.io/managed=true", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion, "load_run_id=" + securityLoadRunID},
+		"secret-provider-class":           {"staging artifact", "namespace=staging", "service_account=scriptureforge-api", "role_arn=arn:aws:iam::", "role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets", "SecretProviderClass", "secrets-store.csi.k8s.io", "provider", "aws", "objects", "objectName", "objectType", "secretsmanager", "objectAlias", "jmesPath", "secretObjects", "type", "Opaque", "DATABASE_URL", "JWT_SECRET_KEY", "OPENAI_API_KEY", "JOURNAL_SALT_SECRET", "ZOOM_WEBHOOK_SECRET_TOKEN", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion, "load_run_id=" + securityLoadRunID},
+		"synced-secret-metadata-redacted": {"staging artifact", "namespace=staging", "scriptureforge-runtime-secrets", "type", "Opaque", "DATABASE_URL", "JWT_SECRET_KEY", "OPENAI_API_KEY", "JOURNAL_SALT_SECRET", "ZOOM_WEBHOOK_SECRET_TOKEN", "redacted", "stringData absent", "managed by secrets-store.csi.k8s.io", "ownerReferences", "secrets-store.csi.k8s.io/managed=true", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion, "load_run_id=" + securityLoadRunID},
 		"iam-secrets-policy":              {"staging artifact", "role_arn=arn:aws:iam::", "role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets", "secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret", "arn:aws:secretsmanager:", "scoped resource", "no wildcard resources", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion, "load_run_id=" + securityLoadRunID},
 		"scoped-secrets-access-test":      {"staging artifact", "namespace=staging", "service_account=scriptureforge-api", "role_arn=arn:aws:iam::", "role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets", "allowed", "configured secret", "denied", "unscoped secret", "AccessDenied", "distinct_secret_artifacts=true", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion, "load_run_id=" + securityLoadRunID},
 	}
@@ -191,9 +193,9 @@ func TestRunFailsWhenSecretRoleARNsDoNotMatch(t *testing.T) {
 		case "/service-account":
 			_, _ = w.Write([]byte(`staging artifact namespace=staging service_account=scriptureforge-api role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets eks.amazonaws.com/role-arn scriptureforge trust policy sts:AssumeRoleWithWebIdentity`))
 		case "/secret-provider":
-			_, _ = w.Write([]byte(`staging artifact namespace=staging service_account=scriptureforge-api role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets SecretProviderClass secrets-store.csi.k8s.io provider aws objects objectName objectType secretsmanager objectAlias jmesPath secretObjects type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY ZOOM_WEBHOOK_SECRET_TOKEN`))
+			_, _ = w.Write([]byte(`staging artifact namespace=staging service_account=scriptureforge-api role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets SecretProviderClass secrets-store.csi.k8s.io provider aws objects objectName objectType secretsmanager objectAlias jmesPath secretObjects type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY JOURNAL_SALT_SECRET ZOOM_WEBHOOK_SECRET_TOKEN`))
 		case "/synced-secret":
-			_, _ = w.Write([]byte(`staging artifact namespace=staging scriptureforge-runtime-secrets type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY ZOOM_WEBHOOK_SECRET_TOKEN redacted stringData absent managed by secrets-store.csi.k8s.io ownerReferences secrets-store.csi.k8s.io/managed=true`))
+			_, _ = w.Write([]byte(`staging artifact namespace=staging scriptureforge-runtime-secrets type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY JOURNAL_SALT_SECRET ZOOM_WEBHOOK_SECRET_TOKEN redacted stringData absent managed by secrets-store.csi.k8s.io ownerReferences secrets-store.csi.k8s.io/managed=true`))
 		case "/iam":
 			_, _ = w.Write([]byte(`staging artifact role_arn=arn:aws:iam::123456789012:role/scriptureforge-other-secrets secretsmanager:GetSecretValue secretsmanager:DescribeSecret arn:aws:secretsmanager: scoped resource no wildcard resources`))
 		case "/access-test":
@@ -243,9 +245,9 @@ func TestRunFailsWhenArtifactLacksReleaseMarkers(t *testing.T) {
 		case "/service-account":
 			_, _ = w.Write([]byte(`eks.amazonaws.com/role-arn scriptureforge trust policy sts:AssumeRoleWithWebIdentity`))
 		case "/secret-provider":
-			_, _ = w.Write([]byte(`SecretProviderClass secrets-store.csi.k8s.io provider aws objects objectName objectType secretsmanager objectAlias jmesPath secretObjects type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY ZOOM_WEBHOOK_SECRET_TOKEN`))
+			_, _ = w.Write([]byte(`SecretProviderClass secrets-store.csi.k8s.io provider aws objects objectName objectType secretsmanager objectAlias jmesPath secretObjects type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY JOURNAL_SALT_SECRET ZOOM_WEBHOOK_SECRET_TOKEN`))
 		case "/synced-secret":
-			_, _ = w.Write([]byte(`scriptureforge-runtime-secrets type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY ZOOM_WEBHOOK_SECRET_TOKEN redacted stringData absent managed by secrets-store.csi.k8s.io ownerReferences secrets-store.csi.k8s.io/managed=true`))
+			_, _ = w.Write([]byte(`scriptureforge-runtime-secrets type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY JOURNAL_SALT_SECRET ZOOM_WEBHOOK_SECRET_TOKEN redacted stringData absent managed by secrets-store.csi.k8s.io ownerReferences secrets-store.csi.k8s.io/managed=true`))
 		case "/iam":
 			_, _ = w.Write([]byte(`secretsmanager:GetSecretValue secretsmanager:DescribeSecret arn:aws:secretsmanager: scoped resource no wildcard resources`))
 		case "/access-test":
@@ -270,9 +272,9 @@ func TestRunFailsWhenArtifactLacksStagingProvenance(t *testing.T) {
 		case "/service-account":
 			_, _ = w.Write([]byte(`eks.amazonaws.com/role-arn scriptureforge trust policy sts:AssumeRoleWithWebIdentity`))
 		case "/secret-provider":
-			_, _ = w.Write([]byte(`SecretProviderClass secrets-store.csi.k8s.io provider aws objects objectName objectType secretsmanager objectAlias jmesPath secretObjects type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY ZOOM_WEBHOOK_SECRET_TOKEN`))
+			_, _ = w.Write([]byte(`SecretProviderClass secrets-store.csi.k8s.io provider aws objects objectName objectType secretsmanager objectAlias jmesPath secretObjects type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY JOURNAL_SALT_SECRET ZOOM_WEBHOOK_SECRET_TOKEN`))
 		case "/synced-secret":
-			_, _ = w.Write([]byte(`scriptureforge-runtime-secrets type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY ZOOM_WEBHOOK_SECRET_TOKEN redacted stringData absent managed by secrets-store.csi.k8s.io ownerReferences secrets-store.csi.k8s.io/managed=true`))
+			_, _ = w.Write([]byte(`scriptureforge-runtime-secrets type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY JOURNAL_SALT_SECRET ZOOM_WEBHOOK_SECRET_TOKEN redacted stringData absent managed by secrets-store.csi.k8s.io ownerReferences secrets-store.csi.k8s.io/managed=true`))
 		case "/iam":
 			_, _ = w.Write([]byte(`secretsmanager:GetSecretValue secretsmanager:DescribeSecret arn:aws:secretsmanager: scoped resource no wildcard resources`))
 		case "/access-test":
@@ -297,9 +299,9 @@ func TestRunFailsWhenSecretProviderClassLacksAWSObjectSyncProof(t *testing.T) {
 		case "/service-account":
 			_, _ = w.Write([]byte(`eks.amazonaws.com/role-arn scriptureforge trust policy sts:AssumeRoleWithWebIdentity`))
 		case "/secret-provider":
-			_, _ = w.Write([]byte(`SecretProviderClass secrets-store.csi.k8s.io DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY ZOOM_WEBHOOK_SECRET_TOKEN`))
+			_, _ = w.Write([]byte(`SecretProviderClass secrets-store.csi.k8s.io DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY JOURNAL_SALT_SECRET ZOOM_WEBHOOK_SECRET_TOKEN`))
 		case "/synced-secret":
-			_, _ = w.Write([]byte(`scriptureforge-runtime-secrets type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY ZOOM_WEBHOOK_SECRET_TOKEN redacted stringData absent managed by secrets-store.csi.k8s.io ownerReferences secrets-store.csi.k8s.io/managed=true`))
+			_, _ = w.Write([]byte(`scriptureforge-runtime-secrets type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY JOURNAL_SALT_SECRET ZOOM_WEBHOOK_SECRET_TOKEN redacted stringData absent managed by secrets-store.csi.k8s.io ownerReferences secrets-store.csi.k8s.io/managed=true`))
 		case "/iam":
 			_, _ = w.Write([]byte(`secretsmanager:GetSecretValue secretsmanager:DescribeSecret arn:aws:secretsmanager: scoped resource no wildcard resources`))
 		case "/access-test":
@@ -324,7 +326,7 @@ func TestRunFailsWhenSyncedSecretMetadataLacksRedactionProof(t *testing.T) {
 		case "/service-account":
 			_, _ = w.Write([]byte(`eks.amazonaws.com/role-arn scriptureforge trust policy sts:AssumeRoleWithWebIdentity`))
 		case "/secret-provider":
-			_, _ = w.Write([]byte(`SecretProviderClass secrets-store.csi.k8s.io provider aws objects objectName objectType secretsmanager objectAlias jmesPath secretObjects type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY ZOOM_WEBHOOK_SECRET_TOKEN`))
+			_, _ = w.Write([]byte(`SecretProviderClass secrets-store.csi.k8s.io provider aws objects objectName objectType secretsmanager objectAlias jmesPath secretObjects type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY JOURNAL_SALT_SECRET ZOOM_WEBHOOK_SECRET_TOKEN`))
 		case "/synced-secret":
 			_, _ = w.Write([]byte(`scriptureforge-runtime-secrets DATABASE_URL JWT_SECRET_KEY`))
 		case "/iam":
@@ -351,9 +353,9 @@ func TestRunFailsWhenSyncedSecretMetadataLacksOwnershipProof(t *testing.T) {
 		case "/service-account":
 			_, _ = w.Write([]byte(`staging artifact namespace=staging service_account=scriptureforge-api role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets eks.amazonaws.com/role-arn scriptureforge trust policy sts:AssumeRoleWithWebIdentity`))
 		case "/secret-provider":
-			_, _ = w.Write([]byte(`staging artifact namespace=staging service_account=scriptureforge-api role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets SecretProviderClass secrets-store.csi.k8s.io provider aws objects objectName objectType secretsmanager objectAlias jmesPath secretObjects type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY ZOOM_WEBHOOK_SECRET_TOKEN`))
+			_, _ = w.Write([]byte(`staging artifact namespace=staging service_account=scriptureforge-api role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets SecretProviderClass secrets-store.csi.k8s.io provider aws objects objectName objectType secretsmanager objectAlias jmesPath secretObjects type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY JOURNAL_SALT_SECRET ZOOM_WEBHOOK_SECRET_TOKEN`))
 		case "/synced-secret":
-			_, _ = w.Write([]byte(`staging artifact namespace=staging scriptureforge-runtime-secrets type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY ZOOM_WEBHOOK_SECRET_TOKEN redacted stringData absent managed by secrets-store.csi.k8s.io`))
+			_, _ = w.Write([]byte(`staging artifact namespace=staging scriptureforge-runtime-secrets type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY JOURNAL_SALT_SECRET ZOOM_WEBHOOK_SECRET_TOKEN redacted stringData absent managed by secrets-store.csi.k8s.io`))
 		case "/iam":
 			_, _ = w.Write([]byte(`staging artifact role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets secretsmanager:GetSecretValue secretsmanager:DescribeSecret arn:aws:secretsmanager: scoped resource no wildcard resources`))
 		case "/access-test":
@@ -378,7 +380,7 @@ func TestRunFailsWhenSyncedSecretLeaksPlaintext(t *testing.T) {
 		case "/service-account":
 			_, _ = w.Write([]byte(`eks.amazonaws.com/role-arn scriptureforge trust policy sts:AssumeRoleWithWebIdentity`))
 		case "/secret-provider":
-			_, _ = w.Write([]byte(`SecretProviderClass secrets-store.csi.k8s.io provider aws objects objectName objectType secretsmanager objectAlias jmesPath secretObjects type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY ZOOM_WEBHOOK_SECRET_TOKEN`))
+			_, _ = w.Write([]byte(`SecretProviderClass secrets-store.csi.k8s.io provider aws objects objectName objectType secretsmanager objectAlias jmesPath secretObjects type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY JOURNAL_SALT_SECRET ZOOM_WEBHOOK_SECRET_TOKEN`))
 		case "/synced-secret":
 			_, _ = w.Write([]byte(`scriptureforge-runtime-secrets DATABASE_URL JWT_SECRET_KEY postgres://scriptureforge_app:secret@example/db`))
 		case "/iam":
@@ -405,9 +407,9 @@ func TestRunFailsWhenSyncedSecretLeaksBase64EncodedValues(t *testing.T) {
 		case "/service-account":
 			_, _ = w.Write([]byte(`eks.amazonaws.com/role-arn scriptureforge trust policy sts:AssumeRoleWithWebIdentity`))
 		case "/secret-provider":
-			_, _ = w.Write([]byte(`SecretProviderClass secrets-store.csi.k8s.io provider aws objects objectName objectType secretsmanager objectAlias jmesPath secretObjects type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY ZOOM_WEBHOOK_SECRET_TOKEN`))
+			_, _ = w.Write([]byte(`SecretProviderClass secrets-store.csi.k8s.io provider aws objects objectName objectType secretsmanager objectAlias jmesPath secretObjects type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY JOURNAL_SALT_SECRET ZOOM_WEBHOOK_SECRET_TOKEN`))
 		case "/synced-secret":
-			_, _ = w.Write([]byte(`scriptureforge-runtime-secrets type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY ZOOM_WEBHOOK_SECRET_TOKEN redacted stringData absent managed by secrets-store.csi.k8s.io data:
+			_, _ = w.Write([]byte(`scriptureforge-runtime-secrets type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY JOURNAL_SALT_SECRET ZOOM_WEBHOOK_SECRET_TOKEN redacted stringData absent managed by secrets-store.csi.k8s.io data:
   DATABASE_URL: cG9zdGdyZXM6Ly9zY3JpcHR1cmVmb3JnZV9hcHA6c2VjcmV0QGRiL3NjcmlwdHVyZWZvcmdl
   OPENAI_API_KEY: c2stbGl2ZS1zaG91bGQtYmUtcmVqZWN0ZWQ=`))
 		case "/iam":
@@ -434,9 +436,9 @@ func TestRunFailsWhenSyncedSecretContainsStringData(t *testing.T) {
 		case "/service-account":
 			_, _ = w.Write([]byte(`eks.amazonaws.com/role-arn scriptureforge trust policy sts:AssumeRoleWithWebIdentity`))
 		case "/secret-provider":
-			_, _ = w.Write([]byte(`SecretProviderClass secrets-store.csi.k8s.io provider aws objects objectName objectType secretsmanager objectAlias jmesPath secretObjects type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY ZOOM_WEBHOOK_SECRET_TOKEN`))
+			_, _ = w.Write([]byte(`SecretProviderClass secrets-store.csi.k8s.io provider aws objects objectName objectType secretsmanager objectAlias jmesPath secretObjects type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY JOURNAL_SALT_SECRET ZOOM_WEBHOOK_SECRET_TOKEN`))
 		case "/synced-secret":
-			_, _ = w.Write([]byte(`scriptureforge-runtime-secrets type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY ZOOM_WEBHOOK_SECRET_TOKEN redacted stringData absent managed by secrets-store.csi.k8s.io
+			_, _ = w.Write([]byte(`scriptureforge-runtime-secrets type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY JOURNAL_SALT_SECRET ZOOM_WEBHOOK_SECRET_TOKEN redacted stringData absent managed by secrets-store.csi.k8s.io
 stringData:
   DATABASE_URL: REDACTED`))
 		case "/iam":
@@ -463,9 +465,9 @@ func TestRunFailsWhenScopedAccessTestDoesNotDenyUnscopedSecret(t *testing.T) {
 		case "/service-account":
 			_, _ = w.Write([]byte(`eks.amazonaws.com/role-arn scriptureforge trust policy sts:AssumeRoleWithWebIdentity`))
 		case "/secret-provider":
-			_, _ = w.Write([]byte(`SecretProviderClass secrets-store.csi.k8s.io provider aws objects objectName objectType secretsmanager objectAlias jmesPath secretObjects type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY ZOOM_WEBHOOK_SECRET_TOKEN`))
+			_, _ = w.Write([]byte(`SecretProviderClass secrets-store.csi.k8s.io provider aws objects objectName objectType secretsmanager objectAlias jmesPath secretObjects type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY JOURNAL_SALT_SECRET ZOOM_WEBHOOK_SECRET_TOKEN`))
 		case "/synced-secret":
-			_, _ = w.Write([]byte(`scriptureforge-runtime-secrets type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY ZOOM_WEBHOOK_SECRET_TOKEN redacted stringData absent managed by secrets-store.csi.k8s.io ownerReferences secrets-store.csi.k8s.io/managed=true`))
+			_, _ = w.Write([]byte(`scriptureforge-runtime-secrets type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY JOURNAL_SALT_SECRET ZOOM_WEBHOOK_SECRET_TOKEN redacted stringData absent managed by secrets-store.csi.k8s.io ownerReferences secrets-store.csi.k8s.io/managed=true`))
 		case "/iam":
 			_, _ = w.Write([]byte(`secretsmanager:GetSecretValue secretsmanager:DescribeSecret arn:aws:secretsmanager: scoped resource no wildcard resources`))
 		case "/access-test":
@@ -490,9 +492,9 @@ func TestRunFailsWhenIAMPolicyUsesWildcardResource(t *testing.T) {
 		case "/service-account":
 			_, _ = w.Write([]byte(`eks.amazonaws.com/role-arn scriptureforge trust policy sts:AssumeRoleWithWebIdentity`))
 		case "/secret-provider":
-			_, _ = w.Write([]byte(`SecretProviderClass secrets-store.csi.k8s.io provider aws objects objectName objectType secretsmanager objectAlias jmesPath secretObjects type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY ZOOM_WEBHOOK_SECRET_TOKEN`))
+			_, _ = w.Write([]byte(`SecretProviderClass secrets-store.csi.k8s.io provider aws objects objectName objectType secretsmanager objectAlias jmesPath secretObjects type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY JOURNAL_SALT_SECRET ZOOM_WEBHOOK_SECRET_TOKEN`))
 		case "/synced-secret":
-			_, _ = w.Write([]byte(`scriptureforge-runtime-secrets type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY ZOOM_WEBHOOK_SECRET_TOKEN redacted stringData absent managed by secrets-store.csi.k8s.io ownerReferences secrets-store.csi.k8s.io/managed=true`))
+			_, _ = w.Write([]byte(`scriptureforge-runtime-secrets type Opaque DATABASE_URL JWT_SECRET_KEY OPENAI_API_KEY JOURNAL_SALT_SECRET ZOOM_WEBHOOK_SECRET_TOKEN redacted stringData absent managed by secrets-store.csi.k8s.io ownerReferences secrets-store.csi.k8s.io/managed=true`))
 		case "/iam":
 			_, _ = w.Write([]byte(`{"Action":["secretsmanager:GetSecretValue","secretsmanager:DescribeSecret"],"Resource":"*"} scoped resource no wildcard resources arn:aws:secretsmanager:`))
 		case "/access-test":
