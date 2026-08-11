@@ -2,6 +2,7 @@ package ports
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"regexp"
@@ -27,7 +28,7 @@ type CurriculumRequest struct {
 
 const (
 	maxAIRequestBodyBytes = 64 * 1024
-	maxAITopicCharacters = 16 * 1024
+	maxAITopicCharacters  = 16 * 1024
 	maxAIChunks           = 64
 )
 
@@ -39,17 +40,17 @@ func sendAIError(w http.ResponseWriter, pe *ai.PlatformException) {
 
 var auditCitationRegex = regexp.MustCompile(`\[([a-zA-Z\s]+)\s(\d+):(\d+)\]`)
 
-func (h *AIHandler) writeAIRequestLog(r *http.Request, claims *auth.TokenClaims, prompt, status, errorMessage, response string) {
+func (h *AIHandler) writeAIRequestLog(r *http.Request, claims *auth.TokenClaims, prompt, status, errorMessage, response string) error {
 	if h.DB == nil {
-		return
+		return errors.New("AI audit database is not configured")
 	}
 	tx, err := h.DB.Begin(r.Context())
 	if err != nil {
-		return
+		return err
 	}
 	defer tx.Rollback(r.Context())
 	if err := auth.SetTenantContext(r.Context(), tx, claims.OrganizationID); err != nil {
-		return
+		return err
 	}
 	var logID string
 	err = tx.QueryRow(
@@ -64,19 +65,29 @@ func (h *AIHandler) writeAIRequestLog(r *http.Request, claims *auth.TokenClaims,
 		errorMessage,
 	).Scan(&logID)
 	if err != nil {
-		return
+		return err
 	}
 	for _, match := range auditCitationRegex.FindAllString(response, -1) {
-		_, _ = tx.Exec(
+		if _, err := tx.Exec(
 			r.Context(),
 			`INSERT INTO citation_trails (organization_id, ai_request_log_id, citation, verified)
 			 VALUES ($1, $2, $3, TRUE)`,
 			claims.OrganizationID,
 			logID,
 			match,
-		)
+		); err != nil {
+			return err
+		}
 	}
-	_ = tx.Commit(r.Context())
+	return tx.Commit(r.Context())
+}
+
+func (h *AIHandler) generationDependenciesReady() bool {
+	return h.DB != nil && h.RAGEngine != nil && h.Verifier != nil && h.LLMClient != nil && h.MapReduceWorker != nil
+}
+
+func aiAuditPersistenceFault() *ai.PlatformException {
+	return &ai.PlatformException{Category: "AI_AUDIT_FAULT", Message: "AI audit persistence is unavailable", Code: http.StatusServiceUnavailable}
 }
 
 func (h *AIHandler) GenerateCurriculumHandler(w http.ResponseWriter, r *http.Request) {
@@ -117,6 +128,10 @@ func (h *AIHandler) GenerateCurriculumHandler(w http.ResponseWriter, r *http.Req
 		sendAIError(w, &ai.PlatformException{Category: "VALIDATION_FAULT", Message: "Topic exceeds the maximum length", Code: http.StatusRequestEntityTooLarge})
 		return
 	}
+	if !h.generationDependenciesReady() {
+		sendAIError(w, &ai.PlatformException{Category: "AI_CONFIGURATION_FAULT", Message: "AI generation dependencies are not configured", Code: http.StatusServiceUnavailable})
+		return
+	}
 
 	// 1. MapReduce Chunk Processing
 	// If the topic is an extensive textual outline, we divide it to protect context windows.
@@ -131,7 +146,10 @@ func (h *AIHandler) GenerateCurriculumHandler(w http.ResponseWriter, r *http.Req
 		// 2. RAG Compilation per chunk
 		compiledContext, err := h.RAGEngine.CompileContext(r.Context(), claims.OrganizationID, chunk)
 		if err != nil {
-			h.writeAIRequestLog(r, claims, chunk, "failed", err.Error(), "")
+			if auditErr := h.writeAIRequestLog(r, claims, chunk, "failed", err.Error(), ""); auditErr != nil {
+				sendAIError(w, aiAuditPersistenceFault())
+				return
+			}
 			if pe, ok := err.(*ai.PlatformException); ok {
 				sendAIError(w, pe)
 			} else {
@@ -143,7 +161,10 @@ func (h *AIHandler) GenerateCurriculumHandler(w http.ResponseWriter, r *http.Req
 		// 3. Execute via explicit boundaries and strict response verification per chunk
 		response, err := h.LLMClient.Execute(r.Context(), chunk, compiledContext, h.Verifier)
 		if err != nil {
-			h.writeAIRequestLog(r, claims, chunk, "failed", err.Error(), "")
+			if auditErr := h.writeAIRequestLog(r, claims, chunk, "failed", err.Error(), ""); auditErr != nil {
+				sendAIError(w, aiAuditPersistenceFault())
+				return
+			}
 			if pe, ok := err.(*ai.PlatformException); ok {
 				sendAIError(w, pe)
 			} else {
@@ -153,7 +174,10 @@ func (h *AIHandler) GenerateCurriculumHandler(w http.ResponseWriter, r *http.Req
 		}
 
 		completeCurriculum += response + "\n\n"
-		h.writeAIRequestLog(r, claims, chunk, "succeeded", "", response)
+		if auditErr := h.writeAIRequestLog(r, claims, chunk, "succeeded", "", response); auditErr != nil {
+			sendAIError(w, aiAuditPersistenceFault())
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

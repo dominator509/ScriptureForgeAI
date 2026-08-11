@@ -396,6 +396,7 @@ CREATE INDEX idx_participants_lookup ON room_participants(room_id, user_id);
 #### Group B: AI Generation Engine Pipeline (`/api/v1/ai`)
 *   `POST /api/v1/ai/generate/study`: Generate curriculum tracks.
 *   Compatibility alias: `POST /api/ai/curriculum` (delegates to the same generation handler).
+    *   Generation fails closed with a typed `503` when required RAG, verification, LLM, MapReduce, database, or AI audit persistence dependencies are unavailable; successful or failed attempts are not served without an audit write.
     *   *Payload Structure:*
         ```json
         {
