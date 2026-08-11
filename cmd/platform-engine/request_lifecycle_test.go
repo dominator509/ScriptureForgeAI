@@ -68,3 +68,19 @@ func TestAPIRequestDeadlineMiddlewarePreservesEarlierCancellation(t *testing.T) 
 		t.Fatal("middleware replaced an earlier request deadline")
 	}
 }
+
+func TestServerLifecycleRunsShutdownHookOnceAndMarksDraining(t *testing.T) {
+	lifecycle := &serverLifecycle{}
+	hookCalls := 0
+	lifecycle.onShutdown = func() { hookCalls++ }
+
+	lifecycle.beginShutdown()
+	lifecycle.beginShutdown()
+
+	if !lifecycle.isDraining() {
+		t.Fatal("server lifecycle did not enter draining state")
+	}
+	if hookCalls != 1 {
+		t.Fatalf("shutdown hook calls = %d, want 1", hookCalls)
+	}
+}

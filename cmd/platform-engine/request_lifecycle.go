@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -11,7 +13,32 @@ const (
 	defaultAPIRequestTimeout = 15 * time.Second
 	minAPIRequestTimeout     = time.Second
 	maxAPIRequestTimeout     = 2 * time.Minute
+	defaultShutdownTimeout   = 10 * time.Second
+	minShutdownTimeout       = time.Second
+	maxShutdownTimeout       = 2 * time.Minute
 )
+
+type serverLifecycle struct {
+	draining     atomic.Bool
+	shutdownOnce sync.Once
+	onShutdown   func()
+}
+
+func (s *serverLifecycle) beginShutdown() {
+	if s == nil {
+		return
+	}
+	s.shutdownOnce.Do(func() {
+		s.draining.Store(true)
+		if s.onShutdown != nil {
+			s.onShutdown()
+		}
+	})
+}
+
+func (s *serverLifecycle) isDraining() bool {
+	return s != nil && s.draining.Load()
+}
 
 // apiRequestDeadlineMiddleware bounds ordinary API work while leaving upgraded
 // room streams to their connection-owned read, write, and ping deadlines.

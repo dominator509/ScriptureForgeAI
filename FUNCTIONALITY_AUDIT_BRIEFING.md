@@ -855,6 +855,8 @@ Status last updated: 2026-06-28
 
 2026-08-10 API request lifecycle hardening: ordinary `/api/` handlers now inherit a validated `API_REQUEST_TIMEOUT_MS` context deadline (15 seconds by default, 1-120 seconds allowed), preserve any earlier client cancellation, and leave long-lived `/api/v1/rooms/stream/{room_id}` connections to their handler-owned deadlines after upgrade. Focused platform tests cover cancellation, earlier-deadline preservation, and stream exemption; Terraform projects the setting into the API workload. Deployed timeout tuning and telemetry remain external readiness evidence.
 
+2026-08-11 graceful shutdown hardening: the API now marks `/ready` unready before termination, closes tracked room WebSockets with a going-away signal, rejects new room upgrades while draining, handles unexpected listener failure without `log.Fatal` cleanup bypass, and uses a validated `SHUTDOWN_TIMEOUT_MS` budget (10 seconds by default, 1-120 seconds allowed) projected through Terraform. Platform tests (66) and the room shutdown regression pass under `-race`; deployed pod termination-grace, ingress drain, and multi-replica evidence remain external.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.

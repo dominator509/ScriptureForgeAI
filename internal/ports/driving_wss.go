@@ -43,6 +43,9 @@ type SocketConnection struct {
 	ConnectionLimiter   *abuse.ActiveConnectionLimiter
 	hubMu               sync.Mutex
 	eventMu             sync.Mutex
+	connectionsMu       sync.Mutex
+	connections         map[*websocket.Conn]struct{}
+	draining            bool
 }
 
 type roomEventStore interface {
@@ -158,6 +161,47 @@ func (s *SocketConnection) activeConnectionLimiter() *abuse.ActiveConnectionLimi
 	return s.ConnectionLimiter
 }
 
+func (s *SocketConnection) isDraining() bool {
+	s.connectionsMu.Lock()
+	defer s.connectionsMu.Unlock()
+	return s.draining
+}
+
+func (s *SocketConnection) trackConnection(conn *websocket.Conn) bool {
+	s.connectionsMu.Lock()
+	defer s.connectionsMu.Unlock()
+	if s.draining {
+		return false
+	}
+	if s.connections == nil {
+		s.connections = make(map[*websocket.Conn]struct{})
+	}
+	s.connections[conn] = struct{}{}
+	return true
+}
+
+func (s *SocketConnection) BeginShutdown() {
+	s.connectionsMu.Lock()
+	s.draining = true
+	connections := make([]*websocket.Conn, 0, len(s.connections))
+	for conn := range s.connections {
+		connections = append(connections, conn)
+	}
+	s.connections = make(map[*websocket.Conn]struct{})
+	s.connectionsMu.Unlock()
+
+	for _, conn := range connections {
+		_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseGoingAway, "server shutting down"), time.Now().Add(wsWriteWait))
+		_ = conn.Close()
+	}
+}
+
+func (s *SocketConnection) untrackConnection(conn *websocket.Conn) {
+	s.connectionsMu.Lock()
+	defer s.connectionsMu.Unlock()
+	delete(s.connections, conn)
+}
+
 func (s *SocketConnection) validateRoomMembership(r *http.Request, claims *auth.TokenClaims, roomID string) bool {
 	if s.MembershipValidator != nil {
 		return s.MembershipValidator(r, claims, roomID)
@@ -202,6 +246,10 @@ func (s *SocketConnection) validateRoomMembership(r *http.Request, claims *auth.
 }
 
 func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request) {
+	if s.isDraining() {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Server is shutting down", Code: http.StatusServiceUnavailable})
+		return
+	}
 	claims, ok := r.Context().Value(auth.ContextKeyUser).(*auth.TokenClaims)
 	if !ok || claims == nil {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Unauthorized access", Code: http.StatusUnauthorized})
@@ -234,6 +282,11 @@ func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request
 		log.Println("upgrade error:", err)
 		return
 	}
+	if !s.trackConnection(conn) {
+		_ = conn.Close()
+		return
+	}
+	defer s.untrackConnection(conn)
 	defer conn.Close()
 	releaseActiveConnection := observability.ObserveWebSocketActiveConnectionFromContext(r.Context())
 	defer releaseActiveConnection()

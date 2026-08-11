@@ -104,6 +104,7 @@ type Config struct {
 	HTTPIdleTimeout          time.Duration
 	HTTPMaxHeaderBytes       int
 	APIRequestTimeout        time.Duration
+	ShutdownTimeout          time.Duration
 	GRPCAddress              string
 	GRPCSharedSecret         string
 	GRPCTLSCAPEM             string
@@ -229,6 +230,7 @@ func loadConfig() (*Config, *PlatformException) {
 		HTTPIdleTimeout:          httpConfig.IdleTimeout,
 		HTTPMaxHeaderBytes:       httpConfig.MaxHeaderBytes,
 		APIRequestTimeout:        httpConfig.APIRequestTimeout,
+		ShutdownTimeout:          httpConfig.ShutdownTimeout,
 		GRPCAddress:              grpcAddr,
 		GRPCSharedSecret:         grpcSharedSecret,
 		GRPCTLSCAPEM:             grpcTLSCAPEM,
@@ -380,6 +382,7 @@ type httpServerConfig struct {
 	IdleTimeout       time.Duration
 	MaxHeaderBytes    int
 	APIRequestTimeout time.Duration
+	ShutdownTimeout   time.Duration
 }
 
 func loadHTTPServerConfig() (httpServerConfig, *PlatformException) {
@@ -407,6 +410,10 @@ func loadHTTPServerConfig() (httpServerConfig, *PlatformException) {
 	if err != nil {
 		return httpServerConfig{}, err
 	}
+	shutdownTimeout, err := loadHTTPTimeout("SHUTDOWN_TIMEOUT_MS", defaultShutdownTimeout, minShutdownTimeout, maxShutdownTimeout)
+	if err != nil {
+		return httpServerConfig{}, err
+	}
 	return httpServerConfig{
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
@@ -414,6 +421,7 @@ func loadHTTPServerConfig() (httpServerConfig, *PlatformException) {
 		IdleTimeout:       idleTimeout,
 		MaxHeaderBytes:    maxHeaderBytes,
 		APIRequestTimeout: apiRequestTimeout,
+		ShutdownTimeout:   shutdownTimeout,
 	}, nil
 }
 
@@ -451,11 +459,15 @@ func setupRoutes(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisClient *redis.
 }
 
 func setupRoutesWithTimeout(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisClient *redis.Client, apiRequestTimeout time.Duration) http.Handler {
+	return setupRoutesWithLifecycle(dbpool, vectorDB, redisClient, apiRequestTimeout, nil)
+}
+
+func setupRoutesWithLifecycle(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisClient *redis.Client, apiRequestTimeout time.Duration, lifecycle *serverLifecycle) http.Handler {
 	mux := http.ServeMux{}
 	abuseLimiter := abuse.NewDefaultLimiter()
 	observer := observability.NewDefaultObserver()
 	mux.HandleFunc("/live", liveHandler)
-	mux.HandleFunc("/ready", readyHandler(dbpool, redisClient, vectorDB))
+	mux.HandleFunc("/ready", readyHandlerWithLifecycle(dbpool, redisClient, vectorDB, lifecycle))
 	mux.Handle("/metrics", observer.MetricsHandler())
 
 	// Auth Endpoints
@@ -507,6 +519,9 @@ func setupRoutesWithTimeout(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisCli
 		Hub:               roomHub,
 		ConnectionLimiter: abuse.NewDefaultActiveConnectionLimiter(),
 	}
+	if lifecycle != nil {
+		lifecycle.onShutdown = socketConn.BeginShutdown
+	}
 	mux.Handle("/api/v1/rooms/stream/", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileWebSocket, http.HandlerFunc(socketConn.HandleLiveRoom)), ""))
 
 	return apiRequestDeadlineMiddleware(apiSecurityMiddleware(observer.Middleware(&mux)), apiRequestTimeout)
@@ -519,8 +534,17 @@ func liveHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func readyHandler(dbpool *pgxpool.Pool, redisClient *redis.Client, vectorDB ai.VectorDB) http.HandlerFunc {
+	return readyHandlerWithLifecycle(dbpool, redisClient, vectorDB, nil)
+}
+
+func readyHandlerWithLifecycle(dbpool *pgxpool.Pool, redisClient *redis.Client, vectorDB ai.VectorDB, lifecycle *serverLifecycle) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if lifecycle.isDraining() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"status":"unready","reason":"server_draining"}`))
+			return
+		}
 		if dbpool == nil || redisClient == nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte(`{"status":"unready","reason":"dependencies_not_configured"}`))
@@ -629,27 +653,39 @@ func main() {
 		log.Println("Successfully connected to Rust gRPC Scripture Engine.")
 	}
 
-	router := setupRoutesWithTimeout(dbpool, vectorDB, rdb, cfg.APIRequestTimeout)
+	lifecycle := &serverLifecycle{}
+	router := setupRoutesWithLifecycle(dbpool, vectorDB, rdb, cfg.APIRequestTimeout, lifecycle)
 	server := newHTTPServer(cfg, router)
+	server.RegisterOnShutdown(lifecycle.beginShutdown)
 
+	serverErrors := make(chan error, 1)
 	go func() {
 		log.Printf("Server listening on port %s", cfg.Port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("listen: %s\n", err)
+			serverErrors <- err
 		}
 	}()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(quit)
 
-	<-quit
-	log.Println("Received termination signal. Initiating graceful shutdown...")
+	select {
+	case <-quit:
+		log.Println("Received termination signal. Initiating graceful shutdown...")
+	case err := <-serverErrors:
+		lifecycle.beginShutdown()
+		log.Printf("HTTP server stopped unexpectedly: %v", err)
+		return
+	}
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	lifecycle.beginShutdown()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer shutdownCancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+		log.Printf("Server forced to shutdown: %v", err)
+		return
 	}
 
 	log.Println("Shutdown complete.")

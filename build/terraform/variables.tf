@@ -143,6 +143,17 @@ variable "api_request_timeout_ms" {
   }
 }
 
+variable "api_shutdown_timeout_ms" {
+  description = "Maximum milliseconds the API waits for graceful shutdown after readiness is marked draining."
+  type        = number
+  default     = 10000
+
+  validation {
+    condition     = var.api_shutdown_timeout_ms >= 1000 && var.api_shutdown_timeout_ms <= 120000
+    error_message = "api_shutdown_timeout_ms must be between 1000 and 120000 milliseconds."
+  }
+}
+
 variable "api_http_read_timeout_ms" {
   description = "Maximum milliseconds the API waits while reading an HTTP request."
   type        = number

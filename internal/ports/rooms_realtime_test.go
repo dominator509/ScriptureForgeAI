@@ -488,6 +488,47 @@ func TestLiveRoomDisconnectCleansSubscriberAndActiveConnectionMetric(t *testing.
 	}
 }
 
+func TestLiveRoomShutdownClosesActiveConnectionsAndRejectsNewStreams(t *testing.T) {
+	store := &fakeRoomEventStore{}
+	hub := NewRoomHub()
+	socket := &SocketConnection{
+		StateManager: store,
+		Hub:          hub,
+		MembershipValidator: func(r *http.Request, claims *auth.TokenClaims, roomID string) bool {
+			return roomID == "room-1" && claims.OrganizationID == "org-1" && claims.UserID != ""
+		},
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims := &auth.TokenClaims{UserID: "user-" + r.URL.Query().Get("client"), OrganizationID: "org-1", Role: "member"}
+		socket.HandleLiveRoom(w, r.WithContext(context.WithValue(r.Context(), auth.ContextKeyUser, claims)))
+	}))
+	defer server.Close()
+
+	conn := dialRoom(t, server.URL, "room-1", "shutdown")
+	waitForRoomSubscribers(t, hub, "room-1", 1)
+	socket.BeginShutdown()
+	waitForRoomSubscribers(t, hub, "room-1", 0)
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, _, err := conn.ReadMessage(); err == nil {
+		t.Fatal("active websocket remained open after server shutdown")
+	}
+	_ = conn.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/v1/rooms/stream/room-1?client=new"
+	newConn, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err == nil {
+		_ = newConn.Close()
+		t.Fatal("new websocket upgraded while server was draining")
+	}
+	if resp == nil || resp.StatusCode != http.StatusServiceUnavailable {
+		status := 0
+		if resp != nil {
+			status = resp.StatusCode
+		}
+		t.Fatalf("new websocket during shutdown status = %d err = %v, want 503", status, err)
+	}
+}
+
 func TestLiveRoomInitializesSharedHubWhenNotConfigured(t *testing.T) {
 	store := &fakeRoomEventStore{}
 	socket := &SocketConnection{

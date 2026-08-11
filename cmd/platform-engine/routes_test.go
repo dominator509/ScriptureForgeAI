@@ -100,6 +100,27 @@ func TestHealthRoutesExposeLivenessAndDependencyReadiness(t *testing.T) {
 	}
 }
 
+func TestHealthRoutesFailReadinessWhileDraining(t *testing.T) {
+	lifecycle := &serverLifecycle{}
+	router := setupRoutesWithLifecycle(nil, nil, nil, defaultAPIRequestTimeout, lifecycle)
+	lifecycle.beginShutdown()
+
+	readyRecorder := httptest.NewRecorder()
+	router.ServeHTTP(readyRecorder, httptest.NewRequest(http.MethodGet, "/ready", nil))
+	if readyRecorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("draining /ready status = %d body = %q, want 503", readyRecorder.Code, readyRecorder.Body.String())
+	}
+	if !strings.Contains(readyRecorder.Body.String(), "server_draining") {
+		t.Fatalf("draining /ready body = %q", readyRecorder.Body.String())
+	}
+
+	liveRecorder := httptest.NewRecorder()
+	router.ServeHTTP(liveRecorder, httptest.NewRequest(http.MethodGet, "/live", nil))
+	if liveRecorder.Code != http.StatusOK {
+		t.Fatalf("draining /live status = %d, want liveness to remain available", liveRecorder.Code)
+	}
+}
+
 func TestLoadConfigDefaultsGRPCAddressOnlyForLocalDevelopment(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://local.example/scriptureforge")
 	t.Setenv("REDIS_URL", "redis://local.example:6379")
@@ -122,6 +143,7 @@ func TestLoadConfigDefaultsGRPCAddressOnlyForLocalDevelopment(t *testing.T) {
 		"HTTP_IDLE_TIMEOUT_MS",
 		"HTTP_MAX_HEADER_BYTES",
 		"API_REQUEST_TIMEOUT_MS",
+		"SHUTDOWN_TIMEOUT_MS",
 	} {
 		t.Setenv(name, "")
 	}
@@ -139,8 +161,8 @@ func TestLoadConfigDefaultsGRPCAddressOnlyForLocalDevelopment(t *testing.T) {
 	if cfg.GRPCAddress != "localhost:50051" {
 		t.Fatalf("local GRPCAddress = %q, want localhost:50051", cfg.GRPCAddress)
 	}
-	if cfg.HTTPReadHeaderTimeout != defaultHTTPReadHeaderTimeout || cfg.HTTPReadTimeout != defaultHTTPReadTimeout || cfg.HTTPWriteTimeout != defaultHTTPWriteTimeout || cfg.HTTPIdleTimeout != defaultHTTPIdleTimeout || cfg.HTTPMaxHeaderBytes != defaultHTTPMaxHeaderBytes || cfg.APIRequestTimeout != defaultAPIRequestTimeout {
-		t.Fatalf("HTTP server defaults = header=%s read=%s write=%s idle=%s max_header=%d api_request=%s", cfg.HTTPReadHeaderTimeout, cfg.HTTPReadTimeout, cfg.HTTPWriteTimeout, cfg.HTTPIdleTimeout, cfg.HTTPMaxHeaderBytes, cfg.APIRequestTimeout)
+	if cfg.HTTPReadHeaderTimeout != defaultHTTPReadHeaderTimeout || cfg.HTTPReadTimeout != defaultHTTPReadTimeout || cfg.HTTPWriteTimeout != defaultHTTPWriteTimeout || cfg.HTTPIdleTimeout != defaultHTTPIdleTimeout || cfg.HTTPMaxHeaderBytes != defaultHTTPMaxHeaderBytes || cfg.APIRequestTimeout != defaultAPIRequestTimeout || cfg.ShutdownTimeout != defaultShutdownTimeout {
+		t.Fatalf("HTTP server defaults = header=%s read=%s write=%s idle=%s max_header=%d api_request=%s shutdown=%s", cfg.HTTPReadHeaderTimeout, cfg.HTTPReadTimeout, cfg.HTTPWriteTimeout, cfg.HTTPIdleTimeout, cfg.HTTPMaxHeaderBytes, cfg.APIRequestTimeout, cfg.ShutdownTimeout)
 	}
 	if cfg.StartupDependencyTimeout != defaultStartupDependencyTimeout || cfg.DatabasePoolMaxConns != defaultDatabasePoolMaxConns || cfg.DatabasePoolMinConns != defaultDatabasePoolMinConns || cfg.DatabaseConnLifetime != defaultDatabaseConnLifetime || cfg.DatabaseConnIdleTime != defaultDatabaseConnIdleTime || cfg.RedisPoolSize != defaultRedisPoolSize || cfg.RedisMaxActiveConns != defaultRedisMaxActiveConns || cfg.RedisPoolTimeout != defaultRedisPoolTimeout || cfg.RedisDialTimeout != defaultRedisDialTimeout || cfg.RedisReadTimeout != defaultRedisReadTimeout || cfg.RedisWriteTimeout != defaultRedisWriteTimeout {
 		t.Fatalf("dependency defaults = %#v", cfg)
@@ -159,6 +181,7 @@ func TestLoadConfigRejectsInvalidHTTPServerLimits(t *testing.T) {
 		{name: "idle timeout too low", env: "HTTP_IDLE_TIMEOUT_MS", value: "99"},
 		{name: "header bytes too low", env: "HTTP_MAX_HEADER_BYTES", value: "1024"},
 		{name: "api request timeout too low", env: "API_REQUEST_TIMEOUT_MS", value: "999"},
+		{name: "shutdown timeout too low", env: "SHUTDOWN_TIMEOUT_MS", value: "999"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Setenv("DATABASE_URL", "postgres://local.example/scriptureforge")
@@ -171,6 +194,7 @@ func TestLoadConfigRejectsInvalidHTTPServerLimits(t *testing.T) {
 				"HTTP_IDLE_TIMEOUT_MS",
 				"HTTP_MAX_HEADER_BYTES",
 				"API_REQUEST_TIMEOUT_MS",
+				"SHUTDOWN_TIMEOUT_MS",
 			} {
 				t.Setenv(name, "")
 			}

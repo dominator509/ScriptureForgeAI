@@ -288,6 +288,11 @@ resource "kubernetes_deployment" "api" {
           }
 
           env {
+            name  = "SHUTDOWN_TIMEOUT_MS"
+            value = tostring(var.api_shutdown_timeout_ms)
+          }
+
+          env {
             name  = "HTTP_READ_HEADER_TIMEOUT_MS"
             value = tostring(var.api_http_read_header_timeout_ms)
           }
