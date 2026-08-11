@@ -228,6 +228,7 @@ type MeetingAdapter interface {
 1.  **Circuit Breaking:** All integrations use an internal circuit breaker framework. If calls to Zoom drop below a 90% success rate within a sliding window of 60 seconds, the engine trips the breaker.
 2.  **Graceful Degradation:** When the circuit breaker trips, the system gracefully degrades. Instead of blocking operations, it pivots to an "Offline/In-Person" configuration mode, generating structured fallback links that allow manual conference connection paths.
 3.  **Timeout Enforcement:** Network execution windows are bounded strictly at `3500ms`. Any integration thread hanging past this threshold is explicitly killed via context manipulation.
+4.  **Response Boundaries:** Zoom OAuth and JSON API responses are capped at 1 MiB before decoding; malformed or incomplete meeting responses fail closed to the offline fallback, and provider error bodies are never copied into application errors.
 
 ---
 

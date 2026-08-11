@@ -241,6 +241,103 @@ func TestCreateMeetingDoesNotUseAmbientTestModeMockWhenCredentialsMissing(t *tes
 	}
 }
 
+func TestCreateMeetingFallsBackOnOversizedProviderResponse(t *testing.T) {
+	var meetingAttempts int
+	client := &ZoomClient{
+		AccountID:    "account",
+		ClientID:     "client",
+		ClientSecret: "secret",
+		MaxRetries:   0,
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			switch {
+			case strings.Contains(r.URL.String(), "zoom.us/oauth/token"):
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(`{"access_token":"token-1"}`)),
+					Header:     http.Header{},
+				}, nil
+			case strings.Contains(r.URL.String(), "/v2/users/me/meetings"):
+				meetingAttempts++
+				return &http.Response{
+					StatusCode: http.StatusCreated,
+					Body:       io.NopCloser(strings.NewReader(strings.Repeat("x", maxZoomResponseBodyBytes+1))),
+					Header:     http.Header{},
+				}, nil
+			default:
+				t.Fatalf("unexpected Zoom request URL: %s", r.URL.String())
+				return nil, nil
+			}
+		})},
+	}
+
+	observer := observability.NewObserver(observability.Options{})
+	ctx := observability.WithObserver(context.Background(), observer)
+	meeting, err := client.CreateMeeting(ctx, room.MeetingConfig{Topic: "Study", Duration: 45, HostID: "host-large"})
+	if err != nil {
+		t.Fatalf("oversized response fallback returned error: %v", err)
+	}
+	if meeting.JoinURL != "offline://in-person" {
+		t.Fatalf("oversized response join url = %q, want offline fallback", meeting.JoinURL)
+	}
+	if meetingAttempts != 1 {
+		t.Fatalf("meeting attempts = %d, want 1", meetingAttempts)
+	}
+	if !strings.Contains(observer.Snapshot(), `status="response_body_error"`) {
+		t.Fatalf("oversized response metric missing:\n%s", observer.Snapshot())
+	}
+}
+
+func TestGetMeetingStatusRejectsOversizedProviderResponse(t *testing.T) {
+	client := &ZoomClient{
+		AccountID:    "account",
+		ClientID:     "client",
+		ClientSecret: "secret",
+		MaxRetries:   0,
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if strings.Contains(r.URL.String(), "zoom.us/oauth/token") {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(`{"access_token":"token-1"}`)),
+					Header:     http.Header{},
+				}, nil
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(strings.Repeat("x", maxZoomResponseBodyBytes+1))),
+				Header:     http.Header{},
+			}, nil
+		})},
+	}
+
+	status, err := client.GetMeetingStatus(context.Background(), "meeting-large")
+	if err == nil {
+		t.Fatal("oversized status response returned nil error")
+	}
+	if status != "" {
+		t.Fatalf("oversized status response = %q, want empty status", status)
+	}
+}
+
+func TestGetAccessTokenRejectsMissingProviderToken(t *testing.T) {
+	client := &ZoomClient{
+		AccountID:    "account",
+		ClientID:     "client",
+		ClientSecret: "secret",
+		MaxRetries:   0,
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"expires_in":3600}`)),
+				Header:     http.Header{},
+			}, nil
+		})},
+	}
+
+	if _, err := client.getAccessToken(context.Background()); err == nil {
+		t.Fatal("missing Zoom access token returned nil error")
+	}
+}
+
 func TestGetMeetingStatusEmitsZoomDependencyMetric(t *testing.T) {
 	t.Setenv("GO_ENV", "")
 	client := &ZoomClient{

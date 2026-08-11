@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,6 +28,13 @@ type ZoomClient struct {
 	failures         int
 	circuitOpenUntil time.Time
 }
+
+const maxZoomResponseBodyBytes = 1 << 20
+
+var (
+	errZoomResponseBodyTooLarge = errors.New("zoom response body exceeds the maximum size")
+	errZoomResponseBodyMissing  = errors.New("zoom response body is missing")
+)
 
 func NewZoomClient() *ZoomClient {
 	return &ZoomClient{
@@ -82,6 +90,20 @@ func observeZoom(ctx context.Context, operation, status string, start time.Time)
 	observability.ObserveDependencyFromContext(ctx, "zoom", operation, status, time.Since(start))
 }
 
+func readZoomResponseBody(resp *http.Response) ([]byte, error) {
+	if resp == nil || resp.Body == nil {
+		return nil, errZoomResponseBodyMissing
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxZoomResponseBodyBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > maxZoomResponseBodyBytes {
+		return nil, errZoomResponseBodyTooLarge
+	}
+	return body, nil
+}
+
 func (c *ZoomClient) doWithRetry(buildRequest func() (*http.Request, error)) (*http.Response, error) {
 	attempts := c.MaxRetries + 1
 	if attempts < 1 {
@@ -101,8 +123,7 @@ func (c *ZoomClient) doWithRetry(buildRequest func() (*http.Request, error)) (*h
 			if attempt == attempts-1 {
 				return resp, nil
 			}
-			io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		} else {
 			return resp, nil
 		}
@@ -134,13 +155,19 @@ func (c *ZoomClient) getAccessToken(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("failed to retrieve zoom access token, status: %d", resp.StatusCode)
 	}
 
+	responseBody, err := readZoomResponseBody(resp)
+	if err != nil {
+		return "", err
+	}
 	var tokenResp struct {
 		AccessToken string `json:"access_token"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+	if err := json.Unmarshal(responseBody, &tokenResp); err != nil {
 		return "", err
 	}
-
+	if strings.TrimSpace(tokenResp.AccessToken) == "" {
+		return "", errors.New("zoom access token is missing")
+	}
 	return tokenResp.AccessToken, nil
 }
 
@@ -201,22 +228,38 @@ func (c *ZoomClient) CreateMeeting(ctx context.Context, config room.MeetingConfi
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 300 {
-		respBody, _ := io.ReadAll(resp.Body)
-		err := fmt.Errorf("zoom API error on creation: %d %s", resp.StatusCode, string(respBody))
-		c.recordResult(err)
-		observeZoom(ctx, "create_meeting", strconv.Itoa(resp.StatusCode), start)
+		if _, err := readZoomResponseBody(resp); err != nil {
+			c.recordResult(err)
+			observeZoom(ctx, "create_meeting", "response_body_error", start)
+		} else {
+			err := fmt.Errorf("zoom API error on creation: %d", resp.StatusCode)
+			c.recordResult(err)
+			observeZoom(ctx, "create_meeting", strconv.Itoa(resp.StatusCode), start)
+		}
 		return offlineMeetingDetails(config), nil
 	}
 
+	responseBody, err := readZoomResponseBody(resp)
+	if err != nil {
+		c.recordResult(err)
+		observeZoom(ctx, "create_meeting", "response_body_error", start)
+		return offlineMeetingDetails(config), nil
+	}
 	var meetingResp struct {
 		Id       int64  `json:"id"`
 		JoinUrl  string `json:"join_url"`
 		StartUrl string `json:"start_url"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&meetingResp); err != nil {
+	if err := json.Unmarshal(responseBody, &meetingResp); err != nil {
 		c.recordResult(err)
 		observeZoom(ctx, "create_meeting", "response_decode_error", start)
-		return nil, err
+		return offlineMeetingDetails(config), nil
+	}
+	if meetingResp.Id <= 0 || strings.TrimSpace(meetingResp.JoinUrl) == "" || strings.TrimSpace(meetingResp.StartUrl) == "" {
+		err := errors.New("zoom meeting response is missing required fields")
+		c.recordResult(err)
+		observeZoom(ctx, "create_meeting", "response_validation_error", start)
+		return offlineMeetingDetails(config), nil
 	}
 	c.recordResult(nil)
 	observeZoom(ctx, "create_meeting", "success", start)
@@ -312,12 +355,24 @@ func (c *ZoomClient) GetMeetingStatus(ctx context.Context, meetingID string) (st
 		return "", err
 	}
 
+	responseBody, err := readZoomResponseBody(resp)
+	if err != nil {
+		c.recordResult(err)
+		observeZoom(ctx, "get_meeting_status", "response_body_error", start)
+		return "", err
+	}
 	var meetingResp struct {
 		Status string `json:"status"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&meetingResp); err != nil {
+	if err := json.Unmarshal(responseBody, &meetingResp); err != nil {
 		c.recordResult(err)
 		observeZoom(ctx, "get_meeting_status", "response_decode_error", start)
+		return "", err
+	}
+	if strings.TrimSpace(meetingResp.Status) == "" {
+		err := errors.New("zoom meeting status is missing")
+		c.recordResult(err)
+		observeZoom(ctx, "get_meeting_status", "response_validation_error", start)
 		return "", err
 	}
 	c.recordResult(nil)
