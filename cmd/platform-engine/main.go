@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -31,6 +32,18 @@ const (
 	DatabaseConnectionFault    ErrorCategory = "DATABASE_CONNECTION_FAULT"
 	CacheConnectionFault       ErrorCategory = "CACHE_CONNECTION_FAULT"
 	ConfigurationFault         ErrorCategory = "CONFIGURATION_FAULT"
+
+	defaultHTTPReadHeaderTimeout = 5 * time.Second
+	defaultHTTPReadTimeout       = 30 * time.Second
+	defaultHTTPWriteTimeout      = 30 * time.Second
+	defaultHTTPIdleTimeout       = 60 * time.Second
+	defaultHTTPMaxHeaderBytes    = 1 << 20
+	minHTTPTimeout               = 100 * time.Millisecond
+	maxHTTPReadHeaderTimeout     = 120 * time.Second
+	maxHTTPReadWriteTimeout      = 5 * time.Minute
+	maxHTTPIdleTimeout           = 10 * time.Minute
+	minHTTPMaxHeaderBytes        = 4 << 10
+	maxHTTPMaxHeaderBytes        = 16 << 20
 )
 
 type PlatformException struct {
@@ -48,6 +61,11 @@ type Config struct {
 	DatabaseURL              string
 	RedisURL                 string
 	Port                     string
+	HTTPReadHeaderTimeout    time.Duration
+	HTTPReadTimeout          time.Duration
+	HTTPWriteTimeout         time.Duration
+	HTTPIdleTimeout          time.Duration
+	HTTPMaxHeaderBytes       int
 	GRPCAddress              string
 	GRPCSharedSecret         string
 	GRPCTLSCAPEM             string
@@ -78,6 +96,10 @@ func loadConfig() (*Config, *PlatformException) {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
+	}
+	httpConfig, httpConfigErr := loadHTTPServerConfig()
+	if httpConfigErr != nil {
+		return nil, httpConfigErr
 	}
 
 	grpcAddr := os.Getenv("GRPC_ENGINE_ADDRESS")
@@ -145,6 +167,11 @@ func loadConfig() (*Config, *PlatformException) {
 		DatabaseURL:              dbURL,
 		RedisURL:                 redisURL,
 		Port:                     port,
+		HTTPReadHeaderTimeout:    httpConfig.ReadHeaderTimeout,
+		HTTPReadTimeout:          httpConfig.ReadTimeout,
+		HTTPWriteTimeout:         httpConfig.WriteTimeout,
+		HTTPIdleTimeout:          httpConfig.IdleTimeout,
+		HTTPMaxHeaderBytes:       httpConfig.MaxHeaderBytes,
 		GRPCAddress:              grpcAddr,
 		GRPCSharedSecret:         grpcSharedSecret,
 		GRPCTLSCAPEM:             grpcTLSCAPEM,
@@ -152,6 +179,76 @@ func loadConfig() (*Config, *PlatformException) {
 		GRPCTLSClientKey:         grpcTLSClientKey,
 		GRPCTLSServerName:        grpcTLSServerName,
 	}, nil
+}
+
+type httpServerConfig struct {
+	ReadHeaderTimeout time.Duration
+	ReadTimeout       time.Duration
+	WriteTimeout      time.Duration
+	IdleTimeout       time.Duration
+	MaxHeaderBytes    int
+}
+
+func loadHTTPServerConfig() (httpServerConfig, *PlatformException) {
+	readHeaderTimeout, err := loadHTTPTimeout("HTTP_READ_HEADER_TIMEOUT_MS", defaultHTTPReadHeaderTimeout, minHTTPTimeout, maxHTTPReadHeaderTimeout)
+	if err != nil {
+		return httpServerConfig{}, err
+	}
+	readTimeout, err := loadHTTPTimeout("HTTP_READ_TIMEOUT_MS", defaultHTTPReadTimeout, minHTTPTimeout, maxHTTPReadWriteTimeout)
+	if err != nil {
+		return httpServerConfig{}, err
+	}
+	writeTimeout, err := loadHTTPTimeout("HTTP_WRITE_TIMEOUT_MS", defaultHTTPWriteTimeout, minHTTPTimeout, maxHTTPReadWriteTimeout)
+	if err != nil {
+		return httpServerConfig{}, err
+	}
+	idleTimeout, err := loadHTTPTimeout("HTTP_IDLE_TIMEOUT_MS", defaultHTTPIdleTimeout, minHTTPTimeout, maxHTTPIdleTimeout)
+	if err != nil {
+		return httpServerConfig{}, err
+	}
+	maxHeaderBytes, err := loadHTTPMaxHeaderBytes()
+	if err != nil {
+		return httpServerConfig{}, err
+	}
+	return httpServerConfig{
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       idleTimeout,
+		MaxHeaderBytes:    maxHeaderBytes,
+	}, nil
+}
+
+func loadHTTPTimeout(name string, defaultValue, minValue, maxValue time.Duration) (time.Duration, *PlatformException) {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return defaultValue, nil
+	}
+	millis, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || millis < minValue.Milliseconds() || millis > maxValue.Milliseconds() {
+		return 0, &PlatformException{
+			Category: ConfigurationFault,
+			Message:  fmt.Sprintf("%s must be an integer between %d and %d milliseconds", name, minValue.Milliseconds(), maxValue.Milliseconds()),
+			Code:     http.StatusInternalServerError,
+		}
+	}
+	return time.Duration(millis) * time.Millisecond, nil
+}
+
+func loadHTTPMaxHeaderBytes() (int, *PlatformException) {
+	raw := strings.TrimSpace(os.Getenv("HTTP_MAX_HEADER_BYTES"))
+	if raw == "" {
+		return defaultHTTPMaxHeaderBytes, nil
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value < minHTTPMaxHeaderBytes || value > maxHTTPMaxHeaderBytes {
+		return 0, &PlatformException{
+			Category: ConfigurationFault,
+			Message:  fmt.Sprintf("HTTP_MAX_HEADER_BYTES must be an integer between %d and %d bytes", minHTTPMaxHeaderBytes, maxHTTPMaxHeaderBytes),
+			Code:     http.StatusInternalServerError,
+		}
+	}
+	return int(value), nil
 }
 
 func requiresConfiguredGRPCAddress() bool {
@@ -332,10 +429,7 @@ func main() {
 	}
 
 	router := setupRoutes(dbpool, vectorDB, rdb)
-	server := &http.Server{
-		Addr:    ":" + cfg.Port,
-		Handler: router,
-	}
+	server := newHTTPServer(cfg, router)
 
 	go func() {
 		log.Printf("Server listening on port %s", cfg.Port)
@@ -358,4 +452,16 @@ func main() {
 	}
 
 	log.Println("Shutdown complete.")
+}
+
+func newHTTPServer(cfg *Config, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              ":" + cfg.Port,
+		Handler:           handler,
+		ReadHeaderTimeout: cfg.HTTPReadHeaderTimeout,
+		ReadTimeout:       cfg.HTTPReadTimeout,
+		WriteTimeout:      cfg.HTTPWriteTimeout,
+		IdleTimeout:       cfg.HTTPIdleTimeout,
+		MaxHeaderBytes:    cfg.HTTPMaxHeaderBytes,
+	}
 }

@@ -104,6 +104,15 @@ func TestLoadConfigDefaultsGRPCAddressOnlyForLocalDevelopment(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://local.example/scriptureforge")
 	t.Setenv("REDIS_URL", "redis://local.example:6379")
 	t.Setenv("DEPLOYMENT_ENVIRONMENT", "development")
+	for _, name := range []string{
+		"HTTP_READ_HEADER_TIMEOUT_MS",
+		"HTTP_READ_TIMEOUT_MS",
+		"HTTP_WRITE_TIMEOUT_MS",
+		"HTTP_IDLE_TIMEOUT_MS",
+		"HTTP_MAX_HEADER_BYTES",
+	} {
+		t.Setenv(name, "")
+	}
 	t.Setenv("GRPC_ENGINE_ADDRESS", "")
 	t.Setenv("GRPC_ENGINE_SHARED_SECRET", "")
 	t.Setenv("GRPC_ENGINE_TLS_CA_PEM", "")
@@ -117,6 +126,59 @@ func TestLoadConfigDefaultsGRPCAddressOnlyForLocalDevelopment(t *testing.T) {
 	}
 	if cfg.GRPCAddress != "localhost:50051" {
 		t.Fatalf("local GRPCAddress = %q, want localhost:50051", cfg.GRPCAddress)
+	}
+	if cfg.HTTPReadHeaderTimeout != defaultHTTPReadHeaderTimeout || cfg.HTTPReadTimeout != defaultHTTPReadTimeout || cfg.HTTPWriteTimeout != defaultHTTPWriteTimeout || cfg.HTTPIdleTimeout != defaultHTTPIdleTimeout || cfg.HTTPMaxHeaderBytes != defaultHTTPMaxHeaderBytes {
+		t.Fatalf("HTTP server defaults = header=%s read=%s write=%s idle=%s max_header=%d", cfg.HTTPReadHeaderTimeout, cfg.HTTPReadTimeout, cfg.HTTPWriteTimeout, cfg.HTTPIdleTimeout, cfg.HTTPMaxHeaderBytes)
+	}
+}
+
+func TestLoadConfigRejectsInvalidHTTPServerLimits(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		env   string
+		value string
+	}{
+		{name: "read header timeout too low", env: "HTTP_READ_HEADER_TIMEOUT_MS", value: "0"},
+		{name: "read timeout too high", env: "HTTP_READ_TIMEOUT_MS", value: "300001"},
+		{name: "write timeout malformed", env: "HTTP_WRITE_TIMEOUT_MS", value: "fast"},
+		{name: "idle timeout too low", env: "HTTP_IDLE_TIMEOUT_MS", value: "99"},
+		{name: "header bytes too low", env: "HTTP_MAX_HEADER_BYTES", value: "1024"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("DATABASE_URL", "postgres://local.example/scriptureforge")
+			t.Setenv("REDIS_URL", "redis://local.example:6379")
+			t.Setenv("DEPLOYMENT_ENVIRONMENT", "development")
+			for _, name := range []string{
+				"HTTP_READ_HEADER_TIMEOUT_MS",
+				"HTTP_READ_TIMEOUT_MS",
+				"HTTP_WRITE_TIMEOUT_MS",
+				"HTTP_IDLE_TIMEOUT_MS",
+				"HTTP_MAX_HEADER_BYTES",
+			} {
+				t.Setenv(name, "")
+			}
+			t.Setenv(test.env, test.value)
+
+			cfg, errConfig := loadConfig()
+			if errConfig == nil || cfg != nil || !strings.Contains(errConfig.Message, test.env) {
+				t.Fatalf("loadConfig = cfg=%#v err=%#v, want %s configuration fault", cfg, errConfig, test.env)
+			}
+		})
+	}
+}
+
+func TestHTTPServerAppliesTransportLimits(t *testing.T) {
+	cfg := &Config{
+		Port:                  "8080",
+		HTTPReadHeaderTimeout: 2 * time.Second,
+		HTTPReadTimeout:       11 * time.Second,
+		HTTPWriteTimeout:      13 * time.Second,
+		HTTPIdleTimeout:       17 * time.Second,
+		HTTPMaxHeaderBytes:    32 * 1024,
+	}
+	server := newHTTPServer(cfg, http.NotFoundHandler())
+	if server.ReadHeaderTimeout != cfg.HTTPReadHeaderTimeout || server.ReadTimeout != cfg.HTTPReadTimeout || server.WriteTimeout != cfg.HTTPWriteTimeout || server.IdleTimeout != cfg.HTTPIdleTimeout || server.MaxHeaderBytes != cfg.HTTPMaxHeaderBytes {
+		t.Fatalf("server transport limits = header=%s read=%s write=%s idle=%s max_header=%d", server.ReadHeaderTimeout, server.ReadTimeout, server.WriteTimeout, server.IdleTimeout, server.MaxHeaderBytes)
 	}
 }
 

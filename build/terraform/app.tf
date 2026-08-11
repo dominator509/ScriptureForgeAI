@@ -282,6 +282,31 @@ resource "kubernetes_deployment" "api" {
             container_port = 8080
           }
 
+          env {
+            name  = "HTTP_READ_HEADER_TIMEOUT_MS"
+            value = tostring(var.api_http_read_header_timeout_ms)
+          }
+
+          env {
+            name  = "HTTP_READ_TIMEOUT_MS"
+            value = tostring(var.api_http_read_timeout_ms)
+          }
+
+          env {
+            name  = "HTTP_WRITE_TIMEOUT_MS"
+            value = tostring(var.api_http_write_timeout_ms)
+          }
+
+          env {
+            name  = "HTTP_IDLE_TIMEOUT_MS"
+            value = tostring(var.api_http_idle_timeout_ms)
+          }
+
+          env {
+            name  = "HTTP_MAX_HEADER_BYTES"
+            value = tostring(var.api_http_max_header_bytes)
+          }
+
           resources {
             requests = var.api_resources.requests
             limits   = var.api_resources.limits

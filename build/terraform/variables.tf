@@ -121,6 +121,61 @@ variable "api_image" {
   }
 }
 
+variable "api_http_read_header_timeout_ms" {
+  description = "Maximum milliseconds the API waits for request headers."
+  type        = number
+  default     = 5000
+
+  validation {
+    condition     = var.api_http_read_header_timeout_ms >= 100 && var.api_http_read_header_timeout_ms <= 120000
+    error_message = "api_http_read_header_timeout_ms must be between 100 and 120000 milliseconds."
+  }
+}
+
+variable "api_http_read_timeout_ms" {
+  description = "Maximum milliseconds the API waits while reading an HTTP request."
+  type        = number
+  default     = 30000
+
+  validation {
+    condition     = var.api_http_read_timeout_ms >= 100 && var.api_http_read_timeout_ms <= 300000
+    error_message = "api_http_read_timeout_ms must be between 100 and 300000 milliseconds."
+  }
+}
+
+variable "api_http_write_timeout_ms" {
+  description = "Maximum milliseconds the API waits while writing an HTTP response."
+  type        = number
+  default     = 30000
+
+  validation {
+    condition     = var.api_http_write_timeout_ms >= 100 && var.api_http_write_timeout_ms <= 300000
+    error_message = "api_http_write_timeout_ms must be between 100 and 300000 milliseconds."
+  }
+}
+
+variable "api_http_idle_timeout_ms" {
+  description = "Maximum milliseconds an API keep-alive connection may remain idle."
+  type        = number
+  default     = 60000
+
+  validation {
+    condition     = var.api_http_idle_timeout_ms >= 100 && var.api_http_idle_timeout_ms <= 600000
+    error_message = "api_http_idle_timeout_ms must be between 100 and 600000 milliseconds."
+  }
+}
+
+variable "api_http_max_header_bytes" {
+  description = "Maximum HTTP request header bytes accepted by the API."
+  type        = number
+  default     = 1048576
+
+  validation {
+    condition     = var.api_http_max_header_bytes >= 4096 && var.api_http_max_header_bytes <= 16777216
+    error_message = "api_http_max_header_bytes must be between 4096 and 16777216 bytes."
+  }
+}
+
 variable "web_image" {
   description = "Immutable container image digest for the Next.js web service."
   type        = string

@@ -24,6 +24,13 @@ api_image         = "123456789012.dkr.ecr.us-east-1.amazonaws.com/scriptureforge
 web_image         = "123456789012.dkr.ecr.us-east-1.amazonaws.com/scriptureforge-staging/web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 rust_engine_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/scriptureforge-staging/rust-engine@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 
+# Optional API transport overrides. Defaults are bounded production-safe values.
+# api_http_read_header_timeout_ms = 5000
+# api_http_read_timeout_ms        = 30000
+# api_http_write_timeout_ms       = 30000
+# api_http_idle_timeout_ms        = 60000
+# api_http_max_header_bytes       = 1048576
+
 database_kms_key_arn = "arn:aws:kms:us-east-1:123456789012:alias/scriptureforge-staging-rds"
 redis_kms_key_arn    = "arn:aws:kms:us-east-1:123456789012:alias/scriptureforge-staging-redis"
 
