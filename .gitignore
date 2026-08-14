@@ -1,7 +1,3 @@
-node_modules/
-.next/
-dist/
-target/
-*.tsbuildinfo
-.serena/
-.tools/
+services/platform-engine/platform-engine
+services/platform-engine/platform.log
+services/platform-engine/platform-engine

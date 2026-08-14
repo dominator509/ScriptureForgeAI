@@ -1,0 +1,3 @@
+Generating load...
+Load generation complete.
+PRE_DISASTER_STATE_HASH: {"hash":"HASH_TX_600","transactions":600}
