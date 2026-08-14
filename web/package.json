@@ -1,0 +1,22 @@
+{
+  "name": "scriptureforge-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "typecheck": "tsc --noEmit",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "14.0.0",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "zustand": "^4.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/react": "^19.2.14",
+    "typescript": "^5.9.3"
+  }
+}
