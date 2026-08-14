@@ -113,7 +113,7 @@ func (h *AIHandler) GenerateCurriculumHandler(w http.ResponseWriter, r *http.Req
 		}
 
 		// 3. Execute via explicit boundaries and strict response verification per chunk
-		response, err := h.LLMClient.Execute(r.Context(), chunk, compiledContext, h.Verifier)
+		response, err := h.LLMClient.CreateCompletion(r.Context(), chunk, compiledContext, h.Verifier)
 		if err != nil {
 			h.writeAIRequestLog(r, claims, chunk, "failed", err.Error(), "")
 			if pe, ok := err.(*ai.PlatformException); ok {
