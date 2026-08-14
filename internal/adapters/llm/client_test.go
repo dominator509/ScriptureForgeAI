@@ -6,7 +6,7 @@ import (
 )
 
 func TestBuildRigorousPrompt(t *testing.T) {
-	client := NewLLMClient()
+	client := &LLMClient{}
 
 	safePrompt := "What does the text say about light?"
 	compiledContext := "In the beginning God created the heaven and the earth. [Genesis 1:1]"
