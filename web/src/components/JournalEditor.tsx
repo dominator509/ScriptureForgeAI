@@ -26,7 +26,8 @@ export const JournalEditor: React.FC = () => {
             setStatus("Isolation Key Derived Successfully");
           }
         })
-        .catch(() => {
+        .catch((err) => {
+          console.error("Failed to derive isolation key:", err);
           if (isMounted) setStatus("Failed to derive isolation key");
         });
     } else {
@@ -40,7 +41,10 @@ export const JournalEditor: React.FC = () => {
     if (!token) return;
     apiRequest<Array<EncryptedPayload & { id: string; salt_id: string; salt_version: number }>>('/api/v1/journal_entries', token)
       .then(setEntries)
-      .catch(() => setEntries([]));
+      .catch((err) => {
+        console.error('Failed to fetch journal entries:', err);
+        setEntries([]);
+      });
   }, [token]);
 
   // Ensure key is cleared upon dismount (Zero-Knowledge rule)
@@ -72,6 +76,7 @@ export const JournalEditor: React.FC = () => {
       }
 
     } catch (err) {
+      console.error("Encryption failed:", err);
       setStatus("Encryption failed");
     }
   };
@@ -85,6 +90,7 @@ export const JournalEditor: React.FC = () => {
       setPlaintext(decodedText);
       setStatus("Successfully decrypted from network payload.");
     } catch (err) {
+      console.error("Decryption failed:", err);
       setStatus("Decryption failed. Invalid key or corrupted data.");
     }
   };

@@ -159,8 +159,8 @@ func (c *ZoomClient) CreateMeeting(ctx context.Context, config room.MeetingConfi
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 300 {
-		respBody, _ := io.ReadAll(resp.Body)
-		err := fmt.Errorf("zoom API error on creation: %d %s", resp.StatusCode, string(respBody))
+		_, _ = io.ReadAll(resp.Body)
+		err := fmt.Errorf("zoom API error on creation: %d", resp.StatusCode)
 		c.recordResult(err)
 		return offlineMeetingDetails(config), nil
 	}
