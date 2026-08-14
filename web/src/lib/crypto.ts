@@ -37,13 +37,20 @@ export async function deriveIsolationKey(passphrase: string, salt: string): Prom
 /**
  * Utility to convert ArrayBuffer to Base64 string safely.
  */
-function bufferToBase64(buffer: ArrayBuffer): string {
+export function bufferToBase64(buffer: ArrayBuffer): string {
+    // Zero-overhead shortcut for Node.js / Server-Side Rendering environments
+    // @ts-ignore
+    if (typeof Buffer !== "undefined") {
+        // @ts-ignore
+        return Buffer.from(buffer).toString("base64");
+    }
+
+    // Chunking to avoid "Maximum call stack size exceeded" while avoiding loop string concatenation
     const bytes = new Uint8Array(buffer);
-    const CHUNK_SIZE = 8192;
-    let binary = '';
-    for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
-        const chunk = bytes.subarray(i, i + CHUNK_SIZE);
-        binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+    let binary = "";
+    const CHUNK_SIZE = 32768; // 32KB
+    for (let i = 0; i < bytes.byteLength; i += CHUNK_SIZE) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK_SIZE) as unknown as number[]);
     }
     return window.btoa(binary);
 }
