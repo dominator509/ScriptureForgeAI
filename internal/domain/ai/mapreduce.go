@@ -100,3 +100,43 @@ func (m *MapReduceWorker) Process(ctx context.Context, text string, processor fu
 
 	return results, nil
 }
+
+type CompletionRequest struct {
+	Model       string
+	Prompt      string
+	Temperature float32
+}
+
+type LLMService interface {
+	CreateCompletion(ctx context.Context, req CompletionRequest) (string, error)
+}
+
+type MapReducePipeline struct {
+	LLM LLMService
+}
+
+func (mr *MapReducePipeline) executeReduce(ctx context.Context, prompt string) (string, error) {
+	if prompt == "" {
+		return "", &PlatformException{
+			Category: "MAPREDUCE_PROCESSING_FAULT",
+			Message:  "prompt cannot be empty",
+			Code:     400,
+		}
+	}
+
+	resp, err := mr.LLM.CreateCompletion(ctx, CompletionRequest{
+		Model:       "gpt-4-turbo",
+		Prompt:      prompt,
+		Temperature: 0.2,
+	})
+
+	if err != nil {
+		return "", &PlatformException{
+			Category: "MAPREDUCE_PROCESSING_FAULT",
+			Message:  "failed to execute reduce: " + err.Error(),
+			Code:     500,
+		}
+	}
+
+	return resp, nil
+}
