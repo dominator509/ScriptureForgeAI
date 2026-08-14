@@ -1,5 +1,7 @@
 # ARCHITECTURE.md
 
+> Implementation note, 2026-06-23: remediation is targeting the repo-current stack (`go.mod` toolchain Go 1.24.3 and `web/package.json` Next 14) while preserving the architecture's `/api/v1/*` public route direction. Older version targets in this document remain aspirational until a dedicated upgrade PR changes the manifests.
+
 ## 1. Product Summary
 ScriptureForge AI (alternatively known as BibleStudyOS or ScriptureFlow) is a production-grade, multi-tenant, cloud-native Bible Study Operating System and Mobile Ecosystem. It resolves the core market gap between complex, academic desktop applications (e.g., Logos, Accordance) and overly simplistic consumer reading apps (e.g., YouVersion). 
 
