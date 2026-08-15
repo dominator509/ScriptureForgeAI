@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"regexp"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -106,7 +107,7 @@ func (h *AIHandler) GenerateCurriculumHandler(w http.ResponseWriter, r *http.Req
 	// 1. MapReduce Chunk Processing
 	// If the topic is an extensive textual outline, we divide it to protect context windows.
 	chunks := h.MapReduceWorker.Chunk(req.Topic)
-	var completeCurriculum string
+	var completeCurriculum strings.Builder
 
 	for _, chunk := range chunks {
 		// 2. RAG Compilation per chunk
@@ -133,11 +134,12 @@ func (h *AIHandler) GenerateCurriculumHandler(w http.ResponseWriter, r *http.Req
 			return
 		}
 
-		completeCurriculum += response + "\n\n"
+		completeCurriculum.WriteString(response)
+		completeCurriculum.WriteString("\n\n")
 		h.writeAIRequestLog(r, claims, chunk, "succeeded", "", response)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"generated_curriculum": completeCurriculum})
+	json.NewEncoder(w).Encode(map[string]string{"generated_curriculum": completeCurriculum.String()})
 }
