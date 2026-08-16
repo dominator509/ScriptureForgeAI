@@ -3,6 +3,7 @@ package ports
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -385,6 +386,48 @@ func TestRoomHandlersHonorTenantIsolation(t *testing.T) {
 	}
 }
 
+func TestCreateRoomFailsClosedAndDeactivatesRoomWhenRedisStateInitializationFails(t *testing.T) {
+	db := openTenantIsolationDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	seedTenantIsolationFixtures(ctx, t, db)
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		cleanupTenantIsolationFixtures(cleanupCtx, t, db)
+	})
+
+	roomHandler := &RoomHandler{
+		DB:           db,
+		StateManager: &tenantIsolationStateStore{setActiveErr: errors.New("redis unavailable")},
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/rooms/create", strings.NewReader(`{"title":"Redis State Failure Room"}`))
+	request = request.WithContext(context.WithValue(request.Context(), auth.ContextKeyUser, &auth.TokenClaims{
+		UserID:         tenantIsolationUserA,
+		OrganizationID: tenantIsolationOrgA,
+		Role:           "member",
+	}))
+	recorder := httptest.NewRecorder()
+	roomHandler.CreateRoomHandler(recorder, request)
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("Redis state failure status = %d body = %s, want 503", recorder.Code, recorder.Body.String())
+	}
+	if strings.Contains(recorder.Body.String(), "redis unavailable") {
+		t.Fatalf("Redis state failure leaked dependency detail: %s", recorder.Body.String())
+	}
+
+	withTenantIsolationContext(ctx, t, db, tenantIsolationOrgA, func(ctx context.Context, tx pgx.Tx) {
+		var roomCount int
+		var active bool
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*), COALESCE(BOOL_OR(is_active), FALSE) FROM live_rooms WHERE organization_id = $1 AND title = 'Redis State Failure Room'`, tenantIsolationOrgA).Scan(&roomCount, &active); err != nil {
+			t.Fatalf("query compensated room: %v", err)
+		}
+		if roomCount != 1 || active {
+			t.Fatalf("compensated room count=%d active=%t, want count=1 active=false", roomCount, active)
+		}
+	})
+}
+
 func TestSocketStreamIsTenantScoped(t *testing.T) {
 	t.Setenv("ALLOWED_WS_ORIGINS", "")
 	t.Setenv("DEPLOYMENT_ENVIRONMENT", "")
@@ -532,9 +575,13 @@ func TestAuthRefreshLogoutHonorTenantIsolation(t *testing.T) {
 	}
 }
 
-type tenantIsolationStateStore struct{}
+type tenantIsolationStateStore struct {
+	setActiveErr error
+}
 
-func (tenantIsolationStateStore) SetRoomActiveState(context.Context, string, bool) error { return nil }
+func (s tenantIsolationStateStore) SetRoomActiveState(context.Context, string, bool) error {
+	return s.setActiveErr
+}
 
 func (tenantIsolationStateStore) GetLatestRoomEvent(_ context.Context, roomID string) (string, error) {
 	return `{"type":"state_sync","room_id":"` + roomID + `"}`, nil

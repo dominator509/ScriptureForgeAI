@@ -876,6 +876,8 @@ Status last updated: 2026-06-28
 
 2026-08-16 tenant list cursor hardening: active-room and journal list handlers now check `pgx.Rows.Err()` after iteration and fail with generic `500` responses plus dependency telemetry if a database cursor ends with an error, preventing truncated successful lists. Existing RLS transaction boundaries remain unchanged; deployed database failure telemetry remains pending.
 
+2026-08-16 room state initialization hardening: `POST /api/v1/rooms/create` now returns a sanitized `503` when Redis active-state initialization fails after PostgreSQL commit and performs a tenant-RLS-scoped compensation update marking the durable room inactive. Focused handler coverage is local; the DB-backed compensation regression runs in the Postgres/RLS gate, while deployed multi-store failure telemetry remains pending.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.

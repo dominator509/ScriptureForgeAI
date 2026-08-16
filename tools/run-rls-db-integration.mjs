@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 const isWindows = process.platform === 'win32';
 const defaultGoBin = isWindows ? '.\\.tools\\go\\bin\\go.exe' : './.tools/go/bin/go';
 
-export const rlsDBTestPattern = 'Test(TenantRLSCoversAllTenantTables|TenantScopedJournalHandlersEnforceRLS|TenantScopedRoomActiveHandlerEnforcesRLS|TenantScopedRoomStateHandlerEnforcesRLS|AuthRegisterLoginRefreshRotationAndLogout|PrivilegedLoginRequiresAndVerifiesMFA|WorkspaceSwitchRequiresAuthenticatedOrgMatch|MFAEnrollAndVerifyFlowForPrivilegedUsers|JournalHandlersHonorTenantIsolation|RoomHandlersHonorTenantIsolation|SocketStreamIsTenantScoped|AuthRefreshLogoutHonorTenantIsolation|AIRequestLogPersistsCitationsAndHonorsTenantRLS|GenerateCurriculumHandlerPersistsAuditRowsWithTenantRLS|GenerateCurriculumHandlerTenantIsolationForCrossTenantReadsAndWrites)';
+export const rlsDBTestPattern = 'Test(TenantRLSCoversAllTenantTables|TenantScopedJournalHandlersEnforceRLS|TenantScopedRoomActiveHandlerEnforcesRLS|TenantScopedRoomStateHandlerEnforcesRLS|AuthRegisterLoginRefreshRotationAndLogout|PrivilegedLoginRequiresAndVerifiesMFA|WorkspaceSwitchRequiresAuthenticatedOrgMatch|MFAEnrollAndVerifyFlowForPrivilegedUsers|JournalHandlersHonorTenantIsolation|RoomHandlersHonorTenantIsolation|CreateRoomFailsClosedAndDeactivatesRoomWhenRedisStateInitializationFails|SocketStreamIsTenantScoped|AuthRefreshLogoutHonorTenantIsolation|AIRequestLogPersistsCitationsAndHonorsTenantRLS|GenerateCurriculumHandlerPersistsAuditRowsWithTenantRLS|GenerateCurriculumHandlerTenantIsolationForCrossTenantReadsAndWrites)';
 
 export const rlsDBRequiredTests = [
   'TenantRLSCoversAllTenantTables',
@@ -17,6 +17,7 @@ export const rlsDBRequiredTests = [
   'MFAEnrollAndVerifyFlowForPrivilegedUsers',
   'JournalHandlersHonorTenantIsolation',
   'RoomHandlersHonorTenantIsolation',
+  'CreateRoomFailsClosedAndDeactivatesRoomWhenRedisStateInitializationFails',
   'SocketStreamIsTenantScoped',
   'AuthRefreshLogoutHonorTenantIsolation',
   'AIRequestLogPersistsCitationsAndHonorsTenantRLS',

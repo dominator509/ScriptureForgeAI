@@ -3,6 +3,7 @@ package ports
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -38,6 +39,32 @@ type RoomResponse struct {
 	Title     string `json:"title"`
 	IsActive  bool   `json:"is_active"`
 	CreatedAt string `json:"created_at,omitempty"`
+}
+
+func (h *RoomHandler) deactivateRoomAfterStateFailure(ctx context.Context, claims *auth.TokenClaims, roomID string) error {
+	tx, err := h.DB.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err := auth.SetTenantContext(ctx, tx, claims.OrganizationID); err != nil {
+		return err
+	}
+	tag, err := tx.Exec(
+		ctx,
+		`UPDATE live_rooms
+		 SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
+		 WHERE organization_id = $1 AND id = $2`,
+		claims.OrganizationID,
+		roomID,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return fmt.Errorf("room state compensation affected %d rows", tag.RowsAffected())
+	}
+	return tx.Commit(ctx)
 }
 
 func scanActiveRoomRows(rows pgx.Rows) ([]RoomResponse, error) {
@@ -186,6 +213,16 @@ func (h *RoomHandler) CreateRoomHandler(w http.ResponseWriter, r *http.Request) 
 	redisStatus := "success"
 	if err := h.StateManager.SetRoomActiveState(r.Context(), roomResp.ID, true); err != nil {
 		redisStatus = "error"
+		observability.ObserveDependencyFromContext(r.Context(), "redis", "room_set_active", redisStatus, time.Since(redisStart))
+
+		compensationStart := time.Now()
+		compensationStatus := "error"
+		if compensationErr := h.deactivateRoomAfterStateFailure(r.Context(), claims, roomResp.ID); compensationErr == nil {
+			compensationStatus = "success"
+		}
+		observability.ObserveDependencyFromContext(r.Context(), "postgres", "room_state_compensation", compensationStatus, time.Since(compensationStart))
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to initialize room state", Code: http.StatusServiceUnavailable})
+		return
 	}
 	observability.ObserveDependencyFromContext(r.Context(), "redis", "room_set_active", redisStatus, time.Since(redisStart))
 
