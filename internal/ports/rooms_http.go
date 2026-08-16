@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"scriptureforge/internal/domain/auth"
 	"scriptureforge/internal/domain/observability"
@@ -37,6 +38,21 @@ type RoomResponse struct {
 	Title     string `json:"title"`
 	IsActive  bool   `json:"is_active"`
 	CreatedAt string `json:"created_at,omitempty"`
+}
+
+func scanActiveRoomRows(rows pgx.Rows) ([]RoomResponse, error) {
+	rooms := []RoomResponse{}
+	for rows.Next() {
+		var roomResp RoomResponse
+		if err := rows.Scan(&roomResp.ID, &roomResp.Title, &roomResp.IsActive, &roomResp.CreatedAt); err != nil {
+			return nil, err
+		}
+		rooms = append(rooms, roomResp)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return rooms, nil
 }
 
 func (h *RoomHandler) validateRoomMembership(r *http.Request, claims *auth.TokenClaims, roomID string) bool {
@@ -229,15 +245,11 @@ func (h *RoomHandler) ActiveRoomsHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	defer rows.Close()
-	rooms := []RoomResponse{}
-	for rows.Next() {
-		var roomResp RoomResponse
-		if err := rows.Scan(&roomResp.ID, &roomResp.Title, &roomResp.IsActive, &roomResp.CreatedAt); err != nil {
-			observability.ObserveDependencyFromContext(r.Context(), "postgres", "rooms_active", status, time.Since(start))
-			sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to decode room", Code: http.StatusInternalServerError})
-			return
-		}
-		rooms = append(rooms, roomResp)
+	rooms, err := scanActiveRoomRows(rows)
+	if err != nil {
+		observability.ObserveDependencyFromContext(r.Context(), "postgres", "rooms_active", status, time.Since(start))
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to read rooms", Code: http.StatusInternalServerError})
+		return
 	}
 	status = "success"
 	observability.ObserveDependencyFromContext(r.Context(), "postgres", "rooms_active", status, time.Since(start))

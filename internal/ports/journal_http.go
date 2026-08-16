@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"scriptureforge/internal/domain/auth"
 	"scriptureforge/internal/domain/observability"
@@ -27,6 +28,21 @@ type JournalPayload struct {
 	SaltID      string `json:"salt_id"`
 	SaltVersion int    `json:"salt_version"`
 	CreatedAt   string `json:"created_at,omitempty"`
+}
+
+func scanJournalRows(rows pgx.Rows) ([]JournalPayload, error) {
+	entries := []JournalPayload{}
+	for rows.Next() {
+		var entry JournalPayload
+		if err := rows.Scan(&entry.ID, &entry.Ciphertext, &entry.IV, &entry.SaltID, &entry.SaltVersion, &entry.CreatedAt); err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return entries, nil
 }
 
 type JournalBootstrapResponse struct {
@@ -304,15 +320,11 @@ func (h *JournalHandler) listJournalEntries(w http.ResponseWriter, r *http.Reque
 	}
 	defer rows.Close()
 
-	entries := []JournalPayload{}
-	for rows.Next() {
-		var entry JournalPayload
-		if err := rows.Scan(&entry.ID, &entry.Ciphertext, &entry.IV, &entry.SaltID, &entry.SaltVersion, &entry.CreatedAt); err != nil {
-			observeJournalPostgres(r, "journal_list", status, start)
-			sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to decode journal entry", Code: http.StatusInternalServerError})
-			return
-		}
-		entries = append(entries, entry)
+	entries, err := scanJournalRows(rows)
+	if err != nil {
+		observeJournalPostgres(r, "journal_list", status, start)
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to read journal entries", Code: http.StatusInternalServerError})
+		return
 	}
 	status = "success"
 	observeJournalPostgres(r, "journal_list", status, start)

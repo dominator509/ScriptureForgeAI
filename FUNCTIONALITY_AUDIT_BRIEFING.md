@@ -874,6 +874,8 @@ Status last updated: 2026-06-28
 
 2026-08-16 AI aggregate-output hardening: generated curriculum assembly now uses amortized buffering and an 8 MiB aggregate envelope across the bounded chunk set. Overflow is recorded as a failed AI audit attempt and returns a sanitized typed `503` without partial output; focused exact-limit, overflow, and nil-builder tests passed. Deployed provider, audit, and degradation evidence remains pending under `EXT-AI-001`.
 
+2026-08-16 tenant list cursor hardening: active-room and journal list handlers now check `pgx.Rows.Err()` after iteration and fail with generic `500` responses plus dependency telemetry if a database cursor ends with an error, preventing truncated successful lists. Existing RLS transaction boundaries remain unchanged; deployed database failure telemetry remains pending.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.
