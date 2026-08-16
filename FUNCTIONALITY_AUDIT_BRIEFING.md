@@ -872,6 +872,8 @@ Status last updated: 2026-06-28
 
 2026-08-16 AI nested-readiness hardening: the generation handler now rejects incomplete RAG and LLM dependency graphs before work begins, including missing vector storage, API key, endpoint, model, or bounded HTTP client. Direct RAG and LLM calls also return typed `503` faults for nil/partial wiring. Focused handler/domain tests passed; deployed provider, audit, and degradation evidence remains pending under `EXT-AI-001`.
 
+2026-08-16 AI aggregate-output hardening: generated curriculum assembly now uses amortized buffering and an 8 MiB aggregate envelope across the bounded chunk set. Overflow is recorded as a failed AI audit attempt and returns a sanitized typed `503` without partial output; focused exact-limit, overflow, and nil-builder tests passed. Deployed provider, audit, and degradation evidence remains pending under `EXT-AI-001`.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.

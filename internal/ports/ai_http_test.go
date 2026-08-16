@@ -117,6 +117,23 @@ func TestGenerateCurriculumHandlerFailsClosedWhenNestedDependenciesAreIncomplete
 	}
 }
 
+func TestAppendAIResponseEnforcesAggregateLimit(t *testing.T) {
+	var builder strings.Builder
+	response := strings.Repeat("x", maxAIAggregateResponseBytes-len(aiResponseSeparator))
+	if !appendAIResponse(&builder, response) {
+		t.Fatal("appendAIResponse rejected an exact aggregate-size response")
+	}
+	if builder.Len() != maxAIAggregateResponseBytes {
+		t.Fatalf("aggregate length = %d, want %d", builder.Len(), maxAIAggregateResponseBytes)
+	}
+	if appendAIResponse(&builder, "x") {
+		t.Fatal("appendAIResponse accepted a response beyond the aggregate limit")
+	}
+	if appendAIResponse(nil, "x") {
+		t.Fatal("appendAIResponse accepted a nil builder")
+	}
+}
+
 func TestWriteAIRequestLogReturnsErrorWhenDatabaseIsMissing(t *testing.T) {
 	err := (&AIHandler{}).writeAIRequestLog(
 		httptest.NewRequest(http.MethodPost, "/api/v1/ai/generate/study", nil),

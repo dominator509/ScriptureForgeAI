@@ -28,9 +28,11 @@ type CurriculumRequest struct {
 }
 
 const (
-	maxAIRequestBodyBytes = 64 * 1024
-	maxAITopicCharacters  = 16 * 1024
-	maxAIChunks           = 64
+	maxAIRequestBodyBytes       = 64 * 1024
+	maxAITopicCharacters        = 16 * 1024
+	maxAIChunks                 = 64
+	maxAIAggregateResponseBytes = 8 << 20
+	aiResponseSeparator         = "\n\n"
 )
 
 func sendAIError(w http.ResponseWriter, pe *ai.PlatformException) {
@@ -99,6 +101,15 @@ func aiAuditPersistenceFault() *ai.PlatformException {
 	return &ai.PlatformException{Category: "AI_AUDIT_FAULT", Message: "AI audit persistence is unavailable", Code: http.StatusServiceUnavailable}
 }
 
+func appendAIResponse(builder *strings.Builder, response string) bool {
+	if builder == nil || len(response) > maxAIAggregateResponseBytes || builder.Len() > maxAIAggregateResponseBytes-len(response)-len(aiResponseSeparator) {
+		return false
+	}
+	builder.WriteString(response)
+	builder.WriteString(aiResponseSeparator)
+	return true
+}
+
 func (h *AIHandler) GenerateCurriculumHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		sendAIError(w, &ai.PlatformException{Category: "ROUTING_FAULT", Message: "Method not allowed", Code: http.StatusMethodNotAllowed})
@@ -149,7 +160,7 @@ func (h *AIHandler) GenerateCurriculumHandler(w http.ResponseWriter, r *http.Req
 		sendAIError(w, &ai.PlatformException{Category: "VALIDATION_FAULT", Message: "Topic produces too much work", Code: http.StatusRequestEntityTooLarge})
 		return
 	}
-	var completeCurriculum string
+	var completeCurriculum strings.Builder
 
 	for _, chunk := range chunks {
 		// 2. RAG Compilation per chunk
@@ -182,7 +193,14 @@ func (h *AIHandler) GenerateCurriculumHandler(w http.ResponseWriter, r *http.Req
 			return
 		}
 
-		completeCurriculum += response + "\n\n"
+		if !appendAIResponse(&completeCurriculum, response) {
+			if auditErr := h.writeAIRequestLog(r, claims, chunk, "failed", "aggregate AI response exceeded configured size limit", ""); auditErr != nil {
+				sendAIError(w, aiAuditPersistenceFault())
+				return
+			}
+			sendAIError(w, &ai.PlatformException{Category: "AI_ORCHESTRATION_ENGINE_FAULT", Message: "Generated curriculum exceeded the configured size limit", Code: http.StatusServiceUnavailable})
+			return
+		}
 		if auditErr := h.writeAIRequestLog(r, claims, chunk, "succeeded", "", response); auditErr != nil {
 			sendAIError(w, aiAuditPersistenceFault())
 			return
@@ -191,5 +209,5 @@ func (h *AIHandler) GenerateCurriculumHandler(w http.ResponseWriter, r *http.Req
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"generated_curriculum": completeCurriculum})
+	json.NewEncoder(w).Encode(map[string]string{"generated_curriculum": completeCurriculum.String()})
 }
