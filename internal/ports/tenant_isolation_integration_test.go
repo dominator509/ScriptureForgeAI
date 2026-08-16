@@ -428,6 +428,64 @@ func TestCreateRoomFailsClosedAndDeactivatesRoomWhenRedisStateInitializationFail
 	})
 }
 
+func TestZoomWebhookRoomMappingRLSBinding(t *testing.T) {
+	db := openTenantIsolationDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	seedTenantIsolationFixtures(ctx, t, db)
+	const (
+		roomID    = "21212121-2121-4212-8212-212121212121"
+		meetingID = "zoom-rls-binding-meeting"
+	)
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		cleanupTenantIsolationFixtures(cleanupCtx, t, db)
+	})
+
+	withTenantIsolationContext(ctx, t, db, tenantIsolationOrgA, func(ctx context.Context, tx pgx.Tx) {
+		if _, err := tx.Exec(ctx, `INSERT INTO live_rooms (id, organization_id, host_user_id, title, meeting_external_id) VALUES ($1, $2, $3, 'Zoom RLS Binding Room', $4)`, roomID, tenantIsolationOrgA, tenantIsolationUserA, meetingID); err != nil {
+			t.Fatalf("seed Zoom mapping room: %v", err)
+		}
+	})
+
+	tx, err := db.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin Zoom mapping RLS transaction: %v", err)
+	}
+	defer tx.Rollback(ctx)
+	var isSuperuser bool
+	if err := tx.QueryRow(ctx, `SELECT rolsuper FROM pg_roles WHERE rolname = current_user`).Scan(&isSuperuser); err != nil {
+		t.Fatalf("check Zoom mapping RLS role: %v", err)
+	}
+	if isSuperuser {
+		if _, err := tx.Exec(ctx, `SET LOCAL ROLE `+tenantIsolationRLSRole); err != nil {
+			t.Fatalf("set Zoom mapping RLS role: %v", err)
+		}
+	}
+	if _, err := tx.Exec(ctx, `SELECT set_config('app.current_org_id', '00000000-0000-4000-8000-000000000000', true)`); err != nil {
+		t.Fatalf("set Zoom mapping sentinel tenant context: %v", err)
+	}
+
+	var visibleWithoutVerification int
+	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM live_rooms WHERE meeting_external_id = $1`, meetingID).Scan(&visibleWithoutVerification); err != nil {
+		t.Fatalf("query Zoom mapping without verified context: %v", err)
+	}
+	if visibleWithoutVerification != 0 {
+		t.Fatalf("zoom webhook mapping without verified context visible rows=%d, want 0", visibleWithoutVerification)
+	}
+	if _, err := tx.Exec(ctx, `SELECT set_config('app.webhook_lookup_verified', 'true', true), set_config('app.webhook_lookup_meeting_id', $1, true)`, meetingID); err != nil {
+		t.Fatalf("set Zoom webhook mapping context: %v", err)
+	}
+	var mappedRoomID string
+	if err := tx.QueryRow(ctx, `SELECT id FROM live_rooms WHERE meeting_external_id = $1`, meetingID).Scan(&mappedRoomID); err != nil {
+		t.Fatalf("query Zoom mapping with verified context: %v", err)
+	}
+	if mappedRoomID != roomID {
+		t.Fatalf("zoom webhook mapping verified exact meeting room=%s, want %s", mappedRoomID, roomID)
+	}
+}
+
 func TestSocketStreamIsTenantScoped(t *testing.T) {
 	t.Setenv("ALLOWED_WS_ORIGINS", "")
 	t.Setenv("DEPLOYMENT_ENVIRONMENT", "")

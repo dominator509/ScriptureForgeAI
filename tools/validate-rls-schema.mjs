@@ -24,6 +24,7 @@ export function validateRLSSchema(
   platformMainText = '',
   roomHandlerText = '',
   socketHandlerText = '',
+  zoomWebhookText = '',
 ) {
   assert.deepEqual(
     discoverTenantScopedTables(migrationText),
@@ -88,6 +89,7 @@ export function validateRLSSchema(
   for (const requiredPortHandlerProof of [
     'TestJournalHandlersHonorTenantIsolation',
     'TestRoomHandlersHonorTenantIsolation',
+    'TestZoomWebhookRoomMappingRLSBinding',
     'TestSocketStreamIsTenantScoped',
     'assertCrossTenantWriteBlocked',
     'tenant B direct read cross-tenant status',
@@ -103,6 +105,8 @@ export function validateRLSSchema(
     'tenant A room state status',
     'cross-tenant socket dial expected to fail',
     'tenant B event append count = %d, want 0',
+    'zoom webhook mapping without verified context visible rows=%d, want 0',
+    'zoom webhook mapping verified exact meeting room=%s, want %s',
   ]) {
     assert.ok(
       portHandlerRLSTestText.includes(requiredPortHandlerProof),
@@ -172,6 +176,25 @@ export function validateRLSSchema(
   }
   if (platformMainText || roomHandlerText || socketHandlerText) {
     validateProductionRoomMembershipWiring(platformMainText, roomHandlerText, socketHandlerText);
+  }
+  if (zoomWebhookText) {
+    assert.match(
+      migrationText,
+      /CREATE POLICY\s+live_room_webhook_mapping_policy\s+ON\s+live_rooms[\s\S]*?app\.webhook_lookup_verified[\s\S]*?app\.webhook_lookup_meeting_id/m,
+      'live_rooms must define the verified Zoom mapping RLS policy',
+    );
+    for (const requiredZoomMappingProof of [
+      'func (h *WebhookHandler) resolveRoomID',
+      "set_config('app.webhook_lookup_verified', 'true', true)",
+      "set_config('app.webhook_lookup_meeting_id', $2, true)",
+      'SELECT id FROM live_rooms WHERE meeting_external_id = $1',
+      'http.StatusServiceUnavailable',
+    ]) {
+      assert.ok(
+        zoomWebhookText.includes(requiredZoomMappingProof),
+        `Zoom webhook RLS mapping proof missing ${requiredZoomMappingProof}`,
+      );
+    }
   }
   for (const requiredTableProof of [
     'assertTenantScopedRowVisibility',
@@ -250,6 +273,7 @@ async function main() {
     platformMainText,
     roomHandlerText,
     socketHandlerText,
+    zoomWebhookText,
   ] = await Promise.all([
     readFile('migrations/000002_core_schema.up.sql', 'utf8'),
     readFile('tests/integration/table_rls_test.go', 'utf8'),
@@ -261,6 +285,7 @@ async function main() {
     readFile('cmd/platform-engine/main.go', 'utf8'),
     readFile('internal/ports/rooms_http.go', 'utf8'),
     readFile('internal/ports/driving_wss.go', 'utf8'),
+    readFile('internal/adapters/integration_zoom/zoom_webhook.go', 'utf8'),
   ]);
   const result = validateRLSSchema(
     migrationText,
@@ -273,6 +298,7 @@ async function main() {
     platformMainText,
     roomHandlerText,
     socketHandlerText,
+    zoomWebhookText,
   );
   console.log(`RLS schema invariants validated across ${result.tenantScopedTableCount} tenant-scoped tables`);
 }

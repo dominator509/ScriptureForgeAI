@@ -877,6 +877,7 @@ Status last updated: 2026-06-28
 2026-08-16 tenant list cursor hardening: active-room and journal list handlers now check `pgx.Rows.Err()` after iteration and fail with generic `500` responses plus dependency telemetry if a database cursor ends with an error, preventing truncated successful lists. Existing RLS transaction boundaries remain unchanged; deployed database failure telemetry remains pending.
 
 2026-08-16 room state initialization hardening: `POST /api/v1/rooms/create` now returns a sanitized `503` when Redis active-state initialization fails after PostgreSQL commit and performs a tenant-RLS-scoped compensation update marking the durable room inactive. Focused handler coverage is local; the DB-backed compensation regression runs in the Postgres/RLS gate, while deployed multi-store failure telemetry remains pending.
+2026-08-16 Zoom webhook RLS mapping hardening: signed Zoom callbacks now resolve `live_rooms` through a transaction-local non-tenant sentinel plus `app.webhook_lookup_verified=true` and the exact `meeting_external_id`, guarded by a dedicated FORCE-RLS SELECT policy. Mapping failures return `503` without consuming the delivery ID for provider retry; the Docker-backed RLS gate proves unverified mapping is hidden and verified exact-ID mapping succeeds. Live Zoom delivery evidence remains pending under `EXT-ZOOM-001`.
 
 ## 100% Production Readiness Evidence Still Required
 

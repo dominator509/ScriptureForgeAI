@@ -211,8 +211,8 @@ func TestZoomWebhookDoesNotFallbackToMeetingIDWhenMappingFails(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	handler.HandleZoomWebhook(recorder, signedZoomRequest(t, body, "secret"))
 
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("mapping-error webhook status = %d, want 200", recorder.Code)
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("mapping-error webhook status = %d, want 503", recorder.Code)
 	}
 	if changes := stateManager.snapshot(); len(changes) != 0 {
 		t.Fatalf("mapping-error webhook changed state using meeting id fallback: %#v", changes)
@@ -237,8 +237,8 @@ func TestZoomWebhookDoesNotConsumeDeliveryIDWhenMappingFails(t *testing.T) {
 	first.Header.Set("x-zm-trackingid", "retryable-delivery")
 	firstRecorder := httptest.NewRecorder()
 	handler.HandleZoomWebhook(firstRecorder, first)
-	if firstRecorder.Code != http.StatusOK {
-		t.Fatalf("mapping-error webhook status = %d, want 200", firstRecorder.Code)
+	if firstRecorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("mapping-error webhook status = %d, want 503", firstRecorder.Code)
 	}
 	if changes := stateManager.snapshot(); len(changes) != 0 {
 		t.Fatalf("mapping-error webhook changed state before retry: %#v", changes)

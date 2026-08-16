@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 const isWindows = process.platform === 'win32';
 const defaultGoBin = isWindows ? '.\\.tools\\go\\bin\\go.exe' : './.tools/go/bin/go';
 
-export const rlsDBTestPattern = 'Test(TenantRLSCoversAllTenantTables|TenantScopedJournalHandlersEnforceRLS|TenantScopedRoomActiveHandlerEnforcesRLS|TenantScopedRoomStateHandlerEnforcesRLS|AuthRegisterLoginRefreshRotationAndLogout|PrivilegedLoginRequiresAndVerifiesMFA|WorkspaceSwitchRequiresAuthenticatedOrgMatch|MFAEnrollAndVerifyFlowForPrivilegedUsers|JournalHandlersHonorTenantIsolation|RoomHandlersHonorTenantIsolation|CreateRoomFailsClosedAndDeactivatesRoomWhenRedisStateInitializationFails|SocketStreamIsTenantScoped|AuthRefreshLogoutHonorTenantIsolation|AIRequestLogPersistsCitationsAndHonorsTenantRLS|GenerateCurriculumHandlerPersistsAuditRowsWithTenantRLS|GenerateCurriculumHandlerTenantIsolationForCrossTenantReadsAndWrites)';
+export const rlsDBTestPattern = 'Test(TenantRLSCoversAllTenantTables|TenantScopedJournalHandlersEnforceRLS|TenantScopedRoomActiveHandlerEnforcesRLS|TenantScopedRoomStateHandlerEnforcesRLS|AuthRegisterLoginRefreshRotationAndLogout|PrivilegedLoginRequiresAndVerifiesMFA|WorkspaceSwitchRequiresAuthenticatedOrgMatch|MFAEnrollAndVerifyFlowForPrivilegedUsers|JournalHandlersHonorTenantIsolation|RoomHandlersHonorTenantIsolation|CreateRoomFailsClosedAndDeactivatesRoomWhenRedisStateInitializationFails|ZoomWebhookRoomMappingRLSBinding|SocketStreamIsTenantScoped|AuthRefreshLogoutHonorTenantIsolation|AIRequestLogPersistsCitationsAndHonorsTenantRLS|GenerateCurriculumHandlerPersistsAuditRowsWithTenantRLS|GenerateCurriculumHandlerTenantIsolationForCrossTenantReadsAndWrites)';
 
 export const rlsDBRequiredTests = [
   'TenantRLSCoversAllTenantTables',
@@ -18,6 +18,7 @@ export const rlsDBRequiredTests = [
   'JournalHandlersHonorTenantIsolation',
   'RoomHandlersHonorTenantIsolation',
   'CreateRoomFailsClosedAndDeactivatesRoomWhenRedisStateInitializationFails',
+  'ZoomWebhookRoomMappingRLSBinding',
   'SocketStreamIsTenantScoped',
   'AuthRefreshLogoutHonorTenantIsolation',
   'AIRequestLogPersistsCitationsAndHonorsTenantRLS',
@@ -70,6 +71,7 @@ export const rlsDBSemanticProofMarkers = [
   'room_state_handler_cross_tenant_read_denied=true',
   'room_state_handler_cross_tenant_store_not_called=true',
   'room_create_tenant_override_denied=true',
+  'zoom_room_mapping_rls=true',
   'websocket_tenant_scoping=true',
   'production_room_membership_uses_db_rls=true',
   'production_socket_membership_uses_db_rls=true',

@@ -4,9 +4,9 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -44,6 +45,9 @@ type WebhookHandler struct {
 const maxProcessedZoomDeliveries = 4096
 const maxZoomWebhookClockSkew = 5 * time.Minute
 const maxZoomWebhookBodyBytes = 1 << 20
+const zoomWebhookNoTenantOrgID = "00000000-0000-4000-8000-000000000000"
+
+var errZoomRoomMappingUnavailable = errors.New("zoom room mapping unavailable")
 
 type roomStateWriter interface {
 	SetRoomActiveState(ctx context.Context, roomID string, active bool) error
@@ -131,23 +135,39 @@ func zoomDeliveryID(r *http.Request, payload WebhookPayload, body []byte) string
 	return "body:" + hex.EncodeToString(sum[:])
 }
 
-func (h *WebhookHandler) resolveRoomID(ctx context.Context, meetingID string) (string, bool) {
+func (h *WebhookHandler) resolveRoomID(ctx context.Context, meetingID string) (string, error) {
 	if h.ResolveRoomID != nil {
-		mappedRoomID, err := h.ResolveRoomID(ctx, meetingID)
-		return mappedRoomID, err == nil && mappedRoomID != ""
+		return h.ResolveRoomID(ctx, meetingID)
 	}
 	if h.DB == nil {
-		return "", false
+		return "", errZoomRoomMappingUnavailable
+	}
+	tx, err := h.DB.Begin(ctx)
+	if err != nil {
+		return "", fmt.Errorf("%w: begin transaction", errZoomRoomMappingUnavailable)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `
+		SELECT
+			set_config('app.current_org_id', $1, true),
+			set_config('app.webhook_lookup_verified', 'true', true),
+			set_config('app.webhook_lookup_meeting_id', $2, true)
+	`, zoomWebhookNoTenantOrgID, meetingID); err != nil {
+		return "", fmt.Errorf("%w: configure lookup context", errZoomRoomMappingUnavailable)
 	}
 	var roomID string
-	err := h.DB.QueryRow(ctx, `SELECT id FROM live_rooms WHERE meeting_external_id = $1`, meetingID).Scan(&roomID)
+	err = tx.QueryRow(ctx, `SELECT id FROM live_rooms WHERE meeting_external_id = $1 LIMIT 1`, meetingID).Scan(&roomID)
 	if err != nil {
-		if err != sql.ErrNoRows {
-			log.Printf("Zoom webhook room lookup failed for meeting %s: %v", meetingID, err)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", nil
 		}
-		return "", false
+		log.Printf("Zoom webhook room lookup failed for meeting %s: %v", meetingID, err)
+		return "", fmt.Errorf("%w: query mapping", errZoomRoomMappingUnavailable)
 	}
-	return roomID, roomID != ""
+	if err := tx.Commit(ctx); err != nil {
+		return "", fmt.Errorf("%w: commit mapping lookup", errZoomRoomMappingUnavailable)
+	}
+	return roomID, nil
 }
 
 // verifyZoomSignature validates the Zoom webhook signature to ensure authenticity
@@ -233,8 +253,14 @@ func (h *WebhookHandler) HandleZoomWebhook(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	meetingID := payload.Payload.Object.Id
-	roomID, ok := h.resolveRoomID(r.Context(), meetingID)
-	if !ok {
+	roomID, mappingErr := h.resolveRoomID(r.Context(), meetingID)
+	if mappingErr != nil {
+		log.Printf("Webhook: room mapping unavailable for Zoom meeting %s: %v", meetingID, mappingErr)
+		h.finishDelivery(deliveryID, false)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+	if roomID == "" {
 		log.Printf("Webhook: No live room mapping for Zoom meeting %s", meetingID)
 		h.finishDelivery(deliveryID, false)
 		w.WriteHeader(http.StatusOK)

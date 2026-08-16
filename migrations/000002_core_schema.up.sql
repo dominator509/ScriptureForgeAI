@@ -179,6 +179,16 @@ CREATE POLICY live_room_isolation_policy ON live_rooms
     USING (organization_id = current_setting('app.current_org_id', true)::UUID)
     WITH CHECK (organization_id = current_setting('app.current_org_id', true)::UUID);
 
+-- Verified Zoom webhooks need a narrowly scoped system lookup because they do
+-- not carry a tenant JWT. The application sets both values only after HMAC
+-- verification, inside a transaction-local session context.
+CREATE POLICY live_room_webhook_mapping_policy ON live_rooms
+    FOR SELECT
+    USING (
+        current_setting('app.webhook_lookup_verified', true) = 'true'
+        AND meeting_external_id = current_setting('app.webhook_lookup_meeting_id', true)
+    );
+
 CREATE POLICY room_participant_isolation_policy ON room_participants
     USING (organization_id = current_setting('app.current_org_id', true)::UUID)
     WITH CHECK (organization_id = current_setting('app.current_org_id', true)::UUID);

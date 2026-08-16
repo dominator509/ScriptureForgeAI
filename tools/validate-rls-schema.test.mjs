@@ -15,6 +15,7 @@ async function fixtures() {
     platformMainText,
     roomHandlerText,
     socketHandlerText,
+    zoomWebhookText,
   ] = await Promise.all([
     readFile('migrations/000002_core_schema.up.sql', 'utf8'),
     readFile('tests/integration/table_rls_test.go', 'utf8'),
@@ -26,6 +27,7 @@ async function fixtures() {
     readFile('cmd/platform-engine/main.go', 'utf8'),
     readFile('internal/ports/rooms_http.go', 'utf8'),
     readFile('internal/ports/driving_wss.go', 'utf8'),
+    readFile('internal/adapters/integration_zoom/zoom_webhook.go', 'utf8'),
   ]);
   return {
     migrationText,
@@ -38,6 +40,7 @@ async function fixtures() {
     platformMainText,
     roomHandlerText,
     socketHandlerText,
+    zoomWebhookText,
   };
 }
 
@@ -53,6 +56,7 @@ test('validateRLSSchema accepts current tenant-scoped schema and integration tes
     platformMainText,
     roomHandlerText,
     socketHandlerText,
+    zoomWebhookText,
   } = await fixtures();
   assert.deepEqual(
     validateRLSSchema(
@@ -66,8 +70,19 @@ test('validateRLSSchema accepts current tenant-scoped schema and integration tes
       platformMainText,
       roomHandlerText,
       socketHandlerText,
+      zoomWebhookText,
     ),
     { tenantScopedTableCount: 9 },
+  );
+});
+
+test('validateRLSSchema rejects a weakened Zoom mapping RLS policy', async () => {
+  const { migrationText, tableRLSTestText, handlerRLSTestText, portHandlerRLSTestText, aiAuditRLSTestText, authSessionRLSTestText, authHandlerText, platformMainText, roomHandlerText, socketHandlerText, zoomWebhookText } = await fixtures();
+  const broken = migrationText.replace("app.webhook_lookup_verified", "app.webhook_lookup_disabled");
+  assert.notEqual(broken, migrationText, 'test fixture must remove the verified Zoom mapping policy');
+  assert.throws(
+    () => validateRLSSchema(broken, tableRLSTestText, handlerRLSTestText, portHandlerRLSTestText, aiAuditRLSTestText, authSessionRLSTestText, authHandlerText, platformMainText, roomHandlerText, socketHandlerText, zoomWebhookText),
+    /verified Zoom mapping RLS policy/,
   );
 });
 
