@@ -881,6 +881,8 @@ Status last updated: 2026-06-28
 
 2026-08-16 room replica fan-out hardening: accepted room events now sequence, persist latest state, and publish an origin-tagged envelope in one Redis Lua transaction. Redis-backed room hubs subscribe while local clients are present, suppress their own publication before local fallback broadcast, and close subscriptions on teardown. Miniredis tests prove atomic publication, cross-replica delivery, and cleanup; deployed multi-replica WSS/Redis evidence remains pending under `PERF-WS-001` and `DATA-REDIS-001`.
 
+2026-08-16 Rust scripture-ingestion hardening: `ProcessTextEmbedding` no longer returns success without persistence. It requires a provider-generated finite 1536-dimensional vector, rejects empty or oversized text, atomically upserts the runtime `scripture_texts` schema under transaction-local tenant RLS, and returns the stored row identity. Rust vector search now uses the same RLS transaction boundary, and startup fails closed when `DATABASE_URL` is absent instead of using a placeholder. Local Rust/protobuf and migration checks cover the source contract; deployed provider-backed ingestion, semantic quality, and Rust tenant evidence remain pending under `RUST-GRPC-001` and `DATA-RLS-001`.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.

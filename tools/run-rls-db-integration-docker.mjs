@@ -18,6 +18,7 @@ export const defaultDockerRLSConfig = {
 export const migrationFiles = [
   '/migrations/000001_init_extensions.up.sql',
   '/migrations/000002_core_schema.up.sql',
+  '/migrations/000003_scripture_text_reference.up.sql',
 ];
 
 export function parseDockerRLSArgs(argv = []) {

@@ -111,7 +111,7 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
     *   (Planned) `POST /api/v1/ai/ask`
 *   **Data Entities:** `AIRequestLog`, `TheologicalProfile`, `CitationTrail`, `GeneratedAsset`.
 *   **Security Considerations:** Malicious prompt injection filtering, strict egress scanning to prevent generation of unauthorized content profiles, and semantic tracing vectors.
-*   **Provider Boundary:** Embedding and Rust vector-search failures are fail-closed typed `503` faults with sanitized client messages. Production constructors always use the configured embedding provider; offline tests inject an explicit local function and never activate a synthetic runtime vector.
+*   **Provider Boundary:** Embedding and Rust vector-search failures are fail-closed typed `503` faults with sanitized client messages. Production constructors always use the configured embedding provider; offline tests inject an explicit local function and never activate a synthetic runtime vector. Rust `ProcessTextEmbedding` accepts only a provider-generated finite 1536-dimensional vector, persists it idempotently under transaction-local `app.current_org_id` RLS, and rejects requests that omit the real vector.
 *   **Failure Modes & Logic Risks:** Hallucinated data parameters masking as factual biblical source references. Countermeasures involve enforcing an isolated matching system that maps LLM outputs against a fixed SQL database index of standard biblical metadata (lexicons, verses) via standard regex/deterministic matches. Any citation failing the verification step drops the output confidence level instantly to zero and triggers a system fault block.
 
 ### 5.4 Live Bible Study Rooms (Real-time Sync & Integration)
@@ -274,7 +274,7 @@ The RAG pipeline enforces structural prompt isolation to eliminate model poisoni
                        +-------------------------+
                        | PK | id (UUID)          |
                        |    | name               |
-                       |    | doctrinal_profile  |
+                       |    | created_at         |
                        +-------------------------+
                                     │
                                     └───┐
@@ -282,13 +282,12 @@ The RAG pipeline enforces structural prompt isolation to eliminate model poisoni
 +-----------------------+      +-------------------------+      +-------------------------+
 |     scripture_texts   |      |          users          |      |       live_rooms        |
 +-----------------------+      +-------------------------+      +-------------------------+
-| PK | id (BIGSERIAL)   |      | PK | id (UUID)          |      | PK | id (UUID)          |
-| UK | translation      |◄────┐| FK | organization_id    |◄────┐| FK | organization_id    |
-|    | book_number      |     │|    | email              |     │| FK | host_user_id       |
-|    | chapter          |     │|    | password_hash      |     │|    | title              |
-|    | verse            |     │|    | system_role        |     │|    | meeting_metadata   |
-|    | text_content     |     │+-------------------------+     │+-------------------------+
-|    | text_vector      |     │             │                  │             │
+| PK | id (UUID)        |      | PK | id (UUID)          |      | PK | id (UUID)          |
+| FK | organization_id  |◄────┐| FK | organization_id    |◄────┐| FK | organization_id    |
+| UK | book/chapter/    |     │|    | email              |     │| FK | host_user_id       |
+|    | verse per org    |     │|    | password_hash      |     │|    | title              |
+|    | content          |     │|    | role               |     │|    | meeting_metadata   |
+|    | embedding        |     │+-------------------------+     │+-------------------------+
 +-----------------------+     │             │                  │             │
            ▲                  │             ▼                  │             ▼
            │                  │+-------------------------+     │+-------------------------+
@@ -296,8 +295,9 @@ The RAG pipeline enforces structural prompt isolation to eliminate model poisoni
            │                  │+-------------------------+     │+-------------------------+
            └────────────────規┼| PK | id (UUID)          |     └| PK | id (BIGSERIAL)     |
                               | FK | user_id             |      | FK | room_id            |
-                              |    | encrypted_payload   |      | FK | user_id            |
-                              +--------------------------+      |    | joined_at          |
+                              |    | ciphertext/iv       |      | FK | user_id            |
+                              |    | salt_id/version     |      |    | joined_at          |
+                              +--------------------------+      |                         |
                                                                 +-------------------------+
 ```
 
@@ -312,8 +312,8 @@ CREATE EXTENSION IF NOT EXISTS "vector";
 CREATE TABLE organizations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(255) NOT NULL,
-    doctrinal_profile VARCHAR(64) NOT NULL DEFAULT 'neutral',
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE users (
@@ -321,24 +321,30 @@ CREATE TABLE users (
     organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     email VARCHAR(255) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
-    system_role VARCHAR(32) NOT NULL DEFAULT 'user',
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+    role VARCHAR(50) NOT NULL,
+    mfa_secret TEXT,
+    mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (id, organization_id)
 );
 
--- Scripture Canonical Performance Optimization
+-- Scripture runtime shape (mirrors migrations/000002_core_schema.up.sql)
 CREATE TABLE scripture_texts (
-    id BIGSERIAL PRIMARY KEY,
-    translation VARCHAR(16) NOT NULL,
-    book_number INT NOT NULL,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    book VARCHAR(100) NOT NULL,
     chapter INT NOT NULL,
     verse INT NOT NULL,
-    text_content TEXT NOT NULL,
-    text_vector vector(1536),
-    CONSTRAINT unique_verse_index UNIQUE (translation, book_number, chapter, verse)
+    content TEXT NOT NULL,
+    embedding vector(1536),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT unique_verse_index UNIQUE (organization_id, book, chapter, verse)
 );
 
-CREATE INDEX idx_scripture_vector ON scripture_texts USING hnsw (text_vector vector_cosine_ops);
-CREATE INDEX idx_scripture_coords ON scripture_texts (book_number, chapter, verse);
+CREATE INDEX idx_scripture_vector ON scripture_texts USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX idx_scripture_coords ON scripture_texts (organization_id, book, chapter, verse);
 
 -- Live Collaborative Space Schema
 CREATE TABLE live_rooms (
@@ -346,23 +352,38 @@ CREATE TABLE live_rooms (
     organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     host_user_id UUID NOT NULL REFERENCES users(id),
     title VARCHAR(255) NOT NULL,
+    meeting_provider VARCHAR(64) NOT NULL DEFAULT 'offline',
+    meeting_external_id VARCHAR(255),
     meeting_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-    is_active BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (id, organization_id),
+    FOREIGN KEY (host_user_id, organization_id) REFERENCES users(id, organization_id) ON DELETE CASCADE
 );
 
 CREATE TABLE room_participants (
     id BIGSERIAL PRIMARY KEY,
-    room_id UUID NOT NULL REFERENCES live_rooms(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    joined_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    room_id UUID NOT NULL,
+    user_id UUID NOT NULL,
+    joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(room_id, user_id),
+    FOREIGN KEY (room_id, organization_id) REFERENCES live_rooms(id, organization_id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id, organization_id) REFERENCES users(id, organization_id) ON DELETE CASCADE
 );
 
 CREATE TABLE journal_entries (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    encrypted_payload BYTEA NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL,
+    ciphertext TEXT NOT NULL,
+    iv TEXT NOT NULL,
+    salt_id VARCHAR(128) NOT NULL,
+    salt_version INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id, organization_id) REFERENCES users(id, organization_id) ON DELETE CASCADE
 );
 
 -- Performance Database Index Layouts

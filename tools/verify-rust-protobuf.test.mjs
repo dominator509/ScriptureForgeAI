@@ -13,6 +13,8 @@ test('validateRustProtobufSources accepts repository Rust protobuf tooling', asy
   assert.equal(result.lockfilePlatformProtocCovered, true);
   assert.equal(result.healthServiceCovered, true);
   assert.equal(result.boundedVectorSearchInputs, true);
+  assert.equal(result.embeddingIngestionCovered, true);
+  assert.equal(result.tenantRlsTransactionCovered, true);
   assert.equal(result.grpcTlsSecurityCovered, true);
   assert.equal(result.grpcTenantBindingCovered, true);
   assert.equal(result.grpcTransportBoundsCovered, true);
@@ -80,6 +82,16 @@ test('validateRustProtobufSources rejects tenantless vector search proto contrac
   assert.throws(
     () => validateRustProtobufSources(sources),
     /bounded tenant-scoped vector-search request fields/,
+  );
+});
+
+test('validateRustProtobufSources rejects stale non-reflective Go bindings', async () => {
+  const sources = await loadRustProtobufSources();
+  sources.goProto = sources.goProto.replace('func (x *EmbedTextRequest) ProtoReflect()', 'func (x *EmbedTextRequest) RemovedProtoReflect()');
+
+  assert.throws(
+    () => validateRustProtobufSources(sources),
+    /reflection methods/,
   );
 });
 

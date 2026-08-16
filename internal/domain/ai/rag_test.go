@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/test/bufconn"
+	"google.golang.org/protobuf/proto"
 	"scriptureforge/internal/domain/observability"
 	"scriptureforge/scriptureforge/proto/engine"
 )
@@ -29,6 +30,36 @@ type fakeScriptureEngineClient struct {
 type fakeVectorDB struct {
 	results []SearchResult
 	err     error
+}
+
+func TestScriptureEmbeddingProtoRoundTripsProviderVector(t *testing.T) {
+	original := &engine.EmbedTextRequest{
+		OrganizationId: "00000000-0000-0000-0000-000000000001",
+		Book:           "John",
+		Chapter:        1,
+		Verse:          1,
+		TextContent:    "In the beginning was the Word",
+		Embedding:      []float32{0.25, 0.5, 0.75},
+	}
+
+	encoded, err := proto.Marshal(original)
+	if err != nil {
+		t.Fatalf("marshal embedding request: %v", err)
+	}
+	decoded := new(engine.EmbedTextRequest)
+	if err := proto.Unmarshal(encoded, decoded); err != nil {
+		t.Fatalf("unmarshal embedding request: %v", err)
+	}
+	if decoded.GetOrganizationId() != original.GetOrganizationId() ||
+		decoded.GetBook() != original.GetBook() ||
+		decoded.GetChapter() != original.GetChapter() ||
+		decoded.GetVerse() != original.GetVerse() ||
+		decoded.GetTextContent() != original.GetTextContent() ||
+		len(decoded.GetEmbedding()) != 3 ||
+		decoded.GetEmbedding()[0] != 0.25 ||
+		decoded.GetEmbedding()[2] != 0.75 {
+		t.Fatalf("protobuf round trip changed embedding request: %#v", decoded)
+	}
 }
 
 func (f fakeVectorDB) Search(context.Context, string, string, int) ([]SearchResult, error) {

@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS idx_scripture_texts_org_reference_unique;

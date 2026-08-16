@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package scriptureforge.engine;
 
-option go_package = "scriptureforge/proto;engine";
+option go_package = "scriptureforge/scriptureforge/proto/engine;engine";
 
 // Request for processing structural text into embeddings
 message EmbedTextRequest {
@@ -11,6 +11,9 @@ message EmbedTextRequest {
     int32 chapter = 3;
     int32 verse = 4;
     string text_content = 5;
+    // Provider-generated vector in the database's configured embedding space.
+    // The Rust service persists this value; it never fabricates a synthetic vector.
+    repeated float embedding = 6;
 }
 
 // Response detailing the vector generation success

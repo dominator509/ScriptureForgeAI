@@ -7,6 +7,8 @@ const defaultFiles = {
   buildRs: 'services/scripture-engine/build.rs',
   proto: 'proto/scripture.proto',
   rustMain: 'services/scripture-engine/src/main.rs',
+  goProto: 'scriptureforge/proto/engine/scripture.pb.go',
+  goGrpc: 'scriptureforge/proto/engine/scripture_grpc.pb.go',
 };
 
 export const rustProtobufProofMarkers = [
@@ -19,6 +21,8 @@ export const rustProtobufProofMarkers = [
   'lockfile_platform_protoc_covered=true',
   'health_service_covered=true',
   'bounded_vector_search_inputs=true',
+  'embedding_ingestion_covered=true',
+  'tenant_rls_transaction_covered=true',
   'grpc_tls_security_covered=true',
   'grpc_tenant_binding_covered=true',
   'grpc_transport_bounds_covered=true',
@@ -33,6 +37,8 @@ export async function loadRustProtobufSources(files = defaultFiles) {
     buildRs: await readFile(files.buildRs, 'utf8'),
     proto: await readFile(files.proto, 'utf8'),
     rustMain: await readFile(files.rustMain, 'utf8'),
+    goProto: await readFile(files.goProto, 'utf8'),
+    goGrpc: await readFile(files.goGrpc, 'utf8'),
   };
 }
 
@@ -71,18 +77,29 @@ export function validateRustProtobufSources(sources) {
 
   assert.ok(sources.proto.includes('syntax = "proto3";'), 'scripture proto must declare proto3 syntax');
   assert.ok(sources.proto.includes('package scriptureforge.engine;'), 'scripture proto must declare the scriptureforge.engine package');
-  assert.match(sources.proto, /message\s+EmbedTextRequest\s*\{[\s\S]*string\s+organization_id\s*=\s*1;[\s\S]*string\s+book\s*=\s*2;[\s\S]*int32\s+chapter\s*=\s*3;[\s\S]*int32\s+verse\s*=\s*4;[\s\S]*string\s+text_content\s*=\s*5;[\s\S]*\}/, 'scripture proto must preserve tenant-scoped embedding request fields');
+  assert.ok(sources.proto.includes('option go_package = "scriptureforge/scriptureforge/proto/engine;engine";'), 'scripture proto must target the repository Go package path');
+  assert.match(sources.proto, /message\s+EmbedTextRequest\s*\{[\s\S]*string\s+organization_id\s*=\s*1;[\s\S]*string\s+book\s*=\s*2;[\s\S]*int32\s+chapter\s*=\s*3;[\s\S]*int32\s+verse\s*=\s*4;[\s\S]*string\s+text_content\s*=\s*5;[\s\S]*repeated\s+float\s+embedding\s*=\s*6;[\s\S]*\}/, 'scripture proto must preserve provider-generated tenant-scoped embedding request fields');
   assert.match(sources.proto, /message\s+VectorSearchRequest\s*\{[\s\S]*string\s+organization_id\s*=\s*1;[\s\S]*repeated\s+float\s+query_vector\s*=\s*2;[\s\S]*int32\s+top_k_results\s*=\s*3;[\s\S]*float\s+minimum_similarity_threshold\s*=\s*4;[\s\S]*\}/, 'scripture proto must preserve bounded tenant-scoped vector-search request fields');
   assert.match(sources.proto, /message\s+SearchResult\s*\{[\s\S]*string\s+book\s*=\s*1;[\s\S]*int32\s+chapter\s*=\s*2;[\s\S]*int32\s+verse\s*=\s*3;[\s\S]*string\s+text_content\s*=\s*4;[\s\S]*float\s+similarity_score\s*=\s*5;[\s\S]*\}/, 'scripture proto must preserve vector-search result fields used by API callers');
   assert.match(sources.proto, /service\s+ScriptureEngine\s*\{[\s\S]*rpc\s+ProcessTextEmbedding\s*\(\s*EmbedTextRequest\s*\)\s*returns\s*\(\s*EmbedTextResponse\s*\);[\s\S]*rpc\s+SearchByVector\s*\(\s*VectorSearchRequest\s*\)\s*returns\s*\(\s*VectorSearchResponse\s*\);[\s\S]*\}/, 'scripture proto must preserve the ScriptureEngine RPC signatures');
 
   assert.ok(sources.rustMain.includes('tonic::include_proto!("scriptureforge.engine")'), 'Rust service must include generated scriptureforge.engine protobuf code');
+  assert.ok(sources.goProto.includes('func (x *EmbedTextRequest) ProtoReflect()'), 'Go protobuf output must include reflection methods for runtime serialization');
+  assert.ok(sources.goProto.includes('Embedding     []float32'), 'Go protobuf output must include the provider-generated embedding field');
+  assert.ok(sources.goGrpc.includes('grpc.SupportPackageIsVersion9'), 'Go gRPC output must match the pinned modern grpc runtime');
+  assert.ok(sources.goGrpc.includes('ScriptureEngineClient'), 'Go gRPC output must include the ScriptureEngine client');
   assert.ok(sources.rustMain.includes('generated_protobuf_types_compile_and_round_trip'), 'Rust tests must instantiate generated protobuf request/response types');
   assert.ok(sources.rustMain.includes('generated_vector_search_response_holds_results'), 'Rust tests must instantiate generated vector-search response/result types');
   assert.ok(sources.rustMain.includes('generated_grpc_client_and_server_types_compile'), 'Rust tests must instantiate generated gRPC client/server types');
   assert.ok(sources.rustMain.includes('ScriptureEngineClient<tonic::transport::Channel>'), 'Rust tests must compile the generated gRPC client type');
   assert.ok(sources.rustMain.includes('ScriptureEngineServer<super::MyScriptureEngine>'), 'Rust tests must compile the generated gRPC server type');
   assert.ok(sources.rustMain.includes('validate_vector_search_request'), 'Rust service must validate vector-search requests before querying Postgres');
+  assert.ok(sources.rustMain.includes('validate_embed_text_request'), 'Rust service must validate embedding ingestion requests before writing Postgres');
+  assert.ok(sources.rustMain.includes('set_tenant_context'), 'Rust database operations must set transaction-local tenant context');
+  assert.ok(sources.rustMain.includes('ON CONFLICT (organization_id, book, chapter, verse)'), 'Rust scripture ingestion must be idempotent per tenant/reference');
+  assert.ok(sources.rustMain.includes('Database write failed'), 'Rust scripture ingestion must sanitize database write failures');
+  assert.ok(sources.rustMain.includes('Database query failed'), 'Rust vector search must sanitize database query failures');
+  assert.ok(!sources.rustMain.includes('postgres://${DB_USER}:${DB_PASS}@${DB_HOST}/${DB_NAME}'), 'Rust service must not use a placeholder DATABASE_URL fallback');
   assert.ok(sources.rustMain.includes('vector_search_request_rejects_unbounded_or_invalid_inputs'), 'Rust tests must reject invalid or unbounded vector-search requests');
   assert.ok(sources.rustMain.includes('authorize_grpc_request'), 'Rust service must authenticate protected gRPC requests');
   assert.ok(sources.rustMain.includes('GRPC_ENGINE_SHARED_SECRET'), 'Rust service must require a shared gRPC service secret in production');
@@ -131,6 +148,8 @@ export function validateRustProtobufSources(sources) {
     lockfilePlatformProtocCovered: true,
     healthServiceCovered: true,
     boundedVectorSearchInputs: true,
+    embeddingIngestionCovered: true,
+    tenantRlsTransactionCovered: true,
     grpcTlsSecurityCovered: true,
     grpcTenantBindingCovered: true,
     grpcTransportBoundsCovered: true,

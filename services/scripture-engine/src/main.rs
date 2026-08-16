@@ -1,8 +1,10 @@
+use pgvector::Vector;
 use scriptureforge::engine::scripture_engine_server::{ScriptureEngine, ScriptureEngineServer};
 use scriptureforge::engine::{
     EmbedTextRequest, EmbedTextResponse, SearchResult, VectorSearchRequest, VectorSearchResponse,
 };
 use sqlx::postgres::PgPoolOptions;
+use sqlx::{Postgres, Row, Transaction};
 use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -81,10 +83,6 @@ impl ScriptureEngine for MyScriptureEngine {
             ],
         );
 
-        // Functional implementation for processing text.
-        // In a full implementation, this calls an LLM to get the embedding,
-        // then inserts it into the scripture_texts table via self.db_pool.
-        // For phase 3 completion, we validate the DB pool is active.
         let pool = &self.db_pool;
         if pool.is_closed() {
             self.metrics
@@ -101,8 +99,105 @@ impl ScriptureEngine for MyScriptureEngine {
             return Err(Status::internal("Database pool is closed"));
         }
 
+        let embedding = Vector::from(req.embedding.clone());
+        let mut transaction = pool.begin().await.map_err(|error| {
+            self.metrics
+                .embedding_failures_total
+                .fetch_add(1, Ordering::Relaxed);
+            emit_log(
+                "error",
+                "process_text_embedding_failed",
+                &[
+                    ("organization_id", organization_id.clone()),
+                    ("error", format!("database_transaction_begin: {error}")),
+                ],
+            );
+            Status::internal("Database write failed")
+        })?;
+
+        set_tenant_context(&mut transaction, &organization_id)
+            .await
+            .map_err(|error| {
+                self.metrics
+                    .embedding_failures_total
+                    .fetch_add(1, Ordering::Relaxed);
+                emit_log(
+                    "error",
+                    "process_text_embedding_failed",
+                    &[
+                        ("organization_id", organization_id.clone()),
+                        ("error", format!("tenant_context: {error}")),
+                    ],
+                );
+                Status::internal("Database write failed")
+            })?;
+
+        let row = sqlx::query(
+            "INSERT INTO scripture_texts
+                (organization_id, book, chapter, verse, content, embedding)
+             VALUES ($1::uuid, $2, $3, $4, $5, $6)
+             ON CONFLICT (organization_id, book, chapter, verse)
+             DO UPDATE SET
+                content = EXCLUDED.content,
+                embedding = EXCLUDED.embedding,
+                updated_at = CURRENT_TIMESTAMP
+             RETURNING id::text AS id",
+        )
+        .bind(&organization_id)
+        .bind(&req.book)
+        .bind(req.chapter)
+        .bind(req.verse)
+        .bind(&req.text_content)
+        .bind(embedding)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(|error| {
+            self.metrics
+                .embedding_failures_total
+                .fetch_add(1, Ordering::Relaxed);
+            emit_log(
+                "error",
+                "process_text_embedding_failed",
+                &[
+                    ("organization_id", organization_id.clone()),
+                    ("error", format!("database_insert: {error}")),
+                ],
+            );
+            Status::internal("Database write failed")
+        })?;
+
+        let reference_id: String = row.try_get("id").map_err(|error| {
+            self.metrics
+                .embedding_failures_total
+                .fetch_add(1, Ordering::Relaxed);
+            emit_log(
+                "error",
+                "process_text_embedding_failed",
+                &[
+                    ("organization_id", organization_id.clone()),
+                    ("error", format!("database_reference: {error}")),
+                ],
+            );
+            Status::internal("Database write failed")
+        })?;
+
+        transaction.commit().await.map_err(|error| {
+            self.metrics
+                .embedding_failures_total
+                .fetch_add(1, Ordering::Relaxed);
+            emit_log(
+                "error",
+                "process_text_embedding_failed",
+                &[
+                    ("organization_id", organization_id.clone()),
+                    ("error", format!("database_transaction_commit: {error}")),
+                ],
+            );
+            Status::internal("Database write failed")
+        })?;
+
         let reply = EmbedTextResponse {
-            reference_id: format!("{}-{}-{}", req.book, req.chapter, req.verse),
+            reference_id,
             success: true,
             error_message: "".into(),
         };
@@ -151,12 +246,47 @@ impl ScriptureEngine for MyScriptureEngine {
             return Err(status);
         }
 
-        // Execute functional vector search via pgvector using the HNSW index.
-        // We use string manipulation to build the array structure for pgvector.
-        let vector_string = format!("{:?}", req.query_vector);
-
-        // This is functional querying mapping explicitly to Phase 1's tables
+        // Execute tenant-scoped vector search via pgvector using the HNSW index.
         let pool = &self.db_pool;
+        if pool.is_closed() {
+            self.metrics
+                .vector_search_failures_total
+                .fetch_add(1, Ordering::Relaxed);
+            return Err(Status::internal("Database pool is closed"));
+        }
+        let query_vector = Vector::from(req.query_vector.clone());
+        let mut transaction = pool.begin().await.map_err(|error| {
+            self.metrics
+                .vector_search_failures_total
+                .fetch_add(1, Ordering::Relaxed);
+            emit_log(
+                "error",
+                "search_by_vector_failed",
+                &[
+                    ("trace_id", trace_id.clone()),
+                    ("organization_id", organization_id.clone()),
+                    ("error", format!("database_transaction_begin: {error}")),
+                ],
+            );
+            Status::internal("Database query failed")
+        })?;
+        set_tenant_context(&mut transaction, &organization_id)
+            .await
+            .map_err(|error| {
+                self.metrics
+                    .vector_search_failures_total
+                    .fetch_add(1, Ordering::Relaxed);
+                emit_log(
+                    "error",
+                    "search_by_vector_failed",
+                    &[
+                        ("trace_id", trace_id.clone()),
+                        ("organization_id", organization_id.clone()),
+                        ("error", format!("tenant_context: {error}")),
+                    ],
+                );
+                Status::internal("Database query failed")
+            })?;
         let rows = sqlx::query(
             "SELECT book, chapter, verse, content, 1 - (embedding <=> $1::vector) as similarity
              FROM scripture_texts
@@ -164,7 +294,7 @@ impl ScriptureEngine for MyScriptureEngine {
              ORDER BY embedding <=> $1::vector
              LIMIT $3",
         )
-        .bind(vector_string)
+        .bind(query_vector)
         .bind(organization_id.clone())
         .bind(req.top_k_results)
         .bind(req.minimum_similarity_threshold)
@@ -183,7 +313,23 @@ impl ScriptureEngine for MyScriptureEngine {
                     ("error", e.to_string()),
                 ],
             );
-            Status::internal(format!("Database error: {}", e))
+            Status::internal("Database query failed")
+        })?;
+
+        transaction.commit().await.map_err(|error| {
+            self.metrics
+                .vector_search_failures_total
+                .fetch_add(1, Ordering::Relaxed);
+            emit_log(
+                "error",
+                "search_by_vector_failed",
+                &[
+                    ("trace_id", trace_id.clone()),
+                    ("organization_id", organization_id.clone()),
+                    ("error", format!("database_transaction_commit: {error}")),
+                ],
+            );
+            Status::internal("Database query failed")
         })?;
 
         let mut results = Vec::new();
@@ -329,6 +475,9 @@ fn validate_embed_text_request(request: &EmbedTextRequest) -> Result<(), Status>
     if request.book.trim().is_empty() || request.book.len() > MAX_BOOK_BYTES {
         return Err(Status::invalid_argument("book is invalid"));
     }
+    if request.text_content.trim().is_empty() {
+        return Err(Status::invalid_argument("text_content is required"));
+    }
     if request.text_content.len() > MAX_TEXT_CONTENT_BYTES {
         return Err(Status::resource_exhausted(
             "text_content exceeds the configured limit",
@@ -339,7 +488,29 @@ fn validate_embed_text_request(request: &EmbedTextRequest) -> Result<(), Status>
             "chapter and verse must be positive",
         ));
     }
+    if request.embedding.len() != EMBEDDING_DIMENSION {
+        return Err(Status::invalid_argument(format!(
+            "embedding must contain exactly {} dimensions",
+            EMBEDDING_DIMENSION
+        )));
+    }
+    if request.embedding.iter().any(|value| !value.is_finite()) {
+        return Err(Status::invalid_argument(
+            "embedding must contain only finite values",
+        ));
+    }
     Ok(())
+}
+
+async fn set_tenant_context(
+    transaction: &mut Transaction<'_, Postgres>,
+    organization_id: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("SELECT set_config('app.current_org_id', $1, true)")
+        .bind(organization_id)
+        .execute(&mut **transaction)
+        .await
+        .map(|_| ())
 }
 
 #[tokio::main]
@@ -351,7 +522,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let grpc_tls_config = grpc_tls_config()?;
 
     let database_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://${DB_USER}:${DB_PASS}@${DB_HOST}/${DB_NAME}".to_string());
+        .map_err(|_| "DATABASE_URL is required for the scripture engine")?;
+    if database_url.trim().is_empty() {
+        return Err("DATABASE_URL must not be empty".into());
+    }
 
     let db_pool = PgPoolOptions::new()
         .max_connections(5)
@@ -680,6 +854,7 @@ mod tests {
             chapter: 1,
             verse: 1,
             text_content: "In the beginning was the Word".into(),
+            embedding: vec![0.0; EMBEDDING_DIMENSION],
         };
 
         let response = EmbedTextResponse {
@@ -788,6 +963,7 @@ mod tests {
             chapter: 1,
             verse: 1,
             text_content: "text".into(),
+            embedding: vec![0.0; EMBEDDING_DIMENSION],
         });
         let mut mismatch = mismatch;
         mismatch.extensions_mut().insert(AuthenticatedTenant {
@@ -818,6 +994,7 @@ mod tests {
             chapter: 1,
             verse: 1,
             text_content: "text".into(),
+            embedding: vec![0.0; EMBEDDING_DIMENSION],
         };
         assert!(validate_embed_text_request(&valid).is_ok());
 
@@ -828,6 +1005,24 @@ mod tests {
         let mut invalid_coordinates = valid;
         invalid_coordinates.chapter = 0;
         assert!(validate_embed_text_request(&invalid_coordinates).is_err());
+
+        let mut wrong_dimension = EmbedTextRequest {
+            organization_id: "org-a".into(),
+            book: "John".into(),
+            chapter: 1,
+            verse: 1,
+            text_content: "text".into(),
+            embedding: vec![0.0; EMBEDDING_DIMENSION - 1],
+        };
+        assert!(validate_embed_text_request(&wrong_dimension).is_err());
+        wrong_dimension.embedding = vec![0.0; EMBEDDING_DIMENSION];
+        wrong_dimension.embedding[0] = f32::NAN;
+        assert!(validate_embed_text_request(&wrong_dimension).is_err());
+
+        let mut empty_text = wrong_dimension;
+        empty_text.embedding[0] = 0.0;
+        empty_text.text_content = " ".into();
+        assert!(validate_embed_text_request(&empty_text).is_err());
     }
 
     #[test]
@@ -893,6 +1088,7 @@ mod tests {
             chapter: 1,
             verse: 1,
             text_content: "In the beginning was the Word".into(),
+            embedding: vec![0.0; EMBEDDING_DIMENSION],
         });
         request.metadata_mut().insert(
             "traceparent",
