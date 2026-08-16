@@ -399,6 +399,7 @@ CREATE INDEX idx_participants_lookup ON room_participants(room_id, user_id);
 *   Compatibility alias: `POST /api/ai/curriculum` (delegates to the same generation handler).
     *   Generation fails closed with a typed `503` when required RAG, verification, LLM, MapReduce, database, or AI audit persistence dependencies are unavailable; successful or failed attempts are not served without an audit write.
     *   LLM network, malformed-response, and empty-response faults use sanitized typed errors; provider URLs, transport messages, and response bodies are not returned to callers.
+    *   MapReduce uses UTF-8-safe bounded chunks and a capped worker pool with cancellation-aware scheduling; invalid processors and canceled work fail closed without unbounded goroutine fan-out.
     *   *Payload Structure:*
         ```json
         {

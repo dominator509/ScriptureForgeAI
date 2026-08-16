@@ -4,99 +4,159 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"unicode/utf8"
+)
+
+const (
+	defaultMapReduceChunkSize   = 4000
+	defaultMapReduceConcurrency = 4
+	maxMapReduceConcurrency     = 8
 )
 
 // MapReduceWorker asynchronously divides extensive textual outlines into manageable chunks.
 type MapReduceWorker struct {
-	MaxChunkSize int
+	MaxChunkSize  int
+	MaxConcurrent int
 }
 
 // NewMapReduceWorker initializes a worker to protect context window capacities.
 func NewMapReduceWorker(maxChunkSize int) *MapReduceWorker {
 	if maxChunkSize <= 0 {
-		maxChunkSize = 4000 // Default safe character limit per chunk
+		maxChunkSize = defaultMapReduceChunkSize
 	}
-	return &MapReduceWorker{MaxChunkSize: maxChunkSize}
+	return &MapReduceWorker{MaxChunkSize: maxChunkSize, MaxConcurrent: defaultMapReduceConcurrency}
 }
 
 // Chunk splits a large string into smaller slices based on the configured MaxChunkSize.
-// It attempts to split safely on paragraph or sentence boundaries.
+// It prefers paragraph, sentence, and word boundaries while guaranteeing a UTF-8-safe byte limit.
 func (m *MapReduceWorker) Chunk(text string) []string {
-	if len(text) <= m.MaxChunkSize {
+	maxChunkSize := defaultMapReduceChunkSize
+	if m != nil && m.MaxChunkSize > 0 {
+		maxChunkSize = m.MaxChunkSize
+	}
+	if len(text) <= maxChunkSize {
 		return []string{text}
 	}
 
 	var chunks []string
-	var currentChunk strings.Builder
-
-	paragraphs := strings.Split(text, "\n\n")
-
-	for _, p := range paragraphs {
-		if currentChunk.Len()+len(p) > m.MaxChunkSize && currentChunk.Len() > 0 {
-			chunks = append(chunks, currentChunk.String())
-			currentChunk.Reset()
+	remaining := text
+	for len(remaining) > 0 {
+		end := len(remaining)
+		if end > maxChunkSize {
+			end = safeChunkBoundary(remaining, maxChunkSize)
 		}
-
-		// If a single paragraph exceeds the chunk size, we must hard split it
-		if len(p) > m.MaxChunkSize {
-			sentences := strings.Split(p, ". ")
-			for _, s := range sentences {
-				if currentChunk.Len()+len(s) > m.MaxChunkSize && currentChunk.Len() > 0 {
-					chunks = append(chunks, currentChunk.String())
-					currentChunk.Reset()
-				}
-				currentChunk.WriteString(s + ". ")
-			}
-		} else {
-			currentChunk.WriteString(p + "\n\n")
+		chunk := strings.TrimSpace(remaining[:end])
+		if chunk != "" {
+			chunks = append(chunks, chunk)
 		}
+		remaining = strings.TrimSpace(remaining[end:])
 	}
-
-	if currentChunk.Len() > 0 {
-		chunks = append(chunks, strings.TrimSpace(currentChunk.String()))
-	}
-
 	return chunks
+}
+
+func safeChunkBoundary(text string, maxBytes int) int {
+	boundary := maxBytes
+	for boundary > 0 && boundary < len(text) && !utf8.RuneStart(text[boundary]) {
+		boundary--
+	}
+	if boundary <= 0 {
+		return maxBytes
+	}
+
+	segment := text[:boundary]
+	for _, marker := range []string{"\n\n", ". ", " "} {
+		if index := strings.LastIndex(segment, marker); index >= boundary/2 {
+			return index + len(marker)
+		}
+	}
+	return boundary
 }
 
 // Process concurrently executes a defined task function over a slice of textual chunks.
 func (m *MapReduceWorker) Process(ctx context.Context, text string, processor func(ctx context.Context, chunk string) (string, error)) ([]string, error) {
+	if ctx == nil {
+		return nil, mapReduceFault("processing context is required")
+	}
+	if processor == nil {
+		return nil, mapReduceFault("chunk processor is required")
+	}
 	chunks := m.Chunk(text)
 	results := make([]string, len(chunks))
-	errs := make([]error, len(chunks))
-
-	var wg sync.WaitGroup
-
-	for i, c := range chunks {
-		wg.Add(1)
-		go func(index int, chunk string) {
-			defer wg.Done()
-			select {
-			case <-ctx.Done():
-				errs[index] = ctx.Err()
-				return
-			default:
-				res, err := processor(ctx, chunk)
-				if err != nil {
-					errs[index] = err
-					return
-				}
-				results[index] = res
-			}
-		}(i, c)
+	if len(chunks) == 0 {
+		return results, nil
 	}
 
-	wg.Wait()
+	workerCount := defaultMapReduceConcurrency
+	if m != nil && m.MaxConcurrent > 0 {
+		workerCount = m.MaxConcurrent
+	}
+	if workerCount > maxMapReduceConcurrency {
+		workerCount = maxMapReduceConcurrency
+	}
+	if workerCount > len(chunks) {
+		workerCount = len(chunks)
+	}
 
-	for _, err := range errs {
-		if err != nil {
-			return nil, &PlatformException{
-				Category: "MAPREDUCE_PROCESSING_FAULT",
-				Message:  "failed to process one or more chunks",
-				Code:     500,
+	processCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	type workItem struct {
+		index int
+		chunk string
+	}
+	jobs := make(chan workItem)
+	var wg sync.WaitGroup
+	var firstErr error
+	var firstErrOnce sync.Once
+	recordError := func(err error) {
+		if err == nil {
+			return
+		}
+		firstErrOnce.Do(func() {
+			firstErr = err
+			cancel()
+		})
+	}
+
+	for worker := 0; worker < workerCount; worker++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-processCtx.Done():
+					return
+				case item, ok := <-jobs:
+					if !ok {
+						return
+					}
+					res, err := processor(processCtx, item.chunk)
+					if err != nil {
+						recordError(err)
+						return
+					}
+					results[item.index] = res
+				}
 			}
+		}()
+	}
+
+sendLoop:
+	for index, chunk := range chunks {
+		select {
+		case <-processCtx.Done():
+			break sendLoop
+		case jobs <- workItem{index: index, chunk: chunk}:
 		}
 	}
+	close(jobs)
+	wg.Wait()
 
+	if firstErr != nil || ctx.Err() != nil {
+		return nil, mapReduceFault("failed to process one or more chunks")
+	}
 	return results, nil
+}
+
+func mapReduceFault(message string) *PlatformException {
+	return &PlatformException{Category: "MAPREDUCE_PROCESSING_FAULT", Message: message, Code: 500}
 }

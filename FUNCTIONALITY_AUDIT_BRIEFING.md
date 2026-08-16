@@ -845,6 +845,8 @@ Status last updated: 2026-06-28
 
 2026-08-11 LLM error-redaction hardening: network, malformed-response, and empty-response failures now return sanitized typed `503` faults without provider URLs, transport details, or raw response content. Focused tests cover timeout/detail redaction and normalized response faults; live provider evidence remains external under `EXT-AI-001`.
 
+2026-08-11 MapReduce resource-boundary hardening: AI chunking now guarantees UTF-8-safe `MaxChunkSize` bounds, and processing uses a capped cancellation-aware worker pool with nil-input guards instead of unbounded goroutine fan-out. Focused tests cover chunk limits, ordering, concurrency bounds, cancellation, and processor failures.
+
 2026-08-10 runtime secret hardening: JWT generation/validation now rejects keys shorter than 32 bytes; staging/production startup rejects missing, weak, or reused `JWT_SECRET_KEY` and `JOURNAL_SALT_SECRET`; journal bootstrap no longer falls back to the JWT key; and Terraform/CSI/IAM now projects a dedicated journal salt secret. Local auth, journal, deployment-skeleton, Terraform, and documentation checks remain required; cloud secret-sync, scoped access, and rotation evidence remain external under `SEC-SECRETS-001`.
 
 2026-08-10 security evidence alignment: `tools/securityprobe` now requires `JOURNAL_SALT_SECRET` in SecretProviderClass and redacted synced-secret markers, with regression fixtures covering the complete runtime-secret set. Cloud secret-sync, scoped access, and rotation evidence remain external under `SEC-SECRETS-001`.
