@@ -879,6 +879,8 @@ Status last updated: 2026-06-28
 2026-08-16 room state initialization hardening: `POST /api/v1/rooms/create` now returns a sanitized `503` when Redis active-state initialization fails after PostgreSQL commit and performs a tenant-RLS-scoped compensation update marking the durable room inactive. Focused handler coverage is local; the DB-backed compensation regression runs in the Postgres/RLS gate, while deployed multi-store failure telemetry remains pending.
 2026-08-16 Zoom webhook RLS mapping hardening: signed Zoom callbacks now resolve `live_rooms` through a transaction-local non-tenant sentinel plus `app.webhook_lookup_verified=true` and the exact `meeting_external_id`, guarded by a dedicated FORCE-RLS SELECT policy. Mapping failures return `503` without consuming the delivery ID for provider retry; the Docker-backed RLS gate proves unverified mapping is hidden and verified exact-ID mapping succeeds. Live Zoom delivery evidence remains pending under `EXT-ZOOM-001`.
 
+2026-08-16 room replica fan-out hardening: accepted room events now sequence, persist latest state, and publish an origin-tagged envelope in one Redis Lua transaction. Redis-backed room hubs subscribe while local clients are present, suppress their own publication before local fallback broadcast, and close subscriptions on teardown. Miniredis tests prove atomic publication, cross-replica delivery, and cleanup; deployed multi-replica WSS/Redis evidence remains pending under `PERF-WS-001` and `DATA-REDIS-001`.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.

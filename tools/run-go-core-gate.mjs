@@ -17,6 +17,7 @@ export const goTestProofMarkers = [
   'websocket_drop_metric_test=true',
   'websocket_origin_guard_test=true',
   'websocket_polling_fallback_test=true',
+  'websocket_redis_pubsub_replica_test=true',
   'abuse_rate_limit_routes_test=true',
   'abuse_auth_route_limit_test=true',
   'abuse_journal_route_limit_test=true',
@@ -51,6 +52,7 @@ export const goTestRequiredWebSocketTests = [
   'TestRoomStateHandlerReturnsLatestEventForPollingFallback',
   'TestRoomStateHandlerRejectsNonMemberBeforePollingState',
   'TestRoomStateHandlerFailsClosedWhenStateManagerMissing',
+  'TestRedisRoomHubsDeliverPublishedEventsAcrossReplicas',
 ];
 
 export const goTestRequiredAbuseTests = [

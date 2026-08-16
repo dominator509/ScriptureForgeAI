@@ -54,6 +54,10 @@ type roomEventStore interface {
 	AppendRoomEvent(ctx context.Context, roomID, eventJSON string) (int64, error)
 }
 
+type roomEventPublisher interface {
+	AppendRoomEventAndPublish(ctx context.Context, roomID, eventJSON, sourceID string) (int64, error)
+}
+
 func allowedWSOrigin(r *http.Request) bool {
 	allowed := os.Getenv("ALLOWED_WS_ORIGINS")
 	origin := strings.TrimSpace(r.Header.Get("Origin"))
@@ -182,6 +186,15 @@ func (s *SocketConnection) roomHub() *RoomHub {
 	return s.Hub
 }
 
+func (s *SocketConnection) closeRoomHub() {
+	s.hubMu.Lock()
+	hub := s.Hub
+	s.hubMu.Unlock()
+	if hub != nil {
+		hub.Close()
+	}
+}
+
 func (s *SocketConnection) activeConnectionLimiter() *abuse.ActiveConnectionLimiter {
 	s.hubMu.Lock()
 	defer s.hubMu.Unlock()
@@ -224,6 +237,7 @@ func (s *SocketConnection) BeginShutdown() {
 		_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseGoingAway, "server shutting down"), time.Now().Add(wsWriteWait))
 		_ = conn.Close()
 	}
+	s.closeRoomHub()
 }
 
 func (s *SocketConnection) untrackConnection(conn *websocket.Conn) {
@@ -395,7 +409,13 @@ func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request
 		}
 		s.eventMu.Lock()
 		start := time.Now()
-		seq, err := s.StateManager.AppendRoomEvent(r.Context(), roomID, string(wire))
+		publisher, canPublish := s.StateManager.(roomEventPublisher)
+		seq := int64(0)
+		if canPublish {
+			seq, err = publisher.AppendRoomEventAndPublish(r.Context(), roomID, string(wire), hub.InstanceID())
+		} else {
+			seq, err = s.StateManager.AppendRoomEvent(r.Context(), roomID, string(wire))
+		}
 		redisStatus := "success"
 		if err != nil {
 			redisStatus = "error"

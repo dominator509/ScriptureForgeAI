@@ -73,3 +73,58 @@ func TestAppendRoomEventAssignsContiguousSequencesUnderConcurrency(t *testing.T)
 		t.Fatalf("latest sequence = %d, want within 1..%d", latestEvent.Sequence, writers)
 	}
 }
+
+func TestAppendRoomEventAndPublishPublishesAtomicSequencedEnvelope(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	defer client.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	pubsub := client.Subscribe(ctx, "room:{room-publish}:events")
+	defer pubsub.Close()
+	if _, err := pubsub.Receive(ctx); err != nil {
+		t.Fatalf("subscribe to room events: %v", err)
+	}
+
+	manager := NewRoomStateManager(client)
+	seq, err := manager.AppendRoomEventAndPublish(ctx, "room-publish", `{"type":"cursor","room_id":"room-publish","sequence":0,"payload":{"verse":"John 1:1"},"sent_at":"2026-08-16T00:00:00Z"}`, "origin-a")
+	if err != nil {
+		t.Fatalf("append and publish room event: %v", err)
+	}
+	if seq != 1 {
+		t.Fatalf("sequence = %d, want 1", seq)
+	}
+
+	message, err := pubsub.ReceiveMessage(ctx)
+	if err != nil {
+		t.Fatalf("receive published room event: %v", err)
+	}
+	var envelope struct {
+		SourceID string `json:"source_id"`
+		Event    struct {
+			RoomID   string `json:"room_id"`
+			Sequence int64  `json:"sequence"`
+		} `json:"event"`
+	}
+	if err := json.Unmarshal([]byte(message.Payload), &envelope); err != nil {
+		t.Fatalf("decode published envelope: %v", err)
+	}
+	if envelope.SourceID != "origin-a" || envelope.Event.RoomID != "room-publish" || envelope.Event.Sequence != seq {
+		t.Fatalf("published envelope = %+v, want origin-a/room-publish/%d", envelope, seq)
+	}
+
+	latest, err := manager.GetLatestRoomEvent(ctx, "room-publish")
+	if err != nil {
+		t.Fatalf("read latest event: %v", err)
+	}
+	var latestEvent struct {
+		Sequence int64 `json:"sequence"`
+	}
+	if err := json.Unmarshal([]byte(latest), &latestEvent); err != nil {
+		t.Fatalf("decode latest event: %v", err)
+	}
+	if latestEvent.Sequence != seq {
+		t.Fatalf("latest sequence = %d, want %d", latestEvent.Sequence, seq)
+	}
+}

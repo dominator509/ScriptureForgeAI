@@ -31,6 +31,12 @@ type RoomStateManager struct {
 	client *redis.Client
 }
 
+// roomKey keeps all per-room keys in one Redis Cluster hash slot while
+// preserving clear key suffixes for state, sequencing, and pub/sub.
+func roomKey(roomID, suffix string) string {
+	return fmt.Sprintf("room:{%s}:%s", roomID, suffix)
+}
+
 func NewRoomStateManager(rdb *redis.Client) *RoomStateManager {
 	return &RoomStateManager{client: rdb}
 }
@@ -52,9 +58,9 @@ func (rsm *RoomStateManager) UpdateParticipantDuration(ctx context.Context, room
 		return 1
 	`)
 
-	roomKey := fmt.Sprintf("room:%s:participants", roomID)
+	participantsKey := roomKey(roomID, "participants")
 
-	err := script.Run(ctx, rsm.client, []string{roomKey}, userID, durationSeconds).Err()
+	err := script.Run(ctx, rsm.client, []string{participantsKey}, userID, durationSeconds).Err()
 	if err != nil {
 		return &PlatformException{
 			Category: RoomStateFault,
@@ -72,13 +78,13 @@ func (rsm *RoomStateManager) SetRoomActiveState(ctx context.Context, roomID stri
 		return 1
 	`)
 
-	roomKey := fmt.Sprintf("room:%s:meta", roomID)
+	metaKey := roomKey(roomID, "meta")
 	activeStr := "false"
 	if active {
 		activeStr = "true"
 	}
 
-	err := script.Run(ctx, rsm.client, []string{roomKey}, activeStr).Err()
+	err := script.Run(ctx, rsm.client, []string{metaKey}, activeStr).Err()
 	if err != nil {
 		return &PlatformException{
 			Category: RoomStateFault,
@@ -91,6 +97,16 @@ func (rsm *RoomStateManager) SetRoomActiveState(ctx context.Context, roomID stri
 
 // AppendRoomEvent stores the latest sequenced room event atomically and returns the new sequence number.
 func (rsm *RoomStateManager) AppendRoomEvent(ctx context.Context, roomID, eventJSON string) (int64, error) {
+	return rsm.appendRoomEvent(ctx, roomID, eventJSON, "")
+}
+
+// AppendRoomEventAndPublish persists the accepted event and publishes the
+// same sequenced envelope atomically so every API replica can fan it out.
+func (rsm *RoomStateManager) AppendRoomEventAndPublish(ctx context.Context, roomID, eventJSON, sourceID string) (int64, error) {
+	return rsm.appendRoomEvent(ctx, roomID, eventJSON, sourceID)
+}
+
+func (rsm *RoomStateManager) appendRoomEvent(ctx context.Context, roomID, eventJSON, sourceID string) (int64, error) {
 	script := redis.NewScript(`
 		local seq = redis.call("INCR", KEYS[1])
 		local event = cjson.decode(ARGV[1])
@@ -99,13 +115,17 @@ func (rsm *RoomStateManager) AppendRoomEvent(ctx context.Context, roomID, eventJ
 		redis.call("SET", KEYS[2], encoded)
 		redis.call("EXPIRE", KEYS[1], ARGV[2])
 		redis.call("EXPIRE", KEYS[2], ARGV[2])
+		if ARGV[3] ~= "" then
+			redis.call("PUBLISH", KEYS[3], cjson.encode({source_id = ARGV[3], event = event}))
+		end
 		return seq
 	`)
 
-	seqKey := fmt.Sprintf("room:%s:sequence", roomID)
-	stateKey := fmt.Sprintf("room:%s:latest", roomID)
+	seqKey := roomKey(roomID, "sequence")
+	stateKey := roomKey(roomID, "latest")
+	eventChannel := roomKey(roomID, "events")
 	ttlSeconds := int((24 * time.Hour).Seconds())
-	seq, err := script.Run(ctx, rsm.client, []string{seqKey, stateKey}, eventJSON, ttlSeconds).Int64()
+	seq, err := script.Run(ctx, rsm.client, []string{seqKey, stateKey, eventChannel}, eventJSON, ttlSeconds, sourceID).Int64()
 	if err != nil {
 		return 0, &PlatformException{
 			Category: RoomStateFault,
@@ -118,7 +138,7 @@ func (rsm *RoomStateManager) AppendRoomEvent(ctx context.Context, roomID, eventJ
 
 // GetLatestRoomEvent retrieves the last accepted event for HTTP polling fallback.
 func (rsm *RoomStateManager) GetLatestRoomEvent(ctx context.Context, roomID string) (string, error) {
-	stateKey := fmt.Sprintf("room:%s:latest", roomID)
+	stateKey := roomKey(roomID, "latest")
 	value, err := rsm.client.Get(ctx, stateKey).Result()
 	if err == redis.Nil {
 		return "{}", nil
