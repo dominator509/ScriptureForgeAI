@@ -9,7 +9,10 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-const MinimumSecretBytes = 32
+const (
+	MinimumSecretBytes = 32
+	tokenIssuer        = "scriptureforge-platform"
+)
 
 // ValidateSecretStrength keeps runtime-injected signing and derivation secrets
 // out of the weak-key path while preserving the original secret bytes.
@@ -77,7 +80,7 @@ func GenerateToken(userID, orgID, role string, duration time.Duration) (string, 
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(duration)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			Issuer:    "scriptureforge-platform",
+			Issuer:    tokenIssuer,
 		},
 	}
 
@@ -105,12 +108,14 @@ func ValidateToken(tokenString string) (*TokenClaims, error) {
 	}
 
 	token, err := jwt.ParseWithClaims(tokenString, &TokenClaims{}, func(token *jwt.Token) (interface{}, error) {
-		// Validate the alg is what we expect
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+		// Accept only the algorithm used by our issuer. Accepting any HMAC
+		// variant weakens the protocol contract even when the signing secret is
+		// shared correctly.
+		if token.Method == nil || token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return secretKey, nil
-	})
+	}, jwt.WithIssuer(tokenIssuer))
 
 	if err != nil {
 		return nil, &PlatformException{
@@ -121,6 +126,15 @@ func ValidateToken(tokenString string) (*TokenClaims, error) {
 	}
 
 	if claims, ok := token.Claims.(*TokenClaims); ok && token.Valid {
+		if strings.TrimSpace(claims.UserID) == "" ||
+			strings.TrimSpace(claims.OrganizationID) == "" ||
+			strings.TrimSpace(claims.Role) == "" {
+			return nil, &PlatformException{
+				Category: AuthenticationFault,
+				Message:  "invalid token identity claims",
+				Code:     401,
+			}
+		}
 		return claims, nil
 	}
 
