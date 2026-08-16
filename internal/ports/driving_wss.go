@@ -1,8 +1,10 @@
 package ports
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -141,6 +143,34 @@ func validRoomEventType(eventType string) bool {
 		}
 	}
 	return true
+}
+
+func decodeRoomEvent(message []byte) (RoomEvent, error) {
+	decoder := json.NewDecoder(bytes.NewReader(message))
+	decoder.DisallowUnknownFields()
+
+	var event RoomEvent
+	if err := decoder.Decode(&event); err != nil {
+		return RoomEvent{}, err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return RoomEvent{}, io.ErrUnexpectedEOF
+		}
+		return RoomEvent{}, err
+	}
+	return event, nil
+}
+
+func validRoomEventEnvelope(event RoomEvent, roomID string) bool {
+	if event.RoomID != roomID || !validRoomEventType(event.Type) || event.Sequence != 0 {
+		return false
+	}
+	if len(event.Payload) == 0 || bytes.Equal(bytes.TrimSpace(event.Payload), []byte("null")) {
+		return false
+	}
+	return json.Valid(event.Payload)
 }
 
 func (s *SocketConnection) roomHub() *RoomHub {
@@ -351,8 +381,8 @@ func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request
 			log.Println("read error:", err)
 			break
 		}
-		var event RoomEvent
-		if err := json.Unmarshal(message, &event); err != nil || !validRoomEventType(event.Type) || event.RoomID != roomID {
+		event, decodeErr := decodeRoomEvent(message)
+		if decodeErr != nil || !validRoomEventEnvelope(event, roomID) {
 			closePolicyViolation("invalid room event")
 			break
 		}

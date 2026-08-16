@@ -192,6 +192,89 @@ func TestValidRoomEventTypeKeepsLowCardinalityEnvelopeTypes(t *testing.T) {
 	}
 }
 
+func TestRoomEventEnvelopeRejectsUnknownFieldsMissingPayloadAndClientSequence(t *testing.T) {
+	for _, test := range []struct {
+		name            string
+		message         string
+		wantDecodeError bool
+	}{
+		{name: "unknown field", message: `{"type":"cursor","room_id":"room-1","payload":{"x":1},"unexpected":true}`, wantDecodeError: true},
+		{name: "missing payload", message: `{"type":"cursor","room_id":"room-1"}`},
+		{name: "null payload", message: `{"type":"cursor","room_id":"room-1","payload":null}`},
+		{name: "client sequence", message: `{"type":"cursor","room_id":"room-1","sequence":9,"payload":{"x":1}}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			event, err := decodeRoomEvent([]byte(test.message))
+			if (err != nil) != test.wantDecodeError {
+				t.Fatalf("decodeRoomEvent() error = %v, wantDecodeError = %t", err, test.wantDecodeError)
+			}
+			if err != nil {
+				return
+			}
+			if validRoomEventEnvelope(event, "room-1") {
+				t.Fatalf("validRoomEventEnvelope(%#v) = true, want false", event)
+			}
+		})
+	}
+}
+
+func TestRoomEventEnvelopeAcceptsServerAssignedEnvelope(t *testing.T) {
+	event, err := decodeRoomEvent([]byte(`{"type":"cursor","room_id":"room-1","payload":{"x":1}}`))
+	if err != nil {
+		t.Fatalf("decodeRoomEvent() error = %v", err)
+	}
+	if !validRoomEventEnvelope(event, "room-1") {
+		t.Fatalf("validRoomEventEnvelope(%#v) = false, want true", event)
+	}
+}
+
+func TestLiveRoomRejectsInvalidEventEnvelopesWithoutPersisting(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		message string
+	}{
+		{name: "unknown field", message: `{"type":"cursor","room_id":"room-1","payload":{"x":1},"unexpected":true}`},
+		{name: "missing payload", message: `{"type":"cursor","room_id":"room-1"}`},
+		{name: "null payload", message: `{"type":"cursor","room_id":"room-1","payload":null}`},
+		{name: "client sequence", message: `{"type":"cursor","room_id":"room-1","sequence":9,"payload":{"x":1}}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := &fakeRoomEventStore{}
+			socket := &SocketConnection{
+				StateManager: store,
+				Hub:          NewRoomHub(),
+				MembershipValidator: func(r *http.Request, claims *auth.TokenClaims, roomID string) bool {
+					return roomID == "room-1" && claims.UserID != ""
+				},
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				claims := &auth.TokenClaims{UserID: "user-invalid-envelope", OrganizationID: "org-1", Role: "member"}
+				socket.HandleLiveRoom(w, r.WithContext(context.WithValue(r.Context(), auth.ContextKeyUser, claims)))
+			}))
+			defer server.Close()
+
+			conn := dialRoom(t, server.URL, "room-1", "invalid-envelope")
+			defer conn.Close()
+			if err := conn.WriteMessage(websocket.TextMessage, []byte(test.message)); err != nil {
+				t.Fatalf("write invalid envelope: %v", err)
+			}
+			if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+				t.Fatalf("set invalid envelope read deadline: %v", err)
+			}
+			_, _, err := conn.ReadMessage()
+			if err == nil {
+				t.Fatal("invalid envelope read returned nil error, want policy-violation close")
+			}
+			if !websocket.IsCloseError(err, websocket.ClosePolicyViolation) {
+				t.Fatalf("invalid envelope close error = %v, want policy violation", err)
+			}
+			if got := store.appendCount(); got != 0 {
+				t.Fatalf("invalid envelope append count = %d, want 0", got)
+			}
+		})
+	}
+}
+
 func TestLiveRoomClosesOversizedEventWithoutPersisting(t *testing.T) {
 	store := &fakeRoomEventStore{}
 	socket := &SocketConnection{
