@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -83,7 +84,15 @@ func (h *AIHandler) writeAIRequestLog(r *http.Request, claims *auth.TokenClaims,
 }
 
 func (h *AIHandler) generationDependenciesReady() bool {
-	return h.DB != nil && h.RAGEngine != nil && h.Verifier != nil && h.LLMClient != nil && h.MapReduceWorker != nil
+	return h.DB != nil &&
+		h.RAGEngine != nil && h.RAGEngine.Database != nil &&
+		h.Verifier != nil &&
+		h.LLMClient != nil &&
+		strings.TrimSpace(h.LLMClient.APIKey) != "" &&
+		strings.TrimSpace(h.LLMClient.Endpoint) != "" &&
+		strings.TrimSpace(h.LLMClient.Model) != "" &&
+		h.LLMClient.HTTPClient != nil &&
+		h.MapReduceWorker != nil
 }
 
 func aiAuditPersistenceFault() *ai.PlatformException {

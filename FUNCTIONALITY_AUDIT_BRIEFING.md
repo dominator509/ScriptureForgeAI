@@ -870,6 +870,8 @@ Status last updated: 2026-06-28
 
 2026-08-11 room ingress hardening: `POST /api/v1/rooms/create` now uses the shared strict JSON decoder, rejects concatenated or unknown-field payloads, caps bodies at 16 KiB, and rejects room titles over 256 bytes before database or Redis work. Focused tests cover oversized, concatenated, and overlong inputs; deployed gateway/body-limit telemetry remains external.
 
+2026-08-16 AI nested-readiness hardening: the generation handler now rejects incomplete RAG and LLM dependency graphs before work begins, including missing vector storage, API key, endpoint, model, or bounded HTTP client. Direct RAG and LLM calls also return typed `503` faults for nil/partial wiring. Focused handler/domain tests passed; deployed provider, audit, and degradation evidence remains pending under `EXT-AI-001`.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.

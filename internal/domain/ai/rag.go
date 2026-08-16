@@ -321,6 +321,10 @@ func NewRAGEngine(db VectorDB) *RAGEngine {
 
 // CompileContext interacts with the semantic vector space to assemble validated resource segments.
 func (r *RAGEngine) CompileContext(ctx context.Context, orgID string, prompt string) (string, error) {
+	if r == nil || r.Database == nil {
+		return "", newRAGSearchFault()
+	}
+
 	// 1. Sanitize incoming prompt
 	safePrompt, err := SanitizeInput(prompt)
 	if err != nil {

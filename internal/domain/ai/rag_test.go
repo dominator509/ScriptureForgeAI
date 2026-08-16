@@ -211,6 +211,19 @@ func TestRAGEngineSanitizesAndPreservesSearchFailures(t *testing.T) {
 	}
 }
 
+func TestRAGEngineFailsClosedWhenDatabaseIsMissing(t *testing.T) {
+	for _, engine := range []*RAGEngine{nil, {}, {Database: nil}} {
+		_, err := engine.CompileContext(context.Background(), "org-1", "creation")
+		var platformErr *PlatformException
+		if !errors.As(err, &platformErr) {
+			t.Fatalf("CompileContext error = %T %v, want PlatformException", err, err)
+		}
+		if platformErr.Category != RAGSearchFault || platformErr.Code != http.StatusServiceUnavailable {
+			t.Fatalf("CompileContext fault = %+v, want RAG_SEARCH_FAULT 503", platformErr)
+		}
+	}
+}
+
 func TestGenerateEmbeddingRetriesWithFreshRequestBody(t *testing.T) {
 	t.Setenv("GO_ENV", "production")
 	t.Setenv("OPENAI_API_KEY", "test-key")

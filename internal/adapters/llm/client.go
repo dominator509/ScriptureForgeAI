@@ -81,6 +81,13 @@ func (c *LLMClient) BuildRigorousPrompt(safePrompt string, compiledContext strin
 
 // Execute triggers the network call, processes the boundaries, and runs verification.
 func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledContext string, verifier *ai.ResponseVerificationSubsystem) (string, error) {
+	if c == nil {
+		return "", &ai.PlatformException{
+			Category: "AI_CONFIGURATION_FAULT",
+			Message:  "LLM client is not configured",
+			Code:     503,
+		}
+	}
 	start := time.Now()
 	status := "error"
 	defer func() {
@@ -93,6 +100,14 @@ func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledCont
 		return "", &ai.PlatformException{
 			Category: "AI_CONFIGURATION_FAULT",
 			Message:  "OPENAI_API_KEY is not configured",
+			Code:     503,
+		}
+	}
+	if strings.TrimSpace(c.Endpoint) == "" || strings.TrimSpace(c.Model) == "" || c.HTTPClient == nil {
+		status = "configuration_error"
+		return "", &ai.PlatformException{
+			Category: "AI_CONFIGURATION_FAULT",
+			Message:  "LLM client is not fully configured",
 			Code:     503,
 		}
 	}

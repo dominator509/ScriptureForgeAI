@@ -42,6 +42,29 @@ func TestExecuteFailsClosedWhenAPIKeyMissingEvenInTesting(t *testing.T) {
 	}
 }
 
+func TestExecuteFailsClosedWhenClientConfigurationIsIncomplete(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		client *LLMClient
+	}{
+		{name: "nil client", client: nil},
+		{name: "missing endpoint", client: &LLMClient{APIKey: "test-key", Model: "test-model", HTTPClient: http.DefaultClient}},
+		{name: "missing model", client: &LLMClient{APIKey: "test-key", Endpoint: "https://provider.example", HTTPClient: http.DefaultClient}},
+		{name: "missing bounded HTTP client", client: &LLMClient{APIKey: "test-key", Endpoint: "https://provider.example", Model: "test-model"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := test.client.Execute(context.Background(), "study genesis", "[Genesis 1:1] In the beginning", ai.NewResponseVerificationSubsystem())
+			var platformErr *ai.PlatformException
+			if !errors.As(err, &platformErr) {
+				t.Fatalf("Execute error = %T %v, want PlatformException", err, err)
+			}
+			if platformErr.Category != "AI_CONFIGURATION_FAULT" || platformErr.Code != http.StatusServiceUnavailable {
+				t.Fatalf("configuration fault = %#v, want AI_CONFIGURATION_FAULT 503", platformErr)
+			}
+		})
+	}
+}
+
 func TestExecuteUsesBoundedHTTPClientTimeout(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond)
