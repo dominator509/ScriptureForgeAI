@@ -7,7 +7,7 @@ ScriptureForgeAI is a multi-tenant Bible study platform with authenticated works
 ## Stack
 
 - Backend: Go `1.24.3` toolchain (`go 1.24.0` + `toolchain go1.24.3` in `go.mod`), PostgreSQL/pgx, Redis, Gorilla WebSocket, OpenTelemetry.
-- Web: Next.js `16.2.12` + React `19` + TypeScript, Zustand.
+- Web: Next.js `14.0.0` + React `18.2.0` + TypeScript, Zustand.
 - Mobile: Expo/React Native + TypeScript, Zustand.
 - Worker/service: Rust 2021 + Tokio + Tonic gRPC.
 - Infra/readiness: Terraform AWS/EKS/RDS/Redis skeleton, readiness tooling in `tools/`.
