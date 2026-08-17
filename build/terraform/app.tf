@@ -130,14 +130,6 @@ resource "kubernetes_manifest" "app_secret_provider" {
                 objectAlias = "grpc_engine_tls_ca_pem"
               },
               {
-                path        = "server_cert_pem"
-                objectAlias = "grpc_engine_tls_server_cert_pem"
-              },
-              {
-                path        = "server_key_pem"
-                objectAlias = "grpc_engine_tls_server_key_pem"
-              },
-              {
                 path        = "client_cert_pem"
                 objectAlias = "grpc_engine_tls_client_cert_pem"
               },
@@ -207,14 +199,6 @@ resource "kubernetes_manifest" "app_secret_provider" {
             {
               objectName = "grpc_engine_tls_ca_pem"
               key        = "GRPC_ENGINE_TLS_CA_PEM"
-            },
-            {
-              objectName = "grpc_engine_tls_server_cert_pem"
-              key        = "GRPC_ENGINE_TLS_CERT_PEM"
-            },
-            {
-              objectName = "grpc_engine_tls_server_key_pem"
-              key        = "GRPC_ENGINE_TLS_KEY_PEM"
             },
             {
               objectName = "grpc_engine_tls_client_cert_pem"
@@ -606,6 +590,11 @@ resource "kubernetes_deployment" "api" {
           }
 
           env {
+            name  = "TRUSTED_PROXY_CIDRS"
+            value = join(",", var.trusted_proxy_cidrs)
+          }
+
+          env {
             name  = "OTEL_SERVICE_NAME"
             value = "scriptureforge-api"
           }
@@ -668,6 +657,11 @@ resource "kubernetes_deployment" "api" {
                 key  = "OPENAI_API_KEY"
               }
             }
+          }
+
+          env {
+            name  = "AI_ALLOWED_PROVIDER_HOSTS"
+            value = join(",", var.ai_allowed_provider_hosts)
           }
 
           env {

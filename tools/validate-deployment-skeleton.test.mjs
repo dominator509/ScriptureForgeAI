@@ -7,6 +7,7 @@ import {
   validateTerraformReleaseInputGuards,
   validateTerraformSecretInputs,
   validateTerraformStorageKMSInputs,
+  validateWorkloadSecretSeparation,
 } from './validate-deployment-skeleton.mjs';
 
 async function terraformSecretFixtures() {
@@ -81,6 +82,25 @@ test('validateTerraformSecretInputs rejects workload root database URL construct
   assert.throws(
     () => validateTerraformSecretInputs(variables, tfvarsExample, broken),
     /workload manifests must not read the RDS root password/,
+  );
+});
+
+
+test('validateWorkloadSecretSeparation keeps Rust server TLS material out of the API workload', async () => {
+  const { app } = await terraformSecretFixtures();
+  assert.doesNotThrow(() => validateWorkloadSecretSeparation(app));
+});
+
+test('validateWorkloadSecretSeparation rejects API access to Rust server private material', async () => {
+  const { app } = await terraformSecretFixtures();
+  const broken = app.replace(
+    'objectAlias = "grpc_engine_tls_client_key_pem"',
+    'objectAlias = "grpc_engine_tls_server_key_pem"',
+  );
+  assert.notEqual(broken, app, 'test fixture must add server key material to the API provider');
+  assert.throws(
+    () => validateWorkloadSecretSeparation(broken),
+    /API workload must not receive Rust server TLS material/,
   );
 });
 

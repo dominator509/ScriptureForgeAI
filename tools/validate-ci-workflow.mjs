@@ -20,7 +20,7 @@ export const ciWorkflowProofMarkers = [
 export const requiredMarkers = [
   { id: 'go-setup', text: "go-version: '1.24.3'" },
   { id: 'codex-branch-push', text: '"codex/**"' },
-  { id: 'postgres-service', text: 'pgvector/pgvector:pg16' },
+  { id: 'postgres-service', text: 'pgvector/pgvector@sha256:eac621400b7b7ff52493883e41e930e3d104695fea5b68cc0c42370cf7880067' },
   { id: 'go-fuzz', text: 'go test -fuzz=FuzzSanitizeInput' },
   { id: 'go-test', text: 'node tools/run-go-core-gate.mjs --mode test --bin go' },
   { id: 'postgres-schema', text: 'Apply Postgres Integration Schema' },
@@ -31,7 +31,7 @@ export const requiredMarkers = [
   { id: 'ci-awscli-v2-pgp', text: 'gpg --batch --verify awscliv2.zip.sig awscliv2.zip' },
   { id: 'ci-awscli-v2-fingerprint', text: 'FB5DB77FD5C118B80511ADA8A6310ACC4672475C' },
   { id: 'ci-awscli-v2-install', text: 'sudo ./aws/install --update' },
-  { id: 'ci-gopls-install', text: 'go install golang.org/x/tools/gopls@v0.20.0' },
+  { id: 'ci-gopls-install', text: 'go install golang.org/x/tools/gopls@2e31135b736b96cd609904370c71563ce5447826' },
   { id: 'ci-kubectl-install', text: 'curl -fsSLo kubectl https://dl.k8s.io/release/v1.34.1/bin/linux/amd64/kubectl' },
   { id: 'ci-kubectl-sha256', text: 'https://dl.k8s.io/release/v1.34.1/bin/linux/amd64/kubectl.sha256' },
   { id: 'ci-kubectl-checksum', text: 'sha256sum --check -' },

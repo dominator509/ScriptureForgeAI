@@ -90,7 +90,7 @@ test('validateCIWorkflow rejects missing strict staging PATH readiness validatio
 
 test('validateCIWorkflow rejects missing staging evidence PATH tool installation', async () => {
   const text = await readFile('.github/workflows/security.yml', 'utf8');
-  const missingGopls = text.replace('go install golang.org/x/tools/gopls@v0.20.0', 'go version');
+  const missingGopls = text.replace('go install golang.org/x/tools/gopls@2e31135b736b96cd609904370c71563ce5447826', 'go version');
   assert.throws(
     () => validateCIWorkflow(missingGopls),
     /ci-gopls-install/,

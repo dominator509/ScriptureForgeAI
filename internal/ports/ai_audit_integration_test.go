@@ -223,7 +223,7 @@ func TestGenerateCurriculumHandlerPersistsAuditRowsWithTenantRLS(t *testing.T) {
 		DB:              db,
 		RAGEngine:       ai.NewRAGEngine(fakeAIVectorDB{}),
 		Verifier:        ai.NewResponseVerificationSubsystem(),
-		LLMClient:       &llm.LLMClient{APIKey: "test-key", Endpoint: llmServer.URL, Model: "test-model", HTTPClient: llmServer.Client(), MaxRetries: 0},
+		LLMClient:       &llm.LLMClient{APIKey: "test-key", Endpoint: llmServer.URL, Model: "test-model", HTTPClient: llmServer.Client(), MaxRetries: 0, AllowedProviderHosts: []string{"127.0.0.1"}},
 		MapReduceWorker: ai.NewMapReduceWorker(4000),
 	}
 
@@ -295,7 +295,7 @@ func TestGenerateCurriculumHandlerTenantIsolationForCrossTenantReadsAndWrites(t 
 		DB:              db,
 		RAGEngine:       ai.NewRAGEngine(fakeAIVectorDB{}),
 		Verifier:        ai.NewResponseVerificationSubsystem(),
-		LLMClient:       &llm.LLMClient{APIKey: "test-key", Endpoint: llmServer.URL, Model: "test-model", HTTPClient: llmServer.Client(), MaxRetries: 0},
+		LLMClient:       &llm.LLMClient{APIKey: "test-key", Endpoint: llmServer.URL, Model: "test-model", HTTPClient: llmServer.Client(), MaxRetries: 0, AllowedProviderHosts: []string{"127.0.0.1"}},
 		MapReduceWorker: ai.NewMapReduceWorker(4000),
 	}
 

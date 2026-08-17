@@ -20,6 +20,37 @@ func TestLoadProviderHTTPConfigClampsEnvironmentValues(t *testing.T) {
 	}
 }
 
+func TestValidateProviderEndpointRequiresExactAllowlistAndHTTPS(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint string
+		allowed  []string
+		wantErr  bool
+	}{
+		{name: "default provider", endpoint: "https://api.openai.com/v1/embeddings", allowed: nil},
+		{name: "unlisted provider", endpoint: "https://evil.example/v1/chat", allowed: []string{"api.openai.com"}, wantErr: true},
+		{name: "userinfo", endpoint: "https://api.openai.com@evil.example/v1/chat", allowed: []string{"evil.example"}, wantErr: true},
+		{name: "explicit loopback test server", endpoint: "http://127.0.0.1:1234/v1/chat", allowed: []string{"127.0.0.1"}},
+		{name: "non TLS non loopback", endpoint: "http://api.openai.com/v1/chat", allowed: []string{"api.openai.com"}, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateProviderEndpoint(tt.endpoint, tt.allowed)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ValidateProviderEndpoint(%q) error = %v, wantErr=%v", tt.endpoint, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestLoadAllowedProviderHostsUsesExplicitEnvironment(t *testing.T) {
+	t.Setenv("AI_ALLOWED_PROVIDER_HOSTS", "api.openai.com, azure.example ")
+	hosts := LoadAllowedProviderHosts()
+	if len(hosts) != 2 || hosts[0] != "api.openai.com" || hosts[1] != "azure.example" {
+		t.Fatalf("allowed provider hosts = %#v, want normalized configured hosts", hosts)
+	}
+}
+
 func TestReadProviderResponseBodyRejectsOversizedPayload(t *testing.T) {
 	response := &http.Response{Body: io.NopCloser(strings.NewReader(strings.Repeat("x", int(MaxProviderResponseBytes+1))))}
 	if _, err := ReadProviderResponseBody(response); err == nil {

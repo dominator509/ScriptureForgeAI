@@ -199,6 +199,9 @@ func generateEmbedding(ctx context.Context, text string) ([]float32, error) {
 	if endpoint == "" {
 		endpoint = "https://api.openai.com/v1/embeddings"
 	}
+	if err := ValidateProviderEndpoint(endpoint, LoadAllowedProviderHosts()); err != nil {
+		return nil, newRAGSearchFault()
+	}
 	reqBody := embedRequest{
 		Input: text,
 		Model: model,

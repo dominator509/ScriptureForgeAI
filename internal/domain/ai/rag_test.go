@@ -260,6 +260,7 @@ func TestGenerateEmbeddingRetriesWithFreshRequestBody(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "test-key")
 	t.Setenv("AI_MAX_RETRIES", "1")
 	t.Setenv("AI_HTTP_TIMEOUT_MS", "1000")
+	t.Setenv("AI_ALLOWED_PROVIDER_HOSTS", "127.0.0.1")
 	attempts := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++

@@ -247,6 +247,7 @@ func TestLimiterIgnoresForwardedHeadersUnlessTrusted(t *testing.T) {
 
 func TestLimiterUsesForwardedClientIPWhenProxyHeadersAreTrusted(t *testing.T) {
 	t.Setenv("TRUST_PROXY_HEADERS", "true")
+	t.Setenv("TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
 	limiter := testLimiter(ProfileAuth, 1, time.Minute)
 	handler := limiter.Middleware(ProfileAuth, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -273,6 +274,7 @@ func TestLimiterUsesForwardedClientIPWhenProxyHeadersAreTrusted(t *testing.T) {
 
 func TestLimiterIgnoresPrivateForwardedClientIPsWhenProxyHeadersAreTrusted(t *testing.T) {
 	t.Setenv("TRUST_PROXY_HEADERS", "true")
+	t.Setenv("TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
 	limiter := testLimiter(ProfileAuth, 1, time.Minute)
 	handler := limiter.Middleware(ProfileAuth, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -301,6 +303,7 @@ func TestLimiterIgnoresPrivateForwardedClientIPsWhenProxyHeadersAreTrusted(t *te
 
 func TestLimiterUsesFirstPublicForwardedClientIPWhenPrivateProxiesArePresent(t *testing.T) {
 	t.Setenv("TRUST_PROXY_HEADERS", "true")
+	t.Setenv("TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
 	limiter := testLimiter(ProfileAuth, 1, time.Minute)
 	handler := limiter.Middleware(ProfileAuth, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -331,6 +334,29 @@ func TestLimiterUsesFirstPublicForwardedClientIPWhenPrivateProxiesArePresent(t *
 	handler.ServeHTTP(repeatRecorder, repeat)
 	if repeatRecorder.Code != http.StatusTooManyRequests {
 		t.Fatalf("repeated public forwarded request status = %d, want 429", repeatRecorder.Code)
+	}
+}
+
+func TestLimiterIgnoresForwardedHeadersFromUnlistedProxy(t *testing.T) {
+	t.Setenv("TRUST_PROXY_HEADERS", "true")
+	t.Setenv("TRUSTED_PROXY_CIDRS", "192.0.2.0/24")
+	limiter := testLimiter(ProfileAuth, 1, time.Minute)
+	handler := limiter.Middleware(ProfileAuth, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	first := authRequestFromProxy("198.51.100.10")
+	firstRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(firstRecorder, first)
+	if firstRecorder.Code != http.StatusNoContent {
+		t.Fatalf("first unlisted-proxy request status = %d, want 204", firstRecorder.Code)
+	}
+
+	second := authRequestFromProxy("198.51.100.11")
+	secondRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(secondRecorder, second)
+	if secondRecorder.Code != http.StatusTooManyRequests {
+		t.Fatalf("second unlisted-proxy request status = %d, want shared 429", secondRecorder.Code)
 	}
 }
 

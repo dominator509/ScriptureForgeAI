@@ -17,11 +17,12 @@ import (
 
 // LLMClient represents a network-isolated execution engine connector.
 type LLMClient struct {
-	APIKey     string
-	Endpoint   string
-	Model      string
-	HTTPClient *http.Client
-	MaxRetries int
+	APIKey               string
+	Endpoint             string
+	Model                string
+	HTTPClient           *http.Client
+	MaxRetries           int
+	AllowedProviderHosts []string
 }
 
 type openaiRequest struct {
@@ -54,11 +55,12 @@ func NewLLMClient() *LLMClient {
 	}
 	providerConfig := ai.LoadProviderHTTPConfig()
 	return &LLMClient{
-		APIKey:     key,
-		Endpoint:   endpoint,
-		Model:      model,
-		HTTPClient: ai.NewProviderHTTPClient(providerConfig),
-		MaxRetries: providerConfig.MaxRetries,
+		APIKey:               key,
+		Endpoint:             endpoint,
+		Model:                model,
+		HTTPClient:           ai.NewProviderHTTPClient(providerConfig),
+		MaxRetries:           providerConfig.MaxRetries,
+		AllowedProviderHosts: ai.LoadAllowedProviderHosts(),
 	}
 }
 
@@ -108,6 +110,14 @@ func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledCont
 		return "", &ai.PlatformException{
 			Category: "AI_CONFIGURATION_FAULT",
 			Message:  "LLM client is not fully configured",
+			Code:     503,
+		}
+	}
+	if err := ai.ValidateProviderEndpoint(c.Endpoint, c.AllowedProviderHosts); err != nil {
+		status = "configuration_error"
+		return "", &ai.PlatformException{
+			Category: "AI_CONFIGURATION_FAULT",
+			Message:  "AI provider endpoint is not allowed",
 			Code:     503,
 		}
 	}

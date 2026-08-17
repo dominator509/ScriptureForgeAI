@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: pgvector/pgvector@sha256:eac621400b7b7ff52493883e41e930e3d104695fea5b68cc0c42370cf7880067
         env:
           POSTGRES_PASSWORD: scriptureforge
           POSTGRES_DB: scriptureforge
@@ -80,7 +80,7 @@ jobs:
         unzip -q awscliv2.zip
         sudo ./aws/install --update
         rm -rf aws awscliv2.zip awscliv2.zip.sig
-        go install golang.org/x/tools/gopls@v0.20.0
+        go install golang.org/x/tools/gopls@2e31135b736b96cd609904370c71563ce5447826
         curl -fsSLo kubectl https://dl.k8s.io/release/v1.34.1/bin/linux/amd64/kubectl
         curl -fsSLo kubectl.sha256 https://dl.k8s.io/release/v1.34.1/bin/linux/amd64/kubectl.sha256
         echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check -

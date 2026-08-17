@@ -66,6 +66,7 @@ func TestExecuteFailsClosedWhenClientConfigurationIsIncomplete(t *testing.T) {
 }
 
 func TestExecuteUsesBoundedHTTPClientTimeout(t *testing.T) {
+	allowLoopbackProvider(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond)
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"[Genesis 1:1] delayed"}}]}`))
@@ -106,6 +107,7 @@ func TestExecuteUsesBoundedHTTPClientTimeout(t *testing.T) {
 }
 
 func TestExecuteRedactsNetworkErrorDetails(t *testing.T) {
+	t.Setenv("AI_ALLOWED_PROVIDER_HOSTS", "provider.example.invalid")
 	client := &LLMClient{
 		APIKey:   "test-key",
 		Endpoint: "https://provider.example.invalid/v1/chat/completions",
@@ -130,6 +132,7 @@ func TestExecuteRedactsNetworkErrorDetails(t *testing.T) {
 }
 
 func TestExecuteNormalizesMalformedAndEmptyProviderResponses(t *testing.T) {
+	allowLoopbackProvider(t)
 	tests := []struct {
 		name    string
 		body    string
@@ -163,6 +166,7 @@ func TestExecuteNormalizesMalformedAndEmptyProviderResponses(t *testing.T) {
 }
 
 func TestExecuteRetriesWithFreshRequestBody(t *testing.T) {
+	allowLoopbackProvider(t)
 	attempts := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
@@ -204,6 +208,7 @@ func TestExecuteRetriesWithFreshRequestBody(t *testing.T) {
 }
 
 func TestExecuteRetryStopsWhenContextIsCanceled(t *testing.T) {
+	allowLoopbackProvider(t)
 	attempts := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
@@ -234,6 +239,7 @@ func TestExecuteRetryStopsWhenContextIsCanceled(t *testing.T) {
 }
 
 func TestExecuteRejectsOversizedProviderResponse(t *testing.T) {
+	allowLoopbackProvider(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(strings.Repeat("x", int(ai.MaxProviderResponseBytes+1))))
 	}))
@@ -257,6 +263,7 @@ func TestExecuteRejectsOversizedProviderResponse(t *testing.T) {
 }
 
 func TestExecuteRejectsCitationFreeAndHallucinatedResponses(t *testing.T) {
+	allowLoopbackProvider(t)
 	tests := []struct {
 		name            string
 		modelResponse   string
@@ -330,6 +337,7 @@ func TestExecuteRejectsCitationFreeAndHallucinatedResponses(t *testing.T) {
 }
 
 func TestExecuteReturnsVerifiedCitationResponse(t *testing.T) {
+	allowLoopbackProvider(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(openaiResponse{
 			Choices: []struct {
@@ -362,4 +370,9 @@ func TestExecuteReturnsVerifiedCitationResponse(t *testing.T) {
 	if !strings.Contains(metrics, `scriptureforge_dependency_operations_total{dependency="ai_provider",operation="chat_completion",status="success"} 1`) {
 		t.Fatalf("AI success dependency metric missing:\n%s", metrics)
 	}
+}
+
+func allowLoopbackProvider(t *testing.T) {
+	t.Helper()
+	t.Setenv("AI_ALLOWED_PROVIDER_HOSTS", "127.0.0.1")
 }

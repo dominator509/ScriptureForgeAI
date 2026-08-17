@@ -567,7 +567,7 @@ func identityForRequest(r *http.Request, profileName string) string {
 		}
 	}
 
-	if trustProxyHeaders() {
+	if trustedProxyForRequest(r) {
 		if clientIP := forwardedClientIP(r); clientIP != "" {
 			return "ip:" + clientIP + ":profile:" + profileName
 		}
@@ -586,6 +586,27 @@ func identityForRequest(r *http.Request, profileName string) string {
 func trustProxyHeaders() bool {
 	raw := strings.TrimSpace(strings.ToLower(os.Getenv("TRUST_PROXY_HEADERS")))
 	return raw == "true" || raw == "1" || raw == "yes"
+}
+
+func trustedProxyForRequest(r *http.Request) bool {
+	if r == nil || !trustProxyHeaders() {
+		return false
+	}
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err != nil {
+		host = strings.TrimSpace(r.RemoteAddr)
+	}
+	remoteIP := net.ParseIP(normalizeClientIP(host))
+	if remoteIP == nil {
+		return false
+	}
+	for _, rawCIDR := range strings.Split(os.Getenv("TRUSTED_PROXY_CIDRS"), ",") {
+		_, network, err := net.ParseCIDR(strings.TrimSpace(rawCIDR))
+		if err == nil && network.Contains(remoteIP) {
+			return true
+		}
+	}
+	return false
 }
 
 func forwardedClientIP(r *http.Request) string {

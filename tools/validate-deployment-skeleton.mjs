@@ -107,6 +107,37 @@ export function validateTerraformSecretInputs(variables, tfvarsExample, app) {
   assert.ok(!app.includes('postgres://'), 'workload manifests must source DATABASE_URL from Secrets Manager, not inline PostgreSQL URLs');
 }
 
+export function validateWorkloadSecretSeparation(app) {
+  const apiStart = app.indexOf('name      = "scriptureforge-app-secrets"');
+  const rustStart = app.indexOf('name      = "scriptureforge-rust-secrets"');
+  assert.ok(apiStart >= 0 && rustStart > apiStart, 'workload SecretProviderClass boundaries must be present');
+
+  const apiSecretProvider = app.slice(apiStart, rustStart);
+  const rustSecretProvider = app.slice(rustStart);
+  for (const forbidden of [
+    'path        = "server_cert_pem"',
+    'objectAlias = "grpc_engine_tls_server_cert_pem"',
+    'path        = "server_key_pem"',
+    'objectAlias = "grpc_engine_tls_server_key_pem"',
+    'objectName = "grpc_engine_tls_server_cert_pem"',
+    'objectName = "grpc_engine_tls_server_key_pem"',
+    'key        = "GRPC_ENGINE_TLS_CERT_PEM"',
+    'key        = "GRPC_ENGINE_TLS_KEY_PEM"',
+  ]) {
+    assert.ok(!apiSecretProvider.includes(forbidden), `API workload must not receive Rust server TLS material: ${forbidden}`);
+  }
+  for (const required of [
+    'path        = "server_cert_pem"',
+    'path        = "server_key_pem"',
+    'objectAlias = "grpc_engine_tls_server_cert_pem"',
+    'objectAlias = "grpc_engine_tls_server_key_pem"',
+    'key        = "GRPC_ENGINE_TLS_CERT_PEM"',
+    'key        = "GRPC_ENGINE_TLS_KEY_PEM"',
+  ]) {
+    assert.ok(rustSecretProvider.includes(required), `Rust workload must retain its server TLS material: ${required}`);
+  }
+}
+
 export function validateTerraformImageDigestInputs(variables, tfvarsExample, app) {
   for (const name of ['api_image', 'web_image', 'rust_engine_image']) {
     const block = terraformVariableBlock(variables, name);
@@ -207,6 +238,10 @@ requireIncludes(
     'variable "zoom_http_timeout_ms"',
     'variable "zoom_max_retries"',
     'variable "trust_proxy_headers"',
+    'variable "trusted_proxy_cidrs"',
+    'variable "ai_allowed_provider_hosts"',
+    'variable "trusted_proxy_cidrs"',
+    'variable "ai_allowed_provider_hosts"',
   ],
   'terraform variables',
 );
@@ -309,6 +344,14 @@ requireIncludes(
     'scriptureforge-rust-engine:50051',
     'name  = "TRUST_PROXY_HEADERS"',
     'value = tostring(var.trust_proxy_headers)',
+    'name  = "TRUSTED_PROXY_CIDRS"',
+    'value = join(",", var.trusted_proxy_cidrs)',
+    'name  = "AI_ALLOWED_PROVIDER_HOSTS"',
+    'value = join(",", var.ai_allowed_provider_hosts)',
+    'name  = "TRUSTED_PROXY_CIDRS"',
+    'value = join(",", var.trusted_proxy_cidrs)',
+    'name  = "AI_ALLOWED_PROVIDER_HOSTS"',
+    'value = join(",", var.ai_allowed_provider_hosts)',
     'name  = "OTEL_SERVICE_NAME"',
     'scriptureforge-rust-engine',
     'name  = "SERVICE_VERSION"',
@@ -400,6 +443,7 @@ requireIncludes(
 );
 
 validateTerraformSecretInputs(variables, tfvarsExample, app);
+validateWorkloadSecretSeparation(app);
 validateTerraformImageDigestInputs(variables, tfvarsExample, app);
 validateTerraformStorageKMSInputs(variables, tfvarsExample, data);
 validateTerraformReleaseInputGuards(variables);

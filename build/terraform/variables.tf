@@ -576,6 +576,34 @@ variable "trust_proxy_headers" {
   default     = true
 }
 
+variable "trusted_proxy_cidrs" {
+  description = "CIDR ranges for ingress or proxy peers whose forwarded client headers may be trusted."
+  type        = list(string)
+
+  validation {
+    condition = length(var.trusted_proxy_cidrs) > 0 && alltrue([
+      for cidr in var.trusted_proxy_cidrs : can(cidrhost(cidr, 0))
+    ])
+    error_message = "trusted_proxy_cidrs must contain one or more valid CIDRs."
+  }
+}
+
+variable "ai_allowed_provider_hosts" {
+  description = "Exact provider hostnames allowed to receive AI bearer credentials."
+  type        = list(string)
+  default     = ["api.openai.com"]
+
+  validation {
+    condition = (
+      length(var.ai_allowed_provider_hosts) > 0 &&
+      alltrue([
+        for hostname in var.ai_allowed_provider_hosts : can(regex("^[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9]$", hostname))
+      ])
+    )
+    error_message = "ai_allowed_provider_hosts must contain one or more exact DNS hostnames without schemes, paths, wildcards, or credentials."
+  }
+}
+
 variable "service_version" {
   description = "Release or image version label attached to application telemetry."
   type        = string

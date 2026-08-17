@@ -106,6 +106,12 @@ app_secret_arns = {
 
 grpc_engine_tls_server_name = "scriptureforge-rust-engine"
 
+# Only trust forwarded client headers from the actual ingress/proxy peer ranges.
+trusted_proxy_cidrs = ["10.0.0.0/8"]
+
+# Exact provider hosts permitted to receive AI bearer credentials.
+ai_allowed_provider_hosts = ["api.openai.com"]
+
 # Confirm this against the EKS OIDC issuer root CA thumbprint before apply.
 eks_oidc_thumbprint_list = ["9e99a48a9960b14926bb7f3b02e22da0afd10efd"]
 

@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -21,12 +24,72 @@ const (
 	MaxProviderRetries = 3
 	// MaxProviderResponseBytes bounds memory used to process an external provider response.
 	MaxProviderResponseBytes int64 = 1 << 20
+	DefaultProviderHost            = "api.openai.com"
 )
 
 // ProviderHTTPConfig is the shared timeout/retry policy for AI provider calls.
 type ProviderHTTPConfig struct {
 	Timeout    time.Duration
 	MaxRetries int
+}
+
+// LoadAllowedProviderHosts returns exact hostnames permitted to receive provider credentials.
+func LoadAllowedProviderHosts() []string {
+	raw := strings.TrimSpace(os.Getenv("AI_ALLOWED_PROVIDER_HOSTS"))
+	if raw == "" {
+		return []string{DefaultProviderHost}
+	}
+	hosts := make([]string, 0)
+	for _, candidate := range strings.Split(raw, ",") {
+		host := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(candidate), "."))
+		if host != "" {
+			hosts = append(hosts, host)
+		}
+	}
+	if len(hosts) == 0 {
+		return []string{DefaultProviderHost}
+	}
+	return hosts
+}
+
+// ValidateProviderEndpoint prevents provider bearer credentials from being sent to an arbitrary endpoint.
+func ValidateProviderEndpoint(endpoint string, allowedHosts []string) error {
+	parsed, err := url.Parse(strings.TrimSpace(endpoint))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.Hostname() == "" {
+		return fmt.Errorf("provider endpoint must be an absolute URL")
+	}
+	if parsed.User != nil {
+		return fmt.Errorf("provider endpoint must not contain credentials")
+	}
+	host := strings.ToLower(strings.TrimSuffix(parsed.Hostname(), "."))
+	allowed := false
+	if len(allowedHosts) == 0 {
+		allowedHosts = LoadAllowedProviderHosts()
+	}
+	for _, candidate := range allowedHosts {
+		if strings.EqualFold(host, strings.TrimSuffix(strings.TrimSpace(candidate), ".")) {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return fmt.Errorf("provider endpoint host is not allowlisted")
+	}
+	if parsed.Scheme == "https" {
+		return nil
+	}
+	if parsed.Scheme == "http" && isLoopbackProviderHost(host) {
+		return nil
+	}
+	return fmt.Errorf("provider endpoint must use HTTPS")
+}
+
+func isLoopbackProviderHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // LoadProviderHTTPConfig reads bounded provider settings from the environment.
