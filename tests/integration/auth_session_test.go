@@ -451,6 +451,9 @@ func TestMFAEnrollAndVerifyFlowForPrivilegedUsers(t *testing.T) {
 	if enrollRec.Code != http.StatusOK {
 		t.Fatalf("mfa enroll status = %d body = %s", enrollRec.Code, enrollRec.Body.String())
 	}
+	if enrollRec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("mfa enroll cache policy = %q, want no-store", enrollRec.Header().Get("Cache-Control"))
+	}
 	var enrollResp map[string]any
 	if err := json.NewDecoder(enrollRec.Body).Decode(&enrollResp); err != nil {
 		t.Fatalf("decode enroll response: %v", err)
@@ -458,6 +461,15 @@ func TestMFAEnrollAndVerifyFlowForPrivilegedUsers(t *testing.T) {
 	rawSecret := fmt.Sprintf("%v", enrollResp["secret"])
 	if rawSecret == "" || rawSecret == "<nil>" {
 		t.Fatalf("enroll response missing secret: %#v", enrollResp)
+	}
+	var stagedEnabled bool
+	setTenantForTest(ctx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
+		if err := tx.QueryRow(ctx, `SELECT mfa_enabled FROM users WHERE id = $1`, authAdminID).Scan(&stagedEnabled); err != nil {
+			t.Fatalf("query staged MFA state: %v", err)
+		}
+	})
+	if stagedEnabled {
+		t.Fatal("MFA enrollment enabled the factor before TOTP possession was verified")
 	}
 
 	verifyWrongReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/mfa/verify", strings.NewReader(`{"mfa_code":"000000"}`))
@@ -478,12 +490,31 @@ func TestMFAEnrollAndVerifyFlowForPrivilegedUsers(t *testing.T) {
 	if verifyRec.Code != http.StatusOK {
 		t.Fatalf("mfa verify status = %d body = %s", verifyRec.Code, verifyRec.Body.String())
 	}
+	if verifyRec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("mfa verify cache policy = %q, want no-store", verifyRec.Header().Get("Cache-Control"))
+	}
 	var verifyResp map[string]any
 	if err := json.NewDecoder(verifyRec.Body).Decode(&verifyResp); err != nil {
 		t.Fatalf("decode verify response: %v", err)
 	}
 	if verified, ok := verifyResp["verified"].(bool); !ok || !verified {
 		t.Fatalf("expected verified=true, got %#v", verifyResp["verified"])
+	}
+	setTenantForTest(ctx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
+		if err := tx.QueryRow(ctx, `SELECT mfa_enabled FROM users WHERE id = $1`, authAdminID).Scan(&stagedEnabled); err != nil {
+			t.Fatalf("query activated MFA state: %v", err)
+		}
+	})
+	if !stagedEnabled {
+		t.Fatal("valid TOTP did not activate the staged MFA factor")
+	}
+	reenrollReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/mfa/enroll", strings.NewReader(`{}`))
+	reenrollReq = reenrollReq.WithContext(context.WithValue(reenrollReq.Context(), auth.ContextKeyUser, adminClaims))
+	reenrollReq = reenrollReq.WithContext(observability.WithObserver(reenrollReq.Context(), observer))
+	reenrollRec := httptest.NewRecorder()
+	handler.MFAEnrollHandler(reenrollRec, reenrollReq)
+	if reenrollRec.Code != http.StatusConflict {
+		t.Fatalf("re-enroll enabled MFA status = %d body = %s, want 409", reenrollRec.Code, reenrollRec.Body.String())
 	}
 
 	memberClaims := &auth.TokenClaims{

@@ -667,6 +667,8 @@ func (h *AuthHandler) WorkspaceSwitchHandler(w http.ResponseWriter, r *http.Requ
 }
 
 func (h *AuthHandler) MFAEnrollHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
 	if r.Method != http.MethodPost {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Method not allowed", Code: http.StatusMethodNotAllowed})
 		return
@@ -697,8 +699,19 @@ func (h *AuthHandler) MFAEnrollHandler(w http.ResponseWriter, r *http.Request) {
 		sendAuthError(w, err.(*auth.PlatformException))
 		return
 	}
-	if _, err = tx.Exec(r.Context(), `UPDATE users SET mfa_secret = $1, mfa_enabled = TRUE WHERE id = $2 AND organization_id = $3`, secret, claims.UserID, claims.OrganizationID); err != nil {
-		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to enable MFA", Code: http.StatusInternalServerError})
+	var mfaEnabled bool
+	if err = tx.QueryRow(r.Context(), `SELECT COALESCE(mfa_enabled, false) FROM users WHERE id = $1 AND organization_id = $2`, claims.UserID, claims.OrganizationID).Scan(&mfaEnabled); err != nil {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "MFA enrollment account was not found", Code: http.StatusNotFound})
+		return
+	}
+	if mfaEnabled {
+		metricStatus = "already_enabled"
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "MFA is already enabled; verify the existing factor before replacing it", Code: http.StatusConflict})
+		return
+	}
+	// Keep the seed staged until the caller proves possession with a valid TOTP code.
+	if _, err = tx.Exec(r.Context(), `UPDATE users SET mfa_secret = $1, mfa_enabled = FALSE WHERE id = $2 AND organization_id = $3`, secret, claims.UserID, claims.OrganizationID); err != nil {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to stage MFA enrollment", Code: http.StatusInternalServerError})
 		return
 	}
 	if err := tx.Commit(r.Context()); err != nil {
@@ -712,6 +725,8 @@ func (h *AuthHandler) MFAEnrollHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) MFAVerifyHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
 	if r.Method != http.MethodPost {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Method not allowed", Code: http.StatusMethodNotAllowed})
 		return
@@ -762,20 +777,25 @@ func (h *AuthHandler) MFAVerifyHandler(w http.ResponseWriter, r *http.Request) {
 		claims.UserID,
 		claims.OrganizationID,
 	).Scan(&mfaSecret, &mfaEnabled)
-	if err != nil {
+	if err != nil || mfaSecret == "" {
 		metricStatus = "not_configured"
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "MFA not configured", Code: http.StatusNotFound})
-		return
-	}
-	if !mfaEnabled || mfaSecret == "" {
-		metricStatus = "not_enabled"
-		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "MFA is not enabled", Code: http.StatusBadRequest})
 		return
 	}
 
 	if !verifyTOTP(mfaSecret, req.MFACode, time.Now()) {
 		metricStatus = "invalid_code"
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "MFA code verification failed", Code: http.StatusUnauthorized})
+		return
+	}
+	if !mfaEnabled {
+		if _, err = tx.Exec(r.Context(), `UPDATE users SET mfa_enabled = TRUE WHERE id = $1 AND organization_id = $2 AND mfa_secret = $3`, claims.UserID, claims.OrganizationID, mfaSecret); err != nil {
+			sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to activate MFA enrollment", Code: http.StatusInternalServerError})
+			return
+		}
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to commit MFA verification", Code: http.StatusInternalServerError})
 		return
 	}
 

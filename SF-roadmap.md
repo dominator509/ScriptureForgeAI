@@ -234,6 +234,11 @@ Phase 06: Web & Mobile UX Assembly
 • Security & Isolation Checks: Run automated memory profile scans proving that user encryption passphrases and plain-text decryption credentials vanish from client runtime scopes upon session teardown events.
 • Common Failure Modes: Allowing critical workspace permission verification tasks to execute solely within client-side browser logic loops, exposing endpoint pathways to unauthorized manipulation.
 • Anti-Drift Notes: Frontend modules must operate purely as reactive presentation surfaces reflecting trusted backend states. Do not implement authorization evaluation logic inside application view blocks.
+### 2026-08-16 Authentication MFA Lifecycle Hardening
+• Enrollment now stages a privileged user's TOTP seed with `mfa_enabled=false` and no-store response headers.
+• `/api/v1/auth/mfa/verify` activates staged enrollment only after a valid code; active factors cannot be replaced through the seed endpoint without an explicit recovery design.
+• Integration coverage proves staged enrollment, activation, cache policy, and active-factor replacement denial; this remains within the planned PR3 auth/session/MFA contract.
+
 6. CODING AGENT OPERATING RULES (FOR IMPLEMENTATION LEAD)
 •
 • Look Before You Leap: Before executing textual changes, partial file rewrites, or code injection steps, the implementation lead must parse the target code asset and all corresponding sibling interface declarations fully to maintain consistent architectural design boundaries.
