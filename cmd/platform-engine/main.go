@@ -530,7 +530,7 @@ func setupRoutesWithLifecycle(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisC
 	mux.Handle("/api/v1/rooms/state/", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileRooms, http.HandlerFunc(roomHandler.RoomStateHandler)), ""))
 
 	zoomWebhookHandler := integration_zoom.NewWebhookHandler(roomStateManager, dbpool)
-	mux.HandleFunc("/api/webhooks/zoom", zoomWebhookHandler.HandleZoomWebhook)
+	mux.Handle("/api/webhooks/zoom", abuseLimiter.Middleware(abuse.ProfileZoomWebhook, http.HandlerFunc(zoomWebhookHandler.HandleZoomWebhook)))
 
 	// Websockets (Protected)
 	socketConn := &ports.SocketConnection{

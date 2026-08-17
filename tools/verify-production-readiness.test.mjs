@@ -1060,8 +1060,9 @@ function strictEvidenceSummary(id, releaseCandidate = sha) {
       'journal-rate-limit staging artifact 429 after 2 attempts repeated_attempts_verified=true Retry-After=60 X-RateLimit-Limit=1 X-RateLimit-Remaining=0 X-RateLimit-Reset=1782403200',
       'rooms-rate-limit staging artifact 429 after 2 attempts repeated_attempts_verified=true Retry-After=60 X-RateLimit-Limit=1 X-RateLimit-Remaining=0 X-RateLimit-Reset=1782403200',
       'websocket-rate-limit staging artifact 429 after 2 attempts repeated_attempts_verified=true Retry-After=60 X-RateLimit-Limit=1 X-RateLimit-Remaining=0 X-RateLimit-Reset=1782403200 websocket upgrade websocket_upgrade=true',
+      'zoom-webhook-rate-limit staging artifact 429 after 2 attempts repeated_attempts_verified=true Retry-After=60 X-RateLimit-Limit=1 X-RateLimit-Remaining=0 X-RateLimit-Reset=1782403200 public Zoom webhook zoom_webhook=true',
       'config_artifact_verified=true',
-      'config_artifact_summary ABUSE_LIMIT_AUTH_REQUESTS=2 ABUSE_LIMIT_AUTH_WINDOW_SECONDS=60 ABUSE_LIMIT_AUTH_ACCOUNT_REQUESTS=2 ABUSE_LIMIT_AUTH_ACCOUNT_WINDOW_SECONDS=60 ABUSE_LIMIT_AI_REQUESTS=2 ABUSE_LIMIT_JOURNAL_REQUESTS=2 ABUSE_LIMIT_ROOMS_REQUESTS=2 ABUSE_LIMIT_WEBSOCKET_REQUESTS=2 ABUSE_LIMIT_MAX_BUCKETS=1000 TRUST_PROXY_HEADERS=true X-Forwarded-For X-Real-IP redacted distinct_abuse_artifacts=true',
+      'config_artifact_summary ABUSE_LIMIT_AUTH_REQUESTS=2 ABUSE_LIMIT_AUTH_WINDOW_SECONDS=60 ABUSE_LIMIT_AUTH_ACCOUNT_REQUESTS=2 ABUSE_LIMIT_AUTH_ACCOUNT_WINDOW_SECONDS=60 ABUSE_LIMIT_AI_REQUESTS=2 ABUSE_LIMIT_JOURNAL_REQUESTS=2 ABUSE_LIMIT_ROOMS_REQUESTS=2 ABUSE_LIMIT_WEBSOCKET_REQUESTS=2 ABUSE_LIMIT_ZOOM_WEBHOOK_REQUESTS=2 ABUSE_LIMIT_ZOOM_WEBHOOK_WINDOW_SECONDS=60 ABUSE_LIMIT_MAX_BUCKETS=1000 TRUST_PROXY_HEADERS=true X-Forwarded-For X-Real-IP redacted distinct_abuse_artifacts=true',
     ].map((segment) => `${segment} ${release}`).join('; ');
   }
   if (id === 'PERF-HTTP-001') {
@@ -1130,7 +1131,7 @@ function tenantRLSStructuredReport() {
 }
 
 function abuseRateLimitStructuredReport() {
-  const profileNames = ['auth-rate-limit', 'auth-account-rate-limit', 'auth-refresh-rate-limit', 'ai-rate-limit', 'journal-rate-limit', 'rooms-rate-limit', 'websocket-rate-limit'];
+  const profileNames = ['auth-rate-limit', 'auth-account-rate-limit', 'auth-refresh-rate-limit', 'ai-rate-limit', 'journal-rate-limit', 'rooms-rate-limit', 'websocket-rate-limit', 'zoom-webhook-rate-limit'];
   return {
     abuse_rate_limit_proof: {
       config_artifact_verified: true,
@@ -1143,6 +1144,8 @@ function abuseRateLimitStructuredReport() {
         ABUSE_LIMIT_JOURNAL_REQUESTS: 2,
         ABUSE_LIMIT_ROOMS_REQUESTS: 2,
         ABUSE_LIMIT_WEBSOCKET_REQUESTS: 2,
+        ABUSE_LIMIT_ZOOM_WEBHOOK_REQUESTS: 2,
+        ABUSE_LIMIT_ZOOM_WEBHOOK_WINDOW_SECONDS: 60,
         ABUSE_LIMIT_MAX_BUCKETS: 1000,
       },
       profiles: profileNames.map((name) => ({
@@ -1156,6 +1159,7 @@ function abuseRateLimitStructuredReport() {
         forwarded_client_ip_rotated: name === 'auth-account-rate-limit',
         refresh_token_scoped: name === 'auth-refresh-rate-limit',
         websocket_upgrade: name === 'websocket-rate-limit',
+        zoom_webhook: name === 'zoom-webhook-rate-limit',
       })),
     },
   };

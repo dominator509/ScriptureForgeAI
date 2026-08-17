@@ -397,6 +397,7 @@ const requiredAbuseProbeSummaryMarkers = new Map([
   ['journal-rate-limit', ['staging artifact', 'journal-rate-limit', '429', 'after', 'attempts', 'repeated_attempts_verified=true', 'Retry-After', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset']],
   ['rooms-rate-limit', ['staging artifact', 'rooms-rate-limit', '429', 'after', 'attempts', 'repeated_attempts_verified=true', 'Retry-After', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset']],
   ['websocket-rate-limit', ['staging artifact', 'websocket-rate-limit', '429', 'after', 'attempts', 'repeated_attempts_verified=true', 'Retry-After', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'websocket upgrade', 'websocket_upgrade=true']],
+  ['zoom-webhook-rate-limit', ['staging artifact', 'zoom-webhook-rate-limit', '429', 'after', 'attempts', 'repeated_attempts_verified=true', 'Retry-After', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'public Zoom webhook', 'zoom_webhook=true']],
 ]);
 
 const requiredAbuseConfigSummaryMarkers = [
@@ -409,6 +410,8 @@ const requiredAbuseConfigSummaryMarkers = [
   'ABUSE_LIMIT_JOURNAL_REQUESTS=',
   'ABUSE_LIMIT_ROOMS_REQUESTS=',
   'ABUSE_LIMIT_WEBSOCKET_REQUESTS=',
+  'ABUSE_LIMIT_ZOOM_WEBHOOK_REQUESTS=',
+  'ABUSE_LIMIT_ZOOM_WEBHOOK_WINDOW_SECONDS=',
   'ABUSE_LIMIT_MAX_BUCKETS=',
   'TRUST_PROXY_HEADERS=true',
   'X-Forwarded-For',
@@ -426,6 +429,8 @@ const abuseConfigAssignmentKeys = [
   'ABUSE_LIMIT_JOURNAL_REQUESTS',
   'ABUSE_LIMIT_ROOMS_REQUESTS',
   'ABUSE_LIMIT_WEBSOCKET_REQUESTS',
+  'ABUSE_LIMIT_ZOOM_WEBHOOK_REQUESTS',
+  'ABUSE_LIMIT_ZOOM_WEBHOOK_WINDOW_SECONDS',
   'ABUSE_LIMIT_MAX_BUCKETS',
 ];
 
@@ -2677,6 +2682,7 @@ function validateAbuseEvidence(report, manifest) {
     'journal-rate-limit',
     'rooms-rate-limit',
     'websocket-rate-limit',
+    'zoom-webhook-rate-limit',
   ]);
   const probes = Array.isArray(report.probes) ? report.probes : [];
   assert.equal(probes.length, requiredProfiles.size, 'ABUSE-LIMIT-001 report must include exactly the required abuse profiles');
@@ -2698,6 +2704,9 @@ function validateAbuseEvidence(report, manifest) {
     }
     if (probe.name === 'websocket-rate-limit') {
       assert.equal(probe.websocket_upgrade, true, 'websocket-rate-limit must prove websocket_upgrade=true');
+    }
+    if (probe.name === 'zoom-webhook-rate-limit') {
+      assert.equal(probe.zoom_webhook, true, 'zoom-webhook-rate-limit must prove zoom_webhook=true');
     }
     const summary = String(probe.result_summary ?? '');
     assertProbeLoadRunBinding(probe.name, summary, reportLoadRunID, probeLoadRunIDs);
@@ -2834,6 +2843,7 @@ function structuredAbuseEvidenceForReport(report) {
         forwarded_client_ip_rotated: probe?.forwarded_client_ip_rotated === true,
         refresh_token_scoped: probe?.refresh_token_scoped === true,
         websocket_upgrade: probe?.websocket_upgrade === true,
+        zoom_webhook: probe?.zoom_webhook === true,
       })),
     },
   };

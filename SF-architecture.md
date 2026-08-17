@@ -450,7 +450,7 @@ CREATE INDEX idx_participants_lookup ON room_participants(room_id, user_id);
 *   `WSS /api/v1/rooms/stream/{room_id}`: Broadcast real-time room events after membership and tenant validation.
 
 #### Group D: System Webhooks (`/api/webhooks`)
-*   `POST /api/webhooks/zoom`: Validate signed Zoom webhook callbacks and map meeting lifecycle events to internal room state transitions.
+*   `POST /api/webhooks/zoom`: Apply the unauthenticated Redis-backed `zoom_webhook` abuse budget, then validate signed Zoom webhook callbacks and map meeting lifecycle events to internal room state transitions.
 
 #### Group E: Journal Endpoints (`/api/v1/journal`)
 *   `GET /api/v1/journal/bootstrap`: Resolve tenant/user scoped journal salt material for client-side encryption keys.

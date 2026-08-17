@@ -50,7 +50,7 @@ func TestRunEmitsAbuseEvidenceWhenAllProfilesRateLimit(t *testing.T) {
 			_, _ = w.Write([]byte(validAbuseConfigArtifact()))
 			return
 		}
-		if r.URL.Path != "/api/v1/auth/login" && r.URL.Path != "/api/v1/auth/refresh" && r.Header.Get("Authorization") != "Bearer token" {
+		if r.URL.Path != "/api/v1/auth/login" && r.URL.Path != "/api/v1/auth/refresh" && r.URL.Path != "/api/webhooks/zoom" && r.Header.Get("Authorization") != "Bearer token" {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
@@ -154,6 +154,9 @@ func TestRunEmitsAbuseEvidenceWhenAllProfilesRateLimit(t *testing.T) {
 		}
 		if probe.Name == "websocket-rate-limit" && !probe.WebSocketUpgrade {
 			t.Fatalf("websocket probe did not capture structured upgrade proof: %+v", probe)
+		}
+		if probe.Name == "zoom-webhook-rate-limit" && !probe.ZoomWebhook {
+			t.Fatalf("Zoom webhook probe did not capture structured public-webhook proof: %+v", probe)
 		}
 		for _, marker := range abuseSummaryMarkers(endpointProbe{Name: probe.Name, WebSocketUpgrade: probe.Name == "websocket-rate-limit"}) {
 			if !strings.Contains(strings.ToLower(probe.ResultSummary), strings.ToLower(marker)) {
@@ -753,6 +756,8 @@ func validAbuseConfigArtifact() string {
 		"ABUSE_LIMIT_JOURNAL_REQUESTS=2",
 		"ABUSE_LIMIT_ROOMS_REQUESTS=2",
 		"ABUSE_LIMIT_WEBSOCKET_REQUESTS=2",
+		"ABUSE_LIMIT_ZOOM_WEBHOOK_REQUESTS=2",
+		"ABUSE_LIMIT_ZOOM_WEBHOOK_WINDOW_SECONDS=60",
 		"ABUSE_LIMIT_MAX_BUCKETS=1000",
 		"TRUST_PROXY_HEADERS=true",
 		"trusted headers: X-Forwarded-For X-Real-IP",

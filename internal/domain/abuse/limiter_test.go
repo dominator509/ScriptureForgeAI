@@ -112,7 +112,7 @@ func TestLimiterEmitsLowCardinalityAbuseMetrics(t *testing.T) {
 }
 
 func TestLimiterEmitsMetricsForAllProductionProfiles(t *testing.T) {
-	for _, profileName := range []string{ProfileAuth, ProfileAI, ProfileJournal, ProfileRooms, ProfileWebSocket} {
+	for _, profileName := range []string{ProfileAuth, ProfileAI, ProfileJournal, ProfileRooms, ProfileWebSocket, ProfileZoomWebhook} {
 		t.Run(profileName, func(t *testing.T) {
 			limiter := testLimiter(profileName, 1, time.Minute)
 			observer := observability.NewObserver(observability.Options{})
@@ -435,8 +435,19 @@ func TestLimiterCapsIdentitySprayWithOverflowBucket(t *testing.T) {
 }
 
 func TestPolicyFromEnvConfiguresMaxBuckets(t *testing.T) {
-	t.Setenv("ABUSE_LIMIT_MAX_BUCKETS", "42")
+	t.Setenv("ABUSE_LIMIT_ZOOM_WEBHOOK_REQUESTS", "17")
+	t.Setenv("ABUSE_LIMIT_ZOOM_WEBHOOK_WINDOW_SECONDS", "45")
 	policy := PolicyFromEnv()
+	zoomProfile, ok := policy.Profiles[ProfileZoomWebhook]
+	if !ok {
+		t.Fatal("PolicyFromEnv missing zoom webhook profile")
+	}
+	if zoomProfile.Limit != 17 || zoomProfile.Window != 45*time.Second {
+		t.Fatalf("zoom webhook profile = %+v, want limit 17 and window 45s", zoomProfile)
+	}
+
+	t.Setenv("ABUSE_LIMIT_MAX_BUCKETS", "42")
+	policy = PolicyFromEnv()
 	if policy.MaxBuckets != 42 {
 		t.Fatalf("MaxBuckets = %d, want 42", policy.MaxBuckets)
 	}

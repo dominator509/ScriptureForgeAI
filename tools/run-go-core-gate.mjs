@@ -23,6 +23,7 @@ export const goTestProofMarkers = [
   'abuse_journal_route_limit_test=true',
   'abuse_rooms_route_limit_test=true',
   'abuse_websocket_route_limit_test=true',
+  'abuse_zoom_webhook_route_limit_test=true',
   'abuse_ai_route_limit_test=true',
   'abuse_legacy_auth_alias_bucket_test=true',
   'observability_trace_id_tests_passed=true',
@@ -77,6 +78,7 @@ export const goTestRequiredAbuseTests = [
   'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/rooms_active',
   'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/rooms_state_polling',
   'TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles/websocket_stream',
+  'TestZoomWebhookRouteUsesDedicatedPublicAbuseProfile',
 ];
 
 export const goTestRequiredObservabilityTests = [

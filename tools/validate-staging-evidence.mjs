@@ -278,7 +278,8 @@ const abuseRateLimitSegmentMarkerRequirements = new Map([
   ['journal-rate-limit', ['staging artifact', '429', 'after', 'attempts', 'repeated_attempts_verified=true', 'Retry-After', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'release_candidate=', 'service_version=']],
   ['rooms-rate-limit', ['staging artifact', '429', 'after', 'attempts', 'repeated_attempts_verified=true', 'Retry-After', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'release_candidate=', 'service_version=']],
   ['websocket-rate-limit', ['staging artifact', '429', 'after', 'attempts', 'repeated_attempts_verified=true', 'Retry-After', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'websocket upgrade', 'websocket_upgrade=true', 'release_candidate=', 'service_version=']],
-  ['config_artifact_summary', ['ABUSE_LIMIT_AUTH_REQUESTS=', 'ABUSE_LIMIT_AUTH_WINDOW_SECONDS=', 'ABUSE_LIMIT_AUTH_ACCOUNT_REQUESTS=', 'ABUSE_LIMIT_AUTH_ACCOUNT_WINDOW_SECONDS=', 'ABUSE_LIMIT_AI_REQUESTS=', 'ABUSE_LIMIT_JOURNAL_REQUESTS=', 'ABUSE_LIMIT_ROOMS_REQUESTS=', 'ABUSE_LIMIT_WEBSOCKET_REQUESTS=', 'ABUSE_LIMIT_MAX_BUCKETS=', 'TRUST_PROXY_HEADERS=true', 'X-Forwarded-For', 'X-Real-IP', 'redacted', 'distinct_abuse_artifacts=true', 'release_candidate=', 'service_version=']],
+  ['zoom-webhook-rate-limit', ['staging artifact', '429', 'after', 'attempts', 'repeated_attempts_verified=true', 'Retry-After', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'public Zoom webhook', 'zoom_webhook=true', 'release_candidate=', 'service_version=']],
+  ['config_artifact_summary', ['ABUSE_LIMIT_AUTH_REQUESTS=', 'ABUSE_LIMIT_AUTH_WINDOW_SECONDS=', 'ABUSE_LIMIT_AUTH_ACCOUNT_REQUESTS=', 'ABUSE_LIMIT_AUTH_ACCOUNT_WINDOW_SECONDS=', 'ABUSE_LIMIT_AI_REQUESTS=', 'ABUSE_LIMIT_JOURNAL_REQUESTS=', 'ABUSE_LIMIT_ROOMS_REQUESTS=', 'ABUSE_LIMIT_WEBSOCKET_REQUESTS=', 'ABUSE_LIMIT_ZOOM_WEBHOOK_REQUESTS=', 'ABUSE_LIMIT_ZOOM_WEBHOOK_WINDOW_SECONDS=', 'ABUSE_LIMIT_MAX_BUCKETS=', 'TRUST_PROXY_HEADERS=true', 'X-Forwarded-For', 'X-Real-IP', 'redacted', 'distinct_abuse_artifacts=true', 'release_candidate=', 'service_version=']],
 ]);
 const abuseConfigAssignmentKeys = [
   'ABUSE_LIMIT_AUTH_REQUESTS',
@@ -289,6 +290,8 @@ const abuseConfigAssignmentKeys = [
   'ABUSE_LIMIT_JOURNAL_REQUESTS',
   'ABUSE_LIMIT_ROOMS_REQUESTS',
   'ABUSE_LIMIT_WEBSOCKET_REQUESTS',
+  'ABUSE_LIMIT_ZOOM_WEBHOOK_REQUESTS',
+  'ABUSE_LIMIT_ZOOM_WEBHOOK_WINDOW_SECONDS',
   'ABUSE_LIMIT_MAX_BUCKETS',
 ];
 const abuseRateLimitProfileSegments = [
@@ -299,6 +302,7 @@ const abuseRateLimitProfileSegments = [
   'journal-rate-limit',
   'rooms-rate-limit',
   'websocket-rate-limit',
+  'zoom-webhook-rate-limit',
 ];
 const concreteIAMRoleARNPattern = /\brole_arn=arn:aws:iam::[0-9]{12}:role\/[A-Za-z0-9+=,.@_/-]+\b/i;
 const securitySegmentMarkerRequirements = new Map([
@@ -3278,6 +3282,9 @@ function assertStrictAbuseStructuredReport(evidence) {
     }
     if (segment === 'websocket-rate-limit') {
       assert.equal(profile.websocket_upgrade, true, 'ABUSE-LIMIT-001 structured report websocket-rate-limit websocket_upgrade must be true');
+    }
+    if (segment === 'zoom-webhook-rate-limit') {
+      assert.equal(profile.zoom_webhook, true, 'ABUSE-LIMIT-001 structured report zoom-webhook-rate-limit zoom_webhook must be true');
     }
   }
 }

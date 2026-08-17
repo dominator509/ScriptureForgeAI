@@ -539,17 +539,19 @@ const abuseProbeMarkerSummaries = {
   'journal-rate-limit': 'got 429 with headers after 2 attempts; verified markers: staging artifact, journal-rate-limit, 429, after, attempts, repeated_attempts_verified=true, Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
   'rooms-rate-limit': 'got 429 with headers after 2 attempts; verified markers: staging artifact, rooms-rate-limit, 429, after, attempts, repeated_attempts_verified=true, Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
   'websocket-rate-limit': 'got 429 with headers after 2 attempts; verified markers: staging artifact, websocket-rate-limit, 429, after, attempts, repeated_attempts_verified=true, Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, websocket upgrade, websocket_upgrade=true, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
+  'zoom-webhook-rate-limit': 'got 429 with headers after 2 attempts; verified markers: staging artifact, zoom-webhook-rate-limit, 429, after, attempts, repeated_attempts_verified=true, Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, public Zoom webhook, zoom_webhook=true, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123',
 };
 
-const abuseProbeNames = ['auth-rate-limit', 'auth-account-rate-limit', 'auth-refresh-rate-limit', 'ai-rate-limit', 'journal-rate-limit', 'rooms-rate-limit', 'websocket-rate-limit'];
+const abuseProbeNames = ['auth-rate-limit', 'auth-account-rate-limit', 'auth-refresh-rate-limit', 'ai-rate-limit', 'journal-rate-limit', 'rooms-rate-limit', 'websocket-rate-limit', 'zoom-webhook-rate-limit'];
 
-const abuseConfigSummary = 'config artifact verified markers: staging artifact, ABUSE_LIMIT_AUTH_REQUESTS=2, ABUSE_LIMIT_AUTH_WINDOW_SECONDS=60, ABUSE_LIMIT_AUTH_ACCOUNT_REQUESTS=2, ABUSE_LIMIT_AUTH_ACCOUNT_WINDOW_SECONDS=60, ABUSE_LIMIT_AI_REQUESTS=2, ABUSE_LIMIT_JOURNAL_REQUESTS=2, ABUSE_LIMIT_ROOMS_REQUESTS=2, ABUSE_LIMIT_WEBSOCKET_REQUESTS=2, ABUSE_LIMIT_MAX_BUCKETS=1000, TRUST_PROXY_HEADERS=true, X-Forwarded-For, X-Real-IP, redacted, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123, distinct_abuse_artifacts=true';
+const abuseConfigSummary = 'config artifact verified markers: staging artifact, ABUSE_LIMIT_AUTH_REQUESTS=2, ABUSE_LIMIT_AUTH_WINDOW_SECONDS=60, ABUSE_LIMIT_AUTH_ACCOUNT_REQUESTS=2, ABUSE_LIMIT_AUTH_ACCOUNT_WINDOW_SECONDS=60, ABUSE_LIMIT_AI_REQUESTS=2, ABUSE_LIMIT_JOURNAL_REQUESTS=2, ABUSE_LIMIT_ROOMS_REQUESTS=2, ABUSE_LIMIT_WEBSOCKET_REQUESTS=2, ABUSE_LIMIT_ZOOM_WEBHOOK_REQUESTS=2, ABUSE_LIMIT_ZOOM_WEBHOOK_WINDOW_SECONDS=60, ABUSE_LIMIT_MAX_BUCKETS=1000, TRUST_PROXY_HEADERS=true, X-Forwarded-For, X-Real-IP, redacted, release_candidate=abc123, service_version=scriptureforge-api:abc123 load_run_id=load-run-123, distinct_abuse_artifacts=true';
 
 function abuseProbeStructuredFields(name) {
   return {
     ...(name === 'auth-account-rate-limit' ? { account_scoped: true, forwarded_client_ip_rotated: true } : {}),
     ...(name === 'auth-refresh-rate-limit' ? { refresh_token_scoped: true } : {}),
     ...(name === 'websocket-rate-limit' ? { websocket_upgrade: true } : {}),
+    ...(name === 'zoom-webhook-rate-limit' ? { zoom_webhook: true } : {}),
   };
 }
 
@@ -10959,6 +10961,8 @@ test('recordEvidence records production-grade abuse evidence', () => {
         ABUSE_LIMIT_JOURNAL_REQUESTS: 2,
         ABUSE_LIMIT_ROOMS_REQUESTS: 2,
         ABUSE_LIMIT_WEBSOCKET_REQUESTS: 2,
+        ABUSE_LIMIT_ZOOM_WEBHOOK_REQUESTS: 2,
+        ABUSE_LIMIT_ZOOM_WEBHOOK_WINDOW_SECONDS: 60,
         ABUSE_LIMIT_MAX_BUCKETS: 1000,
       },
       profiles: abuseProbeNames.map((name) => ({
@@ -10972,6 +10976,7 @@ test('recordEvidence records production-grade abuse evidence', () => {
         forwarded_client_ip_rotated: name === 'auth-account-rate-limit',
         refresh_token_scoped: name === 'auth-refresh-rate-limit',
         websocket_upgrade: name === 'websocket-rate-limit',
+        zoom_webhook: name === 'zoom-webhook-rate-limit',
       })),
     },
   });

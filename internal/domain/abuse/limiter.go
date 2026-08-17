@@ -28,6 +28,7 @@ const (
 	ProfileJournal     = "journal"
 	ProfileRooms       = "rooms"
 	ProfileWebSocket   = "websocket"
+	ProfileZoomWebhook = "zoom_webhook"
 )
 
 type Profile struct {
@@ -187,6 +188,7 @@ func PolicyFromEnv() Policy {
 		ProfileJournal:     profileFromEnv(ProfileJournal, 120, time.Minute),
 		ProfileRooms:       profileFromEnv(ProfileRooms, 120, time.Minute),
 		ProfileWebSocket:   profileFromEnv(ProfileWebSocket, 30, time.Minute),
+		ProfileZoomWebhook: profileFromEnv(ProfileZoomWebhook, 30, time.Minute),
 	}, MaxBuckets: intFromEnv("ABUSE_LIMIT_MAX_BUCKETS", 100000)}
 }
 

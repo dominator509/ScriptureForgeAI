@@ -659,6 +659,39 @@ func TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles(t *testing.T) {
 	}
 }
 
+func TestZoomWebhookRouteUsesDedicatedPublicAbuseProfile(t *testing.T) {
+	t.Setenv("ABUSE_LIMIT_ZOOM_WEBHOOK_REQUESTS", "1")
+	t.Setenv("ABUSE_LIMIT_ZOOM_WEBHOOK_WINDOW_SECONDS", "60")
+	router := setupRoutes(nil, nil, nil)
+
+	request := func() (*httptest.ResponseRecorder, auth.PlatformException) {
+		recorder := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/webhooks/zoom", strings.NewReader(`{}`))
+		req.RemoteAddr = "198.51.100.44:49152"
+		router.ServeHTTP(recorder, req)
+		var response auth.PlatformException
+		if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil && recorder.Code != http.StatusUnauthorized {
+			t.Fatalf("decode Zoom webhook response %d %q: %v", recorder.Code, recorder.Body.String(), err)
+		}
+		return recorder, response
+	}
+
+	first, _ := request()
+	if first.Code == http.StatusTooManyRequests {
+		t.Fatalf("first Zoom webhook status = %d, should reach signature validation", first.Code)
+	}
+	second, secondError := request()
+	if second.Code != http.StatusTooManyRequests {
+		t.Fatalf("second Zoom webhook status = %d error = %#v, want 429", second.Code, secondError)
+	}
+	if secondError.Category != "ABUSE_RATE_LIMIT_FAULT" || secondError.Code != http.StatusTooManyRequests {
+		t.Fatalf("second Zoom webhook error = %#v, want abuse rate-limit fault", secondError)
+	}
+	if got := second.Header().Get("X-RateLimit-Limit"); got != "1" {
+		t.Fatalf("Zoom webhook X-RateLimit-Limit = %q, want 1", got)
+	}
+}
+
 func TestWorkspaceSwitchRouteEnforcesOrgMatch(t *testing.T) {
 	t.Setenv("JWT_SECRET_KEY", "route-workspace-switch-secret-0123456789")
 	orgID := "55555555-5555-4555-8555-555555555555"

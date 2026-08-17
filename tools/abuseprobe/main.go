@@ -58,6 +58,7 @@ type probeResult struct {
 	RefreshTokenScoped       bool   `json:"refresh_token_scoped,omitempty"`
 	ForwardedClientIPRotated bool   `json:"forwarded_client_ip_rotated,omitempty"`
 	WebSocketUpgrade         bool   `json:"websocket_upgrade,omitempty"`
+	ZoomWebhook              bool   `json:"zoom_webhook,omitempty"`
 	ResultSummary            string `json:"result_summary"`
 }
 
@@ -160,6 +161,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 		{Name: "journal-rate-limit", Method: http.MethodPost, Path: "/api/v1/journal_entries", Body: []byte(`{"ciphertext":"YWJ1c2UtcHJvYmUtc2VhbGVkLXBheWxvYWQ=","iv":"AQIDBAUGBwgJCgsM","salt_id":"journal:v1:abuse-probe","salt_version":1}`), Auth: true},
 		{Name: "rooms-rate-limit", Method: http.MethodGet, Path: "/api/v1/rooms/active", Auth: true},
 		{Name: "websocket-rate-limit", Method: http.MethodGet, Path: "/api/v1/rooms/stream/abuse-probe-room", Auth: true, Origin: true, WebSocketUpgrade: true},
+		{Name: "zoom-webhook-rate-limit", Method: http.MethodPost, Path: "/api/webhooks/zoom", Body: []byte(`{}`)},
 	}
 
 	results := make([]probeResult, 0, len(probes))
@@ -344,6 +346,7 @@ func runEndpointProbe(client *http.Client, apiBase string, cfg config, probe end
 		AccountScoped:      probe.Name == "auth-account-rate-limit",
 		RefreshTokenScoped: probe.Name == "auth-refresh-rate-limit",
 		WebSocketUpgrade:   probe.WebSocketUpgrade,
+		ZoomWebhook:        probe.Name == "zoom-webhook-rate-limit",
 	}
 	for attempt := 1; attempt <= cfg.Attempts; attempt++ {
 		status, retryAfter, rateLimit, rateRemaining, rateReset, err := sendProbeRequest(client, target, cfg, probe, attempt)
@@ -406,6 +409,9 @@ func abuseSummaryMarkers(probe endpointProbe) []string {
 	}
 	if probe.Name == "auth-refresh-rate-limit" {
 		markers = append(markers, "refresh token", "refresh_token_scoped=true")
+	}
+	if probe.Name == "zoom-webhook-rate-limit" {
+		markers = append(markers, "public Zoom webhook", "zoom_webhook=true")
 	}
 	return markers
 }
