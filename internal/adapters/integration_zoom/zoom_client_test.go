@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"scriptureforge/internal/domain/observability"
 	"scriptureforge/internal/domain/room"
@@ -16,6 +17,62 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
+}
+
+func TestZoomClientConfigurationIsBounded(t *testing.T) {
+	t.Run("default", func(t *testing.T) {
+		t.Setenv("ZOOM_HTTP_TIMEOUT_MS", "")
+		t.Setenv("ZOOM_MAX_RETRIES", "")
+		client := NewZoomClient()
+		if client.HTTPClient.Timeout != defaultZoomHTTPTimeout {
+			t.Fatalf("default timeout = %s, want %s", client.HTTPClient.Timeout, defaultZoomHTTPTimeout)
+		}
+		if client.MaxRetries != defaultZoomMaxRetries {
+			t.Fatalf("default retries = %d, want %d", client.MaxRetries, defaultZoomMaxRetries)
+		}
+	})
+
+	t.Run("configured values", func(t *testing.T) {
+		t.Setenv("ZOOM_HTTP_TIMEOUT_MS", "9000")
+		t.Setenv("ZOOM_MAX_RETRIES", "1")
+		client := NewZoomClient()
+		if client.HTTPClient.Timeout != 9*time.Second {
+			t.Fatalf("configured timeout = %s, want 9s", client.HTTPClient.Timeout)
+		}
+		if client.MaxRetries != 1 {
+			t.Fatalf("configured retries = %d, want 1", client.MaxRetries)
+		}
+	})
+
+	t.Run("invalid and excessive values fall back or clamp", func(t *testing.T) {
+		t.Setenv("ZOOM_HTTP_TIMEOUT_MS", "not-a-duration")
+		t.Setenv("ZOOM_MAX_RETRIES", "999")
+		client := NewZoomClient()
+		if client.HTTPClient.Timeout != defaultZoomHTTPTimeout {
+			t.Fatalf("invalid timeout = %s, want %s", client.HTTPClient.Timeout, defaultZoomHTTPTimeout)
+		}
+		if client.MaxRetries != maxZoomMaxRetries {
+			t.Fatalf("excessive retries = %d, want %d", client.MaxRetries, maxZoomMaxRetries)
+		}
+
+		t.Setenv("ZOOM_HTTP_TIMEOUT_MS", "999999")
+		t.Setenv("ZOOM_MAX_RETRIES", "-1")
+		client = NewZoomClient()
+		if client.HTTPClient.Timeout != maxZoomHTTPTimeout {
+			t.Fatalf("excessive timeout = %s, want %s", client.HTTPClient.Timeout, maxZoomHTTPTimeout)
+		}
+		if client.MaxRetries != defaultZoomMaxRetries {
+			t.Fatalf("negative retries = %d, want %d", client.MaxRetries, defaultZoomMaxRetries)
+		}
+	})
+}
+
+func TestZoomClientUsesFiniteFallbackHTTPClient(t *testing.T) {
+	client := &ZoomClient{}
+	fallback := client.httpClient()
+	if fallback == nil || fallback.Timeout <= 0 || fallback.Timeout > maxZoomHTTPTimeout {
+		t.Fatalf("fallback HTTP client = %#v, want finite timeout", fallback)
+	}
 }
 
 func TestCreateMeetingFallsBackAndOpensCircuitAfterTimeouts(t *testing.T) {

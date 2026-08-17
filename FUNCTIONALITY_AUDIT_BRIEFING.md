@@ -893,6 +893,8 @@ Status last updated: 2026-08-16
 
 2026-08-16 shared server crypto boundary hardening: the original Phase 02 `/pkg/crypto_utils` package now owns Argon2id password hashing and verification. It uses bounded work factors, strict stored-hash parsing, secure salts, constant-time comparison, and transient byte cleanup; `internal/domain/auth` retains compatibility aliases for existing handlers. Focused crypto/auth tests pass, and this closes the local shared-utility gap within `F-AUD-002`; production password-policy tuning and staging evidence remain external.
 
+2026-08-16 Zoom provider budget hardening: the PR7 Zoom adapter now reads `ZOOM_HTTP_TIMEOUT_MS` and `ZOOM_MAX_RETRIES` with finite 100-30000ms and 0-3 bounds, projects those settings through Terraform, closes unexpected response bodies on retry errors, and uses a finite fallback client when direct wiring omits an HTTP client. Focused adapter tests cover defaults, configured values, invalid/excessive values, and nil-client safety. This closes the local configurable transport-budget gap within `F-AUD-010`; live Zoom timeout/circuit/fallback and webhook evidence remains external under `EXT-ZOOM-001`.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.

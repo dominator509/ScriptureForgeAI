@@ -293,6 +293,16 @@ resource "kubernetes_deployment" "api" {
           }
 
           env {
+            name  = "ZOOM_HTTP_TIMEOUT_MS"
+            value = tostring(var.zoom_http_timeout_ms)
+          }
+
+          env {
+            name  = "ZOOM_MAX_RETRIES"
+            value = tostring(var.zoom_max_retries)
+          }
+
+          env {
             name  = "HTTP_READ_HEADER_TIMEOUT_MS"
             value = tostring(var.api_http_read_header_timeout_ms)
           }

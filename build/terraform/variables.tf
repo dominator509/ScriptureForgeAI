@@ -198,6 +198,28 @@ variable "api_http_max_header_bytes" {
   }
 }
 
+variable "zoom_http_timeout_ms" {
+  description = "Maximum milliseconds allowed for each outbound Zoom request."
+  type        = number
+  default     = 3500
+
+  validation {
+    condition     = var.zoom_http_timeout_ms >= 100 && var.zoom_http_timeout_ms <= 30000
+    error_message = "zoom_http_timeout_ms must be between 100 and 30000 milliseconds."
+  }
+}
+
+variable "zoom_max_retries" {
+  description = "Maximum transient retries for each Zoom request."
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = var.zoom_max_retries >= 0 && var.zoom_max_retries <= 3
+    error_message = "zoom_max_retries must be between 0 and 3."
+  }
+}
+
 variable "api_startup_dependency_timeout_ms" {
   description = "Maximum milliseconds the API waits for PostgreSQL and Redis during startup health checks."
   type        = number

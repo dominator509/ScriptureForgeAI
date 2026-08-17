@@ -29,7 +29,13 @@ type ZoomClient struct {
 	circuitOpenUntil time.Time
 }
 
-const maxZoomResponseBodyBytes = 1 << 20
+const (
+	defaultZoomHTTPTimeout   = 3500 * time.Millisecond
+	maxZoomHTTPTimeout       = 30 * time.Second
+	defaultZoomMaxRetries    = 2
+	maxZoomMaxRetries        = 3
+	maxZoomResponseBodyBytes = 1 << 20
+)
 
 var (
 	errZoomResponseBodyTooLarge = errors.New("zoom response body exceeds the maximum size")
@@ -41,21 +47,47 @@ func NewZoomClient() *ZoomClient {
 		AccountID:    os.Getenv("ZOOM_ACCOUNT_ID"),
 		ClientID:     os.Getenv("ZOOM_CLIENT_ID"),
 		ClientSecret: os.Getenv("ZOOM_CLIENT_SECRET"),
-		HTTPClient:   &http.Client{Timeout: 3500 * time.Millisecond},
+		HTTPClient:   &http.Client{Timeout: zoomHTTPTimeout()},
 		MaxRetries:   zoomMaxRetries(),
 	}
+}
+
+func zoomHTTPTimeout() time.Duration {
+	value := strings.TrimSpace(os.Getenv("ZOOM_HTTP_TIMEOUT_MS"))
+	if value == "" {
+		return defaultZoomHTTPTimeout
+	}
+	millis, err := strconv.Atoi(value)
+	if err != nil || millis <= 0 {
+		return defaultZoomHTTPTimeout
+	}
+	timeout := time.Duration(millis) * time.Millisecond
+	if timeout > maxZoomHTTPTimeout {
+		return maxZoomHTTPTimeout
+	}
+	return timeout
 }
 
 func zoomMaxRetries() int {
 	value := strings.TrimSpace(os.Getenv("ZOOM_MAX_RETRIES"))
 	if value == "" {
-		return 2
+		return defaultZoomMaxRetries
 	}
 	parsed, err := strconv.Atoi(value)
 	if err != nil || parsed < 0 {
-		return 2
+		return defaultZoomMaxRetries
+	}
+	if parsed > maxZoomMaxRetries {
+		return maxZoomMaxRetries
 	}
 	return parsed
+}
+
+func (c *ZoomClient) httpClient() *http.Client {
+	if c != nil && c.HTTPClient != nil {
+		return c.HTTPClient
+	}
+	return &http.Client{Timeout: defaultZoomHTTPTimeout}
 }
 
 func (c *ZoomClient) circuitOpen() bool {
@@ -105,25 +137,38 @@ func readZoomResponseBody(resp *http.Response) ([]byte, error) {
 }
 
 func (c *ZoomClient) doWithRetry(buildRequest func() (*http.Request, error)) (*http.Response, error) {
-	attempts := c.MaxRetries + 1
-	if attempts < 1 {
-		attempts = 1
+	maxRetries := 0
+	if c != nil {
+		maxRetries = c.MaxRetries
 	}
+	if maxRetries < 0 {
+		maxRetries = 0
+	}
+	if maxRetries > maxZoomMaxRetries {
+		maxRetries = maxZoomMaxRetries
+	}
+	attempts := maxRetries + 1
+	client := c.httpClient()
 	var lastErr error
 	for attempt := 0; attempt < attempts; attempt++ {
 		req, err := buildRequest()
 		if err != nil {
 			return nil, err
 		}
-		resp, err := c.HTTPClient.Do(req)
+		resp, err := client.Do(req)
 		if err != nil {
 			lastErr = err
+			if resp != nil && resp.Body != nil {
+				_ = resp.Body.Close()
+			}
 		} else if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= http.StatusInternalServerError {
 			lastErr = fmt.Errorf("transient zoom status: %d", resp.StatusCode)
 			if attempt == attempts-1 {
 				return resp, nil
 			}
-			_ = resp.Body.Close()
+			if resp.Body != nil {
+				_ = resp.Body.Close()
+			}
 		} else {
 			return resp, nil
 		}
