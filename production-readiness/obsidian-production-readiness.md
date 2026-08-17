@@ -5,7 +5,7 @@ title: ScriptureForgeAI Production Readiness
 type: dashboard
 status: active
 owner: "team"
-updated: 2026-08-16
+updated: 2026-08-17
 tags:
   - production-readiness
   - serena
@@ -33,7 +33,8 @@ Use this note as a lightweight tracker for unresolved external blockers and loca
 Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 
 - [ ] **F-AUD External Evidence Closure**: close `production-readiness/staging-evidence.staging.json` blockers with deployed artifacts.
-- [ ] **CI Release Evidence Upload**: run CI on the exact release `git_head` and ingest `ci-release-evidence` into manifest.
+- [x] **Exact-Release CI Gate**: GitHub Actions run `31994556821` completed successfully for `a9214415f614b38945b0a08d354147c86bed314e`; the downloaded release artifact passed `tools/ciprobe` with clean source-control and required-gate markers.
+- [ ] **CI Release Evidence Manifest Ingestion**: record the uploaded HTTPS `ci-release-evidence` artifact URL and passing `tools/ciprobe` report in the environment-specific staging manifest.
 - [ ] **Terraform Live Validation**: capture real `plan/apply` + TLS/ingress/secret/IRSA proofs against staging.
 - [ ] **Staging AI Validation**: run real provider/degradation/citation/audit captures with `aiprobe` verified marker summaries and persist `EXT-AI-001`.
 - [ ] **Staging Zoom Validation**: run real webhook/fallback/mapping captures with `zoomprobe` verified marker summaries and persist `EXT-ZOOM-001`.
@@ -154,7 +155,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Final Git Remote Freshness Guard**: `tools/verify-production-readiness.mjs` runs `git fetch --dry-run` before reading current status, so ahead/behind checks depend on freshly reachable upstream metadata rather than stale local tracking refs.
 - [x] **Local Gate Remote Freshness Guard**: `tools/run-local-gates.mjs` now records `git_remote_refreshed=true` only after `git fetch --dry-run` succeeds, and `tools/validate-local-gate-report.mjs` rejects reports missing that marker before they can support final readiness.
 - [x] **Final Local Gate Freshness Guard**: `tools/verify-production-readiness.mjs` rejects same-SHA local gate reports older than 24 hours at production-readiness verification time, so stale clean reports cannot support a current production-ready claim.
-- [x] **Current Non-Dry Local Gate Run**: `node tools/run-local-gates.mjs --continue-on-failure --report artifacts/local-gate-report-current.json` completed on 2026-06-29T21:27:33Z with 33/33 gates run, 0 failed, `dry_run=false`, and branch/upstream synced; the report remains development evidence only because it captured `git_status_clean=false` from the dirty remediation worktree.
+- [x] **Current Non-Dry Local Gate Run**: `node tools/run-local-gates.mjs` completed on 2026-08-17T04:40:03Z with 34/34 gates run, 0 failed, `dry_run=false`, `git_head=a9214415f614b38945b0a08d354147c86bed314e`, `git_status_clean=true`, `git_ahead=0`, and `git_behind=0`; staging evidence remains separate.
 - [x] **Final Failure Diagnostics Guard**: failed `tools/verify-production-readiness.mjs` runs now print staging evidence blocker IDs, status counts, strict staging PATH status, and strict release readiness status even when the first hard failure is local evidence such as a dirty local-gate report.
 - [x] **Final Claim Gap Report Guard**: `tools/verify-production-readiness.mjs` now loads the staging evidence contract, runs the same gap-summary engine used by Obsidian, and rejects production-readiness claims unless `strict_release_ready=true` with no pending, contract-drift, stale-release, strict-PATH, or accepted-risk blockers.
 - [x] **Final Claim Zero-Waiver Guard**: `tools/verify-production-readiness.mjs` now rejects final production-readiness claims when any manifest item remains in `accepted_risk`, so 100% readiness requires closing or replacing accepted risks with passed signoff evidence; the current mobile DRR-002 finding remains an explicit blocker.
