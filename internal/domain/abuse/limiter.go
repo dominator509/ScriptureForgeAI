@@ -14,10 +14,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+
 	"scriptureforge/internal/domain/auth"
 	"scriptureforge/internal/domain/observability"
-
-	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -57,6 +58,8 @@ type ActiveConnectionLimiter struct {
 	globalCount    int
 	users          map[string]int
 	tenants        map[string]int
+	redis          *redis.Client
+	leaseTTL       time.Duration
 }
 
 type bucket struct {
@@ -86,6 +89,8 @@ type rateLimitError struct {
 }
 
 var ErrLimiterBackendUnavailable = errors.New("abuse limiter backend unavailable")
+var ErrActiveConnectionBackendUnavailable = errors.New("active connection limiter backend unavailable")
+var ErrActiveConnectionLeaseExpired = errors.New("active connection lease expired")
 
 var redisFixedWindowScript = redis.NewScript(`
 local bucket_key = KEYS[1]
@@ -110,6 +115,69 @@ if redis.call('PTTL', registry_key) < 0 then
 end
 return count
 `)
+
+var redisActiveConnectionAcquireScript = redis.NewScript(`
+local token = ARGV[1]
+local lease_seconds = tonumber(ARGV[2])
+local lease_millis = lease_seconds * 1000
+local user_limit = tonumber(ARGV[3])
+local tenant_limit = tonumber(ARGV[4])
+local global_limit = tonumber(ARGV[5])
+local now_parts = redis.call('TIME')
+local now_millis = tonumber(now_parts[1]) * 1000 + math.floor(tonumber(now_parts[2]) / 1000)
+local expires_at = now_millis + lease_millis
+
+for _, key in ipairs(KEYS) do
+  redis.call('ZREMRANGEBYSCORE', key, '-inf', now_millis)
+end
+
+if redis.call('ZCARD', KEYS[1]) >= global_limit or
+   redis.call('ZCARD', KEYS[2]) >= tenant_limit or
+   redis.call('ZCARD', KEYS[3]) >= user_limit then
+  return 0
+end
+
+for _, key in ipairs(KEYS) do
+  redis.call('ZADD', key, expires_at, token)
+  redis.call('EXPIRE', key, lease_seconds * 2)
+end
+return 1
+`)
+
+var redisActiveConnectionRenewScript = redis.NewScript(`
+local token = ARGV[1]
+local lease_seconds = tonumber(ARGV[2])
+local lease_millis = lease_seconds * 1000
+local now_parts = redis.call('TIME')
+local now_millis = tonumber(now_parts[1]) * 1000 + math.floor(tonumber(now_parts[2]) / 1000)
+local expires_at = now_millis + lease_millis
+
+for _, key in ipairs(KEYS) do
+  local current_expiry = redis.call('ZSCORE', key, token)
+  if not current_expiry or tonumber(current_expiry) <= now_millis then
+    return 0
+  end
+end
+
+for _, key in ipairs(KEYS) do
+  redis.call('ZADD', key, expires_at, token)
+  redis.call('EXPIRE', key, lease_seconds * 2)
+end
+return 1
+`)
+
+var redisActiveConnectionReleaseScript = redis.NewScript(`
+local token = ARGV[1]
+for _, key in ipairs(KEYS) do
+  redis.call('ZREM', key, token)
+end
+return 1
+`)
+
+const (
+	activeConnectionLeaseTTL       = 2 * time.Minute
+	activeConnectionCommandTimeout = 5 * time.Second
+)
 
 func PolicyFromEnv() Policy {
 	return Policy{Profiles: map[string]Profile{
@@ -190,36 +258,73 @@ func NewActiveConnectionLimiter(perUserLimit, perTenantLimit, globalLimit int) *
 		globalLimit:    globalLimit,
 		users:          map[string]int{},
 		tenants:        map[string]int{},
+		leaseTTL:       activeConnectionLeaseTTL,
 	}
 }
 
 func NewDefaultActiveConnectionLimiter() *ActiveConnectionLimiter {
-	return NewActiveConnectionLimiter(
+	return NewActiveConnectionLimiterFromClient(nil)
+}
+
+func NewRedisActiveConnectionLimiter(perUserLimit, perTenantLimit, globalLimit int, client *redis.Client) *ActiveConnectionLimiter {
+	limiter := NewActiveConnectionLimiter(perUserLimit, perTenantLimit, globalLimit)
+	limiter.redis = client
+	return limiter
+}
+
+func NewDefaultRedisActiveConnectionLimiter(client *redis.Client) *ActiveConnectionLimiter {
+	return NewRedisActiveConnectionLimiterFromClient(client)
+}
+
+func NewActiveConnectionLimiterFromClient(client *redis.Client) *ActiveConnectionLimiter {
+	limiter := NewActiveConnectionLimiter(
 		intFromEnv("WS_MAX_ACTIVE_CONNECTIONS_PER_USER", 4),
 		intFromEnv("WS_MAX_ACTIVE_CONNECTIONS_PER_TENANT", 100),
 		intFromEnv("WS_MAX_ACTIVE_CONNECTIONS_GLOBAL", 1000),
 	)
+	limiter.redis = client
+	return limiter
+}
+
+func NewRedisActiveConnectionLimiterFromClient(client *redis.Client) *ActiveConnectionLimiter {
+	return NewActiveConnectionLimiterFromClient(client)
 }
 
 func (l *ActiveConnectionLimiter) Acquire(organizationID, userID string) (func(), bool) {
+	release, _, allowed, _ := l.AcquireContext(context.Background(), organizationID, userID)
+	return release, allowed
+}
+
+func (l *ActiveConnectionLimiter) AcquireContext(ctx context.Context, organizationID, userID string) (func(), func(context.Context) error, bool, error) {
 	organizationID = strings.TrimSpace(organizationID)
 	userID = strings.TrimSpace(userID)
 	if l == nil || organizationID == "" || userID == "" {
-		return nil, false
+		return nil, nil, false, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if l.redis != nil {
+		return l.acquireRedis(ctx, organizationID, userID)
 	}
 
+	return l.acquireLocal(organizationID, userID)
+}
+
+func (l *ActiveConnectionLimiter) acquireLocal(organizationID, userID string) (func(), func(context.Context) error, bool, error) {
 	l.mu.Lock()
-	defer l.mu.Unlock()
 	if l.globalCount >= l.globalLimit || l.tenants[organizationID] >= l.perTenantLimit || l.users[organizationID+":"+userID] >= l.perUserLimit {
-		return nil, false
+		l.mu.Unlock()
+		return nil, nil, false, nil
 	}
 	l.globalCount++
 	l.tenants[organizationID]++
 	userKey := organizationID + ":" + userID
 	l.users[userKey]++
+	l.mu.Unlock()
 
 	released := false
-	return func() {
+	release := func() {
 		l.mu.Lock()
 		defer l.mu.Unlock()
 		if released {
@@ -235,7 +340,72 @@ func (l *ActiveConnectionLimiter) Acquire(organizationID, userID string) (func()
 		if l.users[userKey] == 0 {
 			delete(l.users, userKey)
 		}
-	}, true
+	}
+	return release, func(context.Context) error { return nil }, true, nil
+}
+
+func (l *ActiveConnectionLimiter) acquireRedis(ctx context.Context, organizationID, userID string) (func(), func(context.Context) error, bool, error) {
+	token := uuid.NewString()
+	keys := activeConnectionKeys(organizationID, userID)
+	leaseSeconds := int(l.leaseTTL / time.Second)
+	if leaseSeconds < 1 {
+		leaseSeconds = int(activeConnectionLeaseTTL / time.Second)
+	}
+	acquired, err := redisActiveConnectionAcquireScript.Run(
+		ctx,
+		l.redis,
+		keys,
+		token,
+		leaseSeconds,
+		l.perUserLimit,
+		l.perTenantLimit,
+		l.globalLimit,
+	).Int()
+	if err != nil {
+		return nil, nil, false, ErrActiveConnectionBackendUnavailable
+	}
+	if acquired != 1 {
+		return nil, nil, false, nil
+	}
+
+	var releaseOnce sync.Once
+	release := func() {
+		releaseOnce.Do(func() {
+			releaseCtx, cancel := context.WithTimeout(context.Background(), activeConnectionCommandTimeout)
+			defer cancel()
+			_ = redisActiveConnectionReleaseScript.Run(releaseCtx, l.redis, keys, token).Err()
+		})
+	}
+	renew := func(renewCtx context.Context) error {
+		if renewCtx == nil {
+			renewCtx = context.Background()
+		}
+		result, err := redisActiveConnectionRenewScript.Run(renewCtx, l.redis, keys, token, leaseSeconds).Int()
+		if err != nil {
+			return ErrActiveConnectionBackendUnavailable
+		}
+		if result != 1 {
+			return ErrActiveConnectionLeaseExpired
+		}
+		return nil
+	}
+	return release, renew, true, nil
+}
+
+func activeConnectionKeys(organizationID, userID string) []string {
+	organizationHash := hashLimiterIdentity(organizationID)
+	userHash := hashLimiterIdentity(userID)
+	const prefix = "scriptureforge:rooms:connections:v1:"
+	return []string{
+		prefix + "global",
+		prefix + "organization:" + organizationHash,
+		prefix + "user:" + organizationHash + ":" + userHash,
+	}
+}
+
+func hashLimiterIdentity(identity string) string {
+	hash := sha256.Sum256([]byte(identity))
+	return hex.EncodeToString(hash[:])
 }
 
 func (l *Limiter) Check(profileName string, identity string) (Result, bool) {

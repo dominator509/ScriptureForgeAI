@@ -3,6 +3,7 @@ package abuse
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -574,5 +575,85 @@ func TestRedisLimiterFailsClosedWhenBackendIsUnavailable(t *testing.T) {
 	}
 	if response.Category != "ABUSE_LIMITER_UNAVAILABLE" {
 		t.Fatalf("unavailable Redis limiter category = %q, want ABUSE_LIMITER_UNAVAILABLE", response.Category)
+	}
+}
+
+func TestRedisActiveConnectionLimiterSharesCapsAcrossInstances(t *testing.T) {
+	server := miniredis.RunT(t)
+	clientOne := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	clientTwo := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() { _ = clientOne.Close() })
+	t.Cleanup(func() { _ = clientTwo.Close() })
+	one := NewRedisActiveConnectionLimiter(1, 2, 2, clientOne)
+	two := NewRedisActiveConnectionLimiter(1, 2, 2, clientTwo)
+
+	releaseFirst, renewFirst, allowed, err := one.AcquireContext(context.Background(), "org-a", "user-a")
+	if err != nil || !allowed || renewFirst == nil {
+		t.Fatalf("first Redis connection lease allowed=%v renew=%v err=%v, want allowed lease", allowed, renewFirst != nil, err)
+	}
+	if _, _, allowed, err := two.AcquireContext(context.Background(), "org-a", "user-a"); err != nil || allowed {
+		t.Fatalf("same-user second lease allowed=%v err=%v, want shared user cap denial", allowed, err)
+	}
+	releaseSecond, _, allowed, err := two.AcquireContext(context.Background(), "org-a", "user-b")
+	if err != nil || !allowed {
+		t.Fatalf("second tenant lease allowed=%v err=%v, want allowed", allowed, err)
+	}
+	if _, _, allowed, err := one.AcquireContext(context.Background(), "org-a", "user-c"); err != nil || allowed {
+		t.Fatalf("global cap lease allowed=%v err=%v, want shared global cap denial", allowed, err)
+	}
+
+	releaseFirst()
+	if _, _, allowed, err := two.AcquireContext(context.Background(), "org-a", "user-c"); err != nil || !allowed {
+		t.Fatalf("released lease replacement allowed=%v err=%v, want allowed", allowed, err)
+	}
+	releaseSecond()
+}
+
+func TestRedisActiveConnectionLimiterRenewsAndExpiresLeases(t *testing.T) {
+	server := miniredis.RunT(t)
+	start := time.Now().Truncate(time.Second)
+	server.SetTime(start)
+	clientOne := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	clientTwo := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() { _ = clientOne.Close() })
+	t.Cleanup(func() { _ = clientTwo.Close() })
+	one := NewRedisActiveConnectionLimiter(1, 1, 1, clientOne)
+	two := NewRedisActiveConnectionLimiter(1, 1, 1, clientTwo)
+
+	release, renew, allowed, err := one.AcquireContext(context.Background(), "org-a", "user-a")
+	if err != nil || !allowed {
+		t.Fatalf("initial lease allowed=%v err=%v, want allowed", allowed, err)
+	}
+	server.SetTime(start.Add(90 * time.Second))
+	if err := renew(context.Background()); err != nil {
+		t.Fatalf("renew lease: %v", err)
+	}
+	server.SetTime(start.Add(180 * time.Second))
+	if _, _, allowed, err := two.AcquireContext(context.Background(), "org-a", "user-b"); err != nil || allowed {
+		t.Fatalf("renewed lease replacement allowed=%v err=%v, want denial", allowed, err)
+	}
+
+	server.SetTime(start.Add(211 * time.Second))
+	releaseReplacement, _, allowed, err := two.AcquireContext(context.Background(), "org-a", "user-b")
+	if err != nil || !allowed {
+		t.Fatalf("expired lease replacement allowed=%v err=%v, want allowed", allowed, err)
+	}
+	releaseReplacement()
+	release()
+}
+
+func TestRedisActiveConnectionLimiterFailsClosedWhenBackendIsUnavailable(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+	server.Close()
+
+	limiter := NewRedisActiveConnectionLimiter(1, 1, 1, client)
+	_, _, allowed, err := limiter.AcquireContext(context.Background(), "org-a", "user-a")
+	if allowed {
+		t.Fatal("connection lease was allowed while Redis backend was unavailable")
+	}
+	if !errors.Is(err, ErrActiveConnectionBackendUnavailable) {
+		t.Fatalf("unavailable backend error = %v, want ErrActiveConnectionBackendUnavailable", err)
 	}
 }

@@ -518,7 +518,7 @@ func setupRoutesWithLifecycle(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisC
 		DB:                dbpool,
 		StateManager:      roomStateManager,
 		Hub:               roomHub,
-		ConnectionLimiter: abuse.NewDefaultActiveConnectionLimiter(),
+		ConnectionLimiter: abuse.NewDefaultRedisActiveConnectionLimiter(redisClient),
 	}
 	if lifecycle != nil {
 		lifecycle.onShutdown = socketConn.BeginShutdown

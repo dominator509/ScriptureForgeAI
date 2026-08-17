@@ -34,11 +34,12 @@ type roomErrorEnvelope struct {
 }
 
 const (
-	maxWSMessageBytes     = 64 * 1024
-	maxRoomEventTypeBytes = 64
-	wsPongWait            = 60 * time.Second
-	wsPingInterval        = 30 * time.Second
-	wsWriteWait           = 10 * time.Second
+	maxWSMessageBytes            = 64 * 1024
+	maxRoomEventTypeBytes        = 64
+	wsPongWait                   = 60 * time.Second
+	wsPingInterval               = 30 * time.Second
+	wsWriteWait                  = 10 * time.Second
+	activeConnectionRenewTimeout = 5 * time.Second
 )
 
 type SocketConnection struct {
@@ -314,7 +315,12 @@ func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request
 		return
 	}
 	hub := s.roomHub()
-	releaseConnection, allowed := s.activeConnectionLimiter().Acquire(claims.OrganizationID, claims.UserID)
+	releaseConnection, renewConnection, allowed, limiterErr := s.activeConnectionLimiter().AcquireContext(r.Context(), claims.OrganizationID, claims.UserID)
+	if limiterErr != nil {
+		observability.ObserveDependencyFromContext(r.Context(), "redis", "websocket_connection_limit", "unavailable", 0)
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Room connection capacity is unavailable", Code: http.StatusServiceUnavailable})
+		return
+	}
 	if !allowed {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Too many active room connections", Code: http.StatusTooManyRequests})
 		return
@@ -364,6 +370,28 @@ func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request
 		_ = writeControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, reason))
 	}
 	defer close(done)
+	leaseDone := make(chan struct{})
+	defer close(leaseDone)
+	go func() {
+		leaseTicker := time.NewTicker(wsPingInterval)
+		defer leaseTicker.Stop()
+		for {
+			select {
+			case <-leaseTicker.C:
+				renewCtx, cancel := context.WithTimeout(context.Background(), activeConnectionRenewTimeout)
+				err := renewConnection(renewCtx)
+				cancel()
+				if err != nil {
+					observability.ObserveDependencyFromContext(r.Context(), "redis", "websocket_connection_lease", "unavailable", 0)
+					closePolicyViolation("room connection lease unavailable")
+					_ = conn.Close()
+					return
+				}
+			case <-leaseDone:
+				return
+			}
+		}
+	}()
 	go func() {
 		for {
 			select {
