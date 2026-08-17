@@ -895,6 +895,8 @@ Status last updated: 2026-08-16
 
 2026-08-16 Zoom provider budget hardening: the PR7 Zoom adapter now reads `ZOOM_HTTP_TIMEOUT_MS` and `ZOOM_MAX_RETRIES` with finite 100-30000ms and 0-3 bounds, projects those settings through Terraform, closes unexpected response bodies on retry errors, and uses a finite fallback client when direct wiring omits an HTTP client. Focused adapter tests cover defaults, configured values, invalid/excessive values, and nil-client safety. This closes the local configurable transport-budget gap within `F-AUD-010`; live Zoom timeout/circuit/fallback and webhook evidence remains external under `EXT-ZOOM-001`.
 
+2026-08-16 auth transaction and journal salt binding hardening: successful login now inserts and commits its first opaque refresh token in the existing tenant-scoped credential transaction, avoiding nested pool acquisition while preserving refresh issuance telemetry. Encrypted journal creation now derives the current server-side per-user `journal:v1` salt ID and rejects mismatched salt IDs/versions before database work. Focused backend tests plus the disposable Postgres/RLS auth, journal, and tenant suites pass; staging auth observation and native/deployed journal evidence remain external.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.

@@ -190,6 +190,7 @@ func requestWithClaims(method, target string, body []byte, userID, orgID string)
 }
 
 func TestTenantScopedJournalHandlersEnforceRLS(t *testing.T) {
+	t.Setenv("JOURNAL_SALT_SECRET", "tenant-journal-salt-secret-0123456789")
 	db := openTenantIsolationDB(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -201,7 +202,24 @@ func TestTenantScopedJournalHandlersEnforceRLS(t *testing.T) {
 	})
 
 	handler := &ports.JournalHandler{DB: db}
-	payload := []byte(`{"ciphertext":"c2VhbGVkLWNpcGhlcnRleHQtYmxvYg==","iv":"AQIDBAUGBwgJCgsM","salt_id":"journal:v1:test-a","salt_version":1}`)
+	bootstrapRecorder := httptest.NewRecorder()
+	handler.ServeJournalBootstrap(bootstrapRecorder, requestWithClaims(http.MethodGet, "/api/v1/journal/bootstrap", nil, tenantUserA, tenantOrgA))
+	if bootstrapRecorder.Code != http.StatusOK {
+		t.Fatalf("journal bootstrap status = %d body = %s", bootstrapRecorder.Code, bootstrapRecorder.Body.String())
+	}
+	var bootstrap ports.JournalBootstrapResponse
+	if err := json.NewDecoder(bootstrapRecorder.Body).Decode(&bootstrap); err != nil {
+		t.Fatalf("decode journal bootstrap: %v", err)
+	}
+	payload, err := json.Marshal(ports.JournalPayload{
+		Ciphertext:  "c2VhbGVkLWNpcGhlcnRleHQtYmxvYg==",
+		IV:          "AQIDBAUGBwgJCgsM",
+		SaltID:      bootstrap.SaltID,
+		SaltVersion: bootstrap.SaltVersion,
+	})
+	if err != nil {
+		t.Fatalf("encode journal payload: %v", err)
+	}
 
 	plaintextPayload := []byte(`{"ciphertext":"c2VhbGVkLWNpcGhlcnRleHQtYmxvYg==","iv":"AQIDBAUGBwgJCgsM","salt_id":"journal:v1:test-a","salt_version":1,"plaintext":"Lord, help me","passphrase":"do-not-store"}`)
 	plaintextRecorder := httptest.NewRecorder()
@@ -292,7 +310,7 @@ func TestTenantScopedJournalHandlersEnforceRLS(t *testing.T) {
 	}
 	setTenantForTest(ctx, t, db, tenantOrgA, func(ctx context.Context, tx pgx.Tx) {
 		var count int
-		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM journal_entries WHERE organization_id = $1 AND salt_id = 'journal:v1:test-a'`, tenantOrgA).Scan(&count); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM journal_entries WHERE organization_id = $1 AND salt_id = $2`, tenantOrgA, bootstrap.SaltID).Scan(&count); err != nil {
 			t.Fatalf("count tenant A journals after mismatched create: %v", err)
 		}
 		if count != 1 {
@@ -301,7 +319,7 @@ func TestTenantScopedJournalHandlersEnforceRLS(t *testing.T) {
 	})
 	setTenantForTest(ctx, t, db, tenantOrgB, func(ctx context.Context, tx pgx.Tx) {
 		var count int
-		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM journal_entries WHERE organization_id = $1 AND salt_id = 'journal:v1:test-a'`, tenantOrgB).Scan(&count); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM journal_entries WHERE organization_id = $1 AND salt_id = $2`, tenantOrgB, bootstrap.SaltID).Scan(&count); err != nil {
 			t.Fatalf("count tenant B journals after mismatched create: %v", err)
 		}
 		if count != 0 {

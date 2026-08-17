@@ -335,30 +335,6 @@ func storeRefreshToken(ctx context.Context, tx pgx.Tx, userID, orgID string, rot
 	return refreshToken, nil
 }
 
-func (h *AuthHandler) issueRefreshToken(r *http.Request, userID, orgID string, rotatedFrom *string) (string, error) {
-	metricStatus := "error"
-	started := time.Now()
-	defer observeAuthPostgres(r.Context(), "auth_issue_refresh_token", started, &metricStatus)
-
-	tx, err := h.DB.Begin(r.Context())
-	if err != nil {
-		return "", err
-	}
-	defer tx.Rollback(r.Context())
-	if err := auth.SetTenantContext(r.Context(), tx, orgID); err != nil {
-		return "", err
-	}
-	refreshToken, err := storeRefreshToken(r.Context(), tx, userID, orgID, rotatedFrom)
-	if err != nil {
-		return "", err
-	}
-	if err := tx.Commit(r.Context()); err != nil {
-		return "", err
-	}
-	metricStatus = "success"
-	return refreshToken, nil
-}
-
 func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Method not allowed", Code: http.StatusMethodNotAllowed})
@@ -503,7 +479,16 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to issue token", Code: http.StatusInternalServerError})
 		return
 	}
-	refreshToken, err := h.issueRefreshToken(r, userID, orgID, nil)
+	refreshMetricStatus := "error"
+	refreshStarted := time.Now()
+	refreshToken, err := storeRefreshToken(r.Context(), tx, userID, orgID, nil)
+	if err == nil {
+		err = tx.Commit(r.Context())
+	}
+	if err == nil {
+		refreshMetricStatus = "success"
+	}
+	observeAuthPostgres(r.Context(), "auth_issue_refresh_token", refreshStarted, &refreshMetricStatus)
 	if err != nil {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to issue refresh token", Code: http.StatusInternalServerError})
 		return

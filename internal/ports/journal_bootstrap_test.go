@@ -3,6 +3,7 @@ package ports
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -137,6 +138,35 @@ func TestJournalCreateRejectsMalformedEncryptedEnvelopeBeforeDatabase(t *testing
 
 	if validRecorder.Code != http.StatusInternalServerError {
 		t.Fatalf("valid encrypted envelope status = %d body = %s, want DB configuration error 500", validRecorder.Code, validRecorder.Body.String())
+	}
+}
+
+func TestJournalCreateRejectsUnboundSaltBeforeDatabase(t *testing.T) {
+	t.Setenv("JOURNAL_SALT_SECRET", "test-journal-salt-secret-0123456789")
+	handler := &JournalHandler{}
+	claims := &auth.TokenClaims{UserID: "user-123", OrganizationID: "org-456", Role: "member"}
+	expected, err := journalSaltID(claims.OrganizationID, claims.UserID)
+	if err != nil {
+		t.Fatalf("derive expected journal salt: %v", err)
+	}
+	for _, tc := range []struct {
+		name    string
+		saltID  string
+		version int
+	}{
+		{name: "unbound salt id", saltID: "journal:v1:not-the-user-salt", version: currentJournalSaltVersion},
+		{name: "unsupported salt version", saltID: expected, version: currentJournalSaltVersion + 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := fmt.Sprintf(`{"ciphertext":"c2VhbGVkLWNpcGhlcnRleHQtYmxvYg==","iv":"AQIDBAUGBwgJCgsM","salt_id":%q,"salt_version":%d}`, tc.saltID, tc.version)
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/journal_entries", strings.NewReader(body))
+			request = request.WithContext(context.WithValue(request.Context(), auth.ContextKeyUser, claims))
+			recorder := httptest.NewRecorder()
+			handler.ServeJournalEntries(recorder, request)
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("journal salt binding status = %d body = %s, want 400", recorder.Code, recorder.Body.String())
+			}
+		})
 	}
 }
 

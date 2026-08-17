@@ -52,6 +52,7 @@ type JournalBootstrapResponse struct {
 
 const (
 	journalAESGCMIVBytes          = 12
+	currentJournalSaltVersion     = 1
 	maxJournalRequestBodyBytes    = 256 * 1024
 	maxJournalCiphertextBytes     = 128 * 1024
 	maxJournalCiphertextTextBytes = ((maxJournalCiphertextBytes + 2) / 3) * 4
@@ -79,7 +80,7 @@ func (h *JournalHandler) ServeJournalBootstrap(w http.ResponseWriter, r *http.Re
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(JournalBootstrapResponse{SaltID: saltID, SaltVersion: 1})
+	_ = json.NewEncoder(w).Encode(JournalBootstrapResponse{SaltID: saltID, SaltVersion: currentJournalSaltVersion})
 }
 
 func journalSaltID(organizationID, userID string) (string, *auth.PlatformException) {
@@ -188,10 +189,19 @@ func (h *JournalHandler) createJournalEntry(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if req.SaltVersion == 0 {
-		req.SaltVersion = 1
+		req.SaltVersion = currentJournalSaltVersion
 	}
 	if err := validateEncryptedJournalPayload(req); err != nil {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: err.Error(), Code: http.StatusBadRequest})
+		return
+	}
+	expectedSaltID, saltErr := journalSaltID(claims.OrganizationID, claims.UserID)
+	if saltErr != nil {
+		sendAuthError(w, saltErr)
+		return
+	}
+	if req.SaltVersion != currentJournalSaltVersion || req.SaltID != expectedSaltID {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Encrypted journal salt does not match the authenticated session", Code: http.StatusBadRequest})
 		return
 	}
 

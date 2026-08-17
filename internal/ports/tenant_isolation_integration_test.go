@@ -157,6 +157,7 @@ func cleanupTenantIsolationFixtures(ctx context.Context, t *testing.T, db *pgxpo
 }
 
 func TestJournalHandlersHonorTenantIsolation(t *testing.T) {
+	t.Setenv("JOURNAL_SALT_SECRET", "tenant-journal-salt-secret-0123456789")
 	db := openTenantIsolationDB(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -169,12 +170,33 @@ func TestJournalHandlersHonorTenantIsolation(t *testing.T) {
 
 	journal := &JournalHandler{DB: db}
 	observer := observability.NewObserver(observability.Options{})
-	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/journal_entries", strings.NewReader(`{"ciphertext":"dGVuYW50LWEtc2VhbGVkLXBheWxvYWQ=","iv":"AQIDBAUGBwgJCgsM","salt_id":"journal:v1:tenant-a-salt","salt_version":1}`))
-	createReq = createReq.WithContext(context.WithValue(createReq.Context(), auth.ContextKeyUser, &auth.TokenClaims{
+	ownerClaims := &auth.TokenClaims{
 		UserID:         tenantIsolationUserA,
 		OrganizationID: tenantIsolationOrgA,
 		Role:           "member",
-	}))
+	}
+	bootstrapReq := httptest.NewRequest(http.MethodGet, "/api/v1/journal/bootstrap", nil)
+	bootstrapReq = bootstrapReq.WithContext(context.WithValue(bootstrapReq.Context(), auth.ContextKeyUser, ownerClaims))
+	bootstrapRec := httptest.NewRecorder()
+	journal.ServeJournalBootstrap(bootstrapRec, bootstrapReq)
+	if bootstrapRec.Code != http.StatusOK {
+		t.Fatalf("tenant A journal bootstrap status = %d body = %s", bootstrapRec.Code, bootstrapRec.Body.String())
+	}
+	var bootstrap JournalBootstrapResponse
+	if err := json.Unmarshal(bootstrapRec.Body.Bytes(), &bootstrap); err != nil {
+		t.Fatalf("decode tenant A journal bootstrap: %v", err)
+	}
+	createPayload, err := json.Marshal(JournalPayload{
+		Ciphertext:  "dGVuYW50LWEtc2VhbGVkLXBheWxvYWQ=",
+		IV:          "AQIDBAUGBwgJCgsM",
+		SaltID:      bootstrap.SaltID,
+		SaltVersion: bootstrap.SaltVersion,
+	})
+	if err != nil {
+		t.Fatalf("encode tenant A journal payload: %v", err)
+	}
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/journal_entries", strings.NewReader(string(createPayload)))
+	createReq = createReq.WithContext(context.WithValue(createReq.Context(), auth.ContextKeyUser, ownerClaims))
 	createReq = createReq.WithContext(observability.WithObserver(createReq.Context(), observer))
 	createRec := httptest.NewRecorder()
 	journal.ServeJournalEntries(createRec, createReq)

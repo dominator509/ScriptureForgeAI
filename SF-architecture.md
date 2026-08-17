@@ -78,7 +78,7 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
 
 ### 5.1 Authentication, Account & Workspace Management
 *   **Purpose:** Multi-tenant credential tracking, organization boundaries, and session token provisioning.
-*   **Core Responsibilities:** Processing security tokens, validating JWT signatures with short lifespans (15 minutes) coupled with database-backed opaque refresh tokens, and enforcing logical isolation using strict Postgres row-level security (RLS).
+*   **Core Responsibilities:** Processing security tokens, validating JWT signatures with short lifespans (15 minutes) coupled with database-backed opaque refresh tokens, and enforcing logical isolation using strict Postgres row-level security (RLS). Successful login inserts and commits its first refresh token in the same tenant-scoped transaction as credential verification so constrained pools do not pay for nested transaction acquisition.
 *   **Main API Routes:**
     *   `POST /api/v1/auth/register`
     *   `POST /api/v1/auth/login`
@@ -241,7 +241,7 @@ type MeetingAdapter interface {
 
 ### 9.2 Zero-Knowledge Client Journal Architecture
 To ensure ironclad security for sensitive spiritual reflections, journals utilize client-side cryptographic derivation:
-1.  During system enrollment, a 256-bit passphrase key is derived on-device from user credentials using **PBKDF2** with 600,000 iterations and a dynamic unique salt configuration. The backend salt identifier is derived from tenant/user scope with a dedicated `JOURNAL_SALT_SECRET`, never the JWT signing key.
+1.  During system enrollment, a 256-bit passphrase key is derived on-device from user credentials using **PBKDF2** with 600,000 iterations and a dynamic unique salt configuration. The backend salt identifier is derived from tenant/user scope with a dedicated `JOURNAL_SALT_SECRET`, never the JWT signing key; journal creation rejects a salt ID/version that does not match the current authenticated bootstrap result before opening a database transaction.
 2.  Data content segments undergo symmetric encryption inside the client memory sandbox via **AES-256-GCM** prior to network transmit.
 3.  The backend persistence engine processes the ciphertext stream as an opaque binary large object (BLOB). The application servers never hold the primary encryption keys.
 4.  Web and mobile clients list and fetch only encrypted journal records. Decryption is performed locally after the user supplies the passphrase, with associated data bound to the server-provided salt ID/version. Mobile identity changes clear prior journal entries, plaintext, passphrase, and key handles; access-token rotation does not clear the active user's local work.
