@@ -52,6 +52,7 @@ ScriptureForgeAI is a multi-tenant Bible study platform with authenticated works
 ## Data / Auth / External Notes
 
 - Tenant isolation: Postgres RLS + `auth.SetTenantContext(ctx, tx, orgID)` for tenant-scoped DB access.
+- Server password cryptography: `pkg/crypto_utils/password.go` owns bounded Argon2id hashing, strict stored-parameter parsing, secure salt generation, and byte cleanup; `internal/domain/auth` keeps compatibility aliases for existing handlers.
 - Browser sessions keep refresh tokens in an HttpOnly, SameSite=Strict `/api` cookie; access JWTs remain memory-only and reload through cookie-backed bootstrap. Mobile keeps the compatibility body-token flow, and both use short-lived access tokens with rotation.
 - Journals must stay ciphertext-only at transport and persistence boundaries; pass no plaintext or passphrases to backend routes.
 - Web and mobile journal flows list/fetch encrypted entries and decrypt only after local key derivation; mobile clears prior journal entries, plaintext, passphrase, and key handles when the user or organization changes, while access-token rotation preserves the active user's local work.
