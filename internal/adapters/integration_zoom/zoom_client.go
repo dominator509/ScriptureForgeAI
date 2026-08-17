@@ -218,7 +218,7 @@ func (c *ZoomClient) getAccessToken(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("zoom credentials are not fully configured")
 	}
 
-	tokenURL := fmt.Sprintf("https://zoom.us/oauth/token?grant_type=account_credentials&account_id=%s", c.AccountID)
+	tokenURL := fmt.Sprintf("https://zoom.us/oauth/token?grant_type=account_credentials&account_id=%s", url.QueryEscape(c.AccountID))
 	resp, err := c.doWithRetry(func() (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, nil)
 		if err != nil {
@@ -264,7 +264,6 @@ func (c *ZoomClient) CreateMeeting(ctx context.Context, config room.MeetingConfi
 		observeZoom(ctx, "create_meeting", "credential_or_token_fallback", start)
 		return offlineMeetingDetails(config), nil
 	}
-
 	type zoomMeetingSettings struct {
 		HostVideo        bool `json:"host_video"`
 		ParticipantVideo bool `json:"participant_video"`
@@ -385,7 +384,6 @@ func (c *ZoomClient) TerminateMeeting(ctx context.Context, meetingID string) err
 		observeZoom(ctx, "terminate_meeting", "credential_or_token_error", start)
 		return err
 	}
-
 	type zoomActionPayload struct {
 		Action string `json:"action"`
 	}
@@ -437,7 +435,6 @@ func (c *ZoomClient) GetMeetingStatus(ctx context.Context, meetingID string) (st
 		observeZoom(ctx, "get_meeting_status", "credential_or_token_error", start)
 		return "", err
 	}
-
 	requestURL := fmt.Sprintf("https://api.zoom.us/v2/meetings/%s", url.PathEscape(meetingID))
 	resp, err := c.doWithRetry(func() (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)

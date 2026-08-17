@@ -24,3 +24,5 @@ production-readiness/staging-evidence.*.json
 services/scripture-engine/target/
 *.tfstate
 *.tfstate.*
+services/platform-engine/platform-engine
+services/platform-engine/platform.log

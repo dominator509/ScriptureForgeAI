@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"scriptureforge/internal/adapters/llm"
 	"scriptureforge/internal/domain/ai"
@@ -67,15 +68,26 @@ func (h *AIHandler) writeAIRequestLog(r *http.Request, claims *auth.TokenClaims,
 	if err != nil {
 		return err
 	}
-	for _, match := range ai.ExtractCitations(response) {
-		if _, err := tx.Exec(
-			r.Context(),
-			`INSERT INTO citation_trails (organization_id, ai_request_log_id, citation, verified)
-			 VALUES ($1, $2, $3, TRUE)`,
-			claims.OrganizationID,
-			logID,
-			match,
-		); err != nil {
+	matches := ai.ExtractCitations(response)
+	if len(matches) > 0 {
+		batch := &pgx.Batch{}
+		for _, match := range matches {
+			batch.Queue(
+				`INSERT INTO citation_trails (organization_id, ai_request_log_id, citation, verified)
+				 VALUES ($1, $2, $3, TRUE)`,
+				claims.OrganizationID,
+				logID,
+				match,
+			)
+		}
+		batchResults := tx.SendBatch(r.Context(), batch)
+		for range matches {
+			if _, err := batchResults.Exec(); err != nil {
+				_ = batchResults.Close()
+				return err
+			}
+		}
+		if err := batchResults.Close(); err != nil {
 			return err
 		}
 	}
@@ -176,7 +188,7 @@ func (h *AIHandler) GenerateCurriculumHandler(w http.ResponseWriter, r *http.Req
 		}
 
 		// 3. Execute via explicit boundaries and strict response verification per chunk
-		response, err := h.LLMClient.Execute(r.Context(), chunk, compiledContext, h.Verifier)
+		response, err := h.LLMClient.CreateCompletion(r.Context(), chunk, compiledContext, h.Verifier)
 		if err != nil {
 			if auditErr := h.writeAIRequestLog(r, claims, chunk, "failed", err.Error(), ""); auditErr != nil {
 				sendAIError(w, aiAuditPersistenceFault())

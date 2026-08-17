@@ -45,7 +45,8 @@ export const JournalEditor: React.FC = () => {
             disposeJournalCryptoKey(derivedHandle);
           }
         })
-        .catch(() => {
+        .catch((err) => {
+          console.error("Failed to derive isolation key:", err);
           if (isMounted) setStatus("Failed to derive isolation key");
         });
     } else {
@@ -110,14 +111,16 @@ export const JournalEditor: React.FC = () => {
       .then((bootstrap) => {
         if (isCurrentPrincipal()) setJournalBootstrap(bootstrap);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("Failed to fetch journal bootstrap:", err);
         if (isCurrentPrincipal()) setJournalBootstrap(null);
       });
     listJournalEntries(token)
       .then((nextEntries) => {
         if (isCurrentPrincipal()) setEntries(nextEntries);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("Failed to fetch journal entries:", err);
         if (isCurrentPrincipal()) setEntries([]);
       });
 
@@ -167,6 +170,7 @@ export const JournalEditor: React.FC = () => {
       }
 
     } catch (err) {
+      console.error("Encryption failed:", err);
       setStatus("Encryption failed");
     }
   };
@@ -193,6 +197,7 @@ export const JournalEditor: React.FC = () => {
         setStatus("Successfully decrypted from network payload.");
       }
     } catch (err) {
+      console.error("Decryption failed:", err);
       setStatus("Decryption failed. Invalid key or corrupted data.");
     }
   };

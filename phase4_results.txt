@@ -1,0 +1,3 @@
+Simulating network partition between backend and database...
+Network drop injected via iptables (simulated in mock context).
+Result: In this sandbox, the in-memory sync.Map doesn't fail. In production, pgxpool would return connection errors. We'd expect 500s or pausing of operations.

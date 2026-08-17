@@ -37,9 +37,10 @@ function assertJournalKeyInputs(passphrase: string, salt: string): void {
 
 function bufferToBase64(buffer: ArrayBuffer): string {
     const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (let i = 0; i < bytes.byteLength; i += 1) {
-        binary += String.fromCharCode(bytes[i]!);
+    let binary = "";
+    const chunkSize = 32768;
+    for (let i = 0; i < bytes.byteLength; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize) as unknown as number[]);
     }
     return window.btoa(binary);
 }

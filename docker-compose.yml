@@ -1,0 +1,60 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpassword
+      POSTGRES_DB: scriptureforge
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testuser -d scriptureforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  platform-engine:
+    build:
+      context: ./services/platform-engine
+      dockerfile: Dockerfile
+    environment:
+      DB_HOST: postgres
+      DB_USER: testuser
+      DB_PASS: testpassword
+      DB_NAME: scriptureforge
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET_KEY: testing-secret-key-123
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  scripture-engine:
+    build:
+      context: ./services/scripture-engine
+      dockerfile: Dockerfile
+    environment:
+      DB_HOST: postgres
+      DB_USER: testuser
+      DB_PASS: testpassword
+      DB_NAME: scriptureforge
+    ports:
+      - "50051:50051"
+    depends_on:
+      postgres:
+        condition: service_healthy

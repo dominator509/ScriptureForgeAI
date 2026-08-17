@@ -160,3 +160,38 @@ sendLoop:
 func mapReduceFault(message string) *PlatformException {
 	return &PlatformException{Category: "MAPREDUCE_PROCESSING_FAULT", Message: message, Code: 500}
 }
+
+// CompletionRequest is the narrow contract used by the reduce stage.
+type CompletionRequest struct {
+	Model       string
+	Prompt      string
+	Temperature float32
+}
+
+// LLMService keeps map/reduce orchestration independent from a provider SDK.
+type LLMService interface {
+	CreateCompletion(ctx context.Context, req CompletionRequest) (string, error)
+}
+
+type MapReducePipeline struct {
+	LLM LLMService
+}
+
+func (mr *MapReducePipeline) executeReduce(ctx context.Context, prompt string) (string, error) {
+	if mr == nil || mr.LLM == nil {
+		return "", mapReduceFault("LLM service is not configured")
+	}
+	if prompt == "" {
+		return "", mapReduceFault("prompt cannot be empty")
+	}
+
+	response, err := mr.LLM.CreateCompletion(ctx, CompletionRequest{
+		Model:       "gpt-4-turbo",
+		Prompt:      prompt,
+		Temperature: 0.2,
+	})
+	if err != nil {
+		return "", mapReduceFault("failed to execute reduce: " + err.Error())
+	}
+	return response, nil
+}

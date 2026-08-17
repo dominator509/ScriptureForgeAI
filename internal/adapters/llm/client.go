@@ -81,8 +81,8 @@ func (c *LLMClient) BuildRigorousPrompt(safePrompt string, compiledContext strin
 	}
 }
 
-// Execute triggers the network call, processes the boundaries, and runs verification.
-func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledContext string, verifier *ai.ResponseVerificationSubsystem) (string, error) {
+// CreateCompletion triggers the network call, processes the boundaries, and runs verification.
+func (c *LLMClient) CreateCompletion(ctx context.Context, safePrompt string, compiledContext string, verifier *ai.ResponseVerificationSubsystem) (string, error) {
 	if c == nil {
 		return "", &ai.PlatformException{
 			Category: "AI_CONFIGURATION_FAULT",
@@ -215,4 +215,10 @@ func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledCont
 
 	status = "success"
 	return generatedResponse, nil
+}
+
+// Execute preserves the original adapter entry point for callers that have not
+// yet migrated to the canonical CreateCompletion name.
+func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledContext string, verifier *ai.ResponseVerificationSubsystem) (string, error) {
+	return c.CreateCompletion(ctx, safePrompt, compiledContext, verifier)
 }
