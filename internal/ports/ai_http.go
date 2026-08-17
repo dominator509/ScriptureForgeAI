@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"regexp"
 	"strings"
 	"unicode/utf8"
 
@@ -41,8 +40,6 @@ func sendAIError(w http.ResponseWriter, pe *ai.PlatformException) {
 	json.NewEncoder(w).Encode(pe)
 }
 
-var auditCitationRegex = regexp.MustCompile(`\[([a-zA-Z\s]+)\s(\d+):(\d+)\]`)
-
 func (h *AIHandler) writeAIRequestLog(r *http.Request, claims *auth.TokenClaims, prompt, status, errorMessage, response string) error {
 	if h.DB == nil {
 		return errors.New("AI audit database is not configured")
@@ -70,7 +67,7 @@ func (h *AIHandler) writeAIRequestLog(r *http.Request, claims *auth.TokenClaims,
 	if err != nil {
 		return err
 	}
-	for _, match := range auditCitationRegex.FindAllString(response, -1) {
+	for _, match := range ai.ExtractCitations(response) {
 		if _, err := tx.Exec(
 			r.Context(),
 			`INSERT INTO citation_trails (organization_id, ai_request_log_id, citation, verified)

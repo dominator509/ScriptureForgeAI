@@ -40,6 +40,9 @@ const (
 	wsPingInterval               = 30 * time.Second
 	wsWriteWait                  = 10 * time.Second
 	activeConnectionRenewTimeout = 5 * time.Second
+	wsEventWindow                = time.Minute
+	maxWSEventsPerWindow         = 120
+	maxWSBytesPerWindow          = 4 << 20
 )
 
 type SocketConnection struct {
@@ -427,12 +430,26 @@ func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request
 	conn.SetPongHandler(func(string) error {
 		return conn.SetReadDeadline(time.Now().Add(wsPongWait))
 	})
+	eventWindowStarted := time.Now()
+	eventsInWindow := 0
+	bytesInWindow := 0
 	for {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
 			log.Println("read error:", err)
 			break
 		}
+		if time.Since(eventWindowStarted) >= wsEventWindow {
+			eventWindowStarted = time.Now()
+			eventsInWindow = 0
+			bytesInWindow = 0
+		}
+		if eventsInWindow >= maxWSEventsPerWindow || bytesInWindow+len(message) > maxWSBytesPerWindow {
+			closePolicyViolation("room event rate limit exceeded")
+			break
+		}
+		eventsInWindow++
+		bytesInWindow += len(message)
 		event, decodeErr := decodeRoomEvent(message)
 		if decodeErr != nil || !validRoomEventEnvelope(event, roomID) {
 			closePolicyViolation("invalid room event")

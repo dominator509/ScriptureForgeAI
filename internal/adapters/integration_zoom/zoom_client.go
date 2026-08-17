@@ -3,11 +3,14 @@ package integration_zoom
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -41,6 +44,39 @@ var (
 	errZoomResponseBodyTooLarge = errors.New("zoom response body exceeds the maximum size")
 	errZoomResponseBodyMissing  = errors.New("zoom response body is missing")
 )
+
+func newZoomIdempotencyKey() (string, error) {
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(raw), nil
+}
+
+func validateZoomMeetingID(meetingID string) (string, error) {
+	meetingID = strings.TrimSpace(meetingID)
+	if meetingID == "" || len(meetingID) > 64 {
+		return "", errors.New("zoom meeting id is invalid")
+	}
+	for _, character := range meetingID {
+		if character < '0' || character > '9' {
+			return "", errors.New("zoom meeting id is invalid")
+		}
+	}
+	return meetingID, nil
+}
+
+func validateZoomMeetingURL(raw string) error {
+	parsed, err := url.ParseRequestURI(strings.TrimSpace(raw))
+	if err != nil || parsed.Scheme != "https" || parsed.User != nil || parsed.Path == "" {
+		return errors.New("zoom meeting URL is invalid")
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host != "zoom.us" && !strings.HasSuffix(host, ".zoom.us") {
+		return errors.New("zoom meeting URL host is invalid")
+	}
+	return nil
+}
 
 func NewZoomClient() *ZoomClient {
 	return &ZoomClient{
@@ -255,6 +291,12 @@ func (c *ZoomClient) CreateMeeting(ctx context.Context, config room.MeetingConfi
 		},
 	}
 	body, _ := json.Marshal(payload)
+	idempotencyKey, err := newZoomIdempotencyKey()
+	if err != nil {
+		c.recordResult(err)
+		observeZoom(ctx, "create_meeting", "idempotency_key_error", start)
+		return offlineMeetingDetails(config), nil
+	}
 
 	resp, err := c.doWithRetry(func() (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.zoom.us/v2/users/me/meetings", bytes.NewBuffer(body))
@@ -263,6 +305,7 @@ func (c *ZoomClient) CreateMeeting(ctx context.Context, config room.MeetingConfi
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Idempotency-Key", idempotencyKey)
 		return req, nil
 	})
 	if err != nil {
@@ -306,6 +349,16 @@ func (c *ZoomClient) CreateMeeting(ctx context.Context, config room.MeetingConfi
 		observeZoom(ctx, "create_meeting", "response_validation_error", start)
 		return offlineMeetingDetails(config), nil
 	}
+	if err := validateZoomMeetingURL(meetingResp.JoinUrl); err != nil {
+		c.recordResult(err)
+		observeZoom(ctx, "create_meeting", "response_validation_error", start)
+		return offlineMeetingDetails(config), nil
+	}
+	if err := validateZoomMeetingURL(meetingResp.StartUrl); err != nil {
+		c.recordResult(err)
+		observeZoom(ctx, "create_meeting", "response_validation_error", start)
+		return offlineMeetingDetails(config), nil
+	}
 	c.recordResult(nil)
 	observeZoom(ctx, "create_meeting", "success", start)
 
@@ -322,6 +375,10 @@ func (c *ZoomClient) TerminateMeeting(ctx context.Context, meetingID string) err
 		observeZoom(ctx, "terminate_meeting", "circuit_open", start)
 		return nil
 	}
+	meetingID, err := validateZoomMeetingID(meetingID)
+	if err != nil {
+		return err
+	}
 	token, err := c.getAccessToken(ctx)
 	if err != nil {
 		c.recordResult(err)
@@ -335,9 +392,9 @@ func (c *ZoomClient) TerminateMeeting(ctx context.Context, meetingID string) err
 	payload := zoomActionPayload{Action: "end"}
 	body, _ := json.Marshal(payload)
 
-	url := fmt.Sprintf("https://api.zoom.us/v2/meetings/%s/status", meetingID)
+	requestURL := fmt.Sprintf("https://api.zoom.us/v2/meetings/%s/status", url.PathEscape(meetingID))
 	resp, err := c.doWithRetry(func() (*http.Request, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewBuffer(body))
+		req, err := http.NewRequestWithContext(ctx, http.MethodPut, requestURL, bytes.NewBuffer(body))
 		if err != nil {
 			return nil, err
 		}
@@ -370,6 +427,10 @@ func (c *ZoomClient) GetMeetingStatus(ctx context.Context, meetingID string) (st
 		observeZoom(ctx, "get_meeting_status", "circuit_open", start)
 		return "offline", nil
 	}
+	meetingID, err := validateZoomMeetingID(meetingID)
+	if err != nil {
+		return "", err
+	}
 	token, err := c.getAccessToken(ctx)
 	if err != nil {
 		c.recordResult(err)
@@ -377,9 +438,9 @@ func (c *ZoomClient) GetMeetingStatus(ctx context.Context, meetingID string) (st
 		return "", err
 	}
 
-	url := fmt.Sprintf("https://api.zoom.us/v2/meetings/%s", meetingID)
+	requestURL := fmt.Sprintf("https://api.zoom.us/v2/meetings/%s", url.PathEscape(meetingID))
 	resp, err := c.doWithRetry(func() (*http.Request, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 		if err != nil {
 			return nil, err
 		}

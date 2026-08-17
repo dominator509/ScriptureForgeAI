@@ -422,6 +422,32 @@ func storeRefreshToken(ctx context.Context, tx pgx.Tx, userID, orgID string, rot
 	return refreshToken, nil
 }
 
+func revokeRefreshTokenFamily(ctx context.Context, tx pgx.Tx, tokenHash, orgID string) (int64, error) {
+	result, err := tx.Exec(ctx, `
+		WITH RECURSIVE token_family AS (
+			SELECT id
+			  FROM refresh_tokens
+			 WHERE token_hash = $1 AND organization_id = $2
+			 UNION ALL
+			SELECT child.id
+			  FROM refresh_tokens child
+			  JOIN token_family parent ON child.rotated_from = parent.id
+			 WHERE child.organization_id = $2
+		)
+		UPDATE refresh_tokens
+		   SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP)
+		 WHERE id IN (SELECT id FROM token_family)
+		   AND organization_id = $2
+		   AND revoked_at IS NULL`,
+		tokenHash,
+		orgID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Method not allowed", Code: http.StatusMethodNotAllowed})
@@ -648,11 +674,11 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var tokenID, userID, orgID, role string
+	var tokenID, userID, orgID, role, encryptedMFASecret string
 	var mfaVerified, mfaEnabled bool
 	err = tx.QueryRow(
 		r.Context(),
-		`SELECT rt.id, rt.user_id, rt.organization_id, u.role, rt.mfa_verified_at IS NOT NULL, u.mfa_enabled
+		`SELECT rt.id, rt.user_id, rt.organization_id, u.role, COALESCE(u.mfa_secret, ''), rt.mfa_verified_at IS NOT NULL, u.mfa_enabled
 			 FROM refresh_tokens rt
 			 JOIN users u ON u.id = rt.user_id
 		 WHERE rt.token_hash = $1
@@ -662,8 +688,14 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 		 FOR UPDATE`,
 		hashToken(req.RefreshToken),
 		req.OrganizationID,
-	).Scan(&tokenID, &userID, &orgID, &role, &mfaVerified, &mfaEnabled)
+	).Scan(&tokenID, &userID, &orgID, &role, &encryptedMFASecret, &mfaVerified, &mfaEnabled)
 	if err != nil {
+		// A revoked token may be a replay of a rotated credential. Revoke its
+		// descendants so a stolen refresh family cannot be advanced further.
+		if _, revokeErr := revokeRefreshTokenFamily(r.Context(), tx, hashToken(req.RefreshToken), req.OrganizationID); revokeErr != nil {
+			sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to contain refresh-token reuse", Code: http.StatusInternalServerError})
+			return
+		}
 		metricStatus = "invalid_or_expired"
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid or expired refresh token", Code: http.StatusUnauthorized})
 		return
@@ -674,6 +706,14 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_ = json.NewEncoder(w).Encode(AuthResponse{UserID: userID, OrganizationID: orgID, RequiresMFA: true})
 		return
+	}
+	if privilegedRole(role) {
+		if _, decryptErr := decryptMFASecret(encryptedMFASecret, h.mfaEncryptionKey()); decryptErr != nil {
+			_, _ = revokeRefreshTokenFamily(r.Context(), tx, hashToken(req.RefreshToken), orgID)
+			metricStatus = "mfa_unavailable"
+			sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "MFA verification is unavailable", Code: http.StatusServiceUnavailable})
+			return
+		}
 	}
 
 	result, err := tx.Exec(r.Context(), `UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE id = $1 AND organization_id = $2 AND revoked_at IS NULL`, tokenID, orgID)
@@ -739,12 +779,12 @@ func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 		sendAuthError(w, err.(*auth.PlatformException))
 		return
 	}
-	result, err := tx.Exec(r.Context(), `UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE token_hash = $1 AND organization_id = $2 AND revoked_at IS NULL`, hashToken(req.RefreshToken), req.OrganizationID)
+	rowsRevoked, err := revokeRefreshTokenFamily(r.Context(), tx, hashToken(req.RefreshToken), req.OrganizationID)
 	if err != nil {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to revoke refresh token", Code: http.StatusInternalServerError})
 		return
 	}
-	if result.RowsAffected() == 0 {
+	if rowsRevoked == 0 {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid or already revoked refresh token", Code: http.StatusUnauthorized})
 		return
 	}

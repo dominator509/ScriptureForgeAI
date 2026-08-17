@@ -53,6 +53,11 @@ type roomStateWriter interface {
 	SetRoomActiveState(ctx context.Context, roomID string, active bool) error
 }
 
+type webhookDeliveryStore interface {
+	ClaimWebhookDelivery(ctx context.Context, deliveryID string, ttl time.Duration) (bool, error)
+	ReleaseWebhookDelivery(ctx context.Context, deliveryID string) error
+}
+
 func NewWebhookHandler(sm roomStateWriter, db ...*pgxpool.Pool) *WebhookHandler {
 	handler := &WebhookHandler{
 		StateManager: sm,
@@ -126,13 +131,19 @@ func (h *WebhookHandler) addProcessedLocked(deliveryID string) {
 }
 
 func zoomDeliveryID(r *http.Request, payload WebhookPayload, body []byte) string {
-	for _, header := range []string{"x-zm-trackingid", "x-zm-request-id"} {
-		if value := r.Header.Get(header); value != "" {
-			return header + ":" + value
+	// Only use values covered by Zoom's HMAC. Tracking/request-id headers are
+	// not part of the signed message and therefore cannot be replay keys.
+	sum := sha256.Sum256([]byte(r.Header.Get("x-zm-request-timestamp") + "\x00" + string(body)))
+	return "body:" + hex.EncodeToString(sum[:])
+}
+
+func (h *WebhookHandler) releaseDelivery(ctx context.Context, deliveryID string) {
+	if store, ok := h.StateManager.(webhookDeliveryStore); ok {
+		if err := store.ReleaseWebhookDelivery(ctx, deliveryID); err != nil {
+			log.Printf("Zoom webhook delivery release failed: %v", err)
 		}
 	}
-	sum := sha256.Sum256([]byte(payload.Event + "\x00" + r.Header.Get("x-zm-request-timestamp") + "\x00" + string(body)))
-	return "body:" + hex.EncodeToString(sum[:])
+	h.finishDelivery(deliveryID, false)
 }
 
 func (h *WebhookHandler) resolveRoomID(ctx context.Context, meetingID string) (string, error) {
@@ -252,17 +263,30 @@ func (h *WebhookHandler) HandleZoomWebhook(w http.ResponseWriter, r *http.Reques
 		w.WriteHeader(http.StatusOK)
 		return
 	}
+	if store, durable := h.StateManager.(webhookDeliveryStore); durable {
+		claimed, claimErr := store.ClaimWebhookDelivery(r.Context(), deliveryID, maxZoomWebhookClockSkew)
+		if claimErr != nil {
+			h.releaseDelivery(r.Context(), deliveryID)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		if !claimed {
+			h.finishDelivery(deliveryID, true)
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+	}
 	meetingID := payload.Payload.Object.Id
 	roomID, mappingErr := h.resolveRoomID(r.Context(), meetingID)
 	if mappingErr != nil {
 		log.Printf("Webhook: room mapping unavailable for Zoom meeting %s: %v", meetingID, mappingErr)
-		h.finishDelivery(deliveryID, false)
+		h.releaseDelivery(r.Context(), deliveryID)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
 	if roomID == "" {
 		log.Printf("Webhook: No live room mapping for Zoom meeting %s", meetingID)
-		h.finishDelivery(deliveryID, false)
+		h.releaseDelivery(r.Context(), deliveryID)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -285,7 +309,7 @@ func (h *WebhookHandler) HandleZoomWebhook(w http.ResponseWriter, r *http.Reques
 	}
 	if mutationErr != nil {
 		log.Printf("Webhook: room state update failed for Zoom meeting %s mapped to room %s: %v", meetingID, roomID, mutationErr)
-		h.finishDelivery(deliveryID, false)
+		h.releaseDelivery(r.Context(), deliveryID)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}

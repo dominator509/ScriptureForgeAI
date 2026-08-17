@@ -518,8 +518,9 @@ func setupRoutesWithLifecycle(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisC
 		LLMClient:       llm.NewLLMClient(),
 		MapReduceWorker: mapReduceWorker,
 	}
-	mux.Handle("/api/v1/ai/generate/study", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileAI, http.HandlerFunc(aiHandler.GenerateCurriculumHandler)), ""))
-	mux.Handle("/api/ai/curriculum", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileAI, http.HandlerFunc(aiHandler.GenerateCurriculumHandler)), ""))
+	aiHandle := abuseLimiter.Middleware(abuse.ProfileAI, http.HandlerFunc(aiHandler.GenerateCurriculumHandler))
+	mux.Handle("/api/v1/ai/generate/study", auth.RBACMiddlewareAnyRole(aiHandle, "moderator", "author"))
+	mux.Handle("/api/ai/curriculum", auth.RBACMiddlewareAnyRole(aiHandle, "moderator", "author"))
 
 	// Room & Zoom Webhook Initialization
 	roomStateManager := room.NewRoomStateManager(redisClient)

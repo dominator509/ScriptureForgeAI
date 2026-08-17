@@ -152,3 +152,20 @@ func (rsm *RoomStateManager) GetLatestRoomEvent(ctx context.Context, roomID stri
 	}
 	return value, nil
 }
+
+// ClaimWebhookDelivery provides a short-lived, cross-replica idempotency key
+// for signed provider callbacks. The caller releases the key when processing
+// fails so the provider can safely retry the delivery.
+func (rsm *RoomStateManager) ClaimWebhookDelivery(ctx context.Context, deliveryID string, ttl time.Duration) (bool, error) {
+	if rsm == nil || rsm.client == nil {
+		return false, fmt.Errorf("room state backend is not configured")
+	}
+	return rsm.client.SetNX(ctx, "room:webhook:"+deliveryID, "1", ttl).Result()
+}
+
+func (rsm *RoomStateManager) ReleaseWebhookDelivery(ctx context.Context, deliveryID string) error {
+	if rsm == nil || rsm.client == nil {
+		return fmt.Errorf("room state backend is not configured")
+	}
+	return rsm.client.Del(ctx, "room:webhook:"+deliveryID).Err()
+}

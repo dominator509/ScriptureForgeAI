@@ -29,10 +29,12 @@ export const SecureJournalContainer: React.FC = () => {
   const [journalBootstrap, setJournalBootstrap] = useState<JournalBootstrap | null>(null);
   const [entries, setEntries] = useState<EncryptedJournalEntry[]>([]);
   const preserveDerivedHandleOnPassphraseClear = useRef(false);
+  const identityGeneration = useRef(0);
   const session = useAppStore((state) => state.session);
 
   useEffect(() => {
     let isMounted = true;
+    const generation = ++identityGeneration.current;
     preserveDerivedHandleOnPassphraseClear.current = false;
     setJournalBootstrap(null);
     setEntries([]);
@@ -52,23 +54,32 @@ export const SecureJournalContainer: React.FC = () => {
     const accessToken = session.token;
     getJournalBootstrap(accessToken)
       .then((bootstrap) => {
-        if (isMounted) setJournalBootstrap(bootstrap);
+        if (isMounted && identityGeneration.current === generation) setJournalBootstrap(bootstrap);
       })
       .catch(() => {
-        if (isMounted) setJournalBootstrap(null);
+        if (isMounted && identityGeneration.current === generation) setJournalBootstrap(null);
       });
     listJournalEntries(accessToken)
       .then((nextEntries) => {
-        if (isMounted) setEntries(nextEntries);
+        if (isMounted && identityGeneration.current === generation) setEntries(nextEntries);
       })
       .catch(() => {
-        if (isMounted) setEntries([]);
+        if (isMounted && identityGeneration.current === generation) setEntries([]);
       });
 
     return () => {
       isMounted = false;
     };
   }, [session?.user_id, session?.organization_id]);
+
+  useEffect(() => {
+    return () => {
+      setKeyHandle((previous) => {
+        disposeJournalCryptoKey(previous);
+        return null;
+      });
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -135,19 +146,29 @@ export const SecureJournalContainer: React.FC = () => {
         setStatus('Journal bootstrap unavailable.');
         return;
       }
-      const encrypted: EncryptedPayload = await encryptJournalData(
-        plaintext,
-        getJournalCryptoKey(keyHandle),
-        journalAssociatedData(journalBootstrap.salt_id, journalBootstrap.salt_version),
-      );
-      const saved = await saveJournalEntry(session.token, {
-        ...encrypted,
-        salt_id: journalBootstrap.salt_id,
-        salt_version: journalBootstrap.salt_version,
-      });
-      setEntries((current) => [saved, ...current.filter((entry) => entry.id !== saved.id)]);
-      setPlaintext('');
-      setStatus(`Saved securely! IV: ${encrypted.iv.substring(0, 10)}...`);
+      const generation = identityGeneration.current;
+      const identity = { user_id: session.user_id, organization_id: session.organization_id };
+      try {
+        const encrypted: EncryptedPayload = await encryptJournalData(
+          plaintext,
+          getJournalCryptoKey(keyHandle),
+          journalAssociatedData(journalBootstrap.salt_id, journalBootstrap.salt_version),
+        );
+        const saved = await saveJournalEntry(session.token, {
+          ...encrypted,
+          salt_id: journalBootstrap.salt_id,
+          salt_version: journalBootstrap.salt_version,
+        });
+        const currentSession = useAppStore.getState().session;
+        if (identityGeneration.current !== generation || !currentSession
+          || currentSession.user_id !== identity.user_id
+          || currentSession.organization_id !== identity.organization_id) return;
+        setEntries((current) => [saved, ...current.filter((entry) => entry.id !== saved.id)]);
+        setPlaintext('');
+        setStatus(`Saved securely! IV: ${encrypted.iv.substring(0, 10)}...`);
+      } catch {
+        if (identityGeneration.current === generation) setStatus('Journal save failed.');
+      }
     }
   };
 
@@ -161,6 +182,8 @@ export const SecureJournalContainer: React.FC = () => {
       return;
     }
 
+    const generation = identityGeneration.current;
+    const identity = { user_id: session.user_id, organization_id: session.organization_id };
     try {
       const stored = await getJournalEntry(session.token, entry.id);
       const associatedData = journalAssociatedData(stored.salt_id, stored.salt_version);
@@ -169,6 +192,10 @@ export const SecureJournalContainer: React.FC = () => {
         getJournalCryptoKey(keyHandle),
         associatedData,
       );
+      const currentSession = useAppStore.getState().session;
+      if (identityGeneration.current !== generation || !currentSession
+        || currentSession.user_id !== identity.user_id
+        || currentSession.organization_id !== identity.organization_id) return;
       setPlaintext(decodedText);
       setStatus('Loaded and decrypted locally.');
     } catch {

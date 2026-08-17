@@ -100,3 +100,35 @@ func TestRBACMiddlewareOnlyAcceptsWebSocketSubprotocolOnRoomStreams(t *testing.T
 		})
 	}
 }
+
+func TestRBACMiddlewareAnyRoleAllowsDocumentedAIRolesOnly(t *testing.T) {
+	t.Setenv("JWT_SECRET_KEY", "auth-role-test-secret-0123456789")
+	handler := RBACMiddlewareAnyRole(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), "moderator", "author")
+
+	for _, test := range []struct {
+		name string
+		role string
+		want int
+	}{
+		{name: "member denied", role: "member", want: http.StatusForbidden},
+		{name: "moderator accepted", role: "Moderator", want: http.StatusNoContent},
+		{name: "author accepted", role: "author", want: http.StatusNoContent},
+		{name: "admin compatibility override", role: "admin", want: http.StatusNoContent},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			token, err := GenerateToken("user-role", "org-role", test.role, time.Minute)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/ai/generate/study", nil)
+			request.Header.Set("Authorization", "Bearer "+token)
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+			if recorder.Code != test.want {
+				t.Fatalf("role %s status = %d, want %d", test.role, recorder.Code, test.want)
+			}
+		})
+	}
+}

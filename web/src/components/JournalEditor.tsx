@@ -15,7 +15,7 @@ import { useAppStore } from '../lib/store';
 
 // Client-side zero-knowledge journal editor. Plaintext never leaves this component.
 export const JournalEditor: React.FC = () => {
-  const { currentRole, token } = useAppStore();
+  const { currentRole, token, userId, organizationId } = useAppStore();
   const [plaintext, setPlaintext] = useState<string>('');
   const [passphrase, setPassphrase] = useState<string>('');
   const [encryptedData, setEncryptedData] = useState<EncryptedPayload | null>(null);
@@ -64,18 +64,67 @@ export const JournalEditor: React.FC = () => {
     };
   }, [passphrase, journalBootstrap?.salt_id]);
 
+  const principalRef = React.useRef<string | null>(null);
+
   useEffect(() => {
-    if (!token) {
-      setJournalBootstrap(null);
-      return;
+    let isMounted = true;
+    const principal = userId && organizationId ? `${userId}:${organizationId}` : null;
+    const principalChanged = principalRef.current !== principal;
+    principalRef.current = principal;
+    const isCurrentPrincipal = () => {
+      const current = useAppStore.getState();
+      return isMounted && current.userId === userId && current.organizationId === organizationId;
+    };
+
+    if (!token || !userId || !organizationId) {
+      if (principalChanged || !token) {
+        setJournalBootstrap(null);
+        setEntries([]);
+        setPlaintext('');
+        setPassphrase('');
+        setEncryptedData(null);
+        setStatus('Sign in before using the journal.');
+        setKeyHandle((previous) => {
+          disposeJournalCryptoKey(previous);
+          return null;
+        });
+      }
+      return () => {
+        isMounted = false;
+      };
     }
+
+    if (principalChanged) {
+      setJournalBootstrap(null);
+      setEntries([]);
+      setPlaintext('');
+      setPassphrase('');
+      setEncryptedData(null);
+      setKeyHandle((previous) => {
+        disposeJournalCryptoKey(previous);
+        return null;
+      });
+    }
+
     getJournalBootstrap(token)
-      .then(setJournalBootstrap)
-      .catch(() => setJournalBootstrap(null));
+      .then((bootstrap) => {
+        if (isCurrentPrincipal()) setJournalBootstrap(bootstrap);
+      })
+      .catch(() => {
+        if (isCurrentPrincipal()) setJournalBootstrap(null);
+      });
     listJournalEntries(token)
-      .then(setEntries)
-      .catch(() => setEntries([]));
-  }, [token]);
+      .then((nextEntries) => {
+        if (isCurrentPrincipal()) setEntries(nextEntries);
+      })
+      .catch(() => {
+        if (isCurrentPrincipal()) setEntries([]);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token, userId, organizationId]);
 
   // Ensure key is cleared upon dismount (Zero-Knowledge rule)
   useEffect(() => {
@@ -109,9 +158,12 @@ export const JournalEditor: React.FC = () => {
       });
       setStatus("Successfully encrypted to opaque payload. Ready for network.");
 
-      if (token) {
+      if (token && userId && organizationId) {
         const saved = await saveJournalEntry(token, { ...payload, salt_id: journalBootstrap.salt_id, salt_version: journalBootstrap.salt_version });
-        setEntries((current) => [saved, ...current]);
+        const current = useAppStore.getState();
+        if (current.userId === userId && current.organizationId === organizationId) {
+          setEntries((currentEntries) => [saved, ...currentEntries]);
+        }
       }
 
     } catch (err) {
@@ -135,8 +187,11 @@ export const JournalEditor: React.FC = () => {
 
     try {
       const decodedText = await decryptJournalData(payload, getJournalCryptoKey(keyHandle), associatedData);
-      setPlaintext(decodedText);
-      setStatus("Successfully decrypted from network payload.");
+      const current = useAppStore.getState();
+      if (current.userId === userId && current.organizationId === organizationId) {
+        setPlaintext(decodedText);
+        setStatus("Successfully decrypted from network payload.");
+      }
     } catch (err) {
       setStatus("Decryption failed. Invalid key or corrupted data.");
     }

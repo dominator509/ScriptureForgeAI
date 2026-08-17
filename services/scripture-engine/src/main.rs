@@ -298,7 +298,7 @@ impl ScriptureEngine for MyScriptureEngine {
         .bind(organization_id.clone())
         .bind(req.top_k_results)
         .bind(req.minimum_similarity_threshold)
-        .fetch_all(pool)
+        .fetch_all(&mut *transaction)
         .await
         .map_err(|e| {
             self.metrics
@@ -358,7 +358,7 @@ fn requires_grpc_security() -> bool {
 
 fn requires_grpc_security_for_environment(environment: &str) -> bool {
     match environment.trim().to_ascii_lowercase().as_str() {
-        "" | "development" | "dev" | "test" | "local" => false,
+        "development" | "dev" | "test" | "local" => false,
         _ => true,
     }
 }
@@ -1046,6 +1046,11 @@ mod tests {
         assert!(requires_grpc_security_for_environment("prod-eu"));
         assert!(requires_grpc_security_for_environment("custom-staging"));
         assert!(!requires_grpc_security_for_environment("development"));
+    }
+
+    #[test]
+    fn empty_environment_requires_grpc_security() {
+        assert!(requires_grpc_security_for_environment(""));
     }
 
     #[test]

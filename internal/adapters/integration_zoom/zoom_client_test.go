@@ -75,6 +75,16 @@ func TestZoomClientUsesFiniteFallbackHTTPClient(t *testing.T) {
 	}
 }
 
+func TestZoomMeetingIdentifiersRejectPathInjection(t *testing.T) {
+	client := &ZoomClient{AccountID: "account", ClientID: "client", ClientSecret: "secret"}
+	if err := client.TerminateMeeting(context.Background(), "123/status"); err == nil {
+		t.Fatal("TerminateMeeting accepted a non-numeric meeting id")
+	}
+	if _, err := client.GetMeetingStatus(context.Background(), "123/status"); err == nil {
+		t.Fatal("GetMeetingStatus accepted a non-numeric meeting id")
+	}
+}
+
 func TestCreateMeetingFallsBackAndOpensCircuitAfterTimeouts(t *testing.T) {
 	t.Setenv("GO_ENV", "")
 	client := &ZoomClient{
@@ -128,6 +138,7 @@ func TestCreateMeetingRetriesTransientZoomFailure(t *testing.T) {
 	t.Setenv("GO_ENV", "")
 	var tokenAttempts int
 	var meetingAttempts int
+	var idempotencyKeys []string
 	client := &ZoomClient{
 		AccountID:    "account",
 		ClientID:     "client",
@@ -144,6 +155,7 @@ func TestCreateMeetingRetriesTransientZoomFailure(t *testing.T) {
 				}, nil
 			case strings.Contains(r.URL.String(), "/v2/users/me/meetings"):
 				meetingAttempts++
+				idempotencyKeys = append(idempotencyKeys, r.Header.Get("Idempotency-Key"))
 				if meetingAttempts == 1 {
 					return &http.Response{
 						StatusCode: http.StatusServiceUnavailable,
@@ -174,6 +186,9 @@ func TestCreateMeetingRetriesTransientZoomFailure(t *testing.T) {
 	}
 	if tokenAttempts != 1 || meetingAttempts != 2 {
 		t.Fatalf("attempts token=%d meeting=%d, want token=1 meeting=2", tokenAttempts, meetingAttempts)
+	}
+	if len(idempotencyKeys) != 2 || idempotencyKeys[0] == "" || idempotencyKeys[0] != idempotencyKeys[1] {
+		t.Fatalf("idempotency keys = %#v, want one stable key across retries", idempotencyKeys)
 	}
 	if client.circuitOpen() {
 		t.Fatal("successful retry should not leave Zoom circuit open")
@@ -366,7 +381,7 @@ func TestGetMeetingStatusRejectsOversizedProviderResponse(t *testing.T) {
 		})},
 	}
 
-	status, err := client.GetMeetingStatus(context.Background(), "meeting-large")
+	status, err := client.GetMeetingStatus(context.Background(), "12345")
 	if err == nil {
 		t.Fatal("oversized status response returned nil error")
 	}
@@ -410,7 +425,7 @@ func TestGetMeetingStatusEmitsZoomDependencyMetric(t *testing.T) {
 					Body:       io.NopCloser(strings.NewReader(`{"access_token":"token-1"}`)),
 					Header:     http.Header{},
 				}, nil
-			case strings.Contains(r.URL.String(), "/v2/meetings/meeting-1"):
+			case strings.Contains(r.URL.String(), "/v2/meetings/12345"):
 				return &http.Response{
 					StatusCode: http.StatusOK,
 					Body:       io.NopCloser(strings.NewReader(`{"status":"started"}`)),
@@ -425,7 +440,7 @@ func TestGetMeetingStatusEmitsZoomDependencyMetric(t *testing.T) {
 
 	observer := observability.NewObserver(observability.Options{})
 	ctx := observability.WithObserver(context.Background(), observer)
-	status, err := client.GetMeetingStatus(ctx, "meeting-1")
+	status, err := client.GetMeetingStatus(ctx, "12345")
 	if err != nil {
 		t.Fatalf("get meeting status returned error: %v", err)
 	}

@@ -298,8 +298,8 @@ func TestZoomWebhookProcessesDistinctTrackedDeliveries(t *testing.T) {
 		return "room-abc", nil
 	}
 
-	body := `{"event":"meeting.started","payload":{"object":{"id":"zoom-meeting-123","topic":"Study"}}}`
 	for _, trackingID := range []string{"delivery-1", "delivery-2"} {
+		body := fmt.Sprintf(`{"event":"meeting.started","payload":{"object":{"id":"zoom-meeting-123","topic":"%s"}}}`, trackingID)
 		request := signedZoomRequest(t, body, "secret")
 		request.Header.Set("x-zm-trackingid", trackingID)
 		recorder := httptest.NewRecorder()
@@ -366,10 +366,15 @@ func TestZoomWebhookDeliveryCacheIsBounded(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	var firstDeliveryID string
 	for i := 0; i < maxProcessedZoomDeliveries+10; i++ {
-		request := signedZoomRequest(t, string(body), "secret")
+		uniqueBody := fmt.Sprintf(`{"event":"staging.probe","payload":{"object":{"id":"zoom-meeting-123","topic":"delivery-%d"}}}`, i)
+		request := signedZoomRequest(t, uniqueBody, "secret")
 		request.Header.Set("x-zm-trackingid", fmt.Sprintf("delivery-%d", i))
-		if !handler.markDeliveryProcessed(request, payload, body) {
+		if i == 0 {
+			firstDeliveryID = zoomDeliveryID(request, payload, []byte(uniqueBody))
+		}
+		if !handler.markDeliveryProcessed(request, payload, []byte(uniqueBody)) {
 			t.Fatalf("delivery %d unexpectedly treated as duplicate", i)
 		}
 	}
@@ -377,7 +382,7 @@ func TestZoomWebhookDeliveryCacheIsBounded(t *testing.T) {
 	if len(handler.processed) != maxProcessedZoomDeliveries || len(handler.processedFIFO) != maxProcessedZoomDeliveries {
 		t.Fatalf("processed cache sizes map=%d fifo=%d, want %d", len(handler.processed), len(handler.processedFIFO), maxProcessedZoomDeliveries)
 	}
-	if _, exists := handler.processed["x-zm-trackingid:delivery-0"]; exists {
+	if _, exists := handler.processed[firstDeliveryID]; exists {
 		t.Fatal("oldest processed delivery was not evicted")
 	}
 }

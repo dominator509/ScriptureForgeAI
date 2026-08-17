@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -26,7 +25,7 @@ func SetTenantContext(ctx context.Context, tx pgx.Tx, orgID string) error {
 	if err != nil {
 		return &PlatformException{
 			Category: AuthorizationFault,
-			Message:  fmt.Sprintf("failed to establish tenant isolation boundary: %v", err),
+			Message:  "failed to establish tenant isolation boundary",
 			Code:     500,
 		}
 	}

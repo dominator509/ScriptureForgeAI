@@ -31,6 +31,16 @@ func websocketBearerToken(r *http.Request) string {
 // RBACMiddleware intercepts incoming HTTP requests to validate JWTs and authorize access.
 // It maps the validated TokenClaims into the request context for downstream handlers.
 func RBACMiddleware(next http.Handler, requiredRole string) http.Handler {
+	if strings.TrimSpace(requiredRole) == "" {
+		return RBACMiddlewareAnyRole(next)
+	}
+	return RBACMiddlewareAnyRole(next, requiredRole)
+}
+
+// RBACMiddlewareAnyRole protects a route for one of several equivalent roles.
+// Role names are normalized so JWTs issued from the documented role vocabulary
+// and the lower-case database representation share the same authorization path.
+func RBACMiddlewareAnyRole(next http.Handler, requiredRoles ...string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Browser WebSocket clients cannot set Authorization headers, so accept the
 		// short-lived bearer token only in the negotiated room subprotocol header.
@@ -67,14 +77,25 @@ func RBACMiddleware(next http.Handler, requiredRole string) http.Handler {
 			return
 		}
 
-		// Check RBAC Role if a specific role is required
-		if requiredRole != "" && claims.Role != requiredRole && claims.Role != "admin" {
-			sendError(w, &PlatformException{
-				Category: AuthorizationFault,
-				Message:  fmt.Sprintf("user role '%s' lacks required permission '%s'", claims.Role, requiredRole),
-				Code:     http.StatusForbidden,
-			})
-			return
+		allowedRoles := make(map[string]struct{}, len(requiredRoles))
+		for _, role := range requiredRoles {
+			if normalized := strings.ToLower(strings.TrimSpace(role)); normalized != "" {
+				allowedRoles[normalized] = struct{}{}
+			}
+		}
+		// Check RBAC role if one or more specific roles are required. The
+		// legacy admin role remains a platform-level override.
+		if len(allowedRoles) > 0 {
+			_, allowed := allowedRoles[strings.ToLower(strings.TrimSpace(claims.Role))]
+			if !allowed && strings.ToLower(strings.TrimSpace(claims.Role)) != "admin" {
+				requiredRole := strings.Join(requiredRoles, ",")
+				sendError(w, &PlatformException{
+					Category: AuthorizationFault,
+					Message:  fmt.Sprintf("user role '%s' lacks required permission '%s'", claims.Role, requiredRole),
+					Code:     http.StatusForbidden,
+				})
+				return
+			}
 		}
 
 		// Inject verified claims into the request context to eliminate parameter spoofing
