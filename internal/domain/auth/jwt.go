@@ -107,6 +107,7 @@ func ValidateToken(tokenString string) (*TokenClaims, error) {
 		}
 	}
 
+	// golang-jwt v5 requires this legacy interface return at its parser callback boundary.
 	token, err := jwt.ParseWithClaims(tokenString, &TokenClaims{}, func(token *jwt.Token) (interface{}, error) {
 		// Accept only the algorithm used by our issuer. Accepting any HMAC
 		// variant weakens the protocol contract even when the signing secret is

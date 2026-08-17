@@ -9,9 +9,21 @@ import (
 	"scriptureforge/internal/domain/auth"
 )
 
+// boundedJSONDestination keeps the shared decoder limited to known ingress
+// contracts. Adding a new request body requires an explicit type-list update.
+type boundedJSONDestination interface {
+	*RegisterRequest |
+		*LoginRequest |
+		*RefreshRequest |
+		*MFAVerifyRequest |
+		*WorkspaceSwitchRequest |
+		*JournalPayload |
+		*CreateRoomRequest
+}
+
 // decodeBoundedJSON rejects oversized or concatenated request bodies before handlers
 // perform database work, password hashing, or base64 decoding.
-func decodeBoundedJSON(w http.ResponseWriter, r *http.Request, maxBytes int64, destination any, category auth.ErrorCategory, message string) *auth.PlatformException {
+func decodeBoundedJSON[T boundedJSONDestination](w http.ResponseWriter, r *http.Request, maxBytes int64, destination T, category auth.ErrorCategory, message string) *auth.PlatformException {
 	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
@@ -22,7 +34,7 @@ func decodeBoundedJSON(w http.ResponseWriter, r *http.Request, maxBytes int64, d
 		}
 		return &auth.PlatformException{Category: category, Message: message, Code: http.StatusBadRequest}
 	}
-	var trailing any
+	var trailing json.RawMessage
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		return &auth.PlatformException{Category: category, Message: message, Code: http.StatusBadRequest}
 	}

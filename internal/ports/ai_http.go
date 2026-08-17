@@ -134,7 +134,7 @@ func (h *AIHandler) GenerateCurriculumHandler(w http.ResponseWriter, r *http.Req
 		sendAIError(w, &ai.PlatformException{Category: "PAYLOAD_FAULT", Message: "Invalid request payload", Code: http.StatusBadRequest})
 		return
 	}
-	var trailing any
+	var trailing json.RawMessage
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		sendAIError(w, &ai.PlatformException{Category: "PAYLOAD_FAULT", Message: "Invalid request payload", Code: http.StatusBadRequest})
 		return

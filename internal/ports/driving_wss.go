@@ -29,6 +29,10 @@ type RoomEvent struct {
 	SentAt   time.Time       `json:"sent_at"`
 }
 
+type roomErrorEnvelope struct {
+	Error string `json:"error"`
+}
+
 const (
 	maxWSMessageBytes     = 64 * 1024
 	maxRoomEventTypeBytes = 64
@@ -157,7 +161,7 @@ func decodeRoomEvent(message []byte) (RoomEvent, error) {
 	if err := decoder.Decode(&event); err != nil {
 		return RoomEvent{}, err
 	}
-	var trailing any
+	var trailing json.RawMessage
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		if err == nil {
 			return RoomEvent{}, io.ErrUnexpectedEOF
@@ -339,11 +343,17 @@ func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request
 	defer unsubscribe()
 	done := make(chan struct{})
 	var writeMu sync.Mutex
-	writeJSON := func(v any) error {
+	writeEventJSON := func(event RoomEvent) error {
 		writeMu.Lock()
 		defer writeMu.Unlock()
 		_ = conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
-		return conn.WriteJSON(v)
+		return conn.WriteJSON(event)
+	}
+	writeErrorJSON := func(message string) error {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		_ = conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
+		return conn.WriteJSON(roomErrorEnvelope{Error: message})
 	}
 	writeControl := func(messageType int, data []byte) error {
 		writeMu.Lock()
@@ -361,7 +371,7 @@ func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request
 				if !ok {
 					return
 				}
-				if err := writeJSON(event); err != nil {
+				if err := writeEventJSON(event); err != nil {
 					return
 				}
 			case <-done:
@@ -421,7 +431,7 @@ func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request
 			redisStatus = "error"
 			observability.ObserveDependencyFromContext(r.Context(), "redis", "room_append_event", redisStatus, time.Since(start))
 			s.eventMu.Unlock()
-			_ = writeJSON(map[string]string{"error": "failed to persist room event"})
+			_ = writeErrorJSON("failed to persist room event")
 			continue
 		}
 		observability.ObserveDependencyFromContext(r.Context(), "redis", "room_append_event", redisStatus, time.Since(start))
