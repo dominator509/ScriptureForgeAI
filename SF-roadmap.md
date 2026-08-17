@@ -3,7 +3,7 @@
 ## 1. ROADMAP SUMMARY
 - This roadmap defines the comprehensive execution strategy for constructing ScriptureForge AI (BibleStudyOS), a multi-tenant, cloud-native collaborative Bible study environment.
 - The platform uses a polyglot architectural design consisting of Go (Golang 1.24.3 target) for concurrent business services and real-time state synchronization, paired with a high-performance Rust service for complex original language morphological processing and lexical vector operations.
-- The user-facing ecosystem delivers unified multi-device access using a Next.js 14 web core and a cross-platform React Native companion app built over Expo.
+- The user-facing ecosystem delivers unified multi-device access using a Next.js 16 web core and a cross-platform React Native companion app built over Expo.
 - To strictly eliminate agentic drift, logic regression, and context hallucination during autonomous code generation loops, this architecture enforces a mandatory dual-layer orchestration workflow. This roadmap requires a phase-specific sub-roadmap and synchronized Serena/Obsidian tracking before starting each phase.
 
 ## 2. EXECUTION PRINCIPLES
@@ -125,7 +125,7 @@
 │   └── scripture-engine/       # Isolated Rust Lexical and Morphological Processor Workspace
 │       ├── src/                # High-Performance Text Ingestion Core Files
 │       └── Cargo.toml          # Rust System Dependency Specification File
-├── web/                        # Production Next.js 14 App Router Web Project Core
+├── web/                        # Production Next.js 16 App Router Web Project Core
 ├── mobile/                     # React Native Mobile Companion App Expo Core Workspace
 └── tests/                      # Dedicated Decoupled Universal Automated Verification Suites
     ├── unit/                   # Zero-Dependency In-Memory Business Logic Assertions

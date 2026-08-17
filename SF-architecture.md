@@ -1,6 +1,6 @@
 # ScriptureForgeAI Architecture
 
-> Implementation note, 2026-06-26: remediation is targeting the repo-current stack (`go.mod` toolchain Go 1.24.3, `web/package.json` Next.js 14.0.0, React 18.2.0) while preserving the architecture's `/api/v1/*` public route direction. Older version targets in this document remain aspirational until a dedicated upgrade PR changes the manifests.
+> Implementation note, 2026-06-26: remediation is targeting the repo-current stack (`go.mod` toolchain Go 1.24.3, `web/package.json` Next.js 16.2.12, React 19.2.3) while preserving the architecture's `/api/v1/*` public route direction. Older version targets in this document remain aspirational until a dedicated upgrade PR changes the manifests.
 
 ## 1. Product Summary
 ScriptureForge AI (alternatively known as BibleStudyOS or ScriptureFlow) is a production-grade, multi-tenant, cloud-native Bible Study Operating System and Mobile Ecosystem. It resolves the core market gap between complex, academic desktop applications (e.g., Logos, Accordance) and overly simplistic consumer reading apps (e.g., YouVersion). 
@@ -142,7 +142,7 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
 *   **Justification:** Complex lexical calculations, original language morphology mapping, lemma tracking, and text parsing require direct CPU micro-optimization and compile-time memory safety bounds. Rust modules communicate natively with Go business layers over highly optimized gRPC channels using Protocol Buffers.
 
 ### 6.3 Front-End Web Application (Workspace Center)
-*   **Technology:** **Next.js 14 (App Router with TypeScript)**
+*   **Technology:** **Next.js 16 (App Router with TypeScript)**
 *   **Justification:** Next.js establishes flawless Server-Side Rendering (SSR) engines optimizing initial load pipelines for complex biblical textual frameworks. TypeScript prevents typing corruption within large application state boundaries.
 
 ### 6.4 Mobile Client Companion
@@ -161,7 +161,7 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
 ```mermaid
 graph TD
     %% Client Tier
-    WebClient[Next.js 14 Web Workspace Client] -->|HTTPS / WSS| Gateway[Envoy API Gateway / Proxy Layer]
+    WebClient[Next.js 16 Web Workspace Client] -->|HTTPS / WSS| Gateway[Envoy API Gateway / Proxy Layer]
     MobileClient[React Native Companion App] -->|HTTPS / WSS| Gateway
 
     %% Gateway Layer
