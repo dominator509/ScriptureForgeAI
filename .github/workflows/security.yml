@@ -92,6 +92,12 @@ jobs:
     - name: Validate Strict Staging PATH Readiness
       run: node tools/verify-project-path.mjs --ci --strict-staging
 
+    - name: Validate Roadmap Sub-Roadmap Artifacts
+      run: node tools/validate-roadmap-artifacts.mjs
+
+    - name: Test Roadmap Sub-Roadmap Validator
+      run: node --test tools/validate-roadmap-artifacts.test.mjs
+
     - name: Run Postgres RLS Integration Tests
       env:
         CI: "false"

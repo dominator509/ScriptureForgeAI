@@ -21,6 +21,7 @@ rtk terraform -chdir=build/terraform init -backend=false
 rtk terraform -chdir=build/terraform fmt -check -recursive
 rtk terraform -chdir=build/terraform validate
 rtk node tools/validate-observability.mjs
+rtk node tools/validate-roadmap-artifacts.mjs
 rtk node tools/validate-rls-schema.mjs
 rtk node tools/validate-secret-hygiene.mjs
 rtk node tools/validate-deployment-skeleton.mjs

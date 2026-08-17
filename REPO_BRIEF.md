@@ -41,13 +41,14 @@ ScriptureForgeAI is a multi-tenant Bible study platform with authenticated works
   - `cd build/terraform && terraform fmt -check -recursive && terraform init -backend=false && terraform validate`
 - Serena/Obsidian:
   - `node tools/validate-serena-obsidian.mjs`
+  - `node tools/validate-roadmap-artifacts.mjs`
   - `node tools/sync-obsidian-readiness.mjs --manifest production-readiness/staging-evidence.example.json --contract-manifest production-readiness/staging-evidence.example.json --expected-release-candidate replace-with-git-sha-or-tag --check`
 
 ## Important Directories
 
 - `internal/`, `cmd/platform-engine/`, `pkg/crypto_utils/`
 - `web/`, `mobile/`, `services/scripture-engine/`
-- `migrations/`, `build/terraform/`, `production-readiness/`, `tools/`
+- `migrations/`, `build/terraform/`, `docs/sub_roadmaps/`, `production-readiness/`, `tools/`
 
 ## Data / Auth / External Notes
 

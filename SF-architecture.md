@@ -581,6 +581,11 @@ stored-parameter parsing, bounded verification work, secure salt generation,
 and transient byte cleanup; `internal/domain/auth` exposes compatibility
 aliases so authentication handlers retain their established contract.
 
+The roadmap's phase-local execution artifacts live in `docs/sub_roadmaps/PHASE_01_SUB_ROADMAP.md` through
+`PHASE_06_SUB_ROADMAP.md`. They are derived from the phase specifications in `SF-roadmap.md`, separate local
+implementation evidence from staging evidence, and are checked by `tools/validate-roadmap-artifacts.mjs` before
+the local and CI release gates can pass.
+
 <h3>15.2 Database Version Upgrades Strategy</h3>
 *   No structural changes may occur directly within running database consoles. All data changes are driven exclusively by explicit linear migration files parsed through a file migration tool (`golang-migrate`).
 *   Migration logic scripts must supply balanced down steps for every up operation. Schema mutations must adhere to a backward-compatible format, allowing legacy production clusters to operate smoothly alongside pending software updates during canary release cycles.

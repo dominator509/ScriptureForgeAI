@@ -412,6 +412,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Windows PATH Activation Helper**: `tools\use-project-path.cmd --strict-staging` and `tools\use-project-path.ps1 -StrictStaging` add repo-local plus common Go/AWS/PostgreSQL tool paths before running strict staging PATH verification, preserve verifier failures, and rely on the richer verifier report instead of redundant `where` checks after success; the PowerShell helper can also prefix commands so repo-local Go/Rust/Terraform resolve in fresh shells.
 - [x] **Network-Locked Local Gates**: local reproducibility is maintained by gating `npm audit` and `terraform init` in `run-local-gates` through network-aware wrappers that fail closed only on non-network errors.
 - [x] **Roadmap/Architecture Drift Control**: keep `SF-roadmap.md` and `SF-architecture.md` aligned with implemented routes, tenancy boundaries, and production gates.
+  - [x] **Mandatory Phase Sub-Roadmap Artifact Gate**: `docs/sub_roadmaps/PHASE_01_SUB_ROADMAP.md` through `PHASE_06_SUB_ROADMAP.md` map the original phase tasks to local evidence and external blockers; `tools/validate-roadmap-artifacts.mjs` runs in local gates and CI.
 - [x] **Obsidian/Serena Drift Gate**: `SF-architecture.md` and `SF-roadmap.md` now include production-aligned stack versions and full `/api/v1` route coverage.
 - [x] **Serena/Obsidian Pre-Merge Gate**: ensure every new implementation file and route change is mirrored in both `SF-roadmap.md` and `SF-architecture.md` before merge.
 

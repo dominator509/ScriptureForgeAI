@@ -98,6 +98,10 @@ test('buildGatePlan includes readiness sync unit tests in the tooling gate', () 
     toolingGate.command.includes('tools/verify-journal-crypto.test.mjs'),
     'tooling-tests must cover journal crypto verifier proof markers',
   );
+  assert.ok(
+    toolingGate.command.includes('tools/validate-roadmap-artifacts.test.mjs'),
+    'tooling-tests must cover mandatory phase sub-roadmap artifacts',
+  );
   assert.match(toolingGate.display, /tools\/sync-obsidian-readiness\.test\.mjs/);
   assert.match(toolingGate.display, /tools\/sync-staging-evidence-contract\.test\.mjs/);
   assert.match(toolingGate.display, /tools\/run-client-command\.test\.mjs/);
@@ -106,6 +110,7 @@ test('buildGatePlan includes readiness sync unit tests in the tooling gate', () 
   assert.match(toolingGate.display, /tools\/run-go-probe-tests\.test\.mjs/);
   assert.match(toolingGate.display, /tools\/run-terraform-command\.test\.mjs/);
   assert.match(toolingGate.display, /tools\/verify-journal-crypto\.test\.mjs/);
+  assert.match(toolingGate.display, /tools\/validate-roadmap-artifacts\.test\.mjs/);
 });
 
 test('buildGatePlan requires mobile build check to include journal crypto verifier output', () => {

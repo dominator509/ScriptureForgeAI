@@ -303,6 +303,7 @@ func requiredGateMarkers() []string {
 		"gate: dependency-risk-validation",
 		"gate: secret-hygiene-validation",
 		"gate: journal-crypto-validation",
+		"gate: roadmap-artifact-validation",
 		"gate: serena-obsidian-validation",
 		"gate: staging-evidence-contract-check",
 		"gate: obsidian-readiness-snapshot-check",
