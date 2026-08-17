@@ -5,7 +5,9 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/base32"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -23,12 +25,13 @@ import (
 )
 
 const (
-	authOrgID      = "55555555-5555-4555-8555-555555555555"
-	authAdminID    = "66666666-6666-4666-8666-666666666666"
-	authUserEmail  = "auth-member@example.test"
-	authAdminEmail = "auth-admin@example.test"
-	authPassword   = "CorrectHorseBatteryStaple!42"
-	authMFASecret  = "JBSWY3DPEHPK3PXP"
+	authOrgID            = "55555555-5555-4555-8555-555555555555"
+	authAdminID          = "66666666-6666-4666-8666-666666666666"
+	authUserEmail        = "auth-member@example.test"
+	authAdminEmail       = "auth-admin@example.test"
+	authPassword         = "CorrectHorseBatteryStaple!42"
+	authMFASecret        = "JBSWY3DPEHPK3PXP"
+	authMFAEncryptionKey = "test-mfa-encryption-key-long-enough-0123456789"
 )
 
 func cleanupAuthFixtures(ctx context.Context, t *testing.T, tx pgx.Tx) {
@@ -91,6 +94,11 @@ func totpCode(t *testing.T, secret string, now time.Time) string {
 		(int(sum[offset+2])&0xff)<<8 |
 		(int(sum[offset+3]) & 0xff)
 	return fmt.Sprintf("%06d", binCode%1000000)
+}
+
+func hashRefreshTokenForTest(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
 func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
@@ -175,6 +183,29 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 	if login.RefreshToken == "" || login.RefreshToken == registered.RefreshToken {
 		t.Fatalf("login refresh token = %q, want a new opaque token", login.RefreshToken)
 	}
+
+	setTenantForTest(ctx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
+		if _, err := tx.Exec(ctx, `UPDATE users SET role = 'admin', mfa_secret = $1, mfa_enabled = TRUE WHERE id = $2 AND organization_id = $3`, authMFASecret, registered.UserID, authOrgID); err != nil {
+			t.Fatalf("elevate auth user for refresh MFA test: %v", err)
+		}
+	})
+	elevatedRecorder := httptest.NewRecorder()
+	handler.RefreshHandler(elevatedRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
+		"refresh_token":   login.RefreshToken,
+		"organization_id": authOrgID,
+	}, observer))
+	if elevatedRecorder.Code != http.StatusUnauthorized {
+		t.Fatalf("privilege-elevated refresh status = %d body = %s, want 401", elevatedRecorder.Code, elevatedRecorder.Body.String())
+	}
+	elevated := decodeAuthResponse(t, elevatedRecorder)
+	if !elevated.RequiresMFA || elevated.Token != "" || elevated.RefreshToken != "" {
+		t.Fatalf("privilege-elevated refresh response = %#v, want MFA challenge without tokens", elevated)
+	}
+	setTenantForTest(ctx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
+		if _, err := tx.Exec(ctx, `UPDATE users SET role = 'member', mfa_secret = NULL, mfa_enabled = FALSE WHERE id = $1 AND organization_id = $2`, registered.UserID, authOrgID); err != nil {
+			t.Fatalf("restore auth user after refresh MFA test: %v", err)
+		}
+	})
 
 	raceLoginRecorder := httptest.NewRecorder()
 	handler.LoginHandler(raceLoginRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/login", map[string]any{
@@ -282,6 +313,7 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 
 func TestPrivilegedLoginRequiresAndVerifiesMFA(t *testing.T) {
 	t.Setenv("JWT_SECRET_KEY", "test-secret-long-enough-for-auth-mfa-tests")
+	t.Setenv("MFA_ENCRYPTION_KEY", authMFAEncryptionKey)
 	db := openTenantIsolationDB(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -301,6 +333,10 @@ func TestPrivilegedLoginRequiresAndVerifiesMFA(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hash admin password: %v", err)
 	}
+	encryptedMFASecret, err := ports.EncryptMFASecret(authMFASecret, []byte(authMFAEncryptionKey))
+	if err != nil {
+		t.Fatalf("encrypt admin MFA secret: %v", err)
+	}
 	setTenantForTest(ctx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
 		if _, err := tx.Exec(
 			ctx,
@@ -310,7 +346,7 @@ func TestPrivilegedLoginRequiresAndVerifiesMFA(t *testing.T) {
 			authOrgID,
 			authAdminEmail,
 			passwordHash,
-			authMFASecret,
+			encryptedMFASecret,
 		); err != nil {
 			t.Fatalf("seed admin user: %v", err)
 		}
@@ -346,6 +382,15 @@ func TestPrivilegedLoginRequiresAndVerifiesMFA(t *testing.T) {
 	if verified.Token == "" || verified.RefreshToken == "" {
 		t.Fatalf("verified MFA response missing tokens: %#v", verified)
 	}
+	setTenantForTest(ctx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
+		var verifiedAt *time.Time
+		if err := tx.QueryRow(ctx, `SELECT mfa_verified_at FROM refresh_tokens WHERE token_hash = $1`, hashRefreshTokenForTest(verified.RefreshToken)).Scan(&verifiedAt); err != nil {
+			t.Fatalf("query MFA refresh assurance: %v", err)
+		}
+		if verifiedAt == nil {
+			t.Fatal("MFA-authenticated refresh token is missing its assurance timestamp")
+		}
+	})
 	claims, err := auth.ValidateToken(verified.Token)
 	if err != nil {
 		t.Fatalf("validate MFA access token: %v", err)
@@ -403,6 +448,7 @@ func TestWorkspaceSwitchRequiresAuthenticatedOrgMatch(t *testing.T) {
 
 func TestMFAEnrollAndVerifyFlowForPrivilegedUsers(t *testing.T) {
 	t.Setenv("JWT_SECRET_KEY", "test-secret-long-enough-for-mfa-flow")
+	t.Setenv("MFA_ENCRYPTION_KEY", authMFAEncryptionKey)
 	db := openTenantIsolationDB(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

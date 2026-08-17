@@ -9,7 +9,6 @@ languages:
   - typescript
   - rust
   - terraform
-  - markdown
   - yaml
 
 additional_workspace_folders:
@@ -41,6 +40,12 @@ ignored_paths:
   - "*.tfstate.*"
   - "production-readiness/staging-evidence.staging.json"
 ```
+
+Markdown remains a first-class Obsidian/Codex document format, but it is not
+declared as an LSP language in the Windows profile because the bundled Marksman
+binary is not executable in the current Serena installation. This keeps semantic
+code navigation healthy while preserving Markdown files for direct reading and
+Obsidian links.
 
 After saving these values in `.serena/project.yml`, restart Serena so route and symbol
 lookups can cross `web`, `mobile`, and Rust workspace files without repeated re-indexes.

@@ -21,7 +21,6 @@ export const expectedSerenaLanguages = [
   'typescript',
   'rust',
   'terraform',
-  'markdown',
   'yaml',
 ];
 

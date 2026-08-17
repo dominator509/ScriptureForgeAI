@@ -43,6 +43,8 @@ resource "kubernetes_secret" "external_secret_refs" {
     database_url_arn                = data.aws_secretsmanager_secret.database_url.arn
     jwt_secret_key_arn              = data.aws_secretsmanager_secret.jwt_secret_key.arn
     journal_salt_secret_arn         = data.aws_secretsmanager_secret.journal_salt_secret.arn
+    mfa_encryption_key_arn          = data.aws_secretsmanager_secret.mfa_encryption_key.arn
+    redis_auth_token_arn            = data.aws_secretsmanager_secret.redis_auth_token.arn
     openai_api_key_arn              = data.aws_secretsmanager_secret.openai_api_key.arn
     zoom_credentials_arn            = data.aws_secretsmanager_secret.zoom_credentials.arn
     grpc_engine_shared_secret_arn   = data.aws_secretsmanager_secret.grpc_engine_shared_secret.arn
@@ -54,10 +56,20 @@ resource "kubernetes_secret" "external_secret_refs" {
 
 resource "kubernetes_service_account" "workload" {
   metadata {
-    name      = "scriptureforge-workload"
+    name      = "scriptureforge-api"
     namespace = kubernetes_namespace.app.metadata[0].name
     annotations = {
       "eks.amazonaws.com/role-arn" = aws_iam_role.app_secrets.arn
+    }
+  }
+}
+
+resource "kubernetes_service_account" "rust_engine" {
+  metadata {
+    name      = "scriptureforge-rust-engine"
+    namespace = kubernetes_namespace.app.metadata[0].name
+    annotations = {
+      "eks.amazonaws.com/role-arn" = aws_iam_role.rust_engine_secrets.arn
     }
   }
 }
@@ -88,6 +100,16 @@ resource "kubernetes_manifest" "app_secret_provider" {
             objectName  = data.aws_secretsmanager_secret.journal_salt_secret.arn
             objectType  = "secretsmanager"
             objectAlias = "journal_salt_secret"
+          },
+          {
+            objectName  = data.aws_secretsmanager_secret.mfa_encryption_key.arn
+            objectType  = "secretsmanager"
+            objectAlias = "mfa_encryption_key"
+          },
+          {
+            objectName  = data.aws_secretsmanager_secret.redis_auth_token.arn
+            objectType  = "secretsmanager"
+            objectAlias = "redis_auth_token"
           },
           {
             objectName  = data.aws_secretsmanager_secret.openai_api_key.arn
@@ -167,6 +189,14 @@ resource "kubernetes_manifest" "app_secret_provider" {
               key        = "JOURNAL_SALT_SECRET"
             },
             {
+              objectName = "mfa_encryption_key"
+              key        = "MFA_ENCRYPTION_KEY"
+            },
+            {
+              objectName = "redis_auth_token"
+              key        = "REDIS_PASSWORD"
+            },
+            {
               objectName = "openai_api_key"
               key        = "OPENAI_API_KEY"
             },
@@ -219,6 +249,85 @@ resource "kubernetes_manifest" "app_secret_provider" {
   depends_on = [
     kubernetes_service_account.workload,
     aws_iam_role_policy_attachment.app_secrets_read
+  ]
+}
+
+resource "kubernetes_manifest" "rust_secret_provider" {
+  manifest = {
+    apiVersion = "secrets-store.csi.x-k8s.io/v1"
+    kind       = "SecretProviderClass"
+    metadata = {
+      name      = "scriptureforge-rust-secrets"
+      namespace = kubernetes_namespace.app.metadata[0].name
+    }
+    spec = {
+      provider = "aws"
+      parameters = {
+        objects = yamlencode([
+          {
+            objectName  = data.aws_secretsmanager_secret.database_url.arn
+            objectType  = "secretsmanager"
+            objectAlias = "database_url"
+          },
+          {
+            objectName  = data.aws_secretsmanager_secret.grpc_engine_shared_secret.arn
+            objectType  = "secretsmanager"
+            objectAlias = "grpc_engine_shared_secret"
+          },
+          {
+            objectName = data.aws_secretsmanager_secret.grpc_engine_tls_credentials.arn
+            objectType = "secretsmanager"
+            jmesPath = [
+              {
+                path        = "ca_pem"
+                objectAlias = "grpc_engine_tls_ca_pem"
+              },
+              {
+                path        = "server_cert_pem"
+                objectAlias = "grpc_engine_tls_server_cert_pem"
+              },
+              {
+                path        = "server_key_pem"
+                objectAlias = "grpc_engine_tls_server_key_pem"
+              }
+            ]
+          }
+        ])
+      }
+      secretObjects = [
+        {
+          secretName = "scriptureforge-rust-runtime-secrets"
+          type       = "Opaque"
+          data = [
+            {
+              objectName = "database_url"
+              key        = "DATABASE_URL"
+            },
+            {
+              objectName = "grpc_engine_shared_secret"
+              key        = "GRPC_ENGINE_SHARED_SECRET"
+            },
+            {
+              objectName = "grpc_engine_tls_ca_pem"
+              key        = "GRPC_ENGINE_TLS_CA_PEM"
+            },
+            {
+              objectName = "grpc_engine_tls_server_cert_pem"
+              key        = "GRPC_ENGINE_TLS_CERT_PEM"
+            },
+            {
+              objectName = "grpc_engine_tls_server_key_pem"
+              key        = "GRPC_ENGINE_TLS_KEY_PEM"
+            }
+          ]
+        }
+      ]
+    }
+  }
+
+  depends_on = [
+    kubernetes_service_account.rust_engine,
+    aws_iam_role_policy_attachment.rust_engine_secrets_read
   ]
 }
 
@@ -427,6 +536,16 @@ resource "kubernetes_deployment" "api" {
           }
 
           env {
+            name = "REDIS_PASSWORD"
+            value_from {
+              secret_key_ref {
+                name = "scriptureforge-runtime-secrets"
+                key  = "REDIS_PASSWORD"
+              }
+            }
+          }
+
+          env {
             name  = "GRPC_ENGINE_ADDRESS"
             value = "scriptureforge-rust-engine:50051"
           }
@@ -527,6 +646,16 @@ resource "kubernetes_deployment" "api" {
               secret_key_ref {
                 name = "scriptureforge-runtime-secrets"
                 key  = "JOURNAL_SALT_SECRET"
+              }
+            }
+          }
+
+          env {
+            name = "MFA_ENCRYPTION_KEY"
+            value_from {
+              secret_key_ref {
+                name = "scriptureforge-runtime-secrets"
+                key  = "MFA_ENCRYPTION_KEY"
               }
             }
           }
@@ -704,7 +833,7 @@ resource "kubernetes_deployment" "rust_engine" {
       }
 
       spec {
-        service_account_name = kubernetes_service_account.workload.metadata[0].name
+        service_account_name = kubernetes_service_account.rust_engine.metadata[0].name
 
         topology_spread_constraint {
           max_skew           = 1
@@ -773,7 +902,7 @@ resource "kubernetes_deployment" "rust_engine" {
             name = "GRPC_ENGINE_SHARED_SECRET"
             value_from {
               secret_key_ref {
-                name = "scriptureforge-runtime-secrets"
+                name = "scriptureforge-rust-runtime-secrets"
                 key  = "GRPC_ENGINE_SHARED_SECRET"
               }
             }
@@ -783,7 +912,7 @@ resource "kubernetes_deployment" "rust_engine" {
             name = "GRPC_ENGINE_TLS_CERT_PEM"
             value_from {
               secret_key_ref {
-                name = "scriptureforge-runtime-secrets"
+                name = "scriptureforge-rust-runtime-secrets"
                 key  = "GRPC_ENGINE_TLS_CERT_PEM"
               }
             }
@@ -793,7 +922,7 @@ resource "kubernetes_deployment" "rust_engine" {
             name = "GRPC_ENGINE_TLS_KEY_PEM"
             value_from {
               secret_key_ref {
-                name = "scriptureforge-runtime-secrets"
+                name = "scriptureforge-rust-runtime-secrets"
                 key  = "GRPC_ENGINE_TLS_KEY_PEM"
               }
             }
@@ -803,7 +932,7 @@ resource "kubernetes_deployment" "rust_engine" {
             name = "GRPC_ENGINE_TLS_CA_PEM"
             value_from {
               secret_key_ref {
-                name = "scriptureforge-runtime-secrets"
+                name = "scriptureforge-rust-runtime-secrets"
                 key  = "GRPC_ENGINE_TLS_CA_PEM"
               }
             }
@@ -833,28 +962,28 @@ resource "kubernetes_deployment" "rust_engine" {
             name = "DATABASE_URL"
             value_from {
               secret_key_ref {
-                name = "scriptureforge-runtime-secrets"
+                name = "scriptureforge-rust-runtime-secrets"
                 key  = "DATABASE_URL"
               }
             }
           }
 
           volume_mount {
-            name       = "app-secrets-store"
+            name       = "rust-secrets-store"
             mount_path = "/mnt/secrets-store"
             read_only  = true
           }
         }
 
         volume {
-          name = "app-secrets-store"
+          name = "rust-secrets-store"
 
           csi {
             driver    = "secrets-store.csi.k8s.io"
             read_only = true
 
             volume_attributes = {
-              secretProviderClass = kubernetes_manifest.app_secret_provider.manifest.metadata.name
+              secretProviderClass = kubernetes_manifest.rust_secret_provider.manifest.metadata.name
             }
           }
         }

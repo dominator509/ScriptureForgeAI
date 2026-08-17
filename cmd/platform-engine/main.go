@@ -86,6 +86,7 @@ func (e *PlatformException) Error() string {
 type Config struct {
 	DatabaseURL              string
 	RedisURL                 string
+	RedisPassword            string
 	Port                     string
 	StartupDependencyTimeout time.Duration
 	DatabasePoolMaxConns     int32
@@ -128,6 +129,14 @@ func loadConfig() (*Config, *PlatformException) {
 		return nil, &PlatformException{
 			Category: ConfigurationFault,
 			Message:  "REDIS_URL environment variable is missing",
+			Code:     500,
+		}
+	}
+	redisPassword := os.Getenv("REDIS_PASSWORD")
+	if requiresConfiguredGRPCAddress() && strings.TrimSpace(redisPassword) == "" {
+		return nil, &PlatformException{
+			Category: ConfigurationFault,
+			Message:  "REDIS_PASSWORD environment variable is required in non-local environments",
 			Code:     500,
 		}
 	}
@@ -212,6 +221,7 @@ func loadConfig() (*Config, *PlatformException) {
 	return &Config{
 		DatabaseURL:              dbURL,
 		RedisURL:                 redisURL,
+		RedisPassword:            redisPassword,
 		Port:                     port,
 		StartupDependencyTimeout: dependencyConfig.StartupTimeout,
 		DatabasePoolMaxConns:     dependencyConfig.DatabasePoolMaxConns,
@@ -366,6 +376,9 @@ func newRedisOptions(cfg *Config) (*redis.Options, error) {
 	if err != nil {
 		return nil, err
 	}
+	if strings.TrimSpace(cfg.RedisPassword) != "" {
+		options.Password = cfg.RedisPassword
+	}
 	options.PoolSize = cfg.RedisPoolSize
 	options.MaxActiveConns = cfg.RedisMaxActiveConns
 	options.PoolTimeout = cfg.RedisPoolTimeout
@@ -446,11 +459,17 @@ func loadHTTPMaxHeaderBytes() (int, *PlatformException) {
 }
 
 func requiresConfiguredGRPCAddress() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("DEPLOYMENT_ENVIRONMENT"))) {
+	return requiresConfiguredGRPCAddressForEnvironment(os.Getenv("DEPLOYMENT_ENVIRONMENT"))
+}
+
+func requiresConfiguredGRPCAddressForEnvironment(environment string) bool {
+	switch strings.ToLower(strings.TrimSpace(environment)) {
 	case "staging", "production", "prod":
 		return true
-	default:
+	case "", "development", "dev", "test", "local":
 		return false
+	default:
+		return true
 	}
 }
 
@@ -471,7 +490,7 @@ func setupRoutesWithLifecycle(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisC
 	mux.Handle("/metrics", observer.MetricsHandler())
 
 	// Auth Endpoints
-	authHandler := &ports.AuthHandler{DB: dbpool, AccountLimiter: abuseLimiter}
+	authHandler := &ports.AuthHandler{DB: dbpool, AccountLimiter: abuseLimiter, MFAEncryptionKey: []byte(os.Getenv("MFA_ENCRYPTION_KEY"))}
 	mux.Handle("/api/v1/auth/csrf", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(csrfHandler)))
 	mux.Handle("/api/v1/auth/register", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.RegisterHandler)))
 	mux.Handle("/api/v1/auth/login", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.LoginHandler)))

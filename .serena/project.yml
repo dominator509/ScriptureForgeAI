@@ -4,7 +4,6 @@ languages:
   - typescript
   - rust
   - terraform
-  - markdown
   - yaml
 backend: lsp
 headless: true

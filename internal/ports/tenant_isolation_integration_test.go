@@ -704,7 +704,7 @@ func createTenantScopedRefreshToken(ctx context.Context, t *testing.T, db *pgxpo
 	var token string
 	withTenantIsolationContext(ctx, t, db, orgID, func(ctx context.Context, tx pgx.Tx) {
 		var err error
-		token, err = storeRefreshToken(ctx, tx, userID, orgID, nil)
+		token, err = storeRefreshToken(ctx, tx, userID, orgID, nil, false)
 		if err != nil {
 			t.Fatalf("create refresh token for tenant %s user %s: %v", orgID, userID, err)
 		}

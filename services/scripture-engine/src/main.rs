@@ -351,14 +351,16 @@ impl ScriptureEngine for MyScriptureEngine {
 }
 
 fn requires_grpc_security() -> bool {
-    matches!(
-        std::env::var("DEPLOYMENT_ENVIRONMENT")
-            .unwrap_or_default()
-            .trim()
-            .to_ascii_lowercase()
-            .as_str(),
-        "staging" | "production" | "prod"
+    requires_grpc_security_for_environment(
+        &std::env::var("DEPLOYMENT_ENVIRONMENT").unwrap_or_default(),
     )
+}
+
+fn requires_grpc_security_for_environment(environment: &str) -> bool {
+    match environment.trim().to_ascii_lowercase().as_str() {
+        "" | "development" | "dev" | "test" | "local" => false,
+        _ => true,
+    }
 }
 
 fn grpc_shared_secret() -> Result<Option<String>, Box<dyn std::error::Error>> {
@@ -839,9 +841,10 @@ mod tests {
     use super::{
         authorize_grpc_request, bind_address, extract_trace_id, grpc_shared_secret,
         grpc_tls_config, json_escape, metrics_address, metrics_response_for_request,
-        observability_config, resolve_organization_id, scripture_engine_service_name,
-        traceparent_from_request, validate_embed_text_request, validate_vector_search_request,
-        AuthenticatedTenant, RustEngineMetrics, EMBEDDING_DIMENSION, MAX_VECTOR_SEARCH_RESULTS,
+        observability_config, requires_grpc_security_for_environment, resolve_organization_id,
+        scripture_engine_service_name, traceparent_from_request, validate_embed_text_request,
+        validate_vector_search_request, AuthenticatedTenant, RustEngineMetrics,
+        EMBEDDING_DIMENSION, MAX_VECTOR_SEARCH_RESULTS,
     };
     use std::sync::atomic::Ordering;
     use tonic::Request;
@@ -1039,6 +1042,10 @@ mod tests {
         assert!(grpc_tls_config()
             .expect("local TLS config should load")
             .is_none());
+
+        assert!(requires_grpc_security_for_environment("prod-eu"));
+        assert!(requires_grpc_security_for_environment("custom-staging"));
+        assert!(!requires_grpc_security_for_environment("development"));
     }
 
     #[test]

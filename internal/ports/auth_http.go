@@ -2,6 +2,8 @@ package ports
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha1"
@@ -26,8 +28,9 @@ import (
 )
 
 type AuthHandler struct {
-	DB             *pgxpool.Pool
-	AccountLimiter *abuse.Limiter
+	DB               *pgxpool.Pool
+	AccountLimiter   *abuse.Limiter
+	MFAEncryptionKey []byte
 }
 
 type RegisterRequest struct {
@@ -83,6 +86,7 @@ const (
 	maxAuthOrganizationBytes = 128
 	maxAuthRefreshTokenBytes = 512
 	maxAuthMFACodeBytes      = 16
+	mfaCiphertextPrefix      = "v1."
 )
 
 var emailRegex = regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$`)
@@ -155,6 +159,18 @@ func sendAuthError(w http.ResponseWriter, pe *auth.PlatformException) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(pe.Code)
 	_ = json.NewEncoder(w).Encode(pe)
+}
+
+func (h *AuthHandler) requireDatabase(w http.ResponseWriter) bool {
+	if h.DB != nil {
+		return true
+	}
+	sendAuthError(w, &auth.PlatformException{
+		Category: auth.AuthenticationFault,
+		Message:  "Authentication database is not configured",
+		Code:     http.StatusServiceUnavailable,
+	})
+	return false
 }
 
 func generateOpaqueToken() (string, error) {
@@ -286,6 +302,76 @@ func generateMFASecret() (string, error) {
 	return base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(raw), nil
 }
 
+func deriveMFAEncryptionKey(key []byte) ([]byte, error) {
+	if len(key) < auth.MinimumSecretBytes {
+		return nil, fmt.Errorf("MFA encryption key must be at least %d bytes", auth.MinimumSecretBytes)
+	}
+	sum := sha256.Sum256(append([]byte("scriptureforge:mfa:v1:"), key...))
+	return sum[:], nil
+}
+
+// EncryptMFASecret returns an application-encrypted TOTP seed for persistence.
+// The caller must keep the key outside the database and secret-bearing mounts.
+func EncryptMFASecret(secret string, key []byte) (string, error) {
+	derivedKey, err := deriveMFAEncryptionKey(key)
+	if err != nil {
+		return "", err
+	}
+	block, err := aes.NewCipher(derivedKey)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", err
+	}
+	ciphertext := gcm.Seal(nil, nonce, []byte(secret), nil)
+	envelope := append(nonce, ciphertext...)
+	return mfaCiphertextPrefix + base64.RawURLEncoding.EncodeToString(envelope), nil
+}
+
+func decryptMFASecret(envelope string, key []byte) (string, error) {
+	if !strings.HasPrefix(envelope, mfaCiphertextPrefix) {
+		return "", fmt.Errorf("MFA seed is not encrypted")
+	}
+	derivedKey, err := deriveMFAEncryptionKey(key)
+	if err != nil {
+		return "", err
+	}
+	encoded := strings.TrimPrefix(envelope, mfaCiphertextPrefix)
+	data, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil {
+		return "", fmt.Errorf("MFA seed envelope is malformed")
+	}
+	block, err := aes.NewCipher(derivedKey)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	if len(data) < gcm.NonceSize() {
+		return "", fmt.Errorf("MFA seed envelope is truncated")
+	}
+	plaintext, err := gcm.Open(nil, data[:gcm.NonceSize()], data[gcm.NonceSize():], nil)
+	if err != nil {
+		return "", fmt.Errorf("MFA seed envelope failed authentication")
+	}
+	return string(plaintext), nil
+}
+
+func (h *AuthHandler) mfaEncryptionKey() []byte {
+	if len(h.MFAEncryptionKey) > 0 {
+		return h.MFAEncryptionKey
+	}
+	return []byte(os.Getenv("MFA_ENCRYPTION_KEY"))
+}
+
 func verifyTOTP(secret, code string, now time.Time) bool {
 	if secret == "" || code == "" {
 		return false
@@ -314,20 +400,21 @@ func verifyTOTP(secret, code string, now time.Time) bool {
 	return false
 }
 
-func storeRefreshToken(ctx context.Context, tx pgx.Tx, userID, orgID string, rotatedFrom *string) (string, error) {
+func storeRefreshToken(ctx context.Context, tx pgx.Tx, userID, orgID string, rotatedFrom *string, mfaVerified bool) (string, error) {
 	refreshToken, err := generateOpaqueToken()
 	if err != nil {
 		return "", err
 	}
 	_, err = tx.Exec(
 		ctx,
-		`INSERT INTO refresh_tokens (organization_id, user_id, token_hash, expires_at, rotated_from)
-		 VALUES ($1, $2, $3, $4, $5)`,
+		`INSERT INTO refresh_tokens (organization_id, user_id, token_hash, expires_at, rotated_from, mfa_verified_at)
+		 VALUES ($1, $2, $3, $4, $5, CASE WHEN $6 THEN CURRENT_TIMESTAMP ELSE NULL END)`,
 		orgID,
 		userID,
 		hashToken(refreshToken),
 		time.Now().Add(refreshTokenTTL),
 		rotatedFrom,
+		mfaVerified,
 	)
 	if err != nil {
 		return "", err
@@ -361,6 +448,9 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	metricStatus := "error"
 	started := time.Now()
 	defer observeAuthPostgres(r.Context(), "auth_register", started, &metricStatus)
+	if !h.requireDatabase(w) {
+		return
+	}
 
 	forcedRole := "member"
 	tx, err := h.DB.Begin(r.Context())
@@ -394,7 +484,7 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to issue token", Code: http.StatusInternalServerError})
 		return
 	}
-	refreshToken, err := storeRefreshToken(r.Context(), tx, newUserID, req.OrganizationID, nil)
+	refreshToken, err := storeRefreshToken(r.Context(), tx, newUserID, req.OrganizationID, nil, false)
 	if err != nil {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to issue refresh token", Code: http.StatusInternalServerError})
 		return
@@ -431,6 +521,9 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	metricStatus := "error"
 	started := time.Now()
 	defer observeAuthPostgres(r.Context(), "auth_login", started, &metricStatus)
+	if !h.requireDatabase(w) {
+		return
+	}
 
 	tx, err := h.DB.Begin(r.Context())
 	if err != nil {
@@ -443,7 +536,7 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var userID, orgID, role, hash, mfaSecret string
+	var userID, orgID, role, hash, encryptedMFASecret string
 	var mfaEnabled bool
 	err = tx.QueryRow(
 		r.Context(),
@@ -452,7 +545,7 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		 WHERE email = $1 AND organization_id = $2`,
 		req.Email,
 		req.OrganizationID,
-	).Scan(&userID, &orgID, &role, &hash, &mfaSecret, &mfaEnabled)
+	).Scan(&userID, &orgID, &role, &hash, &encryptedMFASecret, &mfaEnabled)
 	if err != nil {
 		metricStatus = "invalid_credentials"
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid credentials", Code: http.StatusUnauthorized})
@@ -466,12 +559,31 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if privilegedRole(role) && (!mfaEnabled || !verifyTOTP(mfaSecret, req.MFACode, time.Now())) {
+	mfaVerified := false
+	if privilegedRole(role) && mfaEnabled {
+		mfaSecret, decryptErr := decryptMFASecret(encryptedMFASecret, h.mfaEncryptionKey())
+		if decryptErr != nil {
+			metricStatus = "mfa_unavailable"
+			sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "MFA verification is unavailable", Code: http.StatusServiceUnavailable})
+			return
+		}
+		if !verifyTOTP(mfaSecret, req.MFACode, time.Now()) {
+			metricStatus = "mfa_required"
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(AuthResponse{UserID: userID, OrganizationID: orgID, RequiresMFA: true})
+			return
+		}
+	}
+	if privilegedRole(role) && !mfaEnabled {
 		metricStatus = "mfa_required"
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		_ = json.NewEncoder(w).Encode(AuthResponse{UserID: userID, OrganizationID: orgID, RequiresMFA: true})
 		return
+	}
+	if privilegedRole(role) {
+		mfaVerified = true
 	}
 
 	token, err := auth.GenerateToken(userID, orgID, role, accessTokenTTL)
@@ -481,7 +593,7 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	refreshMetricStatus := "error"
 	refreshStarted := time.Now()
-	refreshToken, err := storeRefreshToken(r.Context(), tx, userID, orgID, nil)
+	refreshToken, err := storeRefreshToken(r.Context(), tx, userID, orgID, nil, mfaVerified)
 	if err == nil {
 		err = tx.Commit(r.Context())
 	}
@@ -521,6 +633,9 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 	metricStatus := "error"
 	started := time.Now()
 	defer observeAuthPostgres(r.Context(), "auth_refresh", started, &metricStatus)
+	if !h.requireDatabase(w) {
+		return
+	}
 
 	tx, err := h.DB.Begin(r.Context())
 	if err != nil {
@@ -534,11 +649,12 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var tokenID, userID, orgID, role string
+	var mfaVerified, mfaEnabled bool
 	err = tx.QueryRow(
 		r.Context(),
-		`SELECT rt.id, rt.user_id, rt.organization_id, u.role
-		 FROM refresh_tokens rt
-		 JOIN users u ON u.id = rt.user_id
+		`SELECT rt.id, rt.user_id, rt.organization_id, u.role, rt.mfa_verified_at IS NOT NULL, u.mfa_enabled
+			 FROM refresh_tokens rt
+			 JOIN users u ON u.id = rt.user_id
 		 WHERE rt.token_hash = $1
 		   AND rt.organization_id = $2
 		   AND rt.revoked_at IS NULL
@@ -546,10 +662,17 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 		 FOR UPDATE`,
 		hashToken(req.RefreshToken),
 		req.OrganizationID,
-	).Scan(&tokenID, &userID, &orgID, &role)
+	).Scan(&tokenID, &userID, &orgID, &role, &mfaVerified, &mfaEnabled)
 	if err != nil {
 		metricStatus = "invalid_or_expired"
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid or expired refresh token", Code: http.StatusUnauthorized})
+		return
+	}
+	if privilegedRole(role) && (!mfaEnabled || !mfaVerified) {
+		metricStatus = "mfa_required"
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(AuthResponse{UserID: userID, OrganizationID: orgID, RequiresMFA: true})
 		return
 	}
 
@@ -569,7 +692,7 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to issue token", Code: http.StatusInternalServerError})
 		return
 	}
-	refreshToken, err := storeRefreshToken(r.Context(), tx, userID, orgID, &tokenID)
+	refreshToken, err := storeRefreshToken(r.Context(), tx, userID, orgID, &tokenID, privilegedRole(role) && mfaVerified)
 	if err != nil {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to issue refresh token", Code: http.StatusInternalServerError})
 		return
@@ -602,6 +725,9 @@ func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	metricStatus := "error"
 	started := time.Now()
 	defer observeAuthPostgres(r.Context(), "auth_logout", started, &metricStatus)
+	if !h.requireDatabase(w) {
+		return
+	}
 
 	tx, err := h.DB.Begin(r.Context())
 	if err != nil {
@@ -676,10 +802,18 @@ func (h *AuthHandler) MFAEnrollHandler(w http.ResponseWriter, r *http.Request) {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "MFA enrollment requires a privileged role", Code: http.StatusForbidden})
 		return
 	}
+	if !h.requireDatabase(w) {
+		return
+	}
 
 	secret, err := generateMFASecret()
 	if err != nil {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to generate MFA secret", Code: http.StatusInternalServerError})
+		return
+	}
+	encryptedSecret, err := EncryptMFASecret(secret, h.mfaEncryptionKey())
+	if err != nil {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "MFA encryption is not configured", Code: http.StatusServiceUnavailable})
 		return
 	}
 	metricStatus := "error"
@@ -707,7 +841,7 @@ func (h *AuthHandler) MFAEnrollHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Keep the seed staged until the caller proves possession with a valid TOTP code.
-	if _, err = tx.Exec(r.Context(), `UPDATE users SET mfa_secret = $1, mfa_enabled = FALSE WHERE id = $2 AND organization_id = $3`, secret, claims.UserID, claims.OrganizationID); err != nil {
+	if _, err = tx.Exec(r.Context(), `UPDATE users SET mfa_secret = $1, mfa_enabled = FALSE WHERE id = $2 AND organization_id = $3`, encryptedSecret, claims.UserID, claims.OrganizationID); err != nil {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to stage MFA enrollment", Code: http.StatusInternalServerError})
 		return
 	}
@@ -752,6 +886,9 @@ func (h *AuthHandler) MFAVerifyHandler(w http.ResponseWriter, r *http.Request) {
 	metricStatus := "error"
 	started := time.Now()
 	defer observeAuthPostgres(r.Context(), "auth_mfa_verify", started, &metricStatus)
+	if !h.requireDatabase(w) {
+		return
+	}
 
 	tx, err := h.DB.Begin(r.Context())
 	if err != nil {
@@ -764,7 +901,7 @@ func (h *AuthHandler) MFAVerifyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var mfaSecret string
+	var encryptedMFASecret string
 	var mfaEnabled bool
 	err = tx.QueryRow(
 		r.Context(),
@@ -773,10 +910,16 @@ func (h *AuthHandler) MFAVerifyHandler(w http.ResponseWriter, r *http.Request) {
 		 WHERE id = $1 AND organization_id = $2`,
 		claims.UserID,
 		claims.OrganizationID,
-	).Scan(&mfaSecret, &mfaEnabled)
-	if err != nil || mfaSecret == "" {
+	).Scan(&encryptedMFASecret, &mfaEnabled)
+	if err != nil || encryptedMFASecret == "" {
 		metricStatus = "not_configured"
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "MFA not configured", Code: http.StatusNotFound})
+		return
+	}
+	mfaSecret, decryptErr := decryptMFASecret(encryptedMFASecret, h.mfaEncryptionKey())
+	if decryptErr != nil {
+		metricStatus = "mfa_unavailable"
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "MFA verification is unavailable", Code: http.StatusServiceUnavailable})
 		return
 	}
 
@@ -786,7 +929,7 @@ func (h *AuthHandler) MFAVerifyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !mfaEnabled {
-		if _, err = tx.Exec(r.Context(), `UPDATE users SET mfa_enabled = TRUE WHERE id = $1 AND organization_id = $2 AND mfa_secret = $3`, claims.UserID, claims.OrganizationID, mfaSecret); err != nil {
+		if _, err = tx.Exec(r.Context(), `UPDATE users SET mfa_enabled = TRUE WHERE id = $1 AND organization_id = $2 AND mfa_secret = $3`, claims.UserID, claims.OrganizationID, encryptedMFASecret); err != nil {
 			sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to activate MFA enrollment", Code: http.StatusInternalServerError})
 			return
 		}

@@ -65,6 +65,14 @@ data "aws_secretsmanager_secret" "journal_salt_secret" {
   arn = var.app_secret_arns.journal_salt_secret
 }
 
+data "aws_secretsmanager_secret" "mfa_encryption_key" {
+  arn = var.app_secret_arns.mfa_encryption_key
+}
+
+data "aws_secretsmanager_secret" "redis_auth_token" {
+  arn = var.app_secret_arns.redis_auth_token
+}
+
 data "aws_secretsmanager_secret" "database_url" {
   arn = var.app_secret_arns.database_url
 }

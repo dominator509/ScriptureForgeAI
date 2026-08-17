@@ -19,6 +19,7 @@ export const migrationFiles = [
   '/migrations/000001_init_extensions.up.sql',
   '/migrations/000002_core_schema.up.sql',
   '/migrations/000003_scripture_text_reference.up.sql',
+  '/migrations/000004_auth_mfa_assurance.up.sql',
 ];
 
 export function parseDockerRLSArgs(argv = []) {

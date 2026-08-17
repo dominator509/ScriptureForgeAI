@@ -497,11 +497,13 @@ variable "web_autoscaling" {
 }
 
 variable "app_secret_arns" {
-  description = "Existing AWS Secrets Manager ARNs used by workloads. JWT and journal salt secrets must be distinct high-entropy values; the gRPC shared secret is also high-entropy; grpc_engine_tls_credentials must be JSON with ca_pem, server_cert_pem, server_key_pem, client_cert_pem, and client_key_pem keys."
+  description = "Existing AWS Secrets Manager ARNs used by workloads. JWT, journal salt, and MFA encryption secrets must be distinct high-entropy values; the gRPC shared secret is also high-entropy; grpc_engine_tls_credentials must be JSON with ca_pem, server_cert_pem, server_key_pem, client_cert_pem, and client_key_pem keys."
   type = object({
     database_url                = string
     jwt_secret_key              = string
     journal_salt_secret         = string
+    mfa_encryption_key          = string
+    redis_auth_token            = string
     openai_api_key              = string
     zoom_credentials            = string
     grpc_engine_shared_secret   = string
@@ -513,6 +515,8 @@ variable "app_secret_arns" {
       can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.database_url)),
       can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.jwt_secret_key)),
       can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.journal_salt_secret)),
+      can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.mfa_encryption_key)),
+      can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.redis_auth_token)),
       can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.openai_api_key)),
       can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.zoom_credentials)),
       can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.grpc_engine_shared_secret)),

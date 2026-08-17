@@ -54,7 +54,32 @@ data "aws_iam_policy_document" "app_secrets_assume_role" {
     condition {
       test     = "StringEquals"
       variable = "${local.eks_oidc_issuer_hostpath}:sub"
-      values   = ["system:serviceaccount:scriptureforge-${var.environment}:scriptureforge-workload"]
+      values   = ["system:serviceaccount:scriptureforge-${var.environment}:scriptureforge-api"]
+    }
+  }
+}
+
+data "aws_iam_policy_document" "rust_engine_secrets_assume_role" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.eks.arn]
+    }
+
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.eks_oidc_issuer_hostpath}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.eks_oidc_issuer_hostpath}:sub"
+      values   = ["system:serviceaccount:scriptureforge-${var.environment}:scriptureforge-rust-engine"]
     }
   }
 }
@@ -72,8 +97,27 @@ data "aws_iam_policy_document" "app_secrets_read" {
       data.aws_secretsmanager_secret.database_url.arn,
       data.aws_secretsmanager_secret.jwt_secret_key.arn,
       data.aws_secretsmanager_secret.journal_salt_secret.arn,
+      data.aws_secretsmanager_secret.mfa_encryption_key.arn,
+      data.aws_secretsmanager_secret.redis_auth_token.arn,
       data.aws_secretsmanager_secret.openai_api_key.arn,
       data.aws_secretsmanager_secret.zoom_credentials.arn,
+      data.aws_secretsmanager_secret.grpc_engine_shared_secret.arn,
+      data.aws_secretsmanager_secret.grpc_engine_tls_credentials.arn
+    ]
+  }
+}
+
+data "aws_iam_policy_document" "rust_engine_secrets_read" {
+  statement {
+    effect = "Allow"
+
+    actions = [
+      "secretsmanager:DescribeSecret",
+      "secretsmanager:GetSecretValue"
+    ]
+
+    resources = [
+      data.aws_secretsmanager_secret.database_url.arn,
       data.aws_secretsmanager_secret.grpc_engine_shared_secret.arn,
       data.aws_secretsmanager_secret.grpc_engine_tls_credentials.arn
     ]
@@ -123,4 +167,19 @@ resource "aws_iam_policy" "app_secrets_read" {
 resource "aws_iam_role_policy_attachment" "app_secrets_read" {
   role       = aws_iam_role.app_secrets.name
   policy_arn = aws_iam_policy.app_secrets_read.arn
+}
+
+resource "aws_iam_role" "rust_engine_secrets" {
+  name               = "${local.name_prefix}-rust-engine-secrets"
+  assume_role_policy = data.aws_iam_policy_document.rust_engine_secrets_assume_role.json
+}
+
+resource "aws_iam_policy" "rust_engine_secrets_read" {
+  name   = "${local.name_prefix}-rust-engine-secrets-read"
+  policy = data.aws_iam_policy_document.rust_engine_secrets_read.json
+}
+
+resource "aws_iam_role_policy_attachment" "rust_engine_secrets_read" {
+  role       = aws_iam_role.rust_engine_secrets.name
+  policy_arn = aws_iam_policy.rust_engine_secrets_read.arn
 }

@@ -64,6 +64,14 @@ export function validatePlatformRuntimeConfig(platformMain) {
     /case "staging", "production", "prod":\s*\n\s*return true/.test(platformMain),
     'platform engine must require explicit GRPC_ENGINE_ADDRESS for staging/production/prod',
   );
+  assert.ok(
+    /case "", "development", "dev", "test", "local":\s*\n\s*return false/.test(platformMain),
+    'platform engine must keep insecure gRPC fallback local-only',
+  );
+  assert.ok(
+    /default:\s*\n\s*return true/.test(platformMain),
+    'platform engine must fail closed for unknown deployment environments',
+  );
 }
 
 function terraformVariableBlock(source, name) {
@@ -83,7 +91,7 @@ export function validateTerraformSecretInputs(variables, tfvarsExample, app) {
   );
 
   const secretARNBlock = terraformVariableBlock(variables, 'app_secret_arns');
-  for (const key of ['database_url', 'jwt_secret_key', 'journal_salt_secret', 'openai_api_key', 'zoom_credentials', 'grpc_engine_shared_secret', 'grpc_engine_tls_credentials']) {
+  for (const key of ['database_url', 'jwt_secret_key', 'journal_salt_secret', 'mfa_encryption_key', 'redis_auth_token', 'openai_api_key', 'zoom_credentials', 'grpc_engine_shared_secret', 'grpc_engine_tls_credentials']) {
     assert.match(secretARNBlock, new RegExp(`${key}\\s*=\\s*string`), `app_secret_arns missing ${key}`);
     assert.ok(
       secretARNBlock.includes(`can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.${key}))`),
@@ -224,6 +232,8 @@ requireIncludes(
   [
     'aws_iam_openid_connect_provider',
     'data "aws_iam_policy_document" "app_secrets_assume_role"',
+    'data "aws_iam_policy_document" "rust_engine_secrets_assume_role"',
+    'data "aws_iam_policy_document" "rust_engine_secrets_read"',
     'secretsmanager:GetSecretValue',
     'data.aws_secretsmanager_secret.database_url.arn',
     'data.aws_secretsmanager_secret.jwt_secret_key.arn',
@@ -231,6 +241,8 @@ requireIncludes(
     'data.aws_secretsmanager_secret.zoom_credentials.arn',
     'data.aws_secretsmanager_secret.grpc_engine_shared_secret.arn',
     'data.aws_secretsmanager_secret.grpc_engine_tls_credentials.arn',
+    'resource "aws_iam_role" "rust_engine_secrets"',
+    'resource "aws_iam_role_policy_attachment" "rust_engine_secrets_read"',
   ],
   'terraform IAM',
 );
@@ -239,12 +251,18 @@ requireIncludes(
   app,
   [
     'resource "kubernetes_service_account" "workload"',
+    'resource "kubernetes_service_account" "rust_engine"',
     '"eks.amazonaws.com/role-arn" = aws_iam_role.app_secrets.arn',
+    '"eks.amazonaws.com/role-arn" = aws_iam_role.rust_engine_secrets.arn',
     'kind       = "SecretProviderClass"',
     'provider = "aws"',
     'secretName = "scriptureforge-runtime-secrets"',
+    'secretName = "scriptureforge-rust-runtime-secrets"',
+    'name      = "scriptureforge-rust-secrets"',
     'driver    = "secrets-store.csi.k8s.io"',
     'service_account_name = kubernetes_service_account.workload.metadata[0].name',
+    'service_account_name = kubernetes_service_account.rust_engine.metadata[0].name',
+    'secretProviderClass = kubernetes_manifest.rust_secret_provider.manifest.metadata.name',
     'topology_spread_constraint',
     'topology_key       = "topology.kubernetes.io/zone"',
     'when_unsatisfiable = "ScheduleAnyway"',

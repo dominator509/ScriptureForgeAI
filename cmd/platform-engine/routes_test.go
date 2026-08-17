@@ -264,6 +264,7 @@ func TestDependencyClientConfigAppliesExplicitBounds(t *testing.T) {
 		DatabaseConnLifetime:     23 * time.Minute,
 		DatabaseConnIdleTime:     4 * time.Minute,
 		RedisURL:                 "rediss://local.example:6379",
+		RedisPassword:            "redis-test-password",
 		RedisPoolSize:            12,
 		RedisMaxActiveConns:      20,
 		RedisPoolTimeout:         6 * time.Second,
@@ -284,7 +285,7 @@ func TestDependencyClientConfigAppliesExplicitBounds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newRedisOptions: %v", err)
 	}
-	if redisOptions.PoolSize != cfg.RedisPoolSize || redisOptions.MaxActiveConns != cfg.RedisMaxActiveConns || redisOptions.PoolTimeout != cfg.RedisPoolTimeout || redisOptions.DialTimeout != cfg.RedisDialTimeout || redisOptions.ReadTimeout != cfg.RedisReadTimeout || redisOptions.WriteTimeout != cfg.RedisWriteTimeout {
+	if redisOptions.Password != cfg.RedisPassword || redisOptions.PoolSize != cfg.RedisPoolSize || redisOptions.MaxActiveConns != cfg.RedisMaxActiveConns || redisOptions.PoolTimeout != cfg.RedisPoolTimeout || redisOptions.DialTimeout != cfg.RedisDialTimeout || redisOptions.ReadTimeout != cfg.RedisReadTimeout || redisOptions.WriteTimeout != cfg.RedisWriteTimeout {
 		t.Fatalf("redis options = %#v", redisOptions)
 	}
 }
@@ -303,6 +304,7 @@ func TestLoadConfigRequiresGRPCAddressInStagingAndProduction(t *testing.T) {
 		t.Run(environment, func(t *testing.T) {
 			t.Setenv("DATABASE_URL", "postgres://staging.example/scriptureforge")
 			t.Setenv("REDIS_URL", "rediss://staging.example:6379")
+			t.Setenv("REDIS_PASSWORD", "redis-test-password")
 			t.Setenv("DEPLOYMENT_ENVIRONMENT", environment)
 			t.Setenv("GRPC_ENGINE_ADDRESS", "")
 			t.Setenv("GRPC_ENGINE_SHARED_SECRET", "")
@@ -321,6 +323,7 @@ func TestLoadConfigRequiresGRPCAddressInStagingAndProduction(t *testing.T) {
 func TestLoadConfigAcceptsExplicitProductionGRPCAddress(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://staging.example/scriptureforge")
 	t.Setenv("REDIS_URL", "rediss://staging.example:6379")
+	t.Setenv("REDIS_PASSWORD", "redis-test-password")
 	t.Setenv("DEPLOYMENT_ENVIRONMENT", "staging")
 	t.Setenv("ALLOWED_WS_ORIGINS", "https://app.staging.scriptureforge.ai")
 	t.Setenv("JWT_SECRET_KEY", "jwt-staging-secret-012345678901234567890")
@@ -344,6 +347,7 @@ func TestLoadConfigAcceptsExplicitProductionGRPCAddress(t *testing.T) {
 func TestLoadConfigRequiresGRPCSharedSecretAndTLSInProduction(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://staging.example/scriptureforge")
 	t.Setenv("REDIS_URL", "rediss://staging.example:6379")
+	t.Setenv("REDIS_PASSWORD", "redis-test-password")
 	t.Setenv("DEPLOYMENT_ENVIRONMENT", "production")
 	t.Setenv("ALLOWED_WS_ORIGINS", "https://app.production.scriptureforge.ai")
 	t.Setenv("GRPC_ENGINE_ADDRESS", "scriptureforge-rust-engine:50051")
@@ -364,6 +368,7 @@ func TestLoadConfigRequiresStrongDistinctAuthAndJournalSecretsInProduction(t *te
 		t.Helper()
 		t.Setenv("DATABASE_URL", "postgres://staging.example/scriptureforge")
 		t.Setenv("REDIS_URL", "rediss://staging.example:6379")
+		t.Setenv("REDIS_PASSWORD", "redis-test-password")
 		t.Setenv("DEPLOYMENT_ENVIRONMENT", "production")
 		t.Setenv("GRPC_ENGINE_ADDRESS", "scriptureforge-rust-engine:50051")
 		t.Setenv("GRPC_ENGINE_SHARED_SECRET", "01234567890123456789012345678901")

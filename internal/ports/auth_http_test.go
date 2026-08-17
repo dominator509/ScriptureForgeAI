@@ -105,6 +105,85 @@ func TestAuthHandlersRejectConcatenatedJSONAndMalformedMFACode(t *testing.T) {
 	}
 }
 
+func TestMFASecretEncryptionDoesNotPersistPlaintext(t *testing.T) {
+	key := []byte("test-mfa-encryption-key-long-enough-0123456789")
+	secret := "JBSWY3DPEHPK3PXP"
+	encrypted, err := EncryptMFASecret(secret, key)
+	if err != nil {
+		t.Fatalf("EncryptMFASecret returned error: %v", err)
+	}
+	if encrypted == secret || strings.Contains(encrypted, secret) || !strings.HasPrefix(encrypted, mfaCiphertextPrefix) {
+		t.Fatalf("encrypted MFA envelope = %q, want versioned ciphertext without plaintext", encrypted)
+	}
+	decrypted, err := decryptMFASecret(encrypted, key)
+	if err != nil || decrypted != secret {
+		t.Fatalf("decryptMFASecret = %q, %v, want original secret", decrypted, err)
+	}
+	if _, err := decryptMFASecret(encrypted, []byte("wrong-mfa-encryption-key-long-enough-0123456789")); err == nil {
+		t.Fatal("decryptMFASecret accepted the wrong encryption key")
+	}
+}
+
+func TestAuthHandlersFailClosedWhenDatabaseIsNotConfigured(t *testing.T) {
+	claimsContext := func(r *http.Request) *http.Request {
+		return r.WithContext(context.WithValue(r.Context(), auth.ContextKeyUser, &auth.TokenClaims{
+			UserID:         "user-1",
+			OrganizationID: "org-1",
+			Role:           "admin",
+		}))
+	}
+
+	tests := []struct {
+		name    string
+		handler func(http.ResponseWriter, *http.Request)
+		request *http.Request
+	}{
+		{
+			name:    "register",
+			handler: (&AuthHandler{}).RegisterHandler,
+			request: httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(`{"email":"member@example.test","password":"password123","organization_id":"org-1"}`)),
+		},
+		{
+			name:    "login",
+			handler: (&AuthHandler{}).LoginHandler,
+			request: httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"email":"member@example.test","password":"password123","organization_id":"org-1"}`)),
+		},
+		{
+			name:    "refresh",
+			handler: (&AuthHandler{}).RefreshHandler,
+			request: httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", strings.NewReader(`{"refresh_token":"opaque-refresh-token","organization_id":"org-1"}`)),
+		},
+		{
+			name:    "logout",
+			handler: (&AuthHandler{}).LogoutHandler,
+			request: httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", strings.NewReader(`{"refresh_token":"opaque-refresh-token","organization_id":"org-1"}`)),
+		},
+		{
+			name:    "mfa enroll",
+			handler: (&AuthHandler{}).MFAEnrollHandler,
+			request: claimsContext(httptest.NewRequest(http.MethodPost, "/api/v1/auth/mfa/enroll", nil)),
+		},
+		{
+			name:    "mfa verify",
+			handler: (&AuthHandler{}).MFAVerifyHandler,
+			request: claimsContext(httptest.NewRequest(http.MethodPost, "/api/v1/auth/mfa/verify", strings.NewReader(`{"mfa_code":"123456"}`))),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			test.handler(recorder, test.request)
+			if recorder.Code != http.StatusServiceUnavailable {
+				t.Fatalf("status = %d body = %s, want 503", recorder.Code, recorder.Body.String())
+			}
+			if !strings.Contains(recorder.Body.String(), "Authentication database is not configured") {
+				t.Fatalf("body = %s, want typed dependency error", recorder.Body.String())
+			}
+		})
+	}
+}
+
 func testAuthAccountLimiter(limit int) *abuse.Limiter {
 	limiter := abuse.NewLimiter(abuse.Policy{Profiles: map[string]abuse.Profile{
 		abuse.ProfileAuthAccount: {Name: abuse.ProfileAuthAccount, Limit: limit, Window: time.Minute},
