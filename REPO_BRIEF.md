@@ -49,6 +49,7 @@ ScriptureForgeAI is a multi-tenant Bible study platform with authenticated works
 - `internal/`, `cmd/platform-engine/`, `pkg/crypto_utils/`
 - `web/`, `mobile/`, `services/scripture-engine/`
 - `migrations/`, `build/terraform/`, `docs/sub_roadmaps/`, `production-readiness/`, `tools/`
+- `CHANGELOG.md` records durable implementation history and keeps local code evidence separate from staging proof.
 
 ## Data / Auth / External Notes
 

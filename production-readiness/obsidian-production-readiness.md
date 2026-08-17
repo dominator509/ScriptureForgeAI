@@ -416,6 +416,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
   - [x] **Mandatory Phase Sub-Roadmap Artifact Gate**: `docs/sub_roadmaps/PHASE_01_SUB_ROADMAP.md` through `PHASE_06_SUB_ROADMAP.md` map the original phase tasks to local evidence and external blockers; `tools/validate-roadmap-artifacts.mjs` runs in local gates and CI.
 - [x] **Obsidian/Serena Drift Gate**: `SF-architecture.md` and `SF-roadmap.md` now include production-aligned stack versions and full `/api/v1` route coverage.
 - [x] **Serena/Obsidian Pre-Merge Gate**: ensure every new implementation file and route change is mirrored in both `SF-roadmap.md` and `SF-architecture.md` before merge.
+- [x] **Centralized Change History Guard**: `CHANGELOG.md` records repository implementation milestones and explicitly separates local/hosted CI evidence from environment-owned staging and deployment proof.
 
 ## Serena-Enabled Work Tracking
 

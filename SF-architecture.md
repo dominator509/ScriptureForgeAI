@@ -1,4 +1,4 @@
-# ARCHITECTURE.md
+# ScriptureForgeAI Architecture
 
 > Implementation note, 2026-06-26: remediation is targeting the repo-current stack (`go.mod` toolchain Go 1.24.3, `web/package.json` Next.js 16.2.12, React 19.2.3) while preserving the architecture's `/api/v1/*` public route direction. Older version targets in this document remain aspirational until a dedicated upgrade PR changes the manifests.
 
@@ -688,4 +688,4 @@ resource "aws_rds_cluster" "storage_backend_postgres" {
 *   **RULE 3:** Always inspect existing files, data structures, and service interfaces for context before modifying or generating new code elements to prevent code duplication or design divergence.
 *   **RULE 4:** Never hard-code production secrets, security certificates, encryption keys, or tenant context parameters. Configuration values must resolve from secure environment injection points.
 *   **RULE 5:** Ensure all automated commits represent small atomic blocks of functionality, pass all local integration testing checks, and do not introduce database version regressions.
-*   **RULE 6:** Maintain this `ARCHITECTURE.md` file as the ultimate source of truth for the codebase, updating structural specifications immediately whenever authorized scope shifts occur.
+*   **RULE 6:** Maintain this `SF-architecture.md` file as the ultimate source of truth for the codebase, updating structural specifications immediately whenever authorized scope shifts occur.
