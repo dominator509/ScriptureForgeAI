@@ -199,9 +199,21 @@ func (h *AuthHandler) enforceAuthCredentialLimit(w http.ResponseWriter, r *http.
 		return true
 	}
 	started := time.Now()
-	result, enforced := h.AccountLimiter.Check(abuse.ProfileAuthAccount, identity)
+	result, enforced, err := h.AccountLimiter.CheckContext(r.Context(), abuse.ProfileAuthAccount, identity)
 	if !enforced {
 		return true
+	}
+	if err != nil {
+		observeAuthLimiter(r.Context(), "unavailable", started)
+		writeAuthAccountLimitHeaders(w, result)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(auth.PlatformException{
+			Category: "ABUSE_LIMITER_UNAVAILABLE",
+			Message:  "authentication temporarily unavailable",
+			Code:     http.StatusServiceUnavailable,
+		})
+		return false
 	}
 	status := "allowed"
 	if !result.Allowed {

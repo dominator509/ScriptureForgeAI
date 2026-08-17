@@ -2,12 +2,16 @@ package abuse
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 
 	"scriptureforge/internal/domain/auth"
 	"scriptureforge/internal/domain/observability"
@@ -485,4 +489,90 @@ func requestWithClaims(userID, orgID string) *http.Request {
 		Role:           "member",
 	})
 	return request.WithContext(ctx)
+}
+
+func TestRedisLimiterSharesWindowsAcrossInstances(t *testing.T) {
+	server := miniredis.RunT(t)
+	clientOne := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	clientTwo := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() { _ = clientOne.Close() })
+	t.Cleanup(func() { _ = clientTwo.Close() })
+	policy := Policy{Profiles: map[string]Profile{
+		ProfileAuth: {Name: ProfileAuth, Limit: 2, Window: time.Minute},
+	}, MaxBuckets: 32}
+	one := NewRedisLimiter(policy, clientOne)
+	two := NewRedisLimiter(policy, clientTwo)
+
+	first, enforced, err := one.CheckContext(context.Background(), ProfileAuth, "ip:203.0.113.10")
+	if err != nil || !enforced || !first.Allowed {
+		t.Fatalf("first Redis decision = %+v enforced=%v err=%v, want allowed", first, enforced, err)
+	}
+	second, enforced, err := two.CheckContext(context.Background(), ProfileAuth, "ip:203.0.113.10")
+	if err != nil || !enforced || !second.Allowed || second.Remaining != 0 {
+		t.Fatalf("second Redis decision = %+v enforced=%v err=%v, want allowed with zero remaining", second, enforced, err)
+	}
+	third, enforced, err := one.CheckContext(context.Background(), ProfileAuth, "ip:203.0.113.10")
+	if err != nil || !enforced || third.Allowed || third.RetryAfter <= 0 {
+		t.Fatalf("third Redis decision = %+v enforced=%v err=%v, want shared-window denial", third, enforced, err)
+	}
+}
+
+func TestRedisLimiterCapsRemoteIdentitySprayWithOverflowBucket(t *testing.T) {
+	server := miniredis.RunT(t)
+	clientOne := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	clientTwo := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() { _ = clientOne.Close() })
+	t.Cleanup(func() { _ = clientTwo.Close() })
+	policy := Policy{Profiles: map[string]Profile{
+		ProfileAuth: {Name: ProfileAuth, Limit: 1, Window: time.Minute},
+	}, MaxBuckets: 1}
+	one := NewRedisLimiter(policy, clientOne)
+	two := NewRedisLimiter(policy, clientTwo)
+
+	first, _, err := one.CheckContext(context.Background(), ProfileAuth, "ip:203.0.113.11")
+	if err != nil || !first.Allowed {
+		t.Fatalf("first identity decision = %+v err=%v, want allowed", first, err)
+	}
+	second, _, err := two.CheckContext(context.Background(), ProfileAuth, "ip:203.0.113.12")
+	if err != nil || !second.Allowed {
+		t.Fatalf("first overflow decision = %+v err=%v, want allowed", second, err)
+	}
+	third, _, err := one.CheckContext(context.Background(), ProfileAuth, "ip:203.0.113.13")
+	if err != nil || third.Allowed {
+		t.Fatalf("second overflow decision = %+v err=%v, want shared overflow denial", third, err)
+	}
+}
+
+func TestRedisLimiterFailsClosedWhenBackendIsUnavailable(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+	server.Close()
+
+	limiter := NewRedisLimiter(Policy{Profiles: map[string]Profile{
+		ProfileAuth: {Name: ProfileAuth, Limit: 1, Window: time.Minute},
+	}}, client)
+	passed := false
+	handler := limiter.Middleware(ProfileAuth, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		passed = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
+	request.RemoteAddr = "203.0.113.20:49152"
+	handler.ServeHTTP(recorder, request)
+
+	if passed {
+		t.Fatal("request reached handler while Redis limiter backend was unavailable")
+	}
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("unavailable Redis limiter status = %d, want 503", recorder.Code)
+	}
+	var response rateLimitError
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatalf("decode unavailable Redis limiter response: %v", err)
+	}
+	if response.Category != "ABUSE_LIMITER_UNAVAILABLE" {
+		t.Fatalf("unavailable Redis limiter category = %q, want ABUSE_LIMITER_UNAVAILABLE", response.Category)
+	}
 }

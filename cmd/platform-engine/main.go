@@ -464,7 +464,7 @@ func setupRoutesWithTimeout(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisCli
 
 func setupRoutesWithLifecycle(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisClient *redis.Client, apiRequestTimeout time.Duration, lifecycle *serverLifecycle) http.Handler {
 	mux := http.ServeMux{}
-	abuseLimiter := abuse.NewDefaultLimiter()
+	abuseLimiter := abuse.NewDefaultRedisLimiter(redisClient)
 	observer := observability.NewDefaultObserver()
 	mux.HandleFunc("/live", liveHandler)
 	mux.HandleFunc("/ready", readyHandlerWithLifecycle(dbpool, redisClient, vectorDB, lifecycle))
