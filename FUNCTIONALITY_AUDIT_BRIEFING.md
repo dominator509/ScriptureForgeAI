@@ -887,6 +887,8 @@ Status last updated: 2026-08-16
 
 2026-08-16 MFA enrollment lifecycle hardening: privileged enrollment now stages the TOTP seed with `mfa_enabled=false`, returns it with no-store cache headers, and lets `/api/v1/auth/mfa/verify` activate the factor only after a valid code. Re-enrollment is rejected once a factor is active. Postgres-backed integration coverage proves the staged and activated states, wrong-code denial, cache policy, and active-factor replacement denial; deployed MFA/rate-limit observation remains pending under the existing auth/session closure evidence.
 
+2026-08-16 mobile journal load-flow hardening: the mobile journal container now lists the authenticated user's encrypted entries, fetches a selected ciphertext record through `GET /api/v1/journal_entries/{id}`, and decrypts it only in local memory using the server-provided salt ID/version. Identity changes clear prior entries, plaintext, passphrase, and key handles, while ordinary access-token rotation preserves the active user's local work. Mobile API smoke coverage proves encrypted list/save/load transport; native-device and staging browser/mobile evidence remain pending under `CLIENT-MOBILE-001` and the existing client smoke closure.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.

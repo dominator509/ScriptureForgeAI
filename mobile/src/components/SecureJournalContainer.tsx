@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import {
   createJournalCryptoKeyHandle,
+  decryptJournalData,
   deriveIsolationKey,
   disposeJournalCryptoKey,
   encryptJournalData,
@@ -10,7 +11,14 @@ import {
   journalAssociatedData,
   JournalCryptoKeyHandle,
 } from '../lib/crypto';
-import { getJournalBootstrap, JournalBootstrap, saveJournalEntry } from '../lib/api';
+import {
+  EncryptedJournalEntry,
+  getJournalBootstrap,
+  getJournalEntry,
+  JournalBootstrap,
+  listJournalEntries,
+  saveJournalEntry,
+} from '../lib/api';
 import { useAppStore } from '../lib/store';
 
 export const SecureJournalContainer: React.FC = () => {
@@ -19,24 +27,48 @@ export const SecureJournalContainer: React.FC = () => {
   const [status, setStatus] = useState('Awaiting passphrase');
   const [keyHandle, setKeyHandle] = useState<JournalCryptoKeyHandle | null>(null);
   const [journalBootstrap, setJournalBootstrap] = useState<JournalBootstrap | null>(null);
+  const [entries, setEntries] = useState<EncryptedJournalEntry[]>([]);
   const preserveDerivedHandleOnPassphraseClear = useRef(false);
   const session = useAppStore((state) => state.session);
 
   useEffect(() => {
+    let isMounted = true;
+    preserveDerivedHandleOnPassphraseClear.current = false;
+    setJournalBootstrap(null);
+    setEntries([]);
+    setPlaintext('');
+    setPassphrase('');
+    setKeyHandle(previous => {
+      disposeJournalCryptoKey(previous);
+      return null;
+    });
+
     if (!session) {
-      setJournalBootstrap(null);
-      setPlaintext('');
-      setPassphrase('');
-      setKeyHandle(previous => {
-        disposeJournalCryptoKey(previous);
-        return null;
-      });
-      return;
+      return () => {
+        isMounted = false;
+      };
     }
-    getJournalBootstrap(session.token)
-      .then(setJournalBootstrap)
-      .catch(() => setJournalBootstrap(null));
-  }, [session]);
+
+    const accessToken = session.token;
+    getJournalBootstrap(accessToken)
+      .then((bootstrap) => {
+        if (isMounted) setJournalBootstrap(bootstrap);
+      })
+      .catch(() => {
+        if (isMounted) setJournalBootstrap(null);
+      });
+    listJournalEntries(accessToken)
+      .then((nextEntries) => {
+        if (isMounted) setEntries(nextEntries);
+      })
+      .catch(() => {
+        if (isMounted) setEntries([]);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [session?.user_id, session?.organization_id]);
 
   useEffect(() => {
     let isMounted = true;
@@ -108,9 +140,39 @@ export const SecureJournalContainer: React.FC = () => {
         getJournalCryptoKey(keyHandle),
         journalAssociatedData(journalBootstrap.salt_id, journalBootstrap.salt_version),
       );
-      await saveJournalEntry(session.token, { ...encrypted, salt_id: journalBootstrap.salt_id, salt_version: journalBootstrap.salt_version });
+      const saved = await saveJournalEntry(session.token, {
+        ...encrypted,
+        salt_id: journalBootstrap.salt_id,
+        salt_version: journalBootstrap.salt_version,
+      });
+      setEntries((current) => [saved, ...current.filter((entry) => entry.id !== saved.id)]);
       setPlaintext('');
       setStatus(`Saved securely! IV: ${encrypted.iv.substring(0, 10)}...`);
+    }
+  };
+
+  const handleLoad = async (entry: EncryptedJournalEntry) => {
+    if (!session) {
+      setStatus('Sign in before loading encrypted journal entries.');
+      return;
+    }
+    if (!keyHandle) {
+      setStatus('Enter your passphrase before loading an entry.');
+      return;
+    }
+
+    try {
+      const stored = await getJournalEntry(session.token, entry.id);
+      const associatedData = journalAssociatedData(stored.salt_id, stored.salt_version);
+      const decodedText = await decryptJournalData(
+        stored,
+        getJournalCryptoKey(keyHandle),
+        associatedData,
+      );
+      setPlaintext(decodedText);
+      setStatus('Loaded and decrypted locally.');
+    } catch {
+      setStatus('Decryption failed. Invalid key or corrupted data.');
     }
   };
 
@@ -146,6 +208,22 @@ export const SecureJournalContainer: React.FC = () => {
       >
         <Text style={styles.buttonText}>Encrypt & Save</Text>
       </TouchableOpacity>
+
+      {entries.length > 0 && (
+        <View style={styles.entries}>
+          <Text style={styles.entriesTitle}>Saved encrypted entries</Text>
+          {entries.map((entry) => (
+            <TouchableOpacity
+              key={entry.id}
+              style={styles.entry}
+              onPress={() => void handleLoad(entry)}
+            >
+              <Text style={styles.entryText}>{entry.id}</Text>
+              <Text style={styles.entryAction}>Load & decrypt</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
     </View>
   );
 };
@@ -159,5 +237,10 @@ const styles = StyleSheet.create({
   status: { fontSize: 12, color: '#2563EB', marginBottom: 16 },
   button: { backgroundColor: '#4F46E5', padding: 12, borderRadius: 6, alignItems: 'center' },
   disabled: { opacity: 0.5 },
-  buttonText: { color: '#fff', fontWeight: 'bold' }
+  buttonText: { color: '#fff', fontWeight: 'bold' },
+  entries: { marginTop: 16, gap: 8 },
+  entriesTitle: { fontSize: 14, fontWeight: '700', color: '#111827' },
+  entry: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 6, padding: 10 },
+  entryText: { color: '#374151', fontSize: 12 },
+  entryAction: { color: '#2563EB', fontSize: 12, marginTop: 4 }
 });
