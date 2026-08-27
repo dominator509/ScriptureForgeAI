@@ -5,7 +5,7 @@ title: ScriptureForgeAI Production Readiness
 type: dashboard
 status: active
 owner: "team"
-updated: 2026-08-17
+updated: 2026-08-27
 tags:
   - production-readiness
   - serena
@@ -33,7 +33,8 @@ Use this note as a lightweight tracker for unresolved external blockers and loca
 Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 
 - [ ] **F-AUD External Evidence Closure**: close `production-readiness/staging-evidence.staging.json` blockers with deployed artifacts.
-- [x] **Exact-Release CI Gate**: GitHub Actions run `32001756732` completed successfully for `610efd0e50cb1f949e4a0cff2f8a66e5bbb83eab`; the release artifact passed `tools/ciprobe` with clean source-control and required-gate markers.
+- [x] **Historical Exact-Release CI Gate**: GitHub Actions run `32001756732` completed successfully for `610efd0e50cb1f949e4a0cff2f8a66e5bbb83eab`; the release artifact passed `tools/ciprobe` with clean source-control and required-gate markers.
+- [ ] **Current Exact-Release CI Gate**: GitHub Actions runs `33066720997` (push) and `33066729082` (pull request) for `9a3d90ba6e3c25b72fdfc32e9f243674c05d7727` failed before workflow steps started (`runner_id=0`, `steps=[]`); external Actions account/runner remediation is required before current hosted CI evidence can support readiness.
 - [x] **Security Boundary Hardening Gate**: refresh-token family containment, current-MFA assurance, strict AI RBAC/citation grammar, exact AI provider-host allowlisting, trusted-proxy peer CIDR enforcement, Zoom idempotency/URL validation and Redis-backed webhook dedupe, journal identity cleanup, WebSocket event/byte budgets, Rust tenant-transaction vector search, immutable CI inputs, and API/Rust SecretProviderClass separation are covered by focused validation. Live staging evidence and controlled legacy-data migration remain external.
 - [ ] **CI Release Evidence Manifest Ingestion**: record the uploaded HTTPS `ci-release-evidence` artifact URL and passing `tools/ciprobe` report in the environment-specific staging manifest.
 - [ ] **Terraform Live Validation**: capture real `plan/apply` + TLS/ingress/secret/IRSA proofs against staging.
@@ -156,7 +157,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Final Git Remote Freshness Guard**: `tools/verify-production-readiness.mjs` runs `git fetch --dry-run` before reading current status, so ahead/behind checks depend on freshly reachable upstream metadata rather than stale local tracking refs.
 - [x] **Local Gate Remote Freshness Guard**: `tools/run-local-gates.mjs` now records `git_remote_refreshed=true` only after `git fetch --dry-run` succeeds, and `tools/validate-local-gate-report.mjs` rejects reports missing that marker before they can support final readiness.
 - [x] **Final Local Gate Freshness Guard**: `tools/verify-production-readiness.mjs` rejects same-SHA local gate reports older than 24 hours at production-readiness verification time, so stale clean reports cannot support a current production-ready claim.
-- [x] **Current Non-Dry Local Gate Run**: `node tools/run-local-gates.mjs` completed on 2026-08-17T06:38:22Z with 34/34 gates run, 0 failed, `dry_run=false`, `git_head=610efd0e50cb1f949e4a0cff2f8a66e5bbb83eab`, `git_status_clean=true`, `git_ahead=0`, and `git_behind=0`; staging evidence remains separate.
+- [x] **Current Non-Dry Local Gate Run**: `node tools/run-local-gates.mjs` completed on 2026-08-27T11:33:46Z with 34/34 gates run, 0 failed, `dry_run=false`, `git_head=9a3d90ba6e3c25b72fdfc32e9f243674c05d7727`, `git_status_clean=true`, `git_ahead=0`, `git_behind=0`, and `git_remote_refreshed=true`; staging evidence remains separate.
 - [x] **Final Failure Diagnostics Guard**: failed `tools/verify-production-readiness.mjs` runs now print staging evidence blocker IDs, status counts, strict staging PATH status, and strict release readiness status even when the first hard failure is local evidence such as a dirty local-gate report.
 - [x] **Final Claim Gap Report Guard**: `tools/verify-production-readiness.mjs` now loads the staging evidence contract, runs the same gap-summary engine used by Obsidian, and rejects production-readiness claims unless `strict_release_ready=true` with no pending, contract-drift, stale-release, strict-PATH, or accepted-risk blockers.
 - [x] **Final Claim Zero-Waiver Guard**: `tools/verify-production-readiness.mjs` now rejects final production-readiness claims when any manifest item remains in `accepted_risk`, so 100% readiness requires closing or replacing accepted risks with passed signoff evidence; the current mobile DRR-002 finding remains an explicit blocker.
