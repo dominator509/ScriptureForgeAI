@@ -3,6 +3,9 @@ import { readFile } from 'node:fs/promises';
 
 const terraformDir = new URL('../build/terraform/', import.meta.url);
 const platformEngineMain = new URL('../cmd/platform-engine/main.go', import.meta.url);
+const apiDockerfile = new URL('../services/platform-engine/Dockerfile', import.meta.url);
+const rustDockerfile = new URL('../services/scripture-engine/Dockerfile', import.meta.url);
+const webDockerfile = new URL('../web/Dockerfile', import.meta.url);
 
 export const deploymentSkeletonProofMarkers = [
   'remote_state_backend=true',
@@ -20,6 +23,7 @@ export const deploymentSkeletonProofMarkers = [
   'immutable_workload_image_digests=true',
   'customer_managed_storage_kms=true',
   'staging_input_placeholders_rejected=true',
+  'container_build_definitions=true',
 ];
 
 async function readTerraform(name) {
@@ -35,7 +39,12 @@ const [app, service, variables, iam, versions, tfvarsExample, backendExample] = 
   readTerraform('terraform.tfvars.example'),
   readTerraform('backend.hcl.example'),
 ]);
-const platformMain = await readFile(platformEngineMain, 'utf8');
+const [platformMain, apiContainer, rustContainer, webContainer] = await Promise.all([
+  readFile(platformEngineMain, 'utf8'),
+  readFile(apiDockerfile, 'utf8'),
+  readFile(rustDockerfile, 'utf8'),
+  readFile(webDockerfile, 'utf8'),
+]);
 
 function requireIncludes(source, snippets, label) {
   for (const snippet of snippets) {
@@ -71,6 +80,52 @@ export function validatePlatformRuntimeConfig(platformMain) {
   assert.ok(
     /default:\s*\n\s*return true/.test(platformMain),
     'platform engine must fail closed for unknown deployment environments',
+  );
+}
+
+export function validateContainerBuildDefinitions(apiContainer, rustContainer, webContainer) {
+  requireIncludes(
+    apiContainer,
+    [
+      'FROM golang:1.24.3-bookworm AS build',
+      'COPY go.mod go.sum ./',
+      'COPY cmd ./cmd',
+      'COPY internal ./internal',
+      'go build -trimpath',
+      './cmd/platform-engine',
+      'USER nonroot:nonroot',
+      'ENTRYPOINT ["/usr/local/bin/scriptureforge-api"]',
+    ],
+    'API container build',
+  );
+  assert.ok(!apiContainer.includes('state_wal.log'), 'API container must not package the legacy in-memory WAL service');
+  assert.ok(!apiContainer.includes('sleep infinity'), 'API container must not use a placeholder sleep entrypoint');
+
+  requireIncludes(
+    rustContainer,
+    [
+      'FROM rust:1.97-bookworm AS build',
+      'COPY proto ./proto',
+      'cargo build --release --locked',
+      'EXPOSE 50051 9102',
+      'USER scriptureforge',
+      'ENTRYPOINT ["/usr/local/bin/scriptureforge-engine"]',
+    ],
+    'Rust container build',
+  );
+  assert.ok(!rustContainer.includes('sleep infinity'), 'Rust container must not use a placeholder sleep entrypoint');
+
+  requireIncludes(
+    webContainer,
+    [
+      'COPY web/package.json web/package-lock.json ./web/',
+      'npm ci --prefix web',
+      'npm run build --prefix web',
+      'npm ci --omit=dev',
+      'USER node',
+      'CMD ["npm", "run", "start"]',
+    ],
+    'web container build',
   );
 }
 
@@ -450,5 +505,6 @@ validateTerraformReleaseInputGuards(variables);
 assert.ok(!tfvarsExample.includes('skip_final_snapshot = true'), 'tfvars example must not preserve production-hostile snapshot defaults');
 
 validatePlatformRuntimeConfig(platformMain);
+validateContainerBuildDefinitions(apiContainer, rustContainer, webContainer);
 
 console.log(`deployment skeleton and runtime config invariants validated: ${deploymentSkeletonProofMarkers.join(', ')}`);

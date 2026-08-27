@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
+  validateContainerBuildDefinitions,
   validateTerraformImageDigestInputs,
   validatePlatformRuntimeConfig,
   validateTerraformReleaseInputGuards,
@@ -42,6 +43,26 @@ test('validatePlatformRuntimeConfig rejects missing local fallback marker', asyn
   assert.throws(
     () => validatePlatformRuntimeConfig(broken),
     /localhost:50051/,
+  );
+});
+
+test('validateContainerBuildDefinitions accepts production workload Dockerfiles', async () => {
+  const [api, rust, web] = await Promise.all([
+    readFile('services/platform-engine/Dockerfile', 'utf8'),
+    readFile('services/scripture-engine/Dockerfile', 'utf8'),
+    readFile('web/Dockerfile', 'utf8'),
+  ]);
+  assert.doesNotThrow(() => validateContainerBuildDefinitions(api, rust, web));
+});
+
+test('validateContainerBuildDefinitions rejects placeholder workload entrypoints', () => {
+  assert.throws(
+    () => validateContainerBuildDefinitions(
+      'FROM golang:1.24.3-bookworm AS build\nCOPY go.mod go.sum ./\nCOPY cmd ./cmd\nCOPY internal ./internal\ngo build -trimpath ./cmd/platform-engine\nUSER nonroot:nonroot\nENTRYPOINT ["/usr/local/bin/scriptureforge-api"]\nsleep infinity',
+      'FROM rust:1.97-bookworm AS build\nCOPY proto ./proto\ncargo build --release --locked\nEXPOSE 50051 9102\nUSER scriptureforge\nENTRYPOINT ["/usr/local/bin/scriptureforge-engine"]\nsleep infinity',
+      'COPY web/package.json web/package-lock.json ./web/\nnpm ci --prefix web\nnpm run build --prefix web\nnpm ci --omit=dev\nUSER node\nCMD ["npm", "run", "start"]',
+    ),
+    /must not use a placeholder sleep entrypoint/,
   );
 });
 

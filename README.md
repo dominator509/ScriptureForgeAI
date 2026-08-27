@@ -52,6 +52,16 @@ DEPLOYMENT_ENVIRONMENT=staging
 
 The Terraform skeleton maps the same production values through `service_version`, `otel_exporter_otlp_endpoint`, and `otel_exporter_otlp_insecure` so the API deployment can emit traces once a collector is available.
 
+Container images are built from the repository root so each workload uses the current implementation rather than legacy mock scaffolding:
+
+```bash
+rtk docker build -f services/platform-engine/Dockerfile -t scriptureforge-api:local .
+rtk docker build -f web/Dockerfile -t scriptureforge-web:local .
+rtk docker build -f services/scripture-engine/Dockerfile -t scriptureforge-rust-engine:local .
+```
+
+The Terraform deployment still requires the resulting ECR image digests as immutable `api_image`, `web_image`, and `rust_engine_image` inputs; local builds do not constitute staging deployment evidence.
+
 The Rust scripture engine emits JSON startup/request/error logs, extracts W3C `traceparent` metadata from gRPC requests into `trace_id` log fields, exposes Prometheus text metrics on `RUST_ENGINE_METRICS_ADDRESS` defaulting to `0.0.0.0:9102`, and receives `OTEL_SERVICE_NAME`, `SERVICE_VERSION`, `DEPLOYMENT_ENVIRONMENT`, and `OTEL_EXPORTER_OTLP_ENDPOINT` through Terraform. In staging/production, the Rust gRPC listener requires server TLS plus client certificates and a `GRPC_ENGINE_SHARED_SECRET`; the Go client sends the verified organization ID as `x-scriptureforge-organization-id`. This is baseline Rust gRPC observability and log/metric correlation, not proof that a deployed OTLP collector is receiving Rust spans.
 
 Runtime secrets are modeled through AWS Secrets Manager ARNs in `app_secret_arns`. The skeleton uses IRSA plus the Secrets Store CSI driver to sync `DATABASE_URL`, distinct high-entropy `JWT_SECRET_KEY` and `JOURNAL_SALT_SECRET` values, `OPENAI_API_KEY`, Zoom credential variables, `GRPC_ENGINE_SHARED_SECRET`, and the JSON `GRPC_ENGINE_TLS_*` certificate material into API/Rust pods without committing plaintext secret values. The `database_url` secret should point at an application database user, not the RDS root user. Staging/production startup rejects missing, weak, or reused JWT/journal secrets. A staging cluster must already have the Secrets Store CSI driver and AWS provider installed before apply.
@@ -60,7 +70,7 @@ Zoom API calls use a bounded HTTP client, retry transient `429`/`5xx` responses,
 
 `tools/validate-rls-schema.mjs` verifies the migration still forces RLS on every tenant-scoped table, keeps `app.current_org_id` USING/WITH CHECK policies, retains matching table-level same-tenant read, cross-tenant read-denial, cross-tenant write-denial, plus handler-level RLS proof markers, and rejects production room/socket route wiring that bypasses DB-backed membership checks. It is a local schema drift guard, not deployed database proof.
 
-`tools/validate-deployment-skeleton.mjs` verifies the local Terraform skeleton keeps the expected remote state, TLS ingress, IRSA/Secrets Store CSI, runtime secret references, health/readiness probes, Rust gRPC probe, API-to-Rust gRPC address injection, production-like Go runtime config fail-closed behavior, OTLP env wiring, resource request/limit controls, pod disruption budgets, topology spread constraints, horizontal pod autoscalers, and web/API image/config boundaries. It is a drift guard for the skeleton and runtime config shape, not live AWS deployment proof.
+`tools/validate-deployment-skeleton.mjs` verifies the local Terraform skeleton keeps the expected remote state, TLS ingress, IRSA/Secrets Store CSI, runtime secret references, health/readiness probes, Rust gRPC probe, API-to-Rust gRPC address injection, production-like Go runtime config fail-closed behavior, OTLP env wiring, resource request/limit controls, pod disruption budgets, topology spread constraints, horizontal pod autoscalers, web/API image/config boundaries, and production API/web/Rust container build definitions. It is a drift guard for the skeleton and runtime config shape, not live AWS deployment proof.
 
 The Aurora PostgreSQL skeleton enables encrypted storage, deletion protection, PostgreSQL log export, tag copying to snapshots, automated backup retention, explicit backup/maintenance windows, and a named final snapshot. API, Rust, and web deployments retain rollout history and use explicit rolling updates with zero unavailable pods. Production readiness still requires a staging backup/restore drill and rollback exercise.
 
