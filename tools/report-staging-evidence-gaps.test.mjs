@@ -9,6 +9,10 @@ import {
 } from './report-staging-evidence-gaps.mjs';
 import { requiredIds } from './validate-staging-evidence.mjs';
 
+const testToday = new Date();
+const testReviewDueAt = futureDate(30);
+const testExpiresAt = futureDate(60);
+
 test('parseArgs supports manifest and output format', () => {
   const args = parseArgs([
     '--manifest',
@@ -106,6 +110,9 @@ test('summarizeGaps rejects overdue signoff accepted risk instead of hiding it',
   const manifest = baseManifest({
     statusFor: (id) => id === 'SEC-SIGNOFF-001' ? 'accepted_risk' : 'passed',
   });
+  const signoff = manifest.items.find((item) => item.id === 'SEC-SIGNOFF-001');
+  signoff.review_due_at = '2026-08-26';
+  signoff.expires_at = '2026-09-26';
 
   assert.throws(
     () => summarizeGaps(manifest, { today: '2026-08-27' }),
@@ -143,8 +150,8 @@ test('summarizeGaps treats non-signoff accepted risk as strict release blocker',
   assert.equal(summary.blocking_items[0].decision_ref, 'security/decision.md#DEPLOY-TF-001');
   assert.equal(summary.blocking_items[0].owner, 'release-owner');
   assert.equal(summary.blocking_items[0].accepted_by, 'security-lead');
-  assert.equal(summary.blocking_items[0].review_due_at, '2026-08-26');
-  assert.equal(summary.blocking_items[0].expires_at, '2026-09-26');
+  assert.equal(summary.blocking_items[0].review_due_at, testReviewDueAt);
+  assert.equal(summary.blocking_items[0].expires_at, testExpiresAt);
 });
 
 test('formatText prints counts and evidence checklist', () => {
@@ -198,8 +205,8 @@ test('formatText and formatObsidian include accepted-risk ownership details', ()
     assert.match(output, /decision_ref: security\/decision\.md#DEPLOY-TF-001/);
     assert.match(output, /owner: release-owner/);
     assert.match(output, /accepted_by: security-lead/);
-    assert.match(output, /review_due_at: 2026-08-26/);
-    assert.match(output, /expires_at: 2026-09-26/);
+    assert.match(output, new RegExp(`review_due_at: ${testReviewDueAt}`));
+    assert.match(output, new RegExp(`expires_at: ${testExpiresAt}`));
   }
 });
 
@@ -355,9 +362,15 @@ function buildItem(id, status) {
       : `security/decision.md#${id}`;
     item.owner = 'release-owner';
     item.accepted_by = 'security-lead';
-    item.review_due_at = '2026-08-26';
-    item.expires_at = '2026-09-26';
+    item.review_due_at = testReviewDueAt;
+    item.expires_at = testExpiresAt;
   }
 
   return item;
+}
+
+function futureDate(days) {
+  const date = new Date(testToday);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
 }

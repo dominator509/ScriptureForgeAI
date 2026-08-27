@@ -4,6 +4,10 @@ import test from 'node:test';
 import { parseArgs, recordEvidence, recordManualEvidence, recordStatus, summarizeProbeReport } from './record-staging-evidence.mjs';
 import { ciReleaseEvidenceProofMarkers } from './write-ci-release-evidence.mjs';
 
+const testToday = new Date();
+const testReviewDueAt = futureDate(30);
+const testExpiresAt = futureDate(60);
+
 function securitySignoffSummary(releaseCandidate) {
   return `threat model approval complete; security/dependency_risk_register.md#DRR-001 dependency risk decision reviewed; residual risk review complete; owner/security approval recorded; release risk signoff approved; signoff_artifact_verified=true; release_candidate=${releaseCandidate}`;
 }
@@ -11723,8 +11727,8 @@ test('recordStatus records accepted risk decisions', () => {
     decisionRef: 'security/dependency_risk_register.md#DRR-001',
     owner: 'security',
     acceptedBy: 'release-owner',
-    reviewDueAt: '2026-08-26',
-    expiresAt: '2026-09-26',
+    reviewDueAt: testReviewDueAt,
+    expiresAt: testExpiresAt,
   });
 
   const item = manifest.items[0];
@@ -11732,8 +11736,8 @@ test('recordStatus records accepted risk decisions', () => {
   assert.equal(item.decision_ref, 'security/dependency_risk_register.md#DRR-001');
   assert.equal(item.owner, 'security');
   assert.equal(item.accepted_by, 'release-owner');
-  assert.equal(item.review_due_at, '2026-08-26');
-  assert.equal(item.expires_at, '2026-09-26');
+  assert.equal(item.review_due_at, testReviewDueAt);
+  assert.equal(item.expires_at, testExpiresAt);
   assert.equal(item.blocker, undefined);
 });
 
@@ -11839,3 +11843,9 @@ test('recordStatus rejects incomplete status details', () => {
     /requires currentDate as YYYY-MM-DD/,
   );
 });
+
+function futureDate(days) {
+  const date = new Date(testToday);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}

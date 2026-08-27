@@ -165,7 +165,7 @@ for (const requiredLifecycleSnippet of [
   }
 }
 
-const deriveFunctionMatch = source.match(/export async function deriveIsolationKey[\s\S]*?\n}\n/);
+const deriveFunctionMatch = source.match(/export async function deriveIsolationKey[\s\S]*?\r?\n}\r?\n/);
 if (!deriveFunctionMatch) {
   throw new Error('mobile journal crypto missing deriveIsolationKey implementation');
 }
@@ -179,7 +179,7 @@ if (
   throw new Error('mobile journal crypto must wipe passphrase and salt bytes even when importKey fails');
 }
 
-const webDeriveFunctionMatch = webCryptoSource.match(/export async function deriveIsolationKey[\s\S]*?\n}\n/);
+const webDeriveFunctionMatch = webCryptoSource.match(/export async function deriveIsolationKey[\s\S]*?\r?\n}\r?\n/);
 if (!webDeriveFunctionMatch) {
   throw new Error('web journal crypto missing deriveIsolationKey implementation');
 }

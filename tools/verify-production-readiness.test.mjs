@@ -47,6 +47,9 @@ import {
 
 const sha = '0123456789abcdef0123456789abcdef01234567';
 process.env.PRODUCTION_READINESS_VALIDATION_NOW = '2026-06-26T01:00:00Z';
+const testToday = new Date();
+const testReviewDueAt = futureDate(30);
+const testExpiresAt = futureDate(60);
 
 test('parseArgs supports manifest, contract, and cwd', () => {
   const args = parseArgs(['--manifest', 'manifest.json', '--contract-manifest', 'contract.json', '--local-gate-report', 'local-gates.json', '--obsidian-note', 'obsidian.md', '--cwd', 'repo']);
@@ -181,8 +184,8 @@ test('verifyProductionReadiness rejects accepted-risk waivers for final claims',
     signoff.decision_ref = 'security/dependency_risk_register.md#DRR-001';
     signoff.owner = 'security';
     signoff.accepted_by = 'release-owner';
-    signoff.review_due_at = '2026-08-26';
-    signoff.expires_at = '2026-09-26';
+    signoff.review_due_at = testReviewDueAt;
+    signoff.expires_at = testExpiresAt;
     const { manifestPath, localGateReportPath, contractManifestPath, obsidianNotePath } = await writeReadinessInputs(dir, { manifest });
 
     await assert.rejects(
@@ -703,6 +706,12 @@ async function writeReadinessInputs(dir, { manifest = strictManifest(sha), local
     pathReportBuilder: readyPathReportBuilder,
   });
   return { manifestPath, localGateReportPath, contractManifestPath, obsidianNotePath };
+}
+
+function futureDate(days) {
+  const date = new Date(testToday);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 function fakeGit({ status, head, fetchError = null }) {
   return (args) => {
