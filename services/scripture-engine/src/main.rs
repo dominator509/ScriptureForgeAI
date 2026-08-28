@@ -10,9 +10,10 @@ use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use tokio::time::timeout;
 use tonic::server::NamedService;
 use tonic::transport::{Certificate, Identity, Server, ServerTlsConfig};
 use tonic::{Request, Response, Status};
@@ -25,6 +26,9 @@ const MAX_BOOK_BYTES: usize = 128;
 const MAX_TEXT_CONTENT_BYTES: usize = 128 * 1024;
 const GRPC_AUTHORIZATION_HEADER: &str = "authorization";
 const GRPC_TENANT_HEADER: &str = "x-scriptureforge-organization-id";
+const DEFAULT_METRICS_READ_TIMEOUT: Duration = Duration::from_secs(5);
+const MIN_METRICS_READ_TIMEOUT: Duration = Duration::from_millis(100);
+const MAX_METRICS_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub mod scriptureforge {
     pub mod engine {
@@ -623,6 +627,21 @@ fn metrics_address() -> Result<SocketAddr, std::net::AddrParseError> {
         .parse()
 }
 
+fn metrics_read_timeout() -> Duration {
+    let configured = std::env::var("RUST_ENGINE_METRICS_READ_TIMEOUT_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(Duration::from_millis)
+        .unwrap_or(DEFAULT_METRICS_READ_TIMEOUT);
+    if configured < MIN_METRICS_READ_TIMEOUT {
+        return MIN_METRICS_READ_TIMEOUT;
+    }
+    if configured > MAX_METRICS_READ_TIMEOUT {
+        return MAX_METRICS_READ_TIMEOUT;
+    }
+    configured
+}
+
 fn scripture_engine_service_name() -> &'static str {
     <ScriptureEngineServer<MyScriptureEngine> as NamedService>::NAME
 }
@@ -749,16 +768,17 @@ async fn run_metrics_server(
         "rust_metrics_server_listening",
         &[("bind_address", addr.to_string())],
     );
+    let read_timeout = metrics_read_timeout();
 
     loop {
         let (mut stream, _) = listener.accept().await?;
         let metrics = Arc::clone(&metrics);
         tokio::spawn(async move {
             let mut buffer = [0_u8; 1024];
-            let request = match stream.read(&mut buffer).await {
-                Ok(size) => String::from_utf8_lossy(&buffer[..size]).to_string(),
-                Err(error) if error.kind() == ErrorKind::UnexpectedEof => String::new(),
-                Err(_) => return,
+            let request = match timeout(read_timeout, stream.read(&mut buffer)).await {
+                Ok(Ok(size)) => String::from_utf8_lossy(&buffer[..size]).to_string(),
+                Ok(Err(error)) if error.kind() == ErrorKind::UnexpectedEof => String::new(),
+                Ok(Err(_)) | Err(_) => return,
             };
             let response = metrics_response_for_request(&request, metrics.as_ref());
             let extra_headers = response
@@ -859,13 +879,16 @@ mod tests {
     };
     use super::{
         authorize_grpc_request, bind_address, extract_trace_id, grpc_shared_secret,
-        grpc_tls_config, json_escape, metrics_address, metrics_response_for_request,
-        observability_config, requires_grpc_security_for_environment, resolve_organization_id,
-        scripture_engine_service_name, traceparent_from_request, validate_database_url_transport,
-        validate_embed_text_request, validate_vector_search_request, AuthenticatedTenant,
-        RustEngineMetrics, EMBEDDING_DIMENSION, MAX_VECTOR_SEARCH_RESULTS,
+        grpc_tls_config, json_escape, metrics_address, metrics_read_timeout,
+        metrics_response_for_request, observability_config, requires_grpc_security_for_environment,
+        resolve_organization_id, scripture_engine_service_name, traceparent_from_request,
+        validate_database_url_transport, validate_embed_text_request,
+        validate_vector_search_request, AuthenticatedTenant, RustEngineMetrics,
+        DEFAULT_METRICS_READ_TIMEOUT, EMBEDDING_DIMENSION, MAX_METRICS_READ_TIMEOUT,
+        MAX_VECTOR_SEARCH_RESULTS, MIN_METRICS_READ_TIMEOUT,
     };
     use std::sync::atomic::Ordering;
+    use std::time::Duration;
     use tonic::Request;
 
     #[test]
@@ -1110,6 +1133,25 @@ mod tests {
         let addr = metrics_address().expect("default metrics address should parse");
 
         assert_eq!(addr.to_string(), "0.0.0.0:9102");
+    }
+
+    #[test]
+    fn metrics_read_timeout_is_bounded_and_configurable() {
+        std::env::remove_var("RUST_ENGINE_METRICS_READ_TIMEOUT_MS");
+        assert_eq!(metrics_read_timeout(), DEFAULT_METRICS_READ_TIMEOUT);
+
+        std::env::set_var("RUST_ENGINE_METRICS_READ_TIMEOUT_MS", "25");
+        assert_eq!(metrics_read_timeout(), MIN_METRICS_READ_TIMEOUT);
+
+        std::env::set_var("RUST_ENGINE_METRICS_READ_TIMEOUT_MS", "9000");
+        assert_eq!(metrics_read_timeout(), Duration::from_secs(9));
+
+        std::env::set_var("RUST_ENGINE_METRICS_READ_TIMEOUT_MS", "60000");
+        assert_eq!(metrics_read_timeout(), MAX_METRICS_READ_TIMEOUT);
+
+        std::env::set_var("RUST_ENGINE_METRICS_READ_TIMEOUT_MS", "invalid");
+        assert_eq!(metrics_read_timeout(), DEFAULT_METRICS_READ_TIMEOUT);
+        std::env::remove_var("RUST_ENGINE_METRICS_READ_TIMEOUT_MS");
     }
 
     #[test]

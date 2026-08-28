@@ -650,7 +650,7 @@ resource "aws_rds_cluster" "storage_backend_postgres" {
 
 ### 17.1 Telemetry Implementation Design
 *   **Distributed Trace Integration:** OpenTelemetry instrumentation spans intercept every business method execution path. Trace headers propagate across external service barriers via standard context mappings (`X-Trace-ID`), logging exact database durations, parsing latencies, and third-party call dependencies. Production observability evidence must use real 32-character non-zero lowercase hex OpenTelemetry trace IDs, not placeholder correlation strings.
-*   **Metric Instrumentation Profiles:** Core components expose diagnostic metrics to tracking systems at standard `/metrics` ports.
+*   **Metric Instrumentation Profiles:** Core components expose diagnostic metrics to tracking systems at standard `/metrics` ports. The Rust metrics listener bounds time to receive the first request bytes with `RUST_ENGINE_METRICS_READ_TIMEOUT_MS` (100ms-30s, 5s default) so idle or slow clients cannot hold connections indefinitely.
     *   `http_requests_total{status, route}`: Monitor active system traffic velocities.
     *   `websocket_active_connections_count`: Monitor synchronized system load levels.
     *   `ai_inference_duration_seconds{profile}`: Monitor real-time generative latency curves.

@@ -918,6 +918,8 @@ Status last updated: 2026-08-27
 
 2026-08-28 MFA verification abuse hardening: privileged `/api/v1/auth/mfa/verify` attempts now use a hashed organization/user identity in the distributed `auth_account` limiter in addition to the route limiter, so rotating client IPs cannot bypass the TOTP guess budget. Focused Go handler tests pass and prove the second attempt is rejected before database work without leaking tenant or user identifiers in metrics. This closes the local MFA verification brute-force gap; deployed limiter behavior and telemetry remain external.
 
+2026-08-28 Rust observability transport hardening: the Rust `/metrics` and `/healthz` listener now bounds the first request read with `RUST_ENGINE_METRICS_READ_TIMEOUT_MS`, clamped to 100ms-30s with a 5s default, so idle or slow clients cannot retain spawned tasks indefinitely. Rust tests pass; deployed listener and ingress behavior remain external.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.
