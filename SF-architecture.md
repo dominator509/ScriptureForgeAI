@@ -152,6 +152,7 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
 ### 6.5 Persistence & Data Layout Layer
 *   **Database:** **PostgreSQL 17+** with the **pgvector** module extension activated.
 *   **Caching & State Cache Engine:** **Redis 7.4+**
+*   **Database Transport Security:** Go and Rust require `DATABASE_URL` to use PostgreSQL `sslmode=require`, `verify-ca`, or `verify-full` in staging/production; local development may use the existing relaxed connection string behavior.
 *   **Justification:** PostgreSQL manages core entity mappings with rigorous transactional safety rules (ACID compliance) and row-level protection filters. `pgvector` drives our internal multi-dimensional semantic search and theological data tracking indexes. Redis stores ephemeral state models for active Live Rooms, orchestrates the pub/sub event distribution lines, and controls global API rate-limiting blocks. Production route wiring uses an atomic Redis fixed-window limiter shared across replicas, with bounded remote identity registration and a sanitized fail-closed `503` when Redis is unavailable; the process-local implementation is reserved for explicit nil-client local/test wiring. Auth login additionally applies a hashed account-scoped throttle derived from normalized organization ID plus email, so credential spraying cannot bypass controls by rotating client IPs and limiter metrics do not expose account identifiers.
 
 ---

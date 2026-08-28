@@ -912,6 +912,8 @@ Status last updated: 2026-08-27
 
 2026-08-27 workload image definition hardening: the legacy API Dockerfile now builds `cmd/platform-engine` with the current Go toolchain, the Rust Dockerfile now builds the real gRPC service with the shared protobuf input, and a production Next.js web Dockerfile plus root `.dockerignore` are present. `tools/validate-deployment-skeleton.mjs` and its regression tests now reject the obsolete in-memory API and placeholder sleep entrypoints. This closes the local workload-definition gap; Docker image build/push, immutable ECR digest capture, and staging rollout evidence remain external.
 
+2026-08-28 database transport hardening: Go and Rust startup now fail closed in staging/production unless `DATABASE_URL` parses as PostgreSQL with exactly one secure `sslmode` of `require`, `verify-ca`, or `verify-full`; local development keeps its existing relaxed URL behavior. Focused Go/Rust tests and the deployment validator cover the contract. This closes the local database-TLS configuration gap; live secret contents and deployed TLS negotiation remain external evidence.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.

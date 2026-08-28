@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   validateContainerBuildDefinitions,
+  validateDatabaseTransportConfig,
   validateTerraformImageDigestInputs,
   validatePlatformRuntimeConfig,
   validateTerraformReleaseInputGuards,
@@ -63,6 +64,27 @@ test('validateContainerBuildDefinitions rejects placeholder workload entrypoints
       'COPY web/package.json web/package-lock.json ./web/\nnpm ci --prefix web\nnpm run build --prefix web\nnpm ci --omit=dev\nUSER node\nCMD ["npm", "run", "start"]',
     ),
     /must not use a placeholder sleep entrypoint/,
+  );
+});
+
+test('validateDatabaseTransportConfig accepts strict Go and Rust TLS guards', async () => {
+  const [goSource, rustSource] = await Promise.all([
+    readFile('cmd/platform-engine/main.go', 'utf8'),
+    readFile('services/scripture-engine/src/main.rs', 'utf8'),
+  ]);
+  assert.doesNotThrow(() => validateDatabaseTransportConfig(goSource, rustSource));
+});
+
+test('validateDatabaseTransportConfig rejects removed strict TLS enforcement', async () => {
+  const [goSource, rustSource] = await Promise.all([
+    readFile('cmd/platform-engine/main.go', 'utf8'),
+    readFile('services/scripture-engine/src/main.rs', 'utf8'),
+  ]);
+  const brokenGo = goSource.replace('validateDatabaseURLTransport(dbURL, requiresConfiguredGRPCAddress())', '/* database transport guard removed */');
+  assert.notEqual(brokenGo, goSource, 'test fixture must remove the Go database transport guard marker');
+  assert.throws(
+    () => validateDatabaseTransportConfig(brokenGo, rustSource),
+    /Go database transport config missing validateDatabaseURLTransport/,
   );
 });
 

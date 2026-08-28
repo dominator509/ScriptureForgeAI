@@ -3,10 +3,11 @@ use scriptureforge::engine::scripture_engine_server::{ScriptureEngine, Scripture
 use scriptureforge::engine::{
     EmbedTextRequest, EmbedTextResponse, SearchResult, VectorSearchRequest, VectorSearchResponse,
 };
-use sqlx::postgres::PgPoolOptions;
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
 use sqlx::{Postgres, Row, Transaction};
 use std::io::ErrorKind;
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -415,6 +416,23 @@ fn grpc_tls_config() -> Result<Option<ServerTlsConfig>, Box<dyn std::error::Erro
     ))
 }
 
+fn validate_database_url_transport(
+    database_url: &str,
+    require_tls: bool,
+) -> Result<(), &'static str> {
+    if !require_tls {
+        return Ok(());
+    }
+
+    let options = PgConnectOptions::from_str(database_url).map_err(|_| {
+        "DATABASE_URL must be a valid PostgreSQL URL with TLS in staging/production"
+    })?;
+    match options.get_ssl_mode() {
+        PgSslMode::Require | PgSslMode::VerifyCa | PgSslMode::VerifyFull => Ok(()),
+        _ => Err("DATABASE_URL must set sslmode=require, verify-ca, or verify-full in staging/production"),
+    }
+}
+
 fn authorize_grpc_request(
     mut request: Request<()>,
     shared_secret: Option<&str>,
@@ -528,6 +546,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if database_url.trim().is_empty() {
         return Err("DATABASE_URL must not be empty".into());
     }
+    validate_database_url_transport(&database_url, requires_grpc_security())?;
 
     let db_pool = PgPoolOptions::new()
         .max_connections(5)
@@ -842,12 +861,36 @@ mod tests {
         authorize_grpc_request, bind_address, extract_trace_id, grpc_shared_secret,
         grpc_tls_config, json_escape, metrics_address, metrics_response_for_request,
         observability_config, requires_grpc_security_for_environment, resolve_organization_id,
-        scripture_engine_service_name, traceparent_from_request, validate_embed_text_request,
-        validate_vector_search_request, AuthenticatedTenant, RustEngineMetrics,
-        EMBEDDING_DIMENSION, MAX_VECTOR_SEARCH_RESULTS,
+        scripture_engine_service_name, traceparent_from_request, validate_database_url_transport,
+        validate_embed_text_request, validate_vector_search_request, AuthenticatedTenant,
+        RustEngineMetrics, EMBEDDING_DIMENSION, MAX_VECTOR_SEARCH_RESULTS,
     };
     use std::sync::atomic::Ordering;
     use tonic::Request;
+
+    #[test]
+    fn database_url_transport_requires_tls_only_in_strict_environments() {
+        for database_url in [
+            "postgres://user:password@db.example/scriptureforge?sslmode=require",
+            "postgresql://user:password@db.example/scriptureforge?sslmode=verify-ca",
+            "postgres://user:password@db.example/scriptureforge?sslmode=verify-full",
+        ] {
+            assert!(validate_database_url_transport(database_url, true).is_ok());
+        }
+
+        for database_url in [
+            "postgres://user:password@db.example/scriptureforge",
+            "postgres://user:password@db.example/scriptureforge?sslmode=disable",
+            "postgres://user:password@db.example/scriptureforge?sslmode=prefer",
+            "not-a-url",
+        ] {
+            assert!(validate_database_url_transport(database_url, true).is_err());
+        }
+        assert!(
+            validate_database_url_transport("postgres://local.example/scriptureforge", false)
+                .is_ok()
+        );
+    }
 
     #[test]
     fn generated_protobuf_types_compile_and_round_trip() {

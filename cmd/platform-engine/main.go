@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -120,6 +121,13 @@ func loadConfig() (*Config, *PlatformException) {
 		return nil, &PlatformException{
 			Category: ConfigurationFault,
 			Message:  "DATABASE_URL environment variable is missing",
+			Code:     500,
+		}
+	}
+	if err := validateDatabaseURLTransport(dbURL, requiresConfiguredGRPCAddress()); err != nil {
+		return nil, &PlatformException{
+			Category: ConfigurationFault,
+			Message:  err.Error(),
 			Code:     500,
 		}
 	}
@@ -470,6 +478,27 @@ func requiresConfiguredGRPCAddressForEnvironment(environment string) bool {
 		return false
 	default:
 		return true
+	}
+}
+
+func validateDatabaseURLTransport(rawURL string, requireTLS bool) error {
+	if !requireTLS {
+		return nil
+	}
+
+	parsed, err := url.Parse(rawURL)
+	if err != nil || (parsed.Scheme != "postgres" && parsed.Scheme != "postgresql") {
+		return fmt.Errorf("DATABASE_URL must be a valid PostgreSQL URL with TLS in staging/production")
+	}
+	values := parsed.Query()["sslmode"]
+	if len(values) != 1 {
+		return fmt.Errorf("DATABASE_URL must set sslmode=require, verify-ca, or verify-full in staging/production")
+	}
+	switch strings.ToLower(strings.TrimSpace(values[0])) {
+	case "require", "verify-ca", "verify-full":
+		return nil
+	default:
+		return fmt.Errorf("DATABASE_URL must set sslmode=require, verify-ca, or verify-full in staging/production")
 	}
 }
 

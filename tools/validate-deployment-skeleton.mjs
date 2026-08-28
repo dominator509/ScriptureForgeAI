@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 
 const terraformDir = new URL('../build/terraform/', import.meta.url);
 const platformEngineMain = new URL('../cmd/platform-engine/main.go', import.meta.url);
+const scriptureEngineMain = new URL('../services/scripture-engine/src/main.rs', import.meta.url);
 const apiDockerfile = new URL('../services/platform-engine/Dockerfile', import.meta.url);
 const rustDockerfile = new URL('../services/scripture-engine/Dockerfile', import.meta.url);
 const webDockerfile = new URL('../web/Dockerfile', import.meta.url);
@@ -24,6 +25,7 @@ export const deploymentSkeletonProofMarkers = [
   'customer_managed_storage_kms=true',
   'staging_input_placeholders_rejected=true',
   'container_build_definitions=true',
+  'database_tls_enforced=true',
 ];
 
 async function readTerraform(name) {
@@ -39,8 +41,9 @@ const [app, service, variables, iam, versions, tfvarsExample, backendExample] = 
   readTerraform('terraform.tfvars.example'),
   readTerraform('backend.hcl.example'),
 ]);
-const [platformMain, apiContainer, rustContainer, webContainer] = await Promise.all([
+const [platformMain, rustMain, apiContainer, rustContainer, webContainer] = await Promise.all([
   readFile(platformEngineMain, 'utf8'),
+  readFile(scriptureEngineMain, 'utf8'),
   readFile(apiDockerfile, 'utf8'),
   readFile(rustDockerfile, 'utf8'),
   readFile(webDockerfile, 'utf8'),
@@ -80,6 +83,30 @@ export function validatePlatformRuntimeConfig(platformMain) {
   assert.ok(
     /default:\s*\n\s*return true/.test(platformMain),
     'platform engine must fail closed for unknown deployment environments',
+  );
+}
+
+export function validateDatabaseTransportConfig(platformMain, rustMain) {
+  requireIncludes(
+    platformMain,
+    [
+      '"net/url"',
+      'func validateDatabaseURLTransport(rawURL string, requireTLS bool) error',
+      'sslmode=require, verify-ca, or verify-full',
+      'validateDatabaseURLTransport(dbURL, requiresConfiguredGRPCAddress())',
+    ],
+    'Go database transport config',
+  );
+  requireIncludes(
+    rustMain,
+    [
+      'PgConnectOptions',
+      'PgSslMode',
+      'fn validate_database_url_transport(',
+      'options.get_ssl_mode()',
+      'validate_database_url_transport(&database_url, requires_grpc_security())?',
+    ],
+    'Rust database transport config',
   );
 }
 
@@ -506,5 +533,6 @@ assert.ok(!tfvarsExample.includes('skip_final_snapshot = true'), 'tfvars example
 
 validatePlatformRuntimeConfig(platformMain);
 validateContainerBuildDefinitions(apiContainer, rustContainer, webContainer);
+validateDatabaseTransportConfig(platformMain, rustMain);
 
 console.log(`deployment skeleton and runtime config invariants validated: ${deploymentSkeletonProofMarkers.join(', ')}`);

@@ -302,7 +302,7 @@ func TestDependencyClientConfigRejectsMalformedURLs(t *testing.T) {
 func TestLoadConfigRequiresGRPCAddressInStagingAndProduction(t *testing.T) {
 	for _, environment := range []string{"staging", "production", "prod"} {
 		t.Run(environment, func(t *testing.T) {
-			t.Setenv("DATABASE_URL", "postgres://staging.example/scriptureforge")
+			t.Setenv("DATABASE_URL", "postgres://staging.example/scriptureforge?sslmode=require")
 			t.Setenv("REDIS_URL", "rediss://staging.example:6379")
 			t.Setenv("REDIS_PASSWORD", "redis-test-password")
 			t.Setenv("DEPLOYMENT_ENVIRONMENT", environment)
@@ -320,8 +320,37 @@ func TestLoadConfigRequiresGRPCAddressInStagingAndProduction(t *testing.T) {
 	}
 }
 
+func TestValidateDatabaseURLTransportRequiresTLSOnlyOutsideLocalDevelopment(t *testing.T) {
+	valid := []string{
+		"postgres://user:password@db.example/scriptureforge?sslmode=require",
+		"postgresql://user:password@db.example/scriptureforge?sslmode=verify-ca",
+		"postgres://user:password@db.example/scriptureforge?sslmode=verify-full",
+	}
+	for _, rawURL := range valid {
+		if err := validateDatabaseURLTransport(rawURL, true); err != nil {
+			t.Errorf("validateDatabaseURLTransport(%q) = %v, want success", rawURL, err)
+		}
+	}
+
+	for _, rawURL := range []string{
+		"postgres://user:password@db.example/scriptureforge",
+		"postgres://user:password@db.example/scriptureforge?sslmode=disable",
+		"postgres://user:password@db.example/scriptureforge?sslmode=prefer",
+		"postgres://user:password@db.example/scriptureforge?sslmode=require&sslmode=disable",
+		"redis://user:password@db.example:6379/0",
+		"not-a-url",
+	} {
+		if err := validateDatabaseURLTransport(rawURL, true); err == nil {
+			t.Errorf("validateDatabaseURLTransport(%q) accepted an unsafe production URL", rawURL)
+		}
+	}
+	if err := validateDatabaseURLTransport("postgres://local.example/scriptureforge", false); err != nil {
+		t.Fatalf("local development URL rejected: %v", err)
+	}
+}
+
 func TestLoadConfigAcceptsExplicitProductionGRPCAddress(t *testing.T) {
-	t.Setenv("DATABASE_URL", "postgres://staging.example/scriptureforge")
+	t.Setenv("DATABASE_URL", "postgres://staging.example/scriptureforge?sslmode=require")
 	t.Setenv("REDIS_URL", "rediss://staging.example:6379")
 	t.Setenv("REDIS_PASSWORD", "redis-test-password")
 	t.Setenv("DEPLOYMENT_ENVIRONMENT", "staging")
@@ -345,7 +374,7 @@ func TestLoadConfigAcceptsExplicitProductionGRPCAddress(t *testing.T) {
 }
 
 func TestLoadConfigRequiresGRPCSharedSecretAndTLSInProduction(t *testing.T) {
-	t.Setenv("DATABASE_URL", "postgres://staging.example/scriptureforge")
+	t.Setenv("DATABASE_URL", "postgres://staging.example/scriptureforge?sslmode=require")
 	t.Setenv("REDIS_URL", "rediss://staging.example:6379")
 	t.Setenv("REDIS_PASSWORD", "redis-test-password")
 	t.Setenv("DEPLOYMENT_ENVIRONMENT", "production")
@@ -366,7 +395,7 @@ func TestLoadConfigRequiresGRPCSharedSecretAndTLSInProduction(t *testing.T) {
 func TestLoadConfigRequiresStrongDistinctAuthAndJournalSecretsInProduction(t *testing.T) {
 	baseEnv := func(t *testing.T) {
 		t.Helper()
-		t.Setenv("DATABASE_URL", "postgres://staging.example/scriptureforge")
+		t.Setenv("DATABASE_URL", "postgres://staging.example/scriptureforge?sslmode=require")
 		t.Setenv("REDIS_URL", "rediss://staging.example:6379")
 		t.Setenv("REDIS_PASSWORD", "redis-test-password")
 		t.Setenv("DEPLOYMENT_ENVIRONMENT", "production")

@@ -20,6 +20,7 @@ This file records repository-level implementation history. It is not a substitut
 - Added non-local Redis password enforcement and API-only Terraform secret injection for Redis authentication.
 - Hardened AI and Zoom integrations with bounded transport behavior, fail-closed configuration, sanitized faults, audit persistence, citation verification, offline fallback, and retry-safe webhook mapping.
 - Added Rust scripture-ingestion validation, Terraform validation gates, CI evidence binding, and Serena/Obsidian drift checks.
+- Added strict staging/production PostgreSQL TLS URL validation to the Go API and Rust scripture engine, with local-development compatibility and deployment-validator coverage.
 
 ### Evidence boundary
 
