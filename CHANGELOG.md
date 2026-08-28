@@ -17,6 +17,7 @@ This file records repository-level implementation history. It is not a substitut
 - Bound login refresh-token persistence to the existing tenant transaction and bound journal writes to the authenticated server-derived salt ID/version.
 - Added typed fail-closed authentication dependency handling for unconfigured database pools across registration, login, refresh, logout, and privileged MFA routes.
 - Closed the public registration tenant-selection gap: registration now creates a server-generated workspace in the RLS-scoped transaction, forces the initial member role, and web/mobile callers send only a bounded workspace name.
+- Closed the room token lifetime gap: validated JWTs now require `exp`, and active room WebSockets close when the access token expires instead of retaining an authenticated stream indefinitely.
 - Added refresh-token MFA assurance binding, unknown-environment gRPC fail-closed behavior, and least-privilege API/Rust Terraform workload secret separation.
 - Added API-only AES-GCM TOTP seed envelopes with fail-closed handling for missing, malformed, or legacy plaintext MFA material.
 - Added non-local Redis password enforcement and API-only Terraform secret injection for Redis authentication.

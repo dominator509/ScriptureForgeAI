@@ -185,6 +185,13 @@ func validRoomEventEnvelope(event RoomEvent, roomID string) bool {
 	return json.Valid(event.Payload)
 }
 
+func roomTokenExpiryDelay(claims *auth.TokenClaims, now time.Time) (time.Duration, bool) {
+	if claims == nil || claims.ExpiresAt == nil {
+		return 0, false
+	}
+	return claims.ExpiresAt.Time.Sub(now), true
+}
+
 func (s *SocketConnection) roomHub() *RoomHub {
 	s.hubMu.Lock()
 	defer s.hubMu.Unlock()
@@ -371,6 +378,25 @@ func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request
 	}
 	closePolicyViolation := func(reason string) {
 		_ = writeControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, reason))
+	}
+	tokenExpiryDelay, hasTokenExpiry := roomTokenExpiryDelay(claims, time.Now())
+	if hasTokenExpiry && tokenExpiryDelay <= 0 {
+		closePolicyViolation("room access token expired")
+		return
+	}
+	if hasTokenExpiry {
+		expiryDone := make(chan struct{})
+		defer close(expiryDone)
+		expiryTimer := time.NewTimer(tokenExpiryDelay)
+		defer expiryTimer.Stop()
+		go func() {
+			select {
+			case <-expiryTimer.C:
+				closePolicyViolation("room access token expired")
+				_ = conn.Close()
+			case <-expiryDone:
+			}
+		}()
 	}
 	defer close(done)
 	leaseDone := make(chan struct{})

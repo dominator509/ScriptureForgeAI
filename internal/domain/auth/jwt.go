@@ -129,10 +129,11 @@ func ValidateToken(tokenString string) (*TokenClaims, error) {
 	if claims, ok := token.Claims.(*TokenClaims); ok && token.Valid {
 		if strings.TrimSpace(claims.UserID) == "" ||
 			strings.TrimSpace(claims.OrganizationID) == "" ||
-			strings.TrimSpace(claims.Role) == "" {
+			strings.TrimSpace(claims.Role) == "" ||
+			claims.ExpiresAt == nil {
 			return nil, &PlatformException{
 				Category: AuthenticationFault,
-				Message:  "invalid token identity claims",
+				Message:  "invalid token identity or expiration claims",
 				Code:     401,
 			}
 		}

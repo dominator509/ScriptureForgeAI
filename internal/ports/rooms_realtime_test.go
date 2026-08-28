@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 	"scriptureforge/internal/domain/auth"
 	"scriptureforge/internal/domain/observability"
@@ -225,6 +226,67 @@ func TestRoomEventEnvelopeAcceptsServerAssignedEnvelope(t *testing.T) {
 	}
 	if !validRoomEventEnvelope(event, "room-1") {
 		t.Fatalf("validRoomEventEnvelope(%#v) = false, want true", event)
+	}
+}
+
+func TestRoomTokenExpiryDelayTracksValidatedJWTExpiry(t *testing.T) {
+	now := time.Now()
+	if delay, ok := roomTokenExpiryDelay(&auth.TokenClaims{UserID: "user-1", OrganizationID: "org-1", Role: "member"}, now); ok || delay != 0 {
+		t.Fatalf("missing token expiry = (%s, %t), want (0, false)", delay, ok)
+	}
+
+	future, ok := roomTokenExpiryDelay(&auth.TokenClaims{
+		UserID:         "user-1",
+		OrganizationID: "org-1",
+		Role:           "member",
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
+		},
+	}, now)
+	if !ok || future < 59*time.Second || future > time.Minute {
+		t.Fatalf("future token expiry = (%s, %t), want approximately one minute", future, ok)
+	}
+
+	expired, ok := roomTokenExpiryDelay(&auth.TokenClaims{
+		RegisteredClaims: jwt.RegisteredClaims{ExpiresAt: jwt.NewNumericDate(now.Add(-time.Second))},
+	}, now)
+	if !ok || expired >= 0 {
+		t.Fatalf("expired token expiry = (%s, %t), want negative delay", expired, ok)
+	}
+}
+
+func TestLiveRoomClosesWhenJWTExpires(t *testing.T) {
+	store := &fakeRoomEventStore{}
+	socket := &SocketConnection{
+		StateManager: store,
+		MembershipValidator: func(_ *http.Request, claims *auth.TokenClaims, roomID string) bool {
+			return roomID == "room-expiry" && claims.UserID == "user-expiry"
+		},
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims := &auth.TokenClaims{
+			UserID:         "user-expiry",
+			OrganizationID: "org-1",
+			Role:           "member",
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(150 * time.Millisecond)),
+			},
+		}
+		socket.HandleLiveRoom(w, r.WithContext(context.WithValue(r.Context(), auth.ContextKeyUser, claims)))
+	}))
+	defer server.Close()
+
+	conn := dialRoom(t, server.URL, "room-expiry", "expiry")
+	defer conn.Close()
+	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatalf("set expiry read deadline: %v", err)
+	}
+	_, _, err := conn.ReadMessage()
+	if err == nil {
+		t.Fatal("expired room token left the WebSocket open")
+	}
+	if !websocket.IsCloseError(err, websocket.ClosePolicyViolation) {
+		t.Fatalf("expired room token close error = %v, want policy violation", err)
 	}
 }
 
