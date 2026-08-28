@@ -74,7 +74,7 @@ func allowedWSOrigin(r *http.Request) bool {
 		if strictOrigins {
 			return false
 		}
-		return origin == "" || strings.HasPrefix(origin, "http://localhost") || strings.HasPrefix(origin, "http://127.0.0.1")
+		return origin == "" || isLocalDevelopmentOrigin(origin)
 	}
 	for _, candidate := range strings.Split(allowed, ",") {
 		candidate = strings.TrimSpace(candidate)
@@ -126,6 +126,18 @@ func isLocalOrPrivateOriginHost(host string) bool {
 	}
 	ip := net.ParseIP(normalized)
 	return ip != nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() || ip.IsLinkLocalUnicast())
+}
+
+func isLocalDevelopmentOrigin(raw string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Scheme != "http" || parsed.User != nil || parsed.Hostname() == "" {
+		return false
+	}
+	if parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return false
+	}
+	host := strings.TrimSuffix(strings.ToLower(strings.Trim(parsed.Hostname(), "[]")), ".")
+	return host == "localhost" || host == "127.0.0.1"
 }
 
 func requiresConfiguredWSOrigins() bool {

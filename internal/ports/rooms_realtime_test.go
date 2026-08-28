@@ -858,6 +858,16 @@ func TestAllowedWSOriginKeepsLocalDevelopmentFallback(t *testing.T) {
 	if allowedWSOrigin(request) {
 		t.Fatal("allowedWSOrigin accepted non-local origin with no configured allowlist")
 	}
+	for _, origin := range []string{
+		"http://localhost.evil.example",
+		"http://127.0.0.1.evil.example",
+		"http://localhost:3000/path",
+	} {
+		request.Header.Set("Origin", origin)
+		if allowedWSOrigin(request) {
+			t.Fatalf("allowedWSOrigin accepted lookalike local origin: %s", origin)
+		}
+	}
 }
 
 func TestRoomStateHandlerReturnsLatestEventForPollingFallback(t *testing.T) {
