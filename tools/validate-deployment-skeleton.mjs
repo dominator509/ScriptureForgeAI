@@ -7,6 +7,7 @@ const scriptureEngineMain = new URL('../services/scripture-engine/src/main.rs', 
 const apiDockerfile = new URL('../services/platform-engine/Dockerfile', import.meta.url);
 const rustDockerfile = new URL('../services/scripture-engine/Dockerfile', import.meta.url);
 const webDockerfile = new URL('../web/Dockerfile', import.meta.url);
+const composeFile = new URL('../docker-compose.yml', import.meta.url);
 
 export const deploymentSkeletonProofMarkers = [
   'remote_state_backend=true',
@@ -41,12 +42,13 @@ const [app, service, variables, iam, versions, tfvarsExample, backendExample] = 
   readTerraform('terraform.tfvars.example'),
   readTerraform('backend.hcl.example'),
 ]);
-const [platformMain, rustMain, apiContainer, rustContainer, webContainer] = await Promise.all([
+const [platformMain, rustMain, apiContainer, rustContainer, webContainer, compose] = await Promise.all([
   readFile(platformEngineMain, 'utf8'),
   readFile(scriptureEngineMain, 'utf8'),
   readFile(apiDockerfile, 'utf8'),
   readFile(rustDockerfile, 'utf8'),
   readFile(webDockerfile, 'utf8'),
+  readFile(composeFile, 'utf8'),
 ]);
 
 function requireIncludes(source, snippets, label) {
@@ -154,6 +156,43 @@ export function validateContainerBuildDefinitions(apiContainer, rustContainer, w
     ],
     'web container build',
   );
+}
+
+export function validateLocalComposeConfig(compose) {
+  requireIncludes(
+    compose,
+    [
+      'image: pgvector/pgvector@sha256:eac621400b7b7ff52493883e41e930e3d104695fea5b68cc0c42370cf7880067',
+      './migrations:/docker-entrypoint-initdb.d:ro',
+      'context: .',
+      'dockerfile: services/platform-engine/Dockerfile',
+      'dockerfile: services/scripture-engine/Dockerfile',
+      'DATABASE_URL:',
+      'REDIS_URL: redis://redis:6379',
+      'GRPC_ENGINE_ADDRESS: scripture-engine:50051',
+      'DEPLOYMENT_ENVIRONMENT: development',
+      'JOURNAL_SALT_SECRET:',
+      'MFA_ENCRYPTION_KEY:',
+      'ALLOWED_WS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000',
+      'RUST_ENGINE_BIND_ADDRESS: 0.0.0.0:50051',
+      'RUST_ENGINE_METRICS_ADDRESS: 0.0.0.0:9102',
+    ],
+    'local Docker Compose config',
+  );
+  for (const forbidden of [
+    'image: postgres:15',
+    'DB_HOST:',
+    'DB_USER:',
+    'DB_PASS:',
+    'DB_NAME:',
+    'REDIS_HOST:',
+    'REDIS_PORT:',
+    'testing-secret-key-123',
+    'context: ./services/platform-engine',
+    'context: ./services/scripture-engine',
+  ]) {
+    assert.ok(!compose.includes(forbidden), `local Docker Compose config must not retain ${forbidden}`);
+  }
 }
 
 function terraformVariableBlock(source, name) {
@@ -533,6 +572,7 @@ assert.ok(!tfvarsExample.includes('skip_final_snapshot = true'), 'tfvars example
 
 validatePlatformRuntimeConfig(platformMain);
 validateContainerBuildDefinitions(apiContainer, rustContainer, webContainer);
+validateLocalComposeConfig(compose);
 validateDatabaseTransportConfig(platformMain, rustMain);
 
 console.log(`deployment skeleton and runtime config invariants validated: ${deploymentSkeletonProofMarkers.join(', ')}`);

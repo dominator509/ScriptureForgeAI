@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   validateContainerBuildDefinitions,
   validateDatabaseTransportConfig,
+  validateLocalComposeConfig,
   validateTerraformImageDigestInputs,
   validatePlatformRuntimeConfig,
   validateTerraformReleaseInputGuards,
@@ -64,6 +65,23 @@ test('validateContainerBuildDefinitions rejects placeholder workload entrypoints
       'COPY web/package.json web/package-lock.json ./web/\nnpm ci --prefix web\nnpm run build --prefix web\nnpm ci --omit=dev\nUSER node\nCMD ["npm", "run", "start"]',
     ),
     /must not use a placeholder sleep entrypoint/,
+  );
+});
+
+test('validateLocalComposeConfig accepts the current local service wiring', async () => {
+  const compose = await readFile('docker-compose.yml', 'utf8');
+  assert.doesNotThrow(() => validateLocalComposeConfig(compose));
+});
+
+test('validateLocalComposeConfig rejects legacy service contexts and environment names', async () => {
+  const compose = await readFile('docker-compose.yml', 'utf8');
+  const broken = compose
+    .replace('context: .', 'context: ./services/platform-engine')
+    .replace('DATABASE_URL:', 'DB_HOST: postgres\n      DATABASE_URL:');
+  assert.notEqual(broken, compose, 'test fixture must reintroduce legacy Compose wiring');
+  assert.throws(
+    () => validateLocalComposeConfig(broken),
+    /local Docker Compose config must not retain (context: \.\/services\/platform-engine|DB_HOST:)/,
   );
 });
 

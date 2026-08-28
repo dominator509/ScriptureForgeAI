@@ -60,6 +60,14 @@ rtk docker build -f web/Dockerfile -t scriptureforge-web:local .
 rtk docker build -f services/scripture-engine/Dockerfile -t scriptureforge-rust-engine:local .
 ```
 
+For a disposable local API/Rust/Postgres/Redis stack, use the checked-in Compose wiring:
+
+```bash
+rtk docker compose up --build
+```
+
+The local database uses the pinned pgvector image and applies every checked-in `migrations/*.up.sql` file on first initialization. Compose is development-only; it does not replace the Terraform/Kubernetes staging deployment or its external evidence gates.
+
 The Terraform deployment still requires the resulting ECR image digests as immutable `api_image`, `web_image`, and `rust_engine_image` inputs; local builds do not constitute staging deployment evidence.
 
 The Rust scripture engine emits JSON startup/request/error logs, extracts W3C `traceparent` metadata from gRPC requests into `trace_id` log fields, exposes Prometheus text metrics on `RUST_ENGINE_METRICS_ADDRESS` defaulting to `0.0.0.0:9102`, and receives `OTEL_SERVICE_NAME`, `SERVICE_VERSION`, `DEPLOYMENT_ENVIRONMENT`, and `OTEL_EXPORTER_OTLP_ENDPOINT` through Terraform. In staging/production, the Rust gRPC listener requires server TLS plus client certificates and a `GRPC_ENGINE_SHARED_SECRET`; the Go client sends the verified organization ID as `x-scriptureforge-organization-id`. This is baseline Rust gRPC observability and log/metric correlation, not proof that a deployed OTLP collector is receiving Rust spans.

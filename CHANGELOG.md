@@ -22,6 +22,7 @@ This file records repository-level implementation history. It is not a substitut
 - Bound privileged MFA verification attempts to the existing distributed tenant/user abuse limiter, preventing rotating client IPs from bypassing TOTP brute-force protection.
 - Bounded the Rust metrics listener's first-request read with a clamped `RUST_ENGINE_METRICS_READ_TIMEOUT_MS` deadline to prevent idle-connection exhaustion.
 - Added the irreversible `000005_mfa_legacy_plaintext_cleanup` migration to clear legacy plaintext TOTP seeds and force safe re-enrollment; CI and Docker-backed RLS setup now apply the complete ordered up-migration set, including `000003`.
+- Corrected local Compose to use the current root-context containers, pgvector migrations, and URL-based runtime configuration.
 - Marked the superseded `audit_report.txt` as historical so stale completion claims cannot be mistaken for current readiness evidence.
 - Hardened the disposable Docker/RLS gate with daemon readiness probing and bounded Docker subprocess timeouts; unavailable Docker now reports a deterministic environment blocker instead of hanging local validation.
 - Repaired the RLS production-wiring regression fixture so its negative membership-override test remains stable across Go struct formatting changes.
