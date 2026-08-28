@@ -104,6 +104,11 @@ func TestValidateTokenRejectsUnexpectedAlgorithmIssuerAndIdentity(t *testing.T) 
 			method: jwt.SigningMethodHS256,
 			claims: TokenClaims{UserID: "user-1", OrganizationID: "org-1", Role: "member", RegisteredClaims: jwt.RegisteredClaims{Issuer: tokenIssuer}},
 		},
+		{
+			name:   "missing issued-at claim",
+			method: jwt.SigningMethodHS256,
+			claims: TokenClaims{UserID: "user-1", OrganizationID: "org-1", Role: "member", RegisteredClaims: jwt.RegisteredClaims{Issuer: tokenIssuer, ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute))}},
+		},
 	}
 
 	for _, test := range tests {

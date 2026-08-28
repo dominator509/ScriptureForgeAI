@@ -828,6 +828,20 @@ func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 		sendAuthError(w, err.(*auth.PlatformException))
 		return
 	}
+	var userID string
+	if err := tx.QueryRow(
+		r.Context(),
+		`SELECT user_id
+		   FROM refresh_tokens
+		  WHERE token_hash = $1
+		    AND organization_id = $2`,
+		hashToken(req.RefreshToken),
+		req.OrganizationID,
+	).Scan(&userID); err != nil {
+		metricStatus = "invalid_or_revoked"
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid or already revoked refresh token", Code: http.StatusUnauthorized})
+		return
+	}
 	rowsRevoked, err := revokeRefreshTokenFamily(r.Context(), tx, hashToken(req.RefreshToken), req.OrganizationID)
 	if err != nil {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to revoke refresh token", Code: http.StatusInternalServerError})
@@ -835,6 +849,18 @@ func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if rowsRevoked == 0 {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid or already revoked refresh token", Code: http.StatusUnauthorized})
+		return
+	}
+	if _, err := tx.Exec(
+		r.Context(),
+		`UPDATE users
+		    SET sessions_revoked_at = CURRENT_TIMESTAMP,
+		        updated_at = CURRENT_TIMESTAMP
+		  WHERE id = $1 AND organization_id = $2`,
+		userID,
+		req.OrganizationID,
+	); err != nil {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to revoke active sessions", Code: http.StatusInternalServerError})
 		return
 	}
 	if err := tx.Commit(r.Context()); err != nil {

@@ -6,7 +6,7 @@ Status last updated: 2026-06-30
 
 - Access tokens use signed JWTs and are verified at route boundaries.
 - Access-token lifetime is constrained to the remediation target of approximately 15 minutes.
-- Refresh tokens are opaque server-side session credentials that are hashed before persistence, rotated on refresh, scoped to user and organization, expirable, and revocable on logout.
+- Refresh tokens are opaque server-side session credentials that are hashed before persistence, rotated on refresh, scoped to user and organization, expirable, and revocable on logout; logout also persists a user session-revocation cutoff used by active room streams.
 - Privileged roles require TOTP MFA verification before login returns access and refresh tokens.
 - Legacy `/api/auth/register` and `/api/auth/login` routes remain compatibility aliases for the canonical `/api/v1/auth/*` handlers and share the same abuse bucket.
 

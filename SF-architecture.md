@@ -413,7 +413,7 @@ CREATE INDEX idx_participants_lookup ON room_participants(room_id, user_id);
 *   `POST /api/v1/auth/login`: Issue verification challenges. Returns a short-lived JWT and, for web clients, sets an HttpOnly, SameSite=Strict refresh-token cookie scoped to `/api`.
 *   `POST /api/v1/auth/register`: Create a server-generated tenant from `organization_name` and provision its first member account with a forced member role.
 *   `POST /api/v1/auth/refresh`: Exchange an active refresh token from the web cookie or compatibility request body for a rotated access/refresh pair; web responses omit the refresh token body.
-*   `POST /api/v1/auth/logout`: Revoke an issued refresh token.
+*   `POST /api/v1/auth/logout`: Revoke an issued refresh-token family and persist a user session-revocation cutoff so active room streams reject older access tokens.
 *   `POST /api/v1/auth/mfa/verify`: Process real-time dynamic authentication codes.
 *   `POST /api/v1/auth/mfa/enroll`: Provision a TOTP seed for privileged roles.
 *   `POST /api/v1/workspaces/switch`: Switch organization context on signed-in sessions.
@@ -448,7 +448,7 @@ CREATE INDEX idx_participants_lookup ON room_participants(room_id, user_id);
 *   `POST /api/v1/rooms/create`: Initialize dynamic tracking matrices.
 *   `GET /api/v1/rooms/active`: Query structural context instances running under the client tenant signature.
 *   `GET /api/v1/rooms/state/{room_id}`: Poll latest room event payload for reconnect/fallback clients.
-*   `WSS /api/v1/rooms/stream/{room_id}`: Broadcast real-time room events after membership and tenant validation.
+*   `WSS /api/v1/rooms/stream/{room_id}`: Broadcast real-time room events after membership and tenant validation; the default RLS path re-checks membership and the session-revocation cutoff during the stream heartbeat.
 
 #### Group D: System Webhooks (`/api/webhooks`)
 *   `POST /api/webhooks/zoom`: Apply the unauthenticated Redis-backed `zoom_webhook` abuse budget, then validate signed Zoom webhook callbacks and map meeting lifecycle events to internal room state transitions.

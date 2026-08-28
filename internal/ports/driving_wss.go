@@ -34,28 +34,30 @@ type roomErrorEnvelope struct {
 }
 
 const (
-	maxWSMessageBytes            = 64 * 1024
-	maxRoomEventTypeBytes        = 64
-	wsPongWait                   = 60 * time.Second
-	wsPingInterval               = 30 * time.Second
-	wsWriteWait                  = 10 * time.Second
-	activeConnectionRenewTimeout = 5 * time.Second
-	wsEventWindow                = time.Minute
-	maxWSEventsPerWindow         = 120
-	maxWSBytesPerWindow          = 4 << 20
+	maxWSMessageBytes             = 64 * 1024
+	maxRoomEventTypeBytes         = 64
+	wsPongWait                    = 60 * time.Second
+	wsPingInterval                = 30 * time.Second
+	wsWriteWait                   = 10 * time.Second
+	activeConnectionRenewTimeout  = 5 * time.Second
+	roomAuthorizationCheckTimeout = 5 * time.Second
+	wsEventWindow                 = time.Minute
+	maxWSEventsPerWindow          = 120
+	maxWSBytesPerWindow           = 4 << 20
 )
 
 type SocketConnection struct {
-	DB                  *pgxpool.Pool
-	StateManager        roomEventStore
-	Hub                 *RoomHub
-	MembershipValidator func(r *http.Request, claims *auth.TokenClaims, roomID string) bool
-	ConnectionLimiter   *abuse.ActiveConnectionLimiter
-	hubMu               sync.Mutex
-	eventMu             sync.Mutex
-	connectionsMu       sync.Mutex
-	connections         map[*websocket.Conn]struct{}
-	draining            bool
+	DB                         *pgxpool.Pool
+	StateManager               roomEventStore
+	Hub                        *RoomHub
+	MembershipValidator        func(r *http.Request, claims *auth.TokenClaims, roomID string) bool
+	ConnectionLimiter          *abuse.ActiveConnectionLimiter
+	AuthorizationCheckInterval time.Duration
+	hubMu                      sync.Mutex
+	eventMu                    sync.Mutex
+	connectionsMu              sync.Mutex
+	connections                map[*websocket.Conn]struct{}
+	draining                   bool
 }
 
 type roomEventStore interface {
@@ -316,6 +318,62 @@ func (s *SocketConnection) validateRoomMembership(r *http.Request, claims *auth.
 	return false
 }
 
+func (s *SocketConnection) validateSessionRevocation(ctx context.Context, claims *auth.TokenClaims) bool {
+	if s.DB == nil || claims == nil || claims.IssuedAt == nil {
+		return false
+	}
+	start := time.Now()
+	status := "error"
+	defer func() {
+		observability.ObserveDependencyFromContext(ctx, "postgres", "room_session_revocation", status, time.Since(start))
+	}()
+
+	tx, err := s.DB.Begin(ctx)
+	if err != nil {
+		return false
+	}
+	defer tx.Rollback(ctx)
+	if err := auth.SetTenantContext(ctx, tx, claims.OrganizationID); err != nil {
+		return false
+	}
+	var valid bool
+	err = tx.QueryRow(
+		ctx,
+		`SELECT COALESCE(sessions_revoked_at < $3, TRUE)
+		   FROM users
+		  WHERE id = $1 AND organization_id = $2`,
+		claims.UserID,
+		claims.OrganizationID,
+		claims.IssuedAt.Time,
+	).Scan(&valid)
+	if err != nil {
+		return false
+	}
+	if !valid {
+		status = "revoked"
+		return false
+	}
+	status = "success"
+	return true
+}
+
+func (s *SocketConnection) validateRoomAuthorization(r *http.Request, claims *auth.TokenClaims, roomID string) bool {
+	if !s.validateRoomMembership(r, claims, roomID) {
+		return false
+	}
+	// Local harnesses may provide an in-memory membership validator without a
+	// database. Any database-backed socket path still requires a live session
+	// revocation check, including when a caller supplies a membership callback.
+	return s.DB == nil || s.validateSessionRevocation(r.Context(), claims)
+}
+
+func (s *SocketConnection) authorizationCheckInterval() time.Duration {
+	if s.AuthorizationCheckInterval > 0 {
+		return s.AuthorizationCheckInterval
+	}
+	return wsPingInterval
+}
+
 func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request) {
 	if s.isDraining() {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Server is shutting down", Code: http.StatusServiceUnavailable})
@@ -327,7 +385,7 @@ func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request
 		return
 	}
 	roomID := roomIDFromPath(r.URL.Path)
-	if !s.validateRoomMembership(r, claims, roomID) {
+	if !s.validateRoomAuthorization(r, claims, roomID) {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Room membership required", Code: http.StatusForbidden})
 		return
 	}
@@ -414,11 +472,22 @@ func (s *SocketConnection) HandleLiveRoom(w http.ResponseWriter, r *http.Request
 	leaseDone := make(chan struct{})
 	defer close(leaseDone)
 	go func() {
-		leaseTicker := time.NewTicker(wsPingInterval)
-		defer leaseTicker.Stop()
+		authorizationTicker := time.NewTicker(s.authorizationCheckInterval())
+		defer authorizationTicker.Stop()
 		for {
 			select {
-			case <-leaseTicker.C:
+			case <-authorizationTicker.C:
+				checkCtx, checkCancel := context.WithTimeout(context.Background(), roomAuthorizationCheckTimeout)
+				stillAuthorized := s.validateRoomMembership(r.WithContext(checkCtx), claims, roomID)
+				if stillAuthorized && s.DB != nil {
+					stillAuthorized = s.validateSessionRevocation(checkCtx, claims)
+				}
+				checkCancel()
+				if !stillAuthorized {
+					closePolicyViolation("room authorization revoked")
+					_ = conn.Close()
+					return
+				}
 				renewCtx, cancel := context.WithTimeout(context.Background(), activeConnectionRenewTimeout)
 				err := renewConnection(renewCtx)
 				cancel()

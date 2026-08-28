@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { runRLSDBIntegration } from './run-rls-db-integration.mjs';
 
@@ -17,13 +18,16 @@ export const defaultDockerRLSConfig = {
   healthDelayMs: 1000,
 };
 
-export const migrationFiles = [
-  '/migrations/000001_init_extensions.up.sql',
-  '/migrations/000002_core_schema.up.sql',
-  '/migrations/000003_scripture_text_reference.up.sql',
-  '/migrations/000004_auth_mfa_assurance.up.sql',
-  '/migrations/000005_mfa_legacy_plaintext_cleanup.up.sql',
-];
+export function listMigrationFiles(workspaceRoot = process.cwd()) {
+  const migrationRoot = resolve(workspaceRoot, 'migrations');
+  return readdirSync(migrationRoot, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && /^\d+_.+\.up\.sql$/.test(entry.name))
+    .map((entry) => entry.name)
+    .sort()
+    .map((name) => `/migrations/${name}`);
+}
+
+export const migrationFiles = listMigrationFiles();
 
 export function parseDockerRLSArgs(argv = []) {
   const config = { ...defaultDockerRLSConfig };
@@ -101,7 +105,7 @@ export async function runDockerRLSDBIntegration({
   await runDockerCommand(buildDockerRunCommand(config, workspaceRoot));
   try {
     await waitForPostgres(config, runDockerCommand);
-    for (const migrationFile of migrationFiles) {
+    for (const migrationFile of listMigrationFiles(workspaceRoot)) {
       await runDockerCommand(buildDockerExecCommand(config, [
         'psql',
         '-U',

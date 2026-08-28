@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -569,11 +570,11 @@ func TestSocketStreamIsTenantScoped(t *testing.T) {
 		var claims *auth.TokenClaims
 		switch tenant {
 		case "tenant-a":
-			claims = &auth.TokenClaims{UserID: user, OrganizationID: tenantIsolationOrgA, Role: "member"}
+			claims = &auth.TokenClaims{UserID: user, OrganizationID: tenantIsolationOrgA, Role: "member", RegisteredClaims: jwt.RegisteredClaims{IssuedAt: jwt.NewNumericDate(time.Now().Add(-time.Minute))}}
 		case "tenant-b":
-			claims = &auth.TokenClaims{UserID: user, OrganizationID: tenantIsolationOrgB, Role: "member"}
+			claims = &auth.TokenClaims{UserID: user, OrganizationID: tenantIsolationOrgB, Role: "member", RegisteredClaims: jwt.RegisteredClaims{IssuedAt: jwt.NewNumericDate(time.Now().Add(-time.Minute))}}
 		default:
-			claims = &auth.TokenClaims{UserID: user, OrganizationID: "unknown", Role: "member"}
+			claims = &auth.TokenClaims{UserID: user, OrganizationID: "unknown", Role: "member", RegisteredClaims: jwt.RegisteredClaims{IssuedAt: jwt.NewNumericDate(time.Now().Add(-time.Minute))}}
 		}
 		socket.HandleLiveRoom(w, r.WithContext(context.WithValue(r.Context(), auth.ContextKeyUser, claims)))
 	}))
@@ -663,6 +664,15 @@ func TestAuthRefreshLogoutHonorTenantIsolation(t *testing.T) {
 	}
 
 	assertRefreshTokenRevocation(ctx, t, db, tenantIsolationOrgA, refreshed.RefreshToken, true)
+	withTenantIsolationContext(ctx, t, db, tenantIsolationOrgA, func(ctx context.Context, tx pgx.Tx) {
+		var revokedAt *time.Time
+		if err := tx.QueryRow(ctx, `SELECT sessions_revoked_at FROM users WHERE id = $1 AND organization_id = $2`, tenantIsolationUserA, tenantIsolationOrgA).Scan(&revokedAt); err != nil {
+			t.Fatalf("query session revocation cutoff: %v", err)
+		}
+		if revokedAt == nil {
+			t.Fatal("logout did not persist a session revocation cutoff")
+		}
+	})
 
 	crossLogout := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", strings.NewReader(`{"refresh_token":"`+refreshed.RefreshToken+`","organization_id":"`+tenantIsolationOrgB+`"}`))
 	crossLogoutRec := httptest.NewRecorder()

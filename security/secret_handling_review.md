@@ -24,7 +24,7 @@ Reviewed tracked and untracked repo text surfaces for secret-handling readiness:
   - web/mobile public API base URLs
 - Terraform references AWS Secrets Manager ARNs through `app_secret_arns` instead of storing plaintext secret values in Kubernetes workload specs.
 - Terraform defines an IRSA-scoped workload service account, a least-privilege Secrets Manager read policy for those ARNs, and a Secrets Store CSI `SecretProviderClass` that syncs `DATABASE_URL`, `JWT_SECRET_KEY`, `JOURNAL_SALT_SECRET`, `OPENAI_API_KEY`, and Zoom credential environment variables into API/Rust pods from AWS Secrets Manager.
-- `terraform.tfvars.example` contains placeholder account IDs, placeholder image digests, placeholder ACM/Secrets Manager ARNs, and a placeholder database passphrase value.
+- `terraform.tfvars.example` contains placeholder account IDs, placeholder image digests, placeholder ACM/Secrets Manager ARNs, and no root database password input; Aurora manages that credential in Secrets Manager.
 - `.gitignore` now excludes local `.env`, `.env.*`, Terraform state, local tool caches, and build outputs while allowing committed example env files.
 - `tools/validate-secret-hygiene.mjs` scans repo text files for high-confidence secret patterns and validates required ignore/placeholder markers.
 - CI is configured to run both the local secret hygiene validator and TruffleHog.

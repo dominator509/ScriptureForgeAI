@@ -7,6 +7,7 @@ import {
   buildDockerExecCommand,
   buildDockerRunCommand,
   defaultDockerRLSConfig,
+  listMigrationFiles,
   migrationFiles,
   parseDockerRLSArgs,
   runCommand,
@@ -60,13 +61,15 @@ test('buildDatabaseURL matches the local Docker database', () => {
 });
 
 test('migration list applies the complete ordered up-migration set', () => {
-  assert.deepEqual(migrationFiles, [
+  assert.deepEqual(listMigrationFiles(resolve('C:\\dev\\ScriptureForgeAI')), [
     '/migrations/000001_init_extensions.up.sql',
     '/migrations/000002_core_schema.up.sql',
     '/migrations/000003_scripture_text_reference.up.sql',
     '/migrations/000004_auth_mfa_assurance.up.sql',
     '/migrations/000005_mfa_legacy_plaintext_cleanup.up.sql',
+    '/migrations/000006_auth_session_revocation.up.sql',
   ]);
+  assert.deepEqual(migrationFiles, listMigrationFiles(), 'exported migration snapshot should match the current workspace');
 });
 
 test('legacy MFA cleanup clears unversioned seeds and fails closed on rollback', async () => {
@@ -77,6 +80,15 @@ test('legacy MFA cleanup clears unversioned seeds and fails closed on rollback',
   assert.match(up, /mfa_secret\s+NOT LIKE\s+'v1\.%'/);
   assert.match(down, /intentionally irreversible/i);
   assert.match(down, /RAISE EXCEPTION/i);
+});
+
+test('session revocation migration adds a user cutoff and reversible index', async () => {
+  const up = await readFile(resolve('migrations/000006_auth_session_revocation.up.sql'), 'utf8');
+  const down = await readFile(resolve('migrations/000006_auth_session_revocation.down.sql'), 'utf8');
+  assert.match(up, /sessions_revoked_at\s+TIMESTAMPTZ/);
+  assert.match(up, /idx_users_sessions_revoked_at/);
+  assert.match(down, /DROP INDEX IF EXISTS idx_users_sessions_revoked_at/);
+  assert.match(down, /DROP COLUMN IF EXISTS sessions_revoked_at/);
 });
 
 test('runDockerRLSDBIntegration applies migrations, runs RLS tests, and cleans up', async () => {

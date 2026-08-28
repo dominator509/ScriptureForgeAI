@@ -18,7 +18,7 @@ This is a repo-local threat model. It does not replace staging evidence for AWS 
 | Boundary | Assets Crossing | Primary Controls |
 | --- | --- | --- |
 | Public browser/mobile to API | Credentials, access tokens, encrypted journal payloads, room events, AI prompts | TLS ingress skeleton, JWT verification, route auth, strict JSON decoding, abuse limits, audit logs |
-| Browser/mobile to WebSocket | JWT ticket or bearer identity, room event envelopes | Allowed origin checks, JWT validation, room membership checks, bounded frames, deadlines, ping/pong lifecycle |
+| Browser/mobile to WebSocket | JWT bearer identity, room event envelopes, session state | Allowed origin checks, JWT validation, room membership and session-revocation checks, bounded frames, deadlines, ping/pong lifecycle |
 | API to PostgreSQL | Tenant data, refresh tokens, journal ciphertext, AI audit rows | `auth.SetTenantContext`, transaction-scoped `app.current_org_id`, RLS, tenant-aware constraints, server-side refresh token hashing |
 | API to Redis | Room state and sequence counters | Redis Lua mutation path, sequence ordering tests, room membership checks before mutation |
 | API to AI provider | Prompts, citations, generated content | Missing-key fail-closed behavior, bounded HTTP client, timeout/retry config, citation verification, `ai_request_logs`, `citation_trails` |

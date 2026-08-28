@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -287,6 +288,38 @@ func TestLiveRoomClosesWhenJWTExpires(t *testing.T) {
 	}
 	if !websocket.IsCloseError(err, websocket.ClosePolicyViolation) {
 		t.Fatalf("expired room token close error = %v, want policy violation", err)
+	}
+}
+
+func TestLiveRoomClosesWhenMembershipIsRevoked(t *testing.T) {
+	store := &fakeRoomEventStore{}
+	var allowed atomic.Bool
+	allowed.Store(true)
+	socket := &SocketConnection{
+		StateManager:               store,
+		AuthorizationCheckInterval: 25 * time.Millisecond,
+		MembershipValidator: func(_ *http.Request, claims *auth.TokenClaims, roomID string) bool {
+			return allowed.Load() && roomID == "room-revocation" && claims.UserID == "user-revocation"
+		},
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims := &auth.TokenClaims{UserID: "user-revocation", OrganizationID: "org-1", Role: "member"}
+		socket.HandleLiveRoom(w, r.WithContext(context.WithValue(r.Context(), auth.ContextKeyUser, claims)))
+	}))
+	defer server.Close()
+
+	conn := dialRoom(t, server.URL, "room-revocation", "revocation")
+	defer conn.Close()
+	allowed.Store(false)
+	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatalf("set membership revocation read deadline: %v", err)
+	}
+	_, _, err := conn.ReadMessage()
+	if err == nil {
+		t.Fatal("revoked room membership left the WebSocket open")
+	}
+	if !websocket.IsCloseError(err, websocket.ClosePolicyViolation) {
+		t.Fatalf("revoked membership close error = %v, want policy violation", err)
 	}
 }
 
