@@ -7,6 +7,7 @@ import {
   defaultDockerRLSConfig,
   migrationFiles,
   parseDockerRLSArgs,
+  runCommand,
   runDockerRLSDBIntegration,
 } from './run-rls-db-integration-docker.mjs';
 
@@ -89,6 +90,8 @@ test('runDockerRLSDBIntegration applies migrations, runs RLS tests, and cleans u
   assert.equal(calls.at(-1).command.join(' '), 'docker rm -f scriptureforge-rls-db');
   assert.equal(observedEnv.DATABASE_URL, buildDatabaseURL(config));
   assert.equal(observedEnv.JWT_SECRET_KEY, 'local-rls-integration-secret-for-scriptureforge');
+  assert.equal(calls.find(({ command }) => command[1] === 'info').options.timeoutMs, config.dockerCommandTimeoutMs);
+  assert.equal(calls.find(({ command }) => command[1] === 'run').options.timeoutMs, config.dockerRunTimeoutMs);
 });
 
 test('runDockerRLSDBIntegration rejects when docker is unavailable', async () => {
@@ -97,8 +100,8 @@ test('runDockerRLSDBIntegration rejects when docker is unavailable', async () =>
   const runner = async (command) => {
     callCount += 1;
     commands.push(command);
-    if (command[0] === 'docker' && command[1] === '--version') {
-      return { exitCode: 1, stdout: '', stderr: 'docker not available' };
+    if (command[0] === 'docker' && command[1] === 'info') {
+      return { exitCode: 1, stdout: '', stderr: 'docker daemon not available' };
     }
     if (command.includes('inspect')) return { exitCode: 0, stdout: '{}', stderr: '' };
     return { exitCode: 0, stdout: '', stderr: '' };
@@ -111,11 +114,28 @@ test('runDockerRLSDBIntegration rejects when docker is unavailable', async () =>
       rlsRunner: async () => 0,
     env: {},
   }),
-    /Docker is unavailable in this environment\./,
+    /Docker daemon is unavailable in this environment\./,
   );
   assert.equal(callCount >= 1, true);
-  assert.equal(commands.some((command) => command[0] === 'docker' && command[1] === '--version'), true);
+  assert.equal(commands.some((command) => command[0] === 'docker' && command[1] === 'info'), true);
   assert.equal(commands.some((command) => command[0] === 'docker' && command[1] === 'container' && command[2] === 'inspect'), false);
+});
+
+test('runCommand fails fast when a Docker subprocess does not return', async () => {
+  const startedAt = Date.now();
+  const result = await runCommand([
+    process.execPath,
+    '-e',
+    'setTimeout(() => {}, 5000)',
+  ], {
+    allowFailure: true,
+    quiet: true,
+    timeoutMs: 25,
+  });
+
+  assert.equal(result.exitCode, 124);
+  assert.match(result.stderr, /timed out after 25ms/);
+  assert.ok(Date.now() - startedAt < 1000);
 });
 
 test('runDockerRLSDBIntegration refuses to reuse an existing container name', async () => {

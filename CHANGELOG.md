@@ -21,6 +21,8 @@ This file records repository-level implementation history. It is not a substitut
 - Bound privileged MFA verification attempts to the existing distributed tenant/user abuse limiter, preventing rotating client IPs from bypassing TOTP brute-force protection.
 - Bounded the Rust metrics listener's first-request read with a clamped `RUST_ENGINE_METRICS_READ_TIMEOUT_MS` deadline to prevent idle-connection exhaustion.
 - Marked the superseded `audit_report.txt` as historical so stale completion claims cannot be mistaken for current readiness evidence.
+- Hardened the disposable Docker/RLS gate with daemon readiness probing and bounded Docker subprocess timeouts; unavailable Docker now reports a deterministic environment blocker instead of hanging local validation.
+- Repaired the RLS production-wiring regression fixture so its negative membership-override test remains stable across Go struct formatting changes.
 - Added refresh-token MFA assurance binding, unknown-environment gRPC fail-closed behavior, and least-privilege API/Rust Terraform workload secret separation.
 - Added API-only AES-GCM TOTP seed envelopes with fail-closed handling for missing, malformed, or legacy plaintext MFA material.
 - Added non-local Redis password enforcement and API-only Terraform secret injection for Redis authentication.

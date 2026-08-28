@@ -11,6 +11,8 @@ export const defaultDockerRLSConfig = {
   user: 'postgres',
   password: 'scriptureforge',
   keep: false,
+  dockerCommandTimeoutMs: 10000,
+  dockerRunTimeoutMs: 120000,
   healthRetries: 30,
   healthDelayMs: 1000,
 };
@@ -82,18 +84,24 @@ export async function runDockerRLSDBIntegration({
   rlsRunner = runRLSDBIntegration,
   env = process.env,
 } = {}) {
-  const dockerAvailable = await ensureDockerAvailable(runner);
+  const runDockerCommand = (command, options = {}) => runner(command, {
+    ...options,
+    timeoutMs: options.timeoutMs ?? (command[1] === 'run'
+      ? config.dockerRunTimeoutMs
+      : config.dockerCommandTimeoutMs),
+  });
+  const dockerAvailable = await ensureDockerAvailable(runDockerCommand);
   if (!dockerAvailable) {
     throw new Error(
-      'Docker is unavailable in this environment. Start the Docker daemon or run node tools/run-rls-db-integration.mjs with DATABASE_URL set to a migrated database.'
+      'Docker daemon is unavailable in this environment. Start the Docker daemon or run node tools/run-rls-db-integration.mjs with DATABASE_URL set to a migrated database.'
     );
   }
-  await ensureContainerNameAvailable(config, runner);
-  await runner(buildDockerRunCommand(config, workspaceRoot));
+  await ensureContainerNameAvailable(config, runDockerCommand);
+  await runDockerCommand(buildDockerRunCommand(config, workspaceRoot));
   try {
-    await waitForPostgres(config, runner);
+    await waitForPostgres(config, runDockerCommand);
     for (const migrationFile of migrationFiles) {
-      await runner(buildDockerExecCommand(config, [
+      await runDockerCommand(buildDockerExecCommand(config, [
         'psql',
         '-U',
         config.user,
@@ -115,14 +123,14 @@ export async function runDockerRLSDBIntegration({
     });
   } finally {
     if (!config.keep) {
-      await runner(['docker', 'rm', '-f', config.containerName], { allowFailure: true });
+      await runDockerCommand(['docker', 'rm', '-f', config.containerName], { allowFailure: true });
     }
   }
 }
 
 async function ensureDockerAvailable(runner) {
   try {
-    const result = await runner(['docker', '--version'], { allowFailure: true, quiet: true });
+    const result = await runner(['docker', 'info', '--format', '{{.ServerVersion}}'], { allowFailure: true, quiet: true });
     return result.exitCode === 0;
   } catch {
     return false;
@@ -159,7 +167,11 @@ async function waitForPostgres(config, runner) {
   throw new Error(`Postgres container did not become ready: ${lastError.trim()}`);
 }
 
-export function runCommand(command, { allowFailure = false, quiet = false } = {}) {
+export function runCommand(command, {
+  allowFailure = false,
+  quiet = false,
+  timeoutMs = 30000,
+} = {}) {
   return new Promise((resolveRun, reject) => {
     const [program, ...args] = command;
     const child = spawn(program, args, {
@@ -168,22 +180,51 @@ export function runCommand(command, { allowFailure = false, quiet = false } = {}
     });
     let stdout = '';
     let stderr = '';
+    let settled = false;
+    let timer;
+    const settleFailure = (error) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      reject(error);
+    };
     child.stdout?.on('data', (chunk) => {
       stdout += chunk.toString();
     });
     child.stderr?.on('data', (chunk) => {
       stderr += chunk.toString();
     });
-    child.on('error', reject);
+    child.on('error', settleFailure);
     child.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
       const exitCode = code ?? 1;
       const result = { exitCode, stdout, stderr };
       if (exitCode !== 0 && !allowFailure) {
-        reject(new Error(`${program} exited with ${exitCode}`));
+        reject(new Error(`${program} exited with ${exitCode}${stderr.trim() ? `: ${stderr.trim()}` : ''}`));
         return;
       }
       resolveRun(result);
     });
+    if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+      timer = setTimeout(() => {
+        if (settled) return;
+        const message = `${program} timed out after ${timeoutMs}ms`;
+        stderr = `${stderr}${stderr ? '\n' : ''}${message}`;
+        child.kill();
+        settled = true;
+        clearTimeout(timer);
+        const result = { exitCode: 124, stdout, stderr };
+        if (allowFailure) {
+          resolveRun(result);
+        } else {
+          const error = new Error(message);
+          error.code = 'ETIMEDOUT';
+          reject(error);
+        }
+      }, timeoutMs);
+    }
   });
 }
 

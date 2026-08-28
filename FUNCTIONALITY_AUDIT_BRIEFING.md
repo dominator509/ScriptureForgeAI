@@ -922,6 +922,8 @@ Status last updated: 2026-08-27
 
 2026-08-28 documentation closure: `audit_report.txt` is now explicitly labeled as a historical snapshot and directs readers to this briefing plus current local, CI, and staging evidence gates. This removes a stale report from the current readiness evidence path.
 
+2026-08-28 local-gate resilience hardening: the disposable Docker/RLS runner now verifies the Docker daemon with `docker info` and bounds every Docker subprocess, using a longer bounded budget for image startup. Docker daemon outages now fail the local gate quickly with an explicit environment blocker instead of allowing the full matrix to hang; this preserves the fail-closed RLS evidence requirement while making local diagnostics deterministic.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.

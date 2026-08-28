@@ -281,8 +281,8 @@ test('validateProductionRoomMembershipWiring accepts production DB-backed route 
 test('validateProductionRoomMembershipWiring rejects production room membership overrides', async () => {
   const { platformMainText, roomHandlerText, socketHandlerText } = await fixtures();
   const broken = platformMainText.replace(
-    '&ports.RoomHandler{DB: dbpool, StateManager: roomStateManager}',
-    '&ports.RoomHandler{DB: dbpool, StateManager: roomStateManager, MembershipValidator: func(*http.Request, *auth.TokenClaims, string) bool { return true }}',
+    /([\t ]*MeetingProvider:\s*"zoom",)/,
+    '$1\n\t\tMembershipValidator: func(*http.Request, *auth.TokenClaims, string) bool { return true },',
   );
   assert.notEqual(broken, platformMainText, 'test fixture must add a production RoomHandler membership override');
   assert.throws(

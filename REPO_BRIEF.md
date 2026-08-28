@@ -31,6 +31,7 @@ ScriptureForgeAI is a multi-tenant Bible study platform with authenticated works
   - `node tools/verify-project-path.mjs`
   - `node tools/verify-project-path.mjs --strict-staging`
   - `node tools/run-rls-db-integration-docker.mjs`
+  - The Docker RLS runner verifies daemon readiness with `docker info` and bounds Docker subprocesses; an unavailable daemon fails the gate quickly as an explicit environment blocker rather than hanging.
 - Verification:
   - `go test ./...`
   - `go vet ./...`
