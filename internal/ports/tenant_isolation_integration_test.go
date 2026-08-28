@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"scriptureforge/internal/domain/auth"
 	"scriptureforge/internal/domain/observability"
+	"scriptureforge/internal/domain/room"
 )
 
 const (
@@ -285,9 +286,16 @@ func TestRoomHandlersHonorTenantIsolation(t *testing.T) {
 	})
 
 	roomState := &tenantIsolationStateStore{}
+	meetingAdapter := &testMeetingAdapter{details: &room.MeetingDetails{
+		ID:       "123456789",
+		JoinURL:  "https://zoom.us/j/123456789",
+		StartURL: "https://zoom.us/s/host-secret",
+	}}
 	roomHandler := &RoomHandler{
-		DB:           db,
-		StateManager: roomState,
+		DB:              db,
+		StateManager:    roomState,
+		MeetingAdapter:  meetingAdapter,
+		MeetingProvider: "zoom",
 	}
 	overrideReq := httptest.NewRequest(http.MethodPost, "/api/v1/rooms/create", strings.NewReader(`{"title":"Tenant Override Room","organization_id":"`+tenantIsolationOrgB+`","user_id":"`+tenantIsolationUserB+`"}`))
 	overrideReq = overrideReq.WithContext(context.WithValue(overrideReq.Context(), auth.ContextKeyUser, &auth.TokenClaims{
@@ -344,6 +352,12 @@ func TestRoomHandlersHonorTenantIsolation(t *testing.T) {
 	if err := json.Unmarshal(createRec.Body.Bytes(), &created); err != nil {
 		t.Fatalf("decode room create response: %v", err)
 	}
+	if created.MeetingProvider != "zoom" || created.MeetingID != "123456789" || created.JoinURL != "https://zoom.us/j/123456789" {
+		t.Fatalf("room meeting mapping = %#v, want persisted Zoom identity and join URL", created)
+	}
+	if meetingAdapter.createdConfig.Topic != "Tenant Room" || meetingAdapter.createdConfig.HostID != tenantIsolationUserA || meetingAdapter.createdConfig.Duration != 60 {
+		t.Fatalf("meeting adapter config = %#v, want tenant room config", meetingAdapter.createdConfig)
+	}
 
 	blockedActiveReq := httptest.NewRequest(http.MethodGet, "/api/v1/rooms/active", nil)
 	blockedActiveReq = blockedActiveReq.WithContext(context.WithValue(blockedActiveReq.Context(), auth.ContextKeyUser, &auth.TokenClaims{
@@ -381,6 +395,9 @@ func TestRoomHandlersHonorTenantIsolation(t *testing.T) {
 	}
 	if len(ownerRooms) != 1 || ownerRooms[0].ID != created.ID {
 		t.Fatalf("tenant A active rooms expected one matching room, got %#v", ownerRooms)
+	}
+	if ownerRooms[0].MeetingProvider != "zoom" || ownerRooms[0].MeetingID != "123456789" || ownerRooms[0].JoinURL != "https://zoom.us/j/123456789" {
+		t.Fatalf("active room meeting mapping = %#v, want persisted Zoom identity and join URL", ownerRooms[0])
 	}
 
 	blockedStateReq := httptest.NewRequest(http.MethodGet, "/api/v1/rooms/state/"+created.ID, nil)

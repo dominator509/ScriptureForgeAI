@@ -12,11 +12,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"scriptureforge/internal/domain/auth"
 	"scriptureforge/internal/domain/observability"
+	"scriptureforge/internal/domain/room"
 )
 
 type RoomHandler struct {
 	DB                  *pgxpool.Pool
 	StateManager        roomStateStore
+	MeetingAdapter      room.MeetingAdapter
+	MeetingProvider     string
 	MembershipValidator func(r *http.Request, claims *auth.TokenClaims, roomID string) bool
 }
 
@@ -35,10 +38,76 @@ const (
 )
 
 type RoomResponse struct {
-	ID        string `json:"id"`
-	Title     string `json:"title"`
-	IsActive  bool   `json:"is_active"`
-	CreatedAt string `json:"created_at,omitempty"`
+	ID              string `json:"id"`
+	Title           string `json:"title"`
+	IsActive        bool   `json:"is_active"`
+	CreatedAt       string `json:"created_at,omitempty"`
+	MeetingProvider string `json:"meeting_provider,omitempty"`
+	MeetingID       string `json:"meeting_id,omitempty"`
+	JoinURL         string `json:"join_url,omitempty"`
+}
+
+type roomMeetingMetadata struct {
+	Mode    string `json:"mode"`
+	JoinURL string `json:"join_url,omitempty"`
+}
+
+func offlineMeetingDetails(hostID string) *room.MeetingDetails {
+	return &room.MeetingDetails{
+		ID:       fmt.Sprintf("offline-%d", time.Now().UnixNano()),
+		JoinURL:  "offline://in-person",
+		StartURL: "offline://host/" + hostID,
+	}
+}
+
+func (h *RoomHandler) provisionMeeting(ctx context.Context, title, hostID string) (*room.MeetingDetails, error) {
+	if h.MeetingAdapter == nil {
+		return offlineMeetingDetails(hostID), nil
+	}
+	return h.MeetingAdapter.CreateMeeting(ctx, room.MeetingConfig{
+		Topic:    title,
+		Duration: 60,
+		HostID:   hostID,
+	})
+}
+
+func persistedMeetingDetails(details *room.MeetingDetails, preferredProvider string) (string, string, []byte, error) {
+	if details == nil || strings.TrimSpace(details.ID) == "" {
+		return "", "", nil, fmt.Errorf("meeting adapter returned incomplete details")
+	}
+
+	provider := "offline"
+	meetingID := ""
+	metadata := roomMeetingMetadata{Mode: provider, JoinURL: strings.TrimSpace(details.JoinURL)}
+	if metadata.JoinURL != "offline://in-person" && !strings.HasPrefix(details.ID, "offline-") {
+		provider = strings.TrimSpace(preferredProvider)
+		if provider == "" {
+			provider = "external"
+		}
+		meetingID = strings.TrimSpace(details.ID)
+		metadata.Mode = provider
+	}
+	rawMetadata, err := json.Marshal(metadata)
+	if err != nil {
+		return "", "", nil, err
+	}
+	return provider, meetingID, rawMetadata, nil
+}
+
+func applyRoomMeetingMetadata(response *RoomResponse, provider, meetingID, rawMetadata string) {
+	response.MeetingProvider = provider
+	response.MeetingID = meetingID
+	var metadata roomMeetingMetadata
+	if json.Unmarshal([]byte(rawMetadata), &metadata) == nil {
+		response.JoinURL = metadata.JoinURL
+	}
+}
+
+func (h *RoomHandler) terminateProvisionedMeeting(ctx context.Context, details *room.MeetingDetails) {
+	if h.MeetingAdapter == nil || details == nil || details.ID == "" || details.JoinURL == "offline://in-person" || strings.HasPrefix(details.ID, "offline-") {
+		return
+	}
+	_ = h.MeetingAdapter.TerminateMeeting(ctx, details.ID)
 }
 
 func (h *RoomHandler) deactivateRoomAfterStateFailure(ctx context.Context, claims *auth.TokenClaims, roomID string) error {
@@ -71,9 +140,11 @@ func scanActiveRoomRows(rows pgx.Rows) ([]RoomResponse, error) {
 	rooms := []RoomResponse{}
 	for rows.Next() {
 		var roomResp RoomResponse
-		if err := rows.Scan(&roomResp.ID, &roomResp.Title, &roomResp.IsActive, &roomResp.CreatedAt); err != nil {
+		var provider, meetingID, rawMetadata string
+		if err := rows.Scan(&roomResp.ID, &roomResp.Title, &roomResp.IsActive, &roomResp.CreatedAt, &provider, &meetingID, &rawMetadata); err != nil {
 			return nil, err
 		}
+		applyRoomMeetingMetadata(&roomResp, provider, meetingID, rawMetadata)
 		rooms = append(rooms, roomResp)
 	}
 	if err := rows.Err(); err != nil {
@@ -154,6 +225,24 @@ func (h *RoomHandler) CreateRoomHandler(w http.ResponseWriter, r *http.Request) 
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Room state manager is not configured", Code: http.StatusServiceUnavailable})
 		return
 	}
+	meetingDetails, err := h.provisionMeeting(r.Context(), title, claims.UserID)
+	if err != nil {
+		observability.ObserveDependencyFromContext(r.Context(), "zoom", "create_meeting", "error", 0)
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to provision room meeting", Code: http.StatusServiceUnavailable})
+		return
+	}
+	meetingProvider, meetingID, meetingMetadata, err := persistedMeetingDetails(meetingDetails, h.MeetingProvider)
+	if err != nil {
+		h.terminateProvisionedMeeting(r.Context(), meetingDetails)
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Meeting provider returned invalid details", Code: http.StatusServiceUnavailable})
+		return
+	}
+	roomInitialized := false
+	defer func() {
+		if !roomInitialized {
+			h.terminateProvisionedMeeting(r.Context(), meetingDetails)
+		}
+	}()
 
 	start := time.Now()
 	dbStatus := "error"
@@ -178,12 +267,15 @@ func (h *RoomHandler) CreateRoomHandler(w http.ResponseWriter, r *http.Request) 
 	var roomResp RoomResponse
 	err = tx.QueryRow(
 		r.Context(),
-		`INSERT INTO live_rooms (organization_id, host_user_id, title, meeting_provider, meeting_metadata)
-		 VALUES ($1, $2, $3, 'offline', '{"mode":"offline"}'::jsonb)
+		`INSERT INTO live_rooms (organization_id, host_user_id, title, meeting_provider, meeting_external_id, meeting_metadata)
+		 VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6::jsonb)
 		 RETURNING id, title, is_active, created_at::text`,
 		claims.OrganizationID,
 		claims.UserID,
 		title,
+		meetingProvider,
+		meetingID,
+		string(meetingMetadata),
 	).Scan(&roomResp.ID, &roomResp.Title, &roomResp.IsActive, &roomResp.CreatedAt)
 	if err != nil {
 		observability.ObserveDependencyFromContext(r.Context(), "postgres", "room_create", dbStatus, time.Since(start))
@@ -225,6 +317,8 @@ func (h *RoomHandler) CreateRoomHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	observability.ObserveDependencyFromContext(r.Context(), "redis", "room_set_active", redisStatus, time.Since(redisStart))
+	applyRoomMeetingMetadata(&roomResp, meetingProvider, meetingID, string(meetingMetadata))
+	roomInitialized = true
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -262,7 +356,8 @@ func (h *RoomHandler) ActiveRoomsHandler(w http.ResponseWriter, r *http.Request)
 	}
 	rows, err := tx.Query(
 		r.Context(),
-		`SELECT id, title, is_active, created_at::text
+		`SELECT id, title, is_active, created_at::text, meeting_provider,
+		        COALESCE(meeting_external_id, ''), meeting_metadata::text
 		 FROM live_rooms
 		 WHERE organization_id = $1
 		   AND is_active = TRUE

@@ -78,7 +78,7 @@ func (r *scriptedRows) Conn() *pgx.Conn { return nil }
 
 func TestScanActiveRoomRowsRejectsCursorErrors(t *testing.T) {
 	rooms, err := scanActiveRoomRows(&scriptedRows{
-		values: [][]any{{"room-1", "Study", true, "2026-08-16T00:00:00Z"}},
+		values: [][]any{{"room-1", "Study", true, "2026-08-16T00:00:00Z", "offline", "", `{"mode":"offline","join_url":"offline://in-person"}`}},
 		err:    errors.New("cursor failed after first room"),
 	})
 	if err == nil {

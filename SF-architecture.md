@@ -65,7 +65,7 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
 ### 4.2 Synchronized Live Study Room Execution with Third-Party Video
 *   **Actor:** Small Group Leader (`Host`), Multiple Believers (`Participants`).
 *   **Flow:** Host triggers a scheduled "Live Room" session. 
-*   **Execution:** The system connects via secure WebSockets to a dedicated state coordinator while firing API webhooks to spin up/bind an active Zoom conference. The participant screen realigns dynamically: text changes, focus highlights, and revealed discussion items push out via real-time payloads. At the conclusion of the session, participant presence counters write directly to an immutable ledger, and user prayer boards freeze and archive.
+*   **Execution:** Room creation invokes the configured `MeetingAdapter` to provision a Zoom conference or an explicit offline/in-person fallback, then persists the tenant-scoped provider and external meeting ID plus safe participant join metadata. Host start URLs are excluded from persisted room metadata and participant responses. The system connects via secure WebSockets to a dedicated state coordinator while signed Zoom webhooks update the mapped internal room. The participant screen realigns dynamically: text changes, focus highlights, and revealed discussion items push out via real-time payloads. At the conclusion of the session, participant presence counters write directly to an immutable ledger, and user prayer boards freeze and archive.
 
 ### 4.3 Automated Sermon Discipleship Repurposing
 *   **Actor:** Pastor (`Author`).

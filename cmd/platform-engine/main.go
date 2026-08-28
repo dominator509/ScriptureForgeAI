@@ -554,7 +554,12 @@ func setupRoutesWithLifecycle(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisC
 	// Room & Zoom Webhook Initialization
 	roomStateManager := room.NewRoomStateManager(redisClient)
 	roomHub := ports.NewRedisRoomHub(redisClient)
-	roomHandler := &ports.RoomHandler{DB: dbpool, StateManager: roomStateManager}
+	roomHandler := &ports.RoomHandler{
+		DB:              dbpool,
+		StateManager:    roomStateManager,
+		MeetingAdapter:  integration_zoom.NewZoomClient(),
+		MeetingProvider: "zoom",
+	}
 	mux.Handle("/api/v1/rooms/create", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileRooms, http.HandlerFunc(roomHandler.CreateRoomHandler)), ""))
 	mux.Handle("/api/v1/rooms/active", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileRooms, http.HandlerFunc(roomHandler.ActiveRoomsHandler)), ""))
 	mux.Handle("/api/v1/rooms/state/", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileRooms, http.HandlerFunc(roomHandler.RoomStateHandler)), ""))

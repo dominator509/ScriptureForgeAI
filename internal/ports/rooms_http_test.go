@@ -8,7 +8,61 @@ import (
 	"testing"
 
 	"scriptureforge/internal/domain/auth"
+	"scriptureforge/internal/domain/room"
 )
+
+type testMeetingAdapter struct {
+	details       *room.MeetingDetails
+	createdConfig room.MeetingConfig
+	terminatedID  string
+}
+
+func (a *testMeetingAdapter) CreateMeeting(_ context.Context, config room.MeetingConfig) (*room.MeetingDetails, error) {
+	a.createdConfig = config
+	return a.details, nil
+}
+
+func (a *testMeetingAdapter) TerminateMeeting(_ context.Context, meetingID string) error {
+	a.terminatedID = meetingID
+	return nil
+}
+
+func (a *testMeetingAdapter) GetMeetingStatus(context.Context, string) (string, error) {
+	return "started", nil
+}
+
+func TestPersistedMeetingDetailsExposeOnlySafeJoinMetadata(t *testing.T) {
+	provider, meetingID, metadata, err := persistedMeetingDetails(&room.MeetingDetails{
+		ID:       "123456789",
+		JoinURL:  "https://zoom.us/j/123456789",
+		StartURL: "https://zoom.us/s/host-secret",
+	}, "zoom")
+	if err != nil {
+		t.Fatalf("persistedMeetingDetails returned error: %v", err)
+	}
+	if provider != "zoom" || meetingID != "123456789" {
+		t.Fatalf("meeting persistence identity = %q/%q, want zoom/123456789", provider, meetingID)
+	}
+	if strings.Contains(string(metadata), "host-secret") || strings.Contains(string(metadata), "start_url") {
+		t.Fatalf("meeting metadata exposed host start URL: %s", metadata)
+	}
+	if !strings.Contains(string(metadata), "https://zoom.us/j/123456789") {
+		t.Fatalf("meeting metadata omitted safe join URL: %s", metadata)
+	}
+}
+
+func TestPersistedOfflineMeetingDetailsDoNotCreateExternalMapping(t *testing.T) {
+	provider, meetingID, metadata, err := persistedMeetingDetails(offlineMeetingDetails("host-1"), "zoom")
+	if err != nil {
+		t.Fatalf("persistedMeetingDetails returned error: %v", err)
+	}
+	if provider != "offline" || meetingID != "" {
+		t.Fatalf("offline meeting persistence identity = %q/%q, want offline/empty", provider, meetingID)
+	}
+	if !strings.Contains(string(metadata), "offline://in-person") {
+		t.Fatalf("offline meeting metadata = %s, want fallback URL", metadata)
+	}
+}
 
 func TestCreateRoomRejectsTenantOverrideFieldsBeforePersistence(t *testing.T) {
 	handler := &RoomHandler{}
