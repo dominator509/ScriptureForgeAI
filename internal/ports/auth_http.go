@@ -1010,6 +1010,11 @@ func (h *AuthHandler) MFAVerifyHandler(w http.ResponseWriter, r *http.Request) {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "MFA not configured", Code: http.StatusNotFound})
 		return
 	}
+	if claims.MFAEnrollmentOnly && mfaEnabled {
+		metricStatus = "already_enabled"
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "MFA enrollment token has already been consumed", Code: http.StatusConflict})
+		return
+	}
 	mfaSecret, decryptErr := decryptMFASecret(encryptedMFASecret, h.mfaEncryptionKey())
 	if decryptErr != nil {
 		metricStatus = "mfa_unavailable"

@@ -579,6 +579,14 @@ func TestMFAEnrollAndVerifyFlowForPrivilegedUsers(t *testing.T) {
 	if !stagedEnabled {
 		t.Fatal("valid TOTP did not activate the staged MFA factor")
 	}
+	replayReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/mfa/verify", strings.NewReader(`{"mfa_code":"`+currentCode+`"}`))
+	replayReq = replayReq.WithContext(context.WithValue(replayReq.Context(), auth.ContextKeyUser, adminClaims))
+	replayReq = replayReq.WithContext(observability.WithObserver(replayReq.Context(), observer))
+	replayRec := httptest.NewRecorder()
+	handler.MFAVerifyHandler(replayRec, replayReq)
+	if replayRec.Code != http.StatusConflict {
+		t.Fatalf("replayed MFA enrollment token status = %d body = %s, want 409", replayRec.Code, replayRec.Body.String())
+	}
 	reenrollReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/mfa/enroll", strings.NewReader(`{}`))
 	reenrollReq = reenrollReq.WithContext(context.WithValue(reenrollReq.Context(), auth.ContextKeyUser, adminClaims))
 	reenrollReq = reenrollReq.WithContext(observability.WithObserver(reenrollReq.Context(), observer))
