@@ -7,6 +7,7 @@ This file records repository-level implementation history. It is not a substitut
 ### Production-readiness remediation
 
 - Added irreversible AI audit prompt redaction: historical `ai_request_logs` bodies are scrubbed, and new rows retain only a fixed redaction marker plus prompt byte length while preserving status, errors, and citation trails.
+- Added Terraform Kubernetes network-policy skeleton: application namespace ingress/egress defaults to deny, with explicit API, Rust, web, DNS, data-tier, Prometheus, OTLP, and HTTPS provider flows plus regression validation against unrestricted pod egress.
 - Enforced typed Go JSON ingress contracts and typed room WebSocket error envelopes.
 - Hardened authentication, refresh rotation, MFA lifecycle, tenant RLS boundaries, encrypted journal persistence, and client token recovery.
 - Hardened room creation and synchronization with authenticated WSS, strict event envelopes, Redis sequencing/fan-out, polling fallback, and shutdown cleanup.

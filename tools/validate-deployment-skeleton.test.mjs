@@ -12,6 +12,7 @@ import {
   validateTerraformReleaseInputGuards,
   validateTerraformSecretInputs,
   validateTerraformStorageKMSInputs,
+  validateNetworkPolicies,
   validateWorkloadSecretSeparation,
 } from './validate-deployment-skeleton.mjs';
 
@@ -24,6 +25,10 @@ async function terraformSecretFixtures() {
     readFile('build/terraform/eks.tf', 'utf8'),
   ]);
   return { variables, tfvarsExample, app, data, eks };
+}
+
+async function terraformNetworkPolicyFixture() {
+  return readFile('build/terraform/network_policy.tf', 'utf8');
 }
 
 test('validatePlatformRuntimeConfig accepts the platform engine runtime guard', async () => {
@@ -313,5 +318,19 @@ test('validateTerraformReleaseInputGuards rejects placeholder hostname validatio
   assert.throws(
     () => validateTerraformReleaseInputGuards(broken),
     /api_hostname validation must reject \.example/,
+  );
+});
+
+test('validateNetworkPolicies accepts the default-deny workload policies', async () => {
+  const networkPolicy = await terraformNetworkPolicyFixture();
+  assert.doesNotThrow(() => validateNetworkPolicies(networkPolicy));
+});
+
+test('validateNetworkPolicies rejects unrestricted egress', async () => {
+  const networkPolicy = await terraformNetworkPolicyFixture();
+  const broken = `${networkPolicy}\n# cidr = "0.0.0.0/0"`;
+  assert.throws(
+    () => validateNetworkPolicies(broken),
+    /must not restore unrestricted egress/,
   );
 });

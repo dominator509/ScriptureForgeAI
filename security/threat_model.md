@@ -46,7 +46,7 @@ This is a repo-local threat model. It does not replace staging evidence for AWS 
 - WebSocket integrity: `internal/ports/rooms_realtime_test.go`, `internal/domain/room/redis_lua_test.go`, and `tools/loadtest` cover membership-gated events, rejected invalid frames, reconnect behavior, HTTP polling, and Redis-backed ordering.
 - AI safety/auditability: `internal/adapters/llm/client_test.go` and `internal/ports/ai_audit_integration_test.go` cover missing-key failure, timeouts, citation-free/hallucinated-citation rejection, and audit persistence without live provider calls.
 - Zoom resilience: `internal/adapters/integration_zoom/*_test.go` covers timeouts, circuit-open fallback, signature denial, duplicate webhook safety, and meeting-to-room mapping.
-- Deployment security shape: `tools/validate-deployment-skeleton.mjs`, Terraform fmt/validate, and `security/secret_handling_review.md` cover TLS ingress skeleton, remote state shape, workload secret references, IRSA/CSI wiring, resource controls, health probes, and secret hygiene.
+- Deployment security shape: `tools/validate-deployment-skeleton.mjs`, Terraform fmt/validate, and `security/secret_handling_review.md` cover TLS ingress skeleton, remote state shape, workload secret references, IRSA/CSI wiring, default-deny Kubernetes network policy with explicit workload flows, resource controls, health probes, and secret hygiene.
 
 ## Residual Risks Blocking Production Claim
 

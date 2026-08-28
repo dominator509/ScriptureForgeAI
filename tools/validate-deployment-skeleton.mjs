@@ -30,13 +30,14 @@ export const deploymentSkeletonProofMarkers = [
   'staging_input_placeholders_rejected=true',
   'container_build_definitions=true',
   'database_tls_enforced=true',
+  'network_policy=true',
 ];
 
 async function readTerraform(name) {
   return readFile(new URL(name, terraformDir), 'utf8');
 }
 
-const [app, service, variables, iam, versions, tfvarsExample, backendExample, eks] = await Promise.all([
+const [app, service, variables, iam, versions, tfvarsExample, backendExample, eks, networkPolicy] = await Promise.all([
   readTerraform('app.tf'),
   readTerraform('service.tf'),
   readTerraform('variables.tf'),
@@ -45,6 +46,7 @@ const [app, service, variables, iam, versions, tfvarsExample, backendExample, ek
   readTerraform('terraform.tfvars.example'),
   readTerraform('backend.hcl.example'),
   readTerraform('eks.tf'),
+  readTerraform('network_policy.tf'),
 ]);
 const [platformMain, metricsSecurity, rustMain, apiContainer, rustContainer, webContainer, compose] = await Promise.all([
   readFile(platformEngineMain, 'utf8'),
@@ -379,6 +381,40 @@ export function validateTerraformReleaseInputGuards(variables) {
   }
 }
 
+export function validateNetworkPolicies(networkPolicy) {
+  requireIncludes(
+    networkPolicy,
+    [
+      'resource "kubernetes_network_policy" "app_default_deny"',
+      'resource "kubernetes_network_policy" "api"',
+      'resource "kubernetes_network_policy" "rust_engine"',
+      'resource "kubernetes_network_policy" "web"',
+      'policy_types = ["Ingress", "Egress"]',
+      'for_each = var.allowed_ingress_cidrs',
+      'kubernetes.io/metadata.name',
+      'k8s-app',
+      'kube-dns',
+      'app.kubernetes.io/name',
+      'prometheus',
+      'app = "scriptureforge-api"',
+      'app = "scriptureforge-rust-engine"',
+      'app = "scriptureforge-web"',
+      'port     = 8080',
+      'port     = 50051',
+      'port     = 5432',
+      'port     = 6379',
+      'port     = 443',
+      'port     = 4317',
+      'port     = 4318',
+      'port     = 9102',
+      'port     = 3000',
+      'port     = 53',
+    ],
+    'terraform network policy',
+  );
+  assert.ok(!networkPolicy.includes('cidr = "0.0.0.0/0"'), 'network policies must not restore unrestricted egress');
+}
+
 requireIncludes(
   variables,
   [
@@ -621,6 +657,7 @@ validateTerraformImageDigestInputs(variables, tfvarsExample, app);
 validateTerraformStorageKMSInputs(variables, tfvarsExample, data);
 validateTerraformEKSSecretEncryption(variables, tfvarsExample, eks);
 validateTerraformReleaseInputGuards(variables);
+validateNetworkPolicies(networkPolicy);
 assert.ok(!tfvarsExample.includes('skip_final_snapshot = true'), 'tfvars example must not preserve production-hostile snapshot defaults');
 
 validatePlatformRuntimeConfig(platformMain);
