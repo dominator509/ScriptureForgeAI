@@ -338,7 +338,7 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_register",status="success"} 1`,
 		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_login",status="success"} 3`,
 		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_refresh",status="success"} 1`,
-		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_refresh",status="invalid_or_expired"} 4`,
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_refresh",status="invalid_or_expired"} 5`,
 		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_logout",status="success"} 1`,
 	} {
 		if !strings.Contains(metrics, expected) {
