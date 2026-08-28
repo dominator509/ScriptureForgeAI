@@ -25,6 +25,7 @@ This file records repository-level implementation history. It is not a substitut
 - Corrected local Compose to use the current root-context containers, pgvector migrations, and URL-based runtime configuration.
 - Removed the unreachable nested in-memory API/WAL runtime, replaced mock disaster-recovery scripts with checksummed PostgreSQL archive helpers requiring explicit isolated restores, and marked the old emulation report as historical; CI/local tooling now validates the boundary.
 - Recorded the current exact-SHA verification boundary: hosted push/PR runs for `0c63a86a32795f5692fd85d2bf1280ac8f8b2c43` failed before workflow steps, while the clean local matrix executed 35/35 gates with 34 passing and only the Docker-backed RLS gate blocked by the unavailable Docker backend.
+- Corrected the hosted tenant-isolation integration assertion to match the submitted room title, allowing the real PostgreSQL/RLS suite to verify room-to-Zoom configuration without a stale test expectation.
 - Marked the superseded `audit_report.txt` as historical so stale completion claims cannot be mistaken for current readiness evidence.
 - Hardened the disposable Docker/RLS gate with daemon readiness probing and bounded Docker subprocess timeouts; unavailable Docker now reports a deterministic environment blocker instead of hanging local validation.
 - Repaired the RLS production-wiring regression fixture so its negative membership-override test remains stable across Go struct formatting changes.

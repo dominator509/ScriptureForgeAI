@@ -355,7 +355,7 @@ func TestRoomHandlersHonorTenantIsolation(t *testing.T) {
 	if created.MeetingProvider != "zoom" || created.MeetingID != "123456789" || created.JoinURL != "https://zoom.us/j/123456789" {
 		t.Fatalf("room meeting mapping = %#v, want persisted Zoom identity and join URL", created)
 	}
-	if meetingAdapter.createdConfig.Topic != "Tenant Room" || meetingAdapter.createdConfig.HostID != tenantIsolationUserA || meetingAdapter.createdConfig.Duration != 60 {
+	if meetingAdapter.createdConfig.Topic != "Tenant Isolation Room" || meetingAdapter.createdConfig.HostID != tenantIsolationUserA || meetingAdapter.createdConfig.Duration != 60 {
 		t.Fatalf("meeting adapter config = %#v, want tenant room config", meetingAdapter.createdConfig)
 	}
 
