@@ -128,8 +128,10 @@ eks_oidc_thumbprint_list = ["9e99a48a9960b14926bb7f3b02e22da0afd10efd"]
 # Expected database_url secret value:
 # postgres://scriptureforge_app:<password>@<rds-writer-endpoint>:5432/scriptureforge?sslmode=require
 
-# Provide through secure CI variables or an uncommitted tfvars file.
-database_root_security_passphrase = "replace-with-at-least-16-characters"
+# Aurora manages the RDS master password in Secrets Manager and encrypts that
+# secret with database_kms_key_arn. Do not provide a root password in tfvars.
+# For any future local-only secret input documentation, use a non-secret placeholder:
+# replace-with-at-least-16-characters.
 
 # Backup and maintenance defaults are safe to keep, but pin them in staging evidence.
 database_backup_retention_days       = 14

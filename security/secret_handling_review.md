@@ -40,6 +40,7 @@ This local review does not replace release-time secret scanning or cloud-side ev
 - Clean pushed CI output from `tools/validate-secret-hygiene.mjs` and TruffleHog.
 - Confirmation that real staging/production secrets live only in the chosen secret manager or CI secret store.
 - Evidence that Terraform state is remote, encrypted, access-controlled, and does not contain plaintext application secrets.
+- The Terraform skeleton uses Aurora-managed master credentials and a customer-managed KMS key instead of accepting a root password variable, reducing plaintext-equivalent credential exposure in state; live state backend and secret-rotation proof remain required.
 - Staging proof that the Secrets Store CSI driver and AWS provider are installed, IRSA can read only the configured secret ARNs, synced Kubernetes secrets are created without plaintext or base64-encoded secret values in evidence artifacts, and `DATABASE_URL` uses a scoped application database user instead of the RDS root user.
 - Staging proof that JWT and journal salt are separate high-entropy secret objects, both are synced to the API, rotation preserves the contract, and the journal salt never falls back to `JWT_SECRET_KEY`.
 - Rotated staging credentials after any test deployment that used temporary values.

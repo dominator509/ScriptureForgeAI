@@ -14,7 +14,7 @@ export const deploymentSkeletonProofMarkers = [
   'remote_state_backend=true',
   'irsa_secret_access=true',
   'secretproviderclass_sync=true',
-  'database_root_secret_no_default=true',
+  'database_root_secret_managed=true',
   'workload_secret_inputs_are_arns=true',
   'tls_ingress=true',
   'rds_backup_final_snapshot=true',
@@ -232,13 +232,8 @@ function terraformVariableBlock(source, name) {
 }
 
 export function validateTerraformSecretInputs(variables, tfvarsExample, app) {
-  const rootSecretBlock = terraformVariableBlock(variables, 'database_root_security_passphrase');
-  assert.ok(rootSecretBlock.includes('sensitive   = true'), 'database root passphrase must be marked sensitive');
-  assert.ok(!/\bdefault\s*=/.test(rootSecretBlock), 'database root passphrase must not define a default value');
-  assert.ok(
-    /length\(var\.database_root_security_passphrase\)\s*>=\s*16/.test(rootSecretBlock),
-    'database root passphrase must keep a minimum length validation',
-  );
+  assert.ok(!variables.includes('variable "database_root_security_passphrase"'), 'Terraform must not accept a root database password input');
+  assert.ok(!tfvarsExample.includes('database_root_security_passphrase'), 'terraform.tfvars.example must not expose a root database password input');
 
   const secretARNBlock = terraformVariableBlock(variables, 'app_secret_arns');
   for (const key of ['database_url', 'jwt_secret_key', 'journal_salt_secret', 'mfa_encryption_key', 'redis_auth_token', 'openai_api_key', 'metrics_auth_token', 'zoom_credentials', 'grpc_engine_shared_secret', 'grpc_engine_tls_credentials']) {
@@ -323,17 +318,20 @@ export function validateTerraformStorageKMSInputs(variables, tfvarsExample, data
     );
   }
 
-  requireIncludes(
+  requireMatches(
     data,
     [
-      'storage_encrypted      = true',
-      'kms_key_id             = var.database_kms_key_arn',
-      'at_rest_encryption_enabled = true',
-      'transit_encryption_enabled = true',
-      'kms_key_id                 = var.redis_kms_key_arn',
+      /^\s*storage_encrypted\s*=\s*true/m,
+      /^\s*kms_key_id\s*=\s*var\.database_kms_key_arn/m,
+      /^\s*manage_master_user_password\s*=\s*true/m,
+      /^\s*master_user_secret_kms_key_id\s*=\s*var\.database_kms_key_arn/m,
+      /^\s*at_rest_encryption_enabled\s*=\s*true/m,
+      /^\s*transit_encryption_enabled\s*=\s*true/m,
+      /^\s*kms_key_id\s*=\s*var\.redis_kms_key_arn/m,
     ],
     'terraform storage KMS wiring',
   );
+  assert.ok(!/^\s*master_password\s*=/m.test(data), 'RDS cluster must not receive a Terraform-managed plaintext password');
 }
 
 export function validateTerraformEKSSecretEncryption(variables, tfvarsExample, eks) {

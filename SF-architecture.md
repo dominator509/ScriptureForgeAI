@@ -640,7 +640,8 @@ resource "aws_rds_cluster" "storage_backend_postgres" {
   engine_version          = "17.2"
   database_name           = "scriptureforge_prod"
   master_username         = "forge_admin_root"
-  master_password         = var.database_root_security_passphrase
+  manage_master_user_password   = true
+  master_user_secret_kms_key_id = var.database_kms_key_arn
   storage_encrypted       = true
   deletion_protection     = true
 }

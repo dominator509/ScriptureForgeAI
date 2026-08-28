@@ -51,17 +51,6 @@ variable "allowed_ingress_cidrs" {
   default     = ["0.0.0.0/0"]
 }
 
-variable "database_root_security_passphrase" {
-  description = "Root password for the PostgreSQL cluster. Prefer injecting this from a secure CI variable or secret manager at apply time."
-  type        = string
-  sensitive   = true
-
-  validation {
-    condition     = length(var.database_root_security_passphrase) >= 16
-    error_message = "The database root password must be at least 16 characters."
-  }
-}
-
 variable "database_instance_class" {
   description = "Aurora PostgreSQL instance class."
   type        = string

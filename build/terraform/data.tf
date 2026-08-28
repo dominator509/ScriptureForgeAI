@@ -4,16 +4,17 @@ resource "aws_db_subnet_group" "storage" {
 }
 
 resource "aws_rds_cluster" "postgres" {
-  cluster_identifier     = "${local.name_prefix}-postgres"
-  engine                 = "aurora-postgresql"
-  engine_version         = "16.4"
-  database_name          = "scriptureforge"
-  master_username        = "forge_admin_root"
-  master_password        = var.database_root_security_passphrase
-  db_subnet_group_name   = aws_db_subnet_group.storage.name
-  vpc_security_group_ids = [aws_security_group.data.id]
-  storage_encrypted      = true
-  kms_key_id             = var.database_kms_key_arn
+  cluster_identifier            = "${local.name_prefix}-postgres"
+  engine                        = "aurora-postgresql"
+  engine_version                = "16.4"
+  database_name                 = "scriptureforge"
+  master_username               = "forge_admin_root"
+  manage_master_user_password   = true
+  master_user_secret_kms_key_id = var.database_kms_key_arn
+  db_subnet_group_name          = aws_db_subnet_group.storage.name
+  vpc_security_group_ids        = [aws_security_group.data.id]
+  storage_encrypted             = true
+  kms_key_id                    = var.database_kms_key_arn
 
   backup_retention_period      = var.database_backup_retention_days
   preferred_backup_window      = var.database_preferred_backup_window

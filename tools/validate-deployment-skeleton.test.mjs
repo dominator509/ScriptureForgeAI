@@ -134,16 +134,22 @@ test('validateTerraformSecretInputs accepts current secret input wiring', async 
   assert.doesNotThrow(() => validateTerraformSecretInputs(variables, tfvarsExample, app));
 });
 
-test('validateTerraformSecretInputs rejects database root password defaults', async () => {
+test('validateTerraformSecretInputs rejects legacy database root password inputs', async () => {
   const { variables, tfvarsExample, app } = await terraformSecretFixtures();
-  const broken = variables.replace(
-    'sensitive   = true',
-    'sensitive   = true\n  default     = "replace-with-at-least-16-characters"',
-  );
-  assert.notEqual(broken, variables, 'test fixture must add a root password default');
+  const broken = `${variables}\nvariable "database_root_security_passphrase" {\n  type = string\n}`;
+  assert.notEqual(broken, variables, 'test fixture must add a legacy root password input');
   assert.throws(
     () => validateTerraformSecretInputs(broken, tfvarsExample, app),
-    /database root passphrase must not define a default value/,
+    /must not accept a root database password input/,
+  );
+});
+
+test('validateTerraformSecretInputs rejects root password examples', async () => {
+  const { variables, tfvarsExample, app } = await terraformSecretFixtures();
+  const broken = `${tfvarsExample}\ndatabase_root_security_passphrase = "replace-with-a-secret"`;
+  assert.throws(
+    () => validateTerraformSecretInputs(variables, broken, app),
+    /terraform\.tfvars\.example must not expose a root database password input/,
   );
 });
 
@@ -223,11 +229,24 @@ test('validateTerraformStorageKMSInputs accepts current storage KMS wiring', asy
 
 test('validateTerraformStorageKMSInputs rejects missing RDS customer-managed KMS wiring', async () => {
   const { variables, tfvarsExample, data } = await terraformSecretFixtures();
-  const broken = data.replace('  kms_key_id             = var.database_kms_key_arn\n', '');
+  const broken = data.replace(/^\s*kms_key_id\s*=\s*var\.database_kms_key_arn\r?\n/m, '');
   assert.notEqual(broken, data, 'test fixture must remove RDS KMS wiring');
   assert.throws(
     () => validateTerraformStorageKMSInputs(variables, tfvarsExample, broken),
-    /kms_key_id\s+= var\.database_kms_key_arn/,
+    /terraform storage KMS wiring missing .*kms_key_id.*database_kms_key_arn/,
+  );
+});
+
+test('validateTerraformStorageKMSInputs rejects Terraform-managed RDS passwords', async () => {
+  const { variables, tfvarsExample, data } = await terraformSecretFixtures();
+  const broken = data.replace(
+    '  manage_master_user_password   = true\n',
+    '  master_password        = "replace-with-a-secret"\n',
+  );
+  assert.notEqual(broken, data, 'test fixture must replace managed RDS credentials');
+  assert.throws(
+    () => validateTerraformStorageKMSInputs(variables, tfvarsExample, broken),
+    /terraform storage KMS wiring missing .*manage_master_user_password.*true/,
   );
 });
 
