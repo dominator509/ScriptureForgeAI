@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   validateContainerBuildDefinitions,
   validateDatabaseTransportConfig,
+  validateTerraformEKSSecretEncryption,
   validateLocalComposeConfig,
   validateTerraformImageDigestInputs,
   validatePlatformRuntimeConfig,
@@ -14,13 +15,14 @@ import {
 } from './validate-deployment-skeleton.mjs';
 
 async function terraformSecretFixtures() {
-  const [variables, tfvarsExample, app, data] = await Promise.all([
+  const [variables, tfvarsExample, app, data, eks] = await Promise.all([
     readFile('build/terraform/variables.tf', 'utf8'),
     readFile('build/terraform/terraform.tfvars.example', 'utf8'),
     readFile('build/terraform/app.tf', 'utf8'),
     readFile('build/terraform/data.tf', 'utf8'),
+    readFile('build/terraform/eks.tf', 'utf8'),
   ]);
-  return { variables, tfvarsExample, app, data };
+  return { variables, tfvarsExample, app, data, eks };
 }
 
 test('validatePlatformRuntimeConfig accepts the platform engine runtime guard', async () => {
@@ -202,6 +204,21 @@ test('validateTerraformStorageKMSInputs rejects weak Redis KMS input validation'
   assert.throws(
     () => validateTerraformStorageKMSInputs(broken, tfvarsExample, data),
     /redis_kms_key_arn must validate customer-managed AWS KMS key or alias ARNs/,
+  );
+});
+
+test('validateTerraformEKSSecretEncryption accepts current envelope encryption wiring', async () => {
+  const { variables, tfvarsExample, eks } = await terraformSecretFixtures();
+  assert.doesNotThrow(() => validateTerraformEKSSecretEncryption(variables, tfvarsExample, eks));
+});
+
+test('validateTerraformEKSSecretEncryption rejects missing EKS secrets encryption', async () => {
+  const { variables, tfvarsExample, eks } = await terraformSecretFixtures();
+  const broken = eks.replace('  encryption_config {', '  # encryption_config removed');
+  assert.notEqual(broken, eks, 'test fixture must remove EKS secrets encryption');
+  assert.throws(
+    () => validateTerraformEKSSecretEncryption(variables, tfvarsExample, broken),
+    /EKS Secret envelope encryption missing encryption_config \{/,
   );
 });
 

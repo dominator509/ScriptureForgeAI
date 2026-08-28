@@ -53,6 +53,7 @@ rust_engine_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/scriptureforge
 
 database_kms_key_arn = "arn:aws:kms:us-east-1:123456789012:alias/scriptureforge-staging-rds"
 redis_kms_key_arn    = "arn:aws:kms:us-east-1:123456789012:alias/scriptureforge-staging-redis"
+eks_secrets_kms_key_arn = "arn:aws:kms:us-east-1:123456789012:alias/scriptureforge-staging-eks-secrets"
 
 # Optional resource overrides. Start with defaults, then tune from staging load and memory data.
 # api_resources = {

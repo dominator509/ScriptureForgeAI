@@ -10,6 +10,14 @@ resource "aws_eks_cluster" "platform" {
     endpoint_public_access  = false
   }
 
+  encryption_config {
+    resources = ["secrets"]
+
+    provider {
+      key_arn = var.eks_secrets_kms_key_arn
+    }
+  }
+
   depends_on = [
     aws_iam_role_policy_attachment.eks_cluster
   ]

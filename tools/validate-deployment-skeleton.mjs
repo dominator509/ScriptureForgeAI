@@ -24,6 +24,7 @@ export const deploymentSkeletonProofMarkers = [
   'root_database_url_absent=true',
   'immutable_workload_image_digests=true',
   'customer_managed_storage_kms=true',
+  'eks_secrets_envelope_encryption=true',
   'staging_input_placeholders_rejected=true',
   'container_build_definitions=true',
   'database_tls_enforced=true',
@@ -33,7 +34,7 @@ async function readTerraform(name) {
   return readFile(new URL(name, terraformDir), 'utf8');
 }
 
-const [app, service, variables, iam, versions, tfvarsExample, backendExample] = await Promise.all([
+const [app, service, variables, iam, versions, tfvarsExample, backendExample, eks] = await Promise.all([
   readTerraform('app.tf'),
   readTerraform('service.tf'),
   readTerraform('variables.tf'),
@@ -41,6 +42,7 @@ const [app, service, variables, iam, versions, tfvarsExample, backendExample] = 
   readTerraform('versions.tf'),
   readTerraform('terraform.tfvars.example'),
   readTerraform('backend.hcl.example'),
+  readTerraform('eks.tf'),
 ]);
 const [platformMain, rustMain, apiContainer, rustContainer, webContainer, compose] = await Promise.all([
   readFile(platformEngineMain, 'utf8'),
@@ -307,6 +309,27 @@ export function validateTerraformStorageKMSInputs(variables, tfvarsExample, data
   );
 }
 
+export function validateTerraformEKSSecretEncryption(variables, tfvarsExample, eks) {
+  const block = terraformVariableBlock(variables, 'eks_secrets_kms_key_arn');
+  assert.ok(
+    block.includes('arn:aws:kms:') && block.includes(':key/') && block.includes(':alias/'),
+    'eks_secrets_kms_key_arn must validate customer-managed AWS KMS key or alias ARNs',
+  );
+  assert.ok(
+    /eks_secrets_kms_key_arn\s*=\s*"arn:aws:kms:[^\"]+:(?:key|alias)\/[^\"]+"/.test(tfvarsExample),
+    'terraform.tfvars.example must document eks_secrets_kms_key_arn as a KMS key or alias ARN',
+  );
+  requireIncludes(
+    eks,
+    [
+      'encryption_config {',
+      'resources = ["secrets"]',
+      'key_arn = var.eks_secrets_kms_key_arn',
+    ],
+    'EKS Secret envelope encryption',
+  );
+}
+
 export function validateTerraformReleaseInputGuards(variables) {
   const serviceVersionBlock = terraformVariableBlock(variables, 'service_version');
   assert.ok(!/\bdefault\s*=/.test(serviceVersionBlock), 'service_version must not define a default value');
@@ -559,6 +582,7 @@ requireIncludes(
     'database_preferred_maintenance_window',
     'database_kms_key_arn',
     'redis_kms_key_arn',
+    'eks_secrets_kms_key_arn',
   ],
   'terraform.tfvars.example',
 );
@@ -567,6 +591,7 @@ validateTerraformSecretInputs(variables, tfvarsExample, app);
 validateWorkloadSecretSeparation(app);
 validateTerraformImageDigestInputs(variables, tfvarsExample, app);
 validateTerraformStorageKMSInputs(variables, tfvarsExample, data);
+validateTerraformEKSSecretEncryption(variables, tfvarsExample, eks);
 validateTerraformReleaseInputGuards(variables);
 assert.ok(!tfvarsExample.includes('skip_final_snapshot = true'), 'tfvars example must not preserve production-hostile snapshot defaults');
 
