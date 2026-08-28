@@ -298,9 +298,26 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 		t.Fatalf("cross-tenant refresh status = %d body = %s, want 401", crossTenantRecorder.Code, crossTenantRecorder.Body.String())
 	}
 
+	logoutLoginRecorder := httptest.NewRecorder()
+	handler.LoginHandler(logoutLoginRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/login", map[string]any{
+		"email":           authUserEmail,
+		"password":        authPassword,
+		"organization_id": testOrgID,
+	}, observer))
+	if logoutLoginRecorder.Code != http.StatusOK {
+		t.Fatalf("logout setup login status = %d body = %s", logoutLoginRecorder.Code, logoutLoginRecorder.Body.String())
+	}
+	logoutLogin := decodeAuthResponse(t, logoutLoginRecorder)
+	if logoutLogin.RefreshToken == "" {
+		t.Fatal("logout setup login did not return a refresh token")
+	}
+	if logoutLogin.RefreshToken == refreshed.RefreshToken {
+		t.Fatal("logout setup login did not rotate the refresh token")
+	}
+
 	logoutRecorder := httptest.NewRecorder()
 	handler.LogoutHandler(logoutRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/logout", map[string]any{
-		"refresh_token":   refreshed.RefreshToken,
+		"refresh_token":   logoutLogin.RefreshToken,
 		"organization_id": testOrgID,
 	}, observer))
 	if logoutRecorder.Code != http.StatusNoContent {
@@ -309,7 +326,7 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 
 	revokedRecorder := httptest.NewRecorder()
 	handler.RefreshHandler(revokedRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
-		"refresh_token":   refreshed.RefreshToken,
+		"refresh_token":   logoutLogin.RefreshToken,
 		"organization_id": testOrgID,
 	}, observer))
 	if revokedRecorder.Code != http.StatusUnauthorized {
@@ -319,7 +336,7 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 	metrics := observer.Snapshot()
 	for _, expected := range []string{
 		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_register",status="success"} 1`,
-		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_login",status="success"} 2`,
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_login",status="success"} 3`,
 		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_refresh",status="success"} 1`,
 		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_refresh",status="invalid_or_expired"} 4`,
 		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_logout",status="success"} 1`,
