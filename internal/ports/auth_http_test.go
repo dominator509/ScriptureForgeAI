@@ -25,7 +25,7 @@ func TestAuthHandlersRejectOversizedCredentialBodiesBeforeDatabaseWork(t *testin
 		{
 			name:    "register",
 			handler: (&AuthHandler{}).RegisterHandler,
-			body:    append([]byte(`{"email":"member@example.test","password":"`), append(oversized, []byte(`","organization_id":"org"}`)...)...),
+			body:    append([]byte(`{"email":"member@example.test","password":"`), append(oversized, []byte(`","organization_name":"org"}`)...)...),
 		},
 		{
 			name:    "login",
@@ -105,6 +105,16 @@ func TestAuthHandlersRejectConcatenatedJSONAndMalformedMFACode(t *testing.T) {
 	}
 }
 
+func TestRegisterRejectsCallerSelectedOrganization(t *testing.T) {
+	handler := &AuthHandler{}
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(`{"email":"member@example.test","password":"password123","organization_id":"11111111-1111-4111-8111-111111111111"}`))
+	recorder := httptest.NewRecorder()
+	handler.RegisterHandler(recorder, request)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("caller-selected organization registration status = %d body = %s, want 400", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestMFASecretEncryptionDoesNotPersistPlaintext(t *testing.T) {
 	key := []byte("test-mfa-encryption-key-long-enough-0123456789")
 	secret := "JBSWY3DPEHPK3PXP"
@@ -141,7 +151,7 @@ func TestAuthHandlersFailClosedWhenDatabaseIsNotConfigured(t *testing.T) {
 		{
 			name:    "register",
 			handler: (&AuthHandler{}).RegisterHandler,
-			request: httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(`{"email":"member@example.test","password":"password123","organization_id":"org-1"}`)),
+			request: httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", strings.NewReader(`{"email":"member@example.test","password":"password123","organization_name":"Workspace"}`)),
 		},
 		{
 			name:    "login",

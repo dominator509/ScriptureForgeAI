@@ -15,6 +15,7 @@ export const HomeScreen: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [organizationId, setOrganizationId] = useState('');
+  const [organizationName, setOrganizationName] = useState('');
   const [mfaCode, setMfaCode] = useState('');
   const [roomTitle, setRoomTitle] = useState('');
   const [status, setStatus] = useState('Sign in or register to sync rooms and journals.');
@@ -48,7 +49,7 @@ export const HomeScreen: React.FC = () => {
 
   const handleRegister = async () => {
     try {
-      const nextSession = await registerAccount(email, password, organizationId);
+      const nextSession = await registerAccount(email, password, organizationName);
       setSession(nextSession);
       await syncRooms(nextSession.token);
       setStatus('Registered and signed in.');
@@ -184,7 +185,8 @@ export const HomeScreen: React.FC = () => {
 
       <View style={styles.panel}>
         <Text style={styles.panelTitle}>Account</Text>
-        <TextInput style={styles.input} placeholder="Organization ID" value={organizationId} onChangeText={setOrganizationId} autoCapitalize="none" />
+        <TextInput style={styles.input} placeholder="Organization ID (login)" value={organizationId} onChangeText={setOrganizationId} autoCapitalize="none" />
+        <TextInput style={styles.input} placeholder="Workspace name (register)" value={organizationName} onChangeText={setOrganizationName} />
         <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
         <TextInput style={styles.input} placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry />
         <TextInput style={styles.input} placeholder="MFA code" value={mfaCode} onChangeText={setMfaCode} keyboardType="number-pad" />

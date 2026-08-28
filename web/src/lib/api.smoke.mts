@@ -80,7 +80,7 @@ beforeEach(() => {
 test('auth helpers use canonical v1 routes and bearer logout revocation', async () => {
   const credentials = { email: 'reader@example.com', password: 'correct horse', organization_id: 'org-1' };
 
-  assert.equal((await register(credentials)).token, 'access-token');
+  assert.equal((await register({ email: credentials.email, password: credentials.password, organization_name: 'Reader Workspace' })).token, 'access-token');
   assert.equal((await login(credentials)).refresh_token, 'refresh-token');
   assert.equal((await refreshSession('old-refresh', 'org-1')).organization_id, 'org-1');
   await logout('access-token', null, 'org-1');
@@ -97,6 +97,7 @@ test('auth helpers use canonical v1 routes and bearer logout revocation', async 
   assert.equal(new Headers(calls.at(-1)?.init.headers).get('Authorization'), 'Bearer access-token');
   assert.equal(new Headers(calls[0]?.init.headers).get('X-ScriptureForge-Client'), 'web');
   assert.equal(calls[0]?.init.credentials, 'include');
+  assert.deepEqual(JSON.parse(String(calls[0]?.init.body)), { email: credentials.email, password: credentials.password, organization_name: 'Reader Workspace' });
   assert.equal(JSON.parse(String(calls.at(2)?.init.body)).organization_id, 'org-1');
   assert.deepEqual(JSON.parse(String(calls.at(3)?.init.body)), { organization_id: 'org-1' });
 });

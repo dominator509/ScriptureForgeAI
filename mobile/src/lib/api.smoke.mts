@@ -76,7 +76,7 @@ beforeEach(() => {
 });
 
 test('auth helpers use canonical routes, organization scoping, MFA, and bearer logout revocation', async () => {
-  assert.equal((await registerAccount('reader@example.com', 'correct horse', 'org-1')).token, 'access-token');
+  assert.equal((await registerAccount('reader@example.com', 'correct horse', 'Reader Workspace')).token, 'access-token');
   assert.equal((await loginAccount('reader@example.com', 'correct horse', 'org-1', '123456')).refresh_token, 'refresh-token');
   assert.equal((await refreshSession('old-refresh', 'org-1')).organization_id, 'org-1');
   await logoutSession('access-token', 'refresh-token', 'org-1');
@@ -92,6 +92,8 @@ test('auth helpers use canonical routes, organization scoping, MFA, and bearer l
   );
 
   const loginBody = JSON.parse(String(calls[1]?.init.body));
+  const registerBody = JSON.parse(String(calls[0]?.init.body));
+  assert.equal(registerBody.organization_name, 'Reader Workspace');
   assert.equal(loginBody.mfa_code, '123456');
   assert.equal(loginBody.organization_id, 'org-1');
   assert.equal(new Headers(calls[3]?.init.headers).get('Authorization'), 'Bearer access-token');

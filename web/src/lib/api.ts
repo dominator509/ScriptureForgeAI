@@ -145,6 +145,12 @@ export interface AuthCredentials {
   mfa_code?: string;
 }
 
+export interface RegisterCredentials {
+  email: string;
+  password: string;
+  organization_name: string;
+}
+
 export interface WorkspaceSwitchPayload {
   organization_id: string;
 }
@@ -357,7 +363,7 @@ export async function apiRequest<T>(
   return response.json() as Promise<T>;
 }
 
-export function register(credentials: AuthCredentials): Promise<AuthSession> {
+export function register(credentials: RegisterCredentials): Promise<AuthSession> {
   return apiRequest<AuthSession>('/api/v1/auth/register', null, {
     method: 'POST',
     body: JSON.stringify(credentials),

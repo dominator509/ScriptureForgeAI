@@ -53,7 +53,7 @@ func TestLegacyAuthRoutesUseCanonicalValidation(t *testing.T) {
 			name:          "register",
 			canonicalPath: "/api/v1/auth/register",
 			legacyPath:    "/api/auth/register",
-			body:          `{"email":"not-an-email","password":"short","organization_id":""}`,
+			body:          `{"email":"not-an-email","password":"short","organization_name":""}`,
 		},
 		{
 			name:          "login",
@@ -504,7 +504,7 @@ func TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles(t *testing.T) {
 			profileEnvKey:  "ABUSE_LIMIT_AUTH_REQUESTS",
 			path:           "/api/v1/auth/register",
 			method:         http.MethodPost,
-			body:           `{"email":"not-an-email","password":"short","organization_id":""}`,
+			body:           `{"email":"not-an-email","password":"short","organization_name":""}`,
 		},
 		{
 			name:           "auth login canonical",
@@ -560,7 +560,7 @@ func TestMountedSensitiveRoutesEnforceConfiguredAbuseProfiles(t *testing.T) {
 			profileEnvKey:  "ABUSE_LIMIT_AUTH_REQUESTS",
 			path:           "/api/auth/register",
 			method:         http.MethodPost,
-			body:           `{"email":"not-an-email","password":"short","organization_id":""}`,
+			body:           `{"email":"not-an-email","password":"short","organization_name":""}`,
 		},
 		{
 			name:           "auth login legacy alias",

@@ -110,9 +110,17 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 	setTenantForTest(ctx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
 		seedAuthOrganization(ctx, t, tx)
 	})
+	registeredOrgID := ""
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cleanupCancel()
+		if registeredOrgID != "" {
+			setTenantForTest(cleanupCtx, t, db, registeredOrgID, func(ctx context.Context, tx pgx.Tx) {
+				if _, err := tx.Exec(ctx, `DELETE FROM organizations WHERE id = $1`, registeredOrgID); err != nil {
+					t.Fatalf("cleanup registered organization: %v", err)
+				}
+			})
+		}
 		setTenantForTest(cleanupCtx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
 			cleanupAuthFixtures(ctx, t, tx)
 		})
@@ -122,18 +130,20 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 	observer := observability.NewObserver(observability.Options{})
 	registerRecorder := httptest.NewRecorder()
 	handler.RegisterHandler(registerRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/register", map[string]any{
-		"email":           authUserEmail,
-		"password":        authPassword,
-		"organization_id": authOrgID,
-		"role":            "admin",
+		"email":             authUserEmail,
+		"password":          authPassword,
+		"organization_name": "Auth Registration Workspace",
+		"role":              "admin",
 	}, observer))
 	if registerRecorder.Code != http.StatusCreated {
 		t.Fatalf("register status = %d body = %s", registerRecorder.Code, registerRecorder.Body.String())
 	}
 	registered := decodeAuthResponse(t, registerRecorder)
-	if registered.Token == "" || registered.RefreshToken == "" || registered.UserID == "" || registered.OrganizationID != authOrgID {
+	registeredOrgID = registered.OrganizationID
+	if registered.Token == "" || registered.RefreshToken == "" || registered.UserID == "" || registeredOrgID == "" || registeredOrgID == authOrgID {
 		t.Fatalf("register response missing token data: %#v", registered)
 	}
+	testOrgID := registeredOrgID
 
 	claims, err := auth.ValidateToken(registered.Token)
 	if err != nil {
@@ -146,9 +156,9 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 		t.Fatalf("access token ttl = %s, want approximately 15 minutes", ttl)
 	}
 
-	setTenantForTest(ctx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
+	setTenantForTest(ctx, t, db, testOrgID, func(ctx context.Context, tx pgx.Tx) {
 		var role string
-		if err := tx.QueryRow(ctx, `SELECT role FROM users WHERE email = $1 AND organization_id = $2`, authUserEmail, authOrgID).Scan(&role); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT role FROM users WHERE email = $1 AND organization_id = $2`, authUserEmail, testOrgID).Scan(&role); err != nil {
 			t.Fatalf("query registered role: %v", err)
 		}
 		if role != "member" {
@@ -156,15 +166,15 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 		}
 	})
 
-	setTenantForTest(ctx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
-		if _, err := tx.Exec(ctx, `UPDATE refresh_tokens SET expires_at = CURRENT_TIMESTAMP - INTERVAL '1 minute' WHERE user_id = $1 AND organization_id = $2`, registered.UserID, authOrgID); err != nil {
+	setTenantForTest(ctx, t, db, testOrgID, func(ctx context.Context, tx pgx.Tx) {
+		if _, err := tx.Exec(ctx, `UPDATE refresh_tokens SET expires_at = CURRENT_TIMESTAMP - INTERVAL '1 minute' WHERE user_id = $1 AND organization_id = $2`, registered.UserID, testOrgID); err != nil {
 			t.Fatalf("expire registration refresh token: %v", err)
 		}
 	})
 	expiredRecorder := httptest.NewRecorder()
 	handler.RefreshHandler(expiredRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
 		"refresh_token":   registered.RefreshToken,
-		"organization_id": authOrgID,
+		"organization_id": testOrgID,
 	}, observer))
 	if expiredRecorder.Code != http.StatusUnauthorized {
 		t.Fatalf("expired refresh token status = %d body = %s, want 401", expiredRecorder.Code, expiredRecorder.Body.String())
@@ -174,7 +184,7 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 	handler.LoginHandler(loginRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/login", map[string]any{
 		"email":           authUserEmail,
 		"password":        authPassword,
-		"organization_id": authOrgID,
+		"organization_id": testOrgID,
 	}, observer))
 	if loginRecorder.Code != http.StatusOK {
 		t.Fatalf("login status = %d body = %s", loginRecorder.Code, loginRecorder.Body.String())
@@ -184,15 +194,15 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 		t.Fatalf("login refresh token = %q, want a new opaque token", login.RefreshToken)
 	}
 
-	setTenantForTest(ctx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
-		if _, err := tx.Exec(ctx, `UPDATE users SET role = 'admin', mfa_secret = $1, mfa_enabled = TRUE WHERE id = $2 AND organization_id = $3`, authMFASecret, registered.UserID, authOrgID); err != nil {
+	setTenantForTest(ctx, t, db, testOrgID, func(ctx context.Context, tx pgx.Tx) {
+		if _, err := tx.Exec(ctx, `UPDATE users SET role = 'admin', mfa_secret = $1, mfa_enabled = TRUE WHERE id = $2 AND organization_id = $3`, authMFASecret, registered.UserID, testOrgID); err != nil {
 			t.Fatalf("elevate auth user for refresh MFA test: %v", err)
 		}
 	})
 	elevatedRecorder := httptest.NewRecorder()
 	handler.RefreshHandler(elevatedRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
 		"refresh_token":   login.RefreshToken,
-		"organization_id": authOrgID,
+		"organization_id": testOrgID,
 	}, observer))
 	if elevatedRecorder.Code != http.StatusUnauthorized {
 		t.Fatalf("privilege-elevated refresh status = %d body = %s, want 401", elevatedRecorder.Code, elevatedRecorder.Body.String())
@@ -201,8 +211,8 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 	if !elevated.RequiresMFA || elevated.Token != "" || elevated.RefreshToken != "" {
 		t.Fatalf("privilege-elevated refresh response = %#v, want MFA challenge without tokens", elevated)
 	}
-	setTenantForTest(ctx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
-		if _, err := tx.Exec(ctx, `UPDATE users SET role = 'member', mfa_secret = NULL, mfa_enabled = FALSE WHERE id = $1 AND organization_id = $2`, registered.UserID, authOrgID); err != nil {
+	setTenantForTest(ctx, t, db, testOrgID, func(ctx context.Context, tx pgx.Tx) {
+		if _, err := tx.Exec(ctx, `UPDATE users SET role = 'member', mfa_secret = NULL, mfa_enabled = FALSE WHERE id = $1 AND organization_id = $2`, registered.UserID, testOrgID); err != nil {
 			t.Fatalf("restore auth user after refresh MFA test: %v", err)
 		}
 	})
@@ -211,7 +221,7 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 	handler.LoginHandler(raceLoginRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/login", map[string]any{
 		"email":           authUserEmail,
 		"password":        authPassword,
-		"organization_id": authOrgID,
+		"organization_id": testOrgID,
 	}, observer))
 	if raceLoginRecorder.Code != http.StatusOK {
 		t.Fatalf("concurrent refresh setup login status = %d body = %s", raceLoginRecorder.Code, raceLoginRecorder.Body.String())
@@ -226,7 +236,7 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			handler.RefreshHandler(recorder, authJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
 				"refresh_token":   raceLogin.RefreshToken,
-				"organization_id": authOrgID,
+				"organization_id": testOrgID,
 			}))
 			raceResults <- recorder.Code
 		}()
@@ -251,7 +261,7 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 	refreshRecorder := httptest.NewRecorder()
 	handler.RefreshHandler(refreshRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
 		"refresh_token":   login.RefreshToken,
-		"organization_id": authOrgID,
+		"organization_id": testOrgID,
 	}, observer))
 	if refreshRecorder.Code != http.StatusOK {
 		t.Fatalf("refresh status = %d body = %s", refreshRecorder.Code, refreshRecorder.Body.String())
@@ -264,7 +274,7 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 	oldTokenRecorder := httptest.NewRecorder()
 	handler.RefreshHandler(oldTokenRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
 		"refresh_token":   login.RefreshToken,
-		"organization_id": authOrgID,
+		"organization_id": testOrgID,
 	}, observer))
 	if oldTokenRecorder.Code != http.StatusUnauthorized {
 		t.Fatalf("old refresh token status = %d body = %s, want 401", oldTokenRecorder.Code, oldTokenRecorder.Body.String())
@@ -282,7 +292,7 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 	logoutRecorder := httptest.NewRecorder()
 	handler.LogoutHandler(logoutRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/logout", map[string]any{
 		"refresh_token":   refreshed.RefreshToken,
-		"organization_id": authOrgID,
+		"organization_id": testOrgID,
 	}, observer))
 	if logoutRecorder.Code != http.StatusNoContent {
 		t.Fatalf("logout status = %d body = %s", logoutRecorder.Code, logoutRecorder.Body.String())
@@ -291,7 +301,7 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 	revokedRecorder := httptest.NewRecorder()
 	handler.RefreshHandler(revokedRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
 		"refresh_token":   refreshed.RefreshToken,
-		"organization_id": authOrgID,
+		"organization_id": testOrgID,
 	}, observer))
 	if revokedRecorder.Code != http.StatusUnauthorized {
 		t.Fatalf("revoked refresh token status = %d body = %s, want 401", revokedRecorder.Code, revokedRecorder.Body.String())

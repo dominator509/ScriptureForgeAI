@@ -309,10 +309,10 @@ export async function apiRequest<T>(
   return response.json() as Promise<T>;
 }
 
-export async function registerAccount(email: string, password: string, organizationId: string): Promise<AuthSession> {
+export async function registerAccount(email: string, password: string, organizationName: string): Promise<AuthSession> {
   return apiRequest<AuthSession>('/api/v1/auth/register', null, {
     method: 'POST',
-    body: JSON.stringify({ email, password, organization_id: organizationId }),
+    body: JSON.stringify({ email, password, organization_name: organizationName }),
   });
 }
 

@@ -16,6 +16,7 @@ This file records repository-level implementation history. It is not a substitut
 - Wired the configured Zoom `MeetingAdapter` into production room creation, persisted tenant-scoped meeting mappings and safe join metadata, and kept host start URLs out of room responses.
 - Bound login refresh-token persistence to the existing tenant transaction and bound journal writes to the authenticated server-derived salt ID/version.
 - Added typed fail-closed authentication dependency handling for unconfigured database pools across registration, login, refresh, logout, and privileged MFA routes.
+- Closed the public registration tenant-selection gap: registration now creates a server-generated workspace in the RLS-scoped transaction, forces the initial member role, and web/mobile callers send only a bounded workspace name.
 - Added refresh-token MFA assurance binding, unknown-environment gRPC fail-closed behavior, and least-privilege API/Rust Terraform workload secret separation.
 - Added API-only AES-GCM TOTP seed envelopes with fail-closed handling for missing, malformed, or legacy plaintext MFA material.
 - Added non-local Redis password enforcement and API-only Terraform secret injection for Redis authentication.

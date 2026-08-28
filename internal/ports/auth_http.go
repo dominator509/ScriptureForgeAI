@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"scriptureforge/internal/domain/abuse"
@@ -34,10 +35,10 @@ type AuthHandler struct {
 }
 
 type RegisterRequest struct {
-	Email          string `json:"email"`
-	Password       string `json:"password"`
-	OrganizationID string `json:"organization_id"`
-	RequestedRole  string `json:"role,omitempty"`
+	Email            string `json:"email"`
+	Password         string `json:"password"`
+	OrganizationName string `json:"organization_name"`
+	RequestedRole    string `json:"role,omitempty"`
 }
 
 type LoginRequest struct {
@@ -77,16 +78,17 @@ type MFAVerifyResponse struct {
 }
 
 const (
-	accessTokenTTL           = 15 * time.Minute
-	refreshTokenTTL          = 30 * 24 * time.Hour
-	refreshCookieName        = "scriptureforge_refresh"
-	maxAuthRequestBodyBytes  = 64 * 1024
-	maxAuthEmailBytes        = 320
-	maxAuthPasswordBytes     = 1024
-	maxAuthOrganizationBytes = 128
-	maxAuthRefreshTokenBytes = 512
-	maxAuthMFACodeBytes      = 16
-	mfaCiphertextPrefix      = "v1."
+	accessTokenTTL               = 15 * time.Minute
+	refreshTokenTTL              = 30 * 24 * time.Hour
+	refreshCookieName            = "scriptureforge_refresh"
+	maxAuthRequestBodyBytes      = 64 * 1024
+	maxAuthEmailBytes            = 320
+	maxAuthPasswordBytes         = 1024
+	maxAuthOrganizationBytes     = 128
+	maxAuthOrganizationNameBytes = 255
+	maxAuthRefreshTokenBytes     = 512
+	maxAuthMFACodeBytes          = 16
+	mfaCiphertextPrefix          = "v1."
 )
 
 var emailRegex = regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$`)
@@ -281,6 +283,12 @@ func validAuthFieldLengths(email, password, organizationID string) bool {
 		len(organizationID) <= maxAuthOrganizationBytes
 }
 
+func validRegistrationFieldLengths(email, password, organizationName string) bool {
+	return len(email) <= maxAuthEmailBytes &&
+		len(password) <= maxAuthPasswordBytes &&
+		len(organizationName) <= maxAuthOrganizationNameBytes
+}
+
 func validMFACode(code string) bool {
 	code = strings.TrimSpace(code)
 	if len(code) != 6 || len(code) > maxAuthMFACodeBytes {
@@ -460,7 +468,9 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
-	if !emailRegex.MatchString(req.Email) || len(req.Password) < 8 || req.OrganizationID == "" || !validAuthFieldLengths(req.Email, req.Password, req.OrganizationID) {
+	req.OrganizationName = strings.TrimSpace(req.OrganizationName)
+	if !emailRegex.MatchString(req.Email) || len(req.Password) < 8 || req.OrganizationName == "" ||
+		!validRegistrationFieldLengths(req.Email, req.Password, req.OrganizationName) {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Validation failed: invalid email, short password, or missing required fields", Code: http.StatusBadRequest})
 		return
 	}
@@ -479,14 +489,20 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	forcedRole := "member"
+	organizationID := uuid.NewString()
 	tx, err := h.DB.Begin(r.Context())
 	if err != nil {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to open registration transaction", Code: http.StatusInternalServerError})
 		return
 	}
 	defer tx.Rollback(r.Context())
-	if err := auth.SetTenantContext(r.Context(), tx, req.OrganizationID); err != nil {
+	if err := auth.SetTenantContext(r.Context(), tx, organizationID); err != nil {
 		sendAuthError(w, err.(*auth.PlatformException))
+		return
+	}
+	if _, err := tx.Exec(r.Context(), `INSERT INTO organizations (id, name) VALUES ($1, $2)`, organizationID, req.OrganizationName); err != nil {
+		metricStatus = "conflict"
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Registration failed while creating workspace", Code: http.StatusConflict})
 		return
 	}
 
@@ -494,23 +510,23 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	err = tx.QueryRow(
 		r.Context(),
 		`INSERT INTO users (organization_id, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id`,
-		req.OrganizationID,
+		organizationID,
 		req.Email,
 		hashedPassword,
 		forcedRole,
 	).Scan(&newUserID)
 	if err != nil {
 		metricStatus = "conflict"
-		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Registration failed (email may already exist or org invalid)", Code: http.StatusConflict})
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Registration failed (email may already exist)", Code: http.StatusConflict})
 		return
 	}
 
-	token, err := auth.GenerateToken(newUserID, req.OrganizationID, forcedRole, accessTokenTTL)
+	token, err := auth.GenerateToken(newUserID, organizationID, forcedRole, accessTokenTTL)
 	if err != nil {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to issue token", Code: http.StatusInternalServerError})
 		return
 	}
-	refreshToken, err := storeRefreshToken(r.Context(), tx, newUserID, req.OrganizationID, nil, false)
+	refreshToken, err := storeRefreshToken(r.Context(), tx, newUserID, organizationID, nil, false)
 	if err != nil {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to issue refresh token", Code: http.StatusInternalServerError})
 		return
@@ -521,7 +537,7 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	metricStatus = "success"
-	writeAuthResponse(w, r, AuthResponse{Token: token, RefreshToken: refreshToken, UserID: newUserID, OrganizationID: req.OrganizationID}, http.StatusCreated)
+	writeAuthResponse(w, r, AuthResponse{Token: token, RefreshToken: refreshToken, UserID: newUserID, OrganizationID: organizationID}, http.StatusCreated)
 }
 
 func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
