@@ -179,6 +179,14 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 	if expiredRecorder.Code != http.StatusUnauthorized {
 		t.Fatalf("expired refresh token status = %d body = %s, want 401", expiredRecorder.Code, expiredRecorder.Body.String())
 	}
+	expiredLogoutRecorder := httptest.NewRecorder()
+	handler.LogoutHandler(expiredLogoutRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/logout", map[string]any{
+		"refresh_token":   registered.RefreshToken,
+		"organization_id": testOrgID,
+	}, observer))
+	if expiredLogoutRecorder.Code != http.StatusUnauthorized {
+		t.Fatalf("expired logout token status = %d body = %s, want 401 without revocation side effects", expiredLogoutRecorder.Code, expiredLogoutRecorder.Body.String())
+	}
 
 	loginRecorder := httptest.NewRecorder()
 	handler.LoginHandler(loginRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/login", map[string]any{
@@ -315,6 +323,20 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 		t.Fatal("logout setup login did not rotate the refresh token")
 	}
 
+	independentLoginRecorder := httptest.NewRecorder()
+	handler.LoginHandler(independentLoginRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/login", map[string]any{
+		"email":           authUserEmail,
+		"password":        authPassword,
+		"organization_id": testOrgID,
+	}, observer))
+	if independentLoginRecorder.Code != http.StatusOK {
+		t.Fatalf("independent logout-session setup login status = %d body = %s", independentLoginRecorder.Code, independentLoginRecorder.Body.String())
+	}
+	independentLogin := decodeAuthResponse(t, independentLoginRecorder)
+	if independentLogin.RefreshToken == "" || independentLogin.RefreshToken == logoutLogin.RefreshToken {
+		t.Fatal("independent logout-session setup did not return a distinct refresh token")
+	}
+
 	logoutRecorder := httptest.NewRecorder()
 	handler.LogoutHandler(logoutRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/logout", map[string]any{
 		"refresh_token":   logoutLogin.RefreshToken,
@@ -322,6 +344,25 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 	}, observer))
 	if logoutRecorder.Code != http.StatusNoContent {
 		t.Fatalf("logout status = %d body = %s", logoutRecorder.Code, logoutRecorder.Body.String())
+	}
+
+	independentRefreshRecorder := httptest.NewRecorder()
+	handler.RefreshHandler(independentRefreshRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
+		"refresh_token":   independentLogin.RefreshToken,
+		"organization_id": testOrgID,
+	}, observer))
+	if independentRefreshRecorder.Code != http.StatusUnauthorized {
+		t.Fatalf("independent refresh after logout status = %d body = %s, want 401", independentRefreshRecorder.Code, independentRefreshRecorder.Body.String())
+	}
+
+	oldAccessClaims, err := auth.ValidateToken(registered.Token)
+	if err != nil {
+		t.Fatalf("validate pre-logout access token: %v", err)
+	}
+	if err := handler.ValidateActiveSession(ctx, oldAccessClaims); err == nil {
+		t.Fatal("pre-logout access token remained active after logout")
+	} else if pe, ok := err.(*auth.PlatformException); !ok || pe.Code != http.StatusUnauthorized {
+		t.Fatalf("pre-logout access token validation error = %#v, want unauthorized", err)
 	}
 
 	revokedRecorder := httptest.NewRecorder()
@@ -336,9 +377,9 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 	metrics := observer.Snapshot()
 	for _, expected := range []string{
 		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_register",status="success"} 1`,
-		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_login",status="success"} 3`,
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_login",status="success"} 4`,
 		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_refresh",status="success"} 1`,
-		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_refresh",status="invalid_or_expired"} 5`,
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_refresh",status="invalid_or_expired"} 6`,
 		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_logout",status="success"} 1`,
 	} {
 		if !strings.Contains(metrics, expected) {

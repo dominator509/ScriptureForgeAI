@@ -35,6 +35,7 @@ type CreateRoomRequest struct {
 const (
 	maxRoomRequestBodyBytes = 16 * 1024
 	maxRoomTitleBytes       = 256
+	roomCleanupTimeout      = 5 * time.Second
 )
 
 type RoomResponse struct {
@@ -103,11 +104,20 @@ func applyRoomMeetingMetadata(response *RoomResponse, provider, meetingID, rawMe
 	}
 }
 
-func (h *RoomHandler) terminateProvisionedMeeting(ctx context.Context, details *room.MeetingDetails) {
+func (h *RoomHandler) terminateProvisionedMeeting(ctx context.Context, details *room.MeetingDetails) error {
 	if h.MeetingAdapter == nil || details == nil || details.ID == "" || details.JoinURL == "offline://in-person" || strings.HasPrefix(details.ID, "offline-") {
-		return
+		return nil
 	}
-	_ = h.MeetingAdapter.TerminateMeeting(ctx, details.ID)
+	started := time.Now()
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), roomCleanupTimeout)
+	defer cancel()
+	err := h.MeetingAdapter.TerminateMeeting(cleanupCtx, details.ID)
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+	observability.ObserveDependencyFromContext(ctx, "zoom", "terminate_meeting_cleanup", status, time.Since(started))
+	return err
 }
 
 func (h *RoomHandler) deactivateRoomAfterStateFailure(ctx context.Context, claims *auth.TokenClaims, roomID string) error {

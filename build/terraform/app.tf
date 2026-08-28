@@ -685,6 +685,11 @@ resource "kubernetes_deployment" "api" {
           }
 
           env {
+            name  = "AI_MAX_OUTPUT_TOKENS"
+            value = tostring(var.ai_max_output_tokens)
+          }
+
+          env {
             name = "ZOOM_ACCOUNT_ID"
             value_from {
               secret_key_ref {

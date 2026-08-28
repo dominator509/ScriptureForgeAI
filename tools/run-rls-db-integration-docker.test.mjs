@@ -69,6 +69,7 @@ test('migration list applies the complete ordered up-migration set', () => {
     '/migrations/000005_mfa_legacy_plaintext_cleanup.up.sql',
     '/migrations/000006_auth_session_revocation.up.sql',
     '/migrations/000007_ai_prompt_redaction.up.sql',
+    '/migrations/000008_tenant_scoped_user_email.up.sql',
   ]);
   assert.deepEqual(migrationFiles, listMigrationFiles(), 'exported migration snapshot should match the current workspace');
 });
@@ -101,6 +102,15 @@ test('AI prompt redaction migration scrubs content and fails closed on rollback'
   assert.match(up, /ai_request_logs_prompt_redacted/);
   assert.match(down, /intentionally irreversible/i);
   assert.match(down, /RAISE EXCEPTION/i);
+});
+
+test('tenant-scoped email migration removes the global uniqueness oracle', async () => {
+  const up = await readFile(resolve('migrations/000008_tenant_scoped_user_email.up.sql'), 'utf8');
+  const down = await readFile(resolve('migrations/000008_tenant_scoped_user_email.down.sql'), 'utf8');
+  assert.match(up, /DROP CONSTRAINT IF EXISTS users_email_key/);
+  assert.match(up, /UNIQUE INDEX IF NOT EXISTS idx_users_organization_email ON users\(organization_id, email\)/);
+  assert.match(down, /DROP INDEX IF EXISTS idx_users_organization_email/);
+  assert.match(down, /ADD CONSTRAINT users_email_key UNIQUE \(email\)/);
 });
 
 test('runDockerRLSDBIntegration applies migrations, runs RLS tests, and cleans up', async () => {

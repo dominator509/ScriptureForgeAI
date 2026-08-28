@@ -413,12 +413,21 @@ export function validateNetworkPolicies(networkPolicy) {
     'terraform network policy',
   );
   assert.ok(!networkPolicy.includes('cidr = "0.0.0.0/0"'), 'network policies must not restore unrestricted egress');
+  assert.ok(
+    (networkPolicy.match(/for_each = var\.data_tier_cidrs/g) ?? []).length >= 2,
+    'database-port egress must be scoped to declared data-tier CIDRs',
+  );
+  assert.ok(
+    (networkPolicy.match(/cidr = egress\.value/g) ?? []).length >= 2,
+    'database-port egress must include explicit destination CIDRs',
+  );
 }
 
 requireIncludes(
   variables,
   [
     'variable "app_secret_arns"',
+    'variable "data_tier_cidrs"',
     'database_url',
     'jwt_secret_key',
     'openai_api_key',
@@ -431,6 +440,7 @@ requireIncludes(
     'variable "otel_exporter_otlp_endpoint"',
     'variable "service_version"',
     'variable "database_backup_retention_days"',
+    'variable "ai_max_output_tokens"',
     'variable "database_preferred_backup_window"',
     'variable "database_preferred_maintenance_window"',
     'variable "database_kms_key_arn"',
@@ -555,6 +565,7 @@ requireIncludes(
     'name  = "TRUSTED_PROXY_CIDRS"',
     'value = join(",", var.trusted_proxy_cidrs)',
     'name  = "AI_ALLOWED_PROVIDER_HOSTS"',
+    'name  = "AI_MAX_OUTPUT_TOKENS"',
     'value = join(",", var.ai_allowed_provider_hosts)',
     'name  = "TRUSTED_PROXY_CIDRS"',
     'value = join(",", var.trusted_proxy_cidrs)',
@@ -645,6 +656,7 @@ requireIncludes(
     'database_preferred_backup_window',
     'database_preferred_maintenance_window',
     'database_kms_key_arn',
+    'data_tier_cidrs',
     'redis_kms_key_arn',
     'eks_secrets_kms_key_arn',
   ],

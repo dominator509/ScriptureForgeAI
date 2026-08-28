@@ -321,7 +321,7 @@ CREATE TABLE organizations (
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-    email VARCHAR(255) NOT NULL UNIQUE,
+    email VARCHAR(255) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(50) NOT NULL,
     mfa_secret TEXT,
@@ -413,7 +413,7 @@ CREATE INDEX idx_participants_lookup ON room_participants(room_id, user_id);
 *   `POST /api/v1/auth/login`: Issue verification challenges. Returns a short-lived JWT and, for web clients, sets an HttpOnly, SameSite=Strict refresh-token cookie scoped to `/api`.
 *   `POST /api/v1/auth/register`: Create a server-generated tenant from `organization_name` and provision its first member account with a forced member role.
 *   `POST /api/v1/auth/refresh`: Exchange an active refresh token from the web cookie or compatibility request body for a rotated access/refresh pair; web responses omit the refresh token body.
-*   `POST /api/v1/auth/logout`: Revoke an issued refresh-token family and persist a user session-revocation cutoff so active room streams reject older access tokens.
+*   `POST /api/v1/auth/logout`: Revoke an issued refresh-token family and persist a user session-revocation cutoff so protected HTTP routes, refresh issuance, and active room streams reject tokens issued at or before logout.
 *   `POST /api/v1/auth/mfa/verify`: Process real-time dynamic authentication codes.
 *   `POST /api/v1/auth/mfa/enroll`: Provision a TOTP seed for privileged roles.
 *   `POST /api/v1/workspaces/switch`: Switch organization context on signed-in sessions.
@@ -426,6 +426,7 @@ CREATE INDEX idx_participants_lookup ON room_participants(room_id, user_id);
     *   Readiness includes the RAG vector database and nonblank LLM API key, endpoint, model, and bounded HTTP client; direct RAG/LLM calls also return typed configuration faults when their dependency graph is incomplete.
     *   Aggregate curriculum assembly uses amortized buffering with an 8 MiB response envelope across the bounded chunk set; overflow is audit-recorded as a failed attempt and returns a typed `503` without serving partial output.
     *   AI audit rows retain a fixed `[redacted]` prompt marker and byte length rather than prompt content, alongside status, errors, and citation trails. Migration `000007_ai_prompt_redaction` scrubs historical prompt bodies and deliberately fails closed on rollback.
+    *   LLM chat requests include `AI_MAX_OUTPUT_TOKENS`, defaulting to 2048 and clamped to 8192, so provider output and retry cost remain bounded per completion.
     *   LLM network, malformed-response, and empty-response faults use sanitized typed errors; provider URLs, transport messages, and response bodies are not returned to callers.
     *   MapReduce uses UTF-8-safe bounded chunks and a capped worker pool with cancellation-aware scheduling; invalid processors and canceled work fail closed without unbounded goroutine fan-out.
     *   *Payload Structure:*
@@ -450,6 +451,8 @@ CREATE INDEX idx_participants_lookup ON room_participants(room_id, user_id);
 *   `GET /api/v1/rooms/active`: Query structural context instances running under the client tenant signature.
 *   `GET /api/v1/rooms/state/{room_id}`: Poll latest room event payload for reconnect/fallback clients.
 *   `WSS /api/v1/rooms/stream/{room_id}`: Broadcast real-time room events after membership and tenant validation; the default RLS path re-checks membership and the session-revocation cutoff during the stream heartbeat.
+
+The API and Rust workload NetworkPolicies scope database-port egress to the declared Terraform `data_tier_cidrs`; the deployment validator rejects database-port rules without explicit destinations.
 
 #### Group D: System Webhooks (`/api/webhooks`)
 *   `POST /api/webhooks/zoom`: Apply the unauthenticated Redis-backed `zoom_webhook` abuse budget, then validate signed Zoom webhook callbacks and map meeting lifecycle events to internal room state transitions.

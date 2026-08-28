@@ -174,7 +174,7 @@ func TestExecuteRetriesWithFreshRequestBody(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Fatalf("decode retry request: %v", err)
 		}
-		if request.Model != "test-model" || len(request.Messages) != 2 {
+		if request.Model != "test-model" || len(request.Messages) != 2 || request.MaxTokens != ai.DefaultMaxOutputTokens {
 			t.Fatalf("retry request = %#v", request)
 		}
 		if attempts == 1 {

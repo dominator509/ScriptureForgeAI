@@ -12,9 +12,10 @@ import (
 )
 
 type testMeetingAdapter struct {
-	details       *room.MeetingDetails
-	createdConfig room.MeetingConfig
-	terminatedID  string
+	details               *room.MeetingDetails
+	createdConfig         room.MeetingConfig
+	terminatedID          string
+	terminationContextErr error
 }
 
 func (a *testMeetingAdapter) CreateMeeting(_ context.Context, config room.MeetingConfig) (*room.MeetingDetails, error) {
@@ -22,8 +23,9 @@ func (a *testMeetingAdapter) CreateMeeting(_ context.Context, config room.Meetin
 	return a.details, nil
 }
 
-func (a *testMeetingAdapter) TerminateMeeting(_ context.Context, meetingID string) error {
+func (a *testMeetingAdapter) TerminateMeeting(ctx context.Context, meetingID string) error {
 	a.terminatedID = meetingID
+	a.terminationContextErr = ctx.Err()
 	return nil
 }
 
@@ -61,6 +63,20 @@ func TestPersistedOfflineMeetingDetailsDoNotCreateExternalMapping(t *testing.T) 
 	}
 	if !strings.Contains(string(metadata), "offline://in-person") {
 		t.Fatalf("offline meeting metadata = %s, want fallback URL", metadata)
+	}
+}
+
+func TestProvisionedMeetingCleanupSurvivesCanceledRequestContext(t *testing.T) {
+	adapter := &testMeetingAdapter{details: &room.MeetingDetails{ID: "meeting-1", JoinURL: "https://zoom.us/j/meeting-1"}}
+	handler := &RoomHandler{MeetingAdapter: adapter}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := handler.terminateProvisionedMeeting(ctx, adapter.details); err != nil {
+		t.Fatalf("terminateProvisionedMeeting returned error: %v", err)
+	}
+	if adapter.terminationContextErr != nil {
+		t.Fatalf("cleanup inherited canceled request context: %v", adapter.terminationContextErr)
 	}
 }
 

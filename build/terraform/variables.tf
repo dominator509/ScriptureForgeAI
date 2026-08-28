@@ -35,6 +35,16 @@ variable "private_subnet_ids" {
   }
 }
 
+variable "data_tier_cidrs" {
+  description = "CIDR ranges for the subnets containing RDS and Redis; workload egress is restricted to these ranges."
+  type        = list(string)
+
+  validation {
+    condition     = length(var.data_tier_cidrs) > 0 && length(var.data_tier_cidrs) <= 32 && alltrue([for cidr in var.data_tier_cidrs : can(cidrhost(cidr, 0))])
+    error_message = "data_tier_cidrs must contain one to 32 valid subnet CIDRs."
+  }
+}
+
 variable "public_subnet_ids" {
   description = "Public subnet IDs for external ingress load balancers."
   type        = list(string)
@@ -49,6 +59,17 @@ variable "allowed_ingress_cidrs" {
   description = "CIDR ranges allowed to reach public ingress."
   type        = list(string)
   default     = ["0.0.0.0/0"]
+}
+
+variable "ai_max_output_tokens" {
+  description = "Maximum output tokens requested from the AI chat provider."
+  type        = number
+  default     = 2048
+
+  validation {
+    condition     = var.ai_max_output_tokens >= 128 && var.ai_max_output_tokens <= 8192
+    error_message = "ai_max_output_tokens must be between 128 and 8192."
+  }
 }
 
 variable "database_instance_class" {

@@ -24,13 +24,17 @@ const (
 	MaxProviderRetries = 3
 	// MaxProviderResponseBytes bounds memory used to process an external provider response.
 	MaxProviderResponseBytes int64 = 1 << 20
-	DefaultProviderHost            = "api.openai.com"
+	// DefaultMaxOutputTokens bounds model output when the provider supports token budgets.
+	DefaultMaxOutputTokens = 2048
+	MaxOutputTokens        = 8192
+	DefaultProviderHost    = "api.openai.com"
 )
 
 // ProviderHTTPConfig is the shared timeout/retry policy for AI provider calls.
 type ProviderHTTPConfig struct {
-	Timeout    time.Duration
-	MaxRetries int
+	Timeout         time.Duration
+	MaxRetries      int
+	MaxOutputTokens int
 }
 
 // LoadAllowedProviderHosts returns exact hostnames permitted to receive provider credentials.
@@ -95,8 +99,9 @@ func isLoopbackProviderHost(host string) bool {
 // LoadProviderHTTPConfig reads bounded provider settings from the environment.
 func LoadProviderHTTPConfig() ProviderHTTPConfig {
 	config := ProviderHTTPConfig{
-		Timeout:    DefaultProviderTimeout,
-		MaxRetries: DefaultProviderRetries,
+		Timeout:         DefaultProviderTimeout,
+		MaxRetries:      DefaultProviderRetries,
+		MaxOutputTokens: DefaultMaxOutputTokens,
 	}
 
 	if configured := os.Getenv("AI_HTTP_TIMEOUT_MS"); configured != "" {
@@ -112,6 +117,14 @@ func LoadProviderHTTPConfig() ProviderHTTPConfig {
 			config.MaxRetries = retries
 			if config.MaxRetries > MaxProviderRetries {
 				config.MaxRetries = MaxProviderRetries
+			}
+		}
+	}
+	if configured := os.Getenv("AI_MAX_OUTPUT_TOKENS"); configured != "" {
+		if tokens, err := strconv.Atoi(configured); err == nil && tokens > 0 {
+			config.MaxOutputTokens = tokens
+			if config.MaxOutputTokens > MaxOutputTokens {
+				config.MaxOutputTokens = MaxOutputTokens
 			}
 		}
 	}

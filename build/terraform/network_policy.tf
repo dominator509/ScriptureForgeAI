@@ -94,15 +94,25 @@ resource "kubernetes_network_policy" "api" {
       }
     }
 
-    egress {
-      ports {
-        port     = 5432
-        protocol = "TCP"
-      }
+    dynamic "egress" {
+      for_each = var.data_tier_cidrs
 
-      ports {
-        port     = 6379
-        protocol = "TCP"
+      content {
+        to {
+          ip_block {
+            cidr = egress.value
+          }
+        }
+
+        ports {
+          port     = 5432
+          protocol = "TCP"
+        }
+
+        ports {
+          port     = 6379
+          protocol = "TCP"
+        }
       }
     }
 
@@ -204,10 +214,20 @@ resource "kubernetes_network_policy" "rust_engine" {
       }
     }
 
-    egress {
-      ports {
-        port     = 5432
-        protocol = "TCP"
+    dynamic "egress" {
+      for_each = var.data_tier_cidrs
+
+      content {
+        to {
+          ip_block {
+            cidr = egress.value
+          }
+        }
+
+        ports {
+          port     = 5432
+          protocol = "TCP"
+        }
       }
     }
 

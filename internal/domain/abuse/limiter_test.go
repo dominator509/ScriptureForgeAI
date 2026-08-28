@@ -471,6 +471,13 @@ func TestPolicyFromEnvConfiguresMaxBuckets(t *testing.T) {
 	if zoomProfile.Limit != 17 || zoomProfile.Window != 45*time.Second {
 		t.Fatalf("zoom webhook profile = %+v, want limit 17 and window 45s", zoomProfile)
 	}
+	t.Setenv("ABUSE_LIMIT_AI_REQUESTS", "999999")
+	t.Setenv("ABUSE_LIMIT_AI_WINDOW_SECONDS", strconv.Itoa(int((48 * time.Hour).Seconds())))
+	policy = PolicyFromEnv()
+	aiProfile := policy.Profiles[ProfileAI]
+	if aiProfile.Limit != maxProfileRequests || aiProfile.Window != maxProfileWindow {
+		t.Fatalf("AI profile = %+v, want bounded limit/window", aiProfile)
+	}
 
 	t.Setenv("ABUSE_LIMIT_MAX_BUCKETS", "42")
 	policy = PolicyFromEnv()

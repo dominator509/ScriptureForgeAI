@@ -22,13 +22,15 @@ type LLMClient struct {
 	Model                string
 	HTTPClient           *http.Client
 	MaxRetries           int
+	MaxOutputTokens      int
 	AllowedProviderHosts []string
 }
 
 type openaiRequest struct {
-	Model    string          `json:"model"`
-	Messages []openaiMessage `json:"messages"`
-	Temp     float32         `json:"temperature"`
+	Model     string          `json:"model"`
+	Messages  []openaiMessage `json:"messages"`
+	Temp      float32         `json:"temperature"`
+	MaxTokens int             `json:"max_tokens"`
 }
 
 type openaiMessage struct {
@@ -60,6 +62,7 @@ func NewLLMClient() *LLMClient {
 		Model:                model,
 		HTTPClient:           ai.NewProviderHTTPClient(providerConfig),
 		MaxRetries:           providerConfig.MaxRetries,
+		MaxOutputTokens:      providerConfig.MaxOutputTokens,
 		AllowedProviderHosts: ai.LoadAllowedProviderHosts(),
 	}
 }
@@ -133,9 +136,10 @@ func (c *LLMClient) CreateCompletion(ctx context.Context, safePrompt string, com
 	messages := c.BuildRigorousPrompt(safePrompt, compiledContext)
 
 	reqBody := openaiRequest{
-		Model:    c.Model,
-		Messages: messages,
-		Temp:     0.0, // Zero temperature for deterministic output bounding
+		Model:     c.Model,
+		Messages:  messages,
+		Temp:      0.0, // Zero temperature for deterministic output bounding
+		MaxTokens: boundedMaxOutputTokens(c.MaxOutputTokens),
 	}
 
 	jsonBody, err := json.Marshal(reqBody)
@@ -215,6 +219,16 @@ func (c *LLMClient) CreateCompletion(ctx context.Context, safePrompt string, com
 
 	status = "success"
 	return generatedResponse, nil
+}
+
+func boundedMaxOutputTokens(configured int) int {
+	if configured <= 0 {
+		return ai.DefaultMaxOutputTokens
+	}
+	if configured > ai.MaxOutputTokens {
+		return ai.MaxOutputTokens
+	}
+	return configured
 }
 
 // Execute preserves the original adapter entry point for callers that have not

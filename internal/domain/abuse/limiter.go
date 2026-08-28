@@ -178,6 +178,8 @@ return 1
 const (
 	activeConnectionLeaseTTL       = 2 * time.Minute
 	activeConnectionCommandTimeout = 5 * time.Second
+	maxProfileRequests             = 10000
+	maxProfileWindow               = 24 * time.Hour
 )
 
 func PolicyFromEnv() Policy {
@@ -199,8 +201,14 @@ func profileFromEnv(name string, defaultLimit int, defaultWindow time.Duration) 
 	if limit < 1 {
 		limit = defaultLimit
 	}
+	if limit > maxProfileRequests {
+		limit = maxProfileRequests
+	}
 	if windowSeconds < 1 {
 		windowSeconds = int(defaultWindow.Seconds())
+	}
+	if windowSeconds > int(maxProfileWindow.Seconds()) {
+		windowSeconds = int(maxProfileWindow.Seconds())
 	}
 	return Profile{Name: name, Limit: limit, Window: time.Duration(windowSeconds) * time.Second}
 }

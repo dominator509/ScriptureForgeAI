@@ -520,21 +520,31 @@ func setupRoutesWithLifecycle(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisC
 
 	// Auth Endpoints
 	authHandler := &ports.AuthHandler{DB: dbpool, AccountLimiter: abuseLimiter, MFAEncryptionKey: []byte(os.Getenv("MFA_ENCRYPTION_KEY"))}
+	var sessionValidator auth.SessionValidator
+	if dbpool != nil {
+		sessionValidator = authHandler.ValidateActiveSession
+	}
+	protected := func(next http.Handler, requiredRole string) http.Handler {
+		return auth.RBACMiddlewareWithSession(next, requiredRole, sessionValidator)
+	}
+	protectedAnyRole := func(next http.Handler, requiredRoles ...string) http.Handler {
+		return auth.RBACMiddlewareAnyRoleWithSession(next, sessionValidator, requiredRoles...)
+	}
 	mux.Handle("/api/v1/auth/csrf", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(csrfHandler)))
 	mux.Handle("/api/v1/auth/register", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.RegisterHandler)))
 	mux.Handle("/api/v1/auth/login", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.LoginHandler)))
 	mux.Handle("/api/v1/auth/refresh", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.RefreshHandler)))
 	mux.Handle("/api/v1/auth/logout", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.LogoutHandler)))
-	mux.Handle("/api/v1/auth/mfa/verify", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.MFAVerifyHandler)), ""))
-	mux.Handle("/api/v1/auth/mfa/enroll", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.MFAEnrollHandler)), ""))
-	mux.Handle("/api/v1/workspaces/switch", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.WorkspaceSwitchHandler)), ""))
+	mux.Handle("/api/v1/auth/mfa/verify", protected(abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.MFAVerifyHandler)), ""))
+	mux.Handle("/api/v1/auth/mfa/enroll", protected(abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.MFAEnrollHandler)), ""))
+	mux.Handle("/api/v1/workspaces/switch", protected(abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.WorkspaceSwitchHandler)), ""))
 	mux.Handle("/api/auth/register", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.RegisterHandler)))
 	mux.Handle("/api/auth/login", abuseLimiter.Middleware(abuse.ProfileAuth, http.HandlerFunc(authHandler.LoginHandler)))
 
 	journalHandler := &ports.JournalHandler{DB: dbpool}
-	mux.Handle("/api/v1/journal/bootstrap", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileJournal, http.HandlerFunc(journalHandler.ServeJournalBootstrap)), ""))
-	mux.Handle("/api/v1/journal_entries", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileJournal, http.HandlerFunc(journalHandler.ServeJournalEntries)), ""))
-	mux.Handle("/api/v1/journal_entries/", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileJournal, http.HandlerFunc(journalHandler.ServeJournalEntry)), ""))
+	mux.Handle("/api/v1/journal/bootstrap", protected(abuseLimiter.Middleware(abuse.ProfileJournal, http.HandlerFunc(journalHandler.ServeJournalBootstrap)), ""))
+	mux.Handle("/api/v1/journal_entries", protected(abuseLimiter.Middleware(abuse.ProfileJournal, http.HandlerFunc(journalHandler.ServeJournalEntries)), ""))
+	mux.Handle("/api/v1/journal_entries/", protected(abuseLimiter.Middleware(abuse.ProfileJournal, http.HandlerFunc(journalHandler.ServeJournalEntry)), ""))
 
 	// AI Endpoints (Protected by RBAC)
 	ragEngine := ai.NewRAGEngine(vectorDB)
@@ -548,8 +558,8 @@ func setupRoutesWithLifecycle(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisC
 		MapReduceWorker: mapReduceWorker,
 	}
 	aiHandle := abuseLimiter.Middleware(abuse.ProfileAI, http.HandlerFunc(aiHandler.GenerateCurriculumHandler))
-	mux.Handle("/api/v1/ai/generate/study", auth.RBACMiddlewareAnyRole(aiHandle, "moderator", "author"))
-	mux.Handle("/api/ai/curriculum", auth.RBACMiddlewareAnyRole(aiHandle, "moderator", "author"))
+	mux.Handle("/api/v1/ai/generate/study", protectedAnyRole(aiHandle, "moderator", "author"))
+	mux.Handle("/api/ai/curriculum", protectedAnyRole(aiHandle, "moderator", "author"))
 
 	// Room & Zoom Webhook Initialization
 	roomStateManager := room.NewRoomStateManager(redisClient)
@@ -560,9 +570,9 @@ func setupRoutesWithLifecycle(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisC
 		MeetingAdapter:  integration_zoom.NewZoomClient(),
 		MeetingProvider: "zoom",
 	}
-	mux.Handle("/api/v1/rooms/create", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileRooms, http.HandlerFunc(roomHandler.CreateRoomHandler)), "moderator"))
-	mux.Handle("/api/v1/rooms/active", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileRooms, http.HandlerFunc(roomHandler.ActiveRoomsHandler)), ""))
-	mux.Handle("/api/v1/rooms/state/", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileRooms, http.HandlerFunc(roomHandler.RoomStateHandler)), ""))
+	mux.Handle("/api/v1/rooms/create", protected(abuseLimiter.Middleware(abuse.ProfileRooms, http.HandlerFunc(roomHandler.CreateRoomHandler)), "moderator"))
+	mux.Handle("/api/v1/rooms/active", protected(abuseLimiter.Middleware(abuse.ProfileRooms, http.HandlerFunc(roomHandler.ActiveRoomsHandler)), ""))
+	mux.Handle("/api/v1/rooms/state/", protected(abuseLimiter.Middleware(abuse.ProfileRooms, http.HandlerFunc(roomHandler.RoomStateHandler)), ""))
 
 	zoomWebhookHandler := integration_zoom.NewWebhookHandler(roomStateManager, dbpool)
 	mux.Handle("/api/webhooks/zoom", abuseLimiter.Middleware(abuse.ProfileZoomWebhook, http.HandlerFunc(zoomWebhookHandler.HandleZoomWebhook)))
@@ -577,7 +587,7 @@ func setupRoutesWithLifecycle(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisC
 	if lifecycle != nil {
 		lifecycle.onShutdown = socketConn.BeginShutdown
 	}
-	mux.Handle("/api/v1/rooms/stream/", auth.RBACMiddleware(abuseLimiter.Middleware(abuse.ProfileWebSocket, http.HandlerFunc(socketConn.HandleLiveRoom)), ""))
+	mux.Handle("/api/v1/rooms/stream/", protected(abuseLimiter.Middleware(abuse.ProfileWebSocket, http.HandlerFunc(socketConn.HandleLiveRoom)), ""))
 
 	return apiRequestDeadlineMiddleware(apiSecurityMiddleware(observer.Middleware(&mux)), apiRequestTimeout)
 }

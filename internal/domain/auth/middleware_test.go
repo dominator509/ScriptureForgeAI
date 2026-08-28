@@ -2,7 +2,9 @@ package auth
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,6 +12,31 @@ import (
 
 	"scriptureforge/internal/domain/observability"
 )
+
+func TestRBACMiddlewareWithSessionCallsValidatorAndFailsClosed(t *testing.T) {
+	t.Setenv("JWT_SECRET_KEY", "auth-session-middleware-test-secret-0123456789")
+	token, err := GenerateToken("user-session", "org-session", "member", time.Minute)
+	if err != nil {
+		t.Fatalf("generate token: %v", err)
+	}
+	called := false
+	handler := RBACMiddlewareWithSession(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), "", func(_ context.Context, claims *TokenClaims) error {
+		called = claims.UserID == "user-session" && claims.OrganizationID == "org-session"
+		return errors.New("revoked")
+	})
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/journal_entries", nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if !called {
+		t.Fatal("session validator was not called with verified claims")
+	}
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("session validator error status = %d, want 503", recorder.Code)
+	}
+}
 
 func TestRBACMiddlewareEnrichesAccessLogWithVerifiedClaims(t *testing.T) {
 	t.Setenv("JWT_SECRET_KEY", "auth-observability-test-secret-0123456789")

@@ -12,12 +12,14 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -95,6 +97,20 @@ const (
 )
 
 var emailRegex = regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$`)
+
+var dummyLoginHash struct {
+	sync.Once
+	value string
+}
+
+func verifyDummyLoginPassword(password string) {
+	dummyLoginHash.Do(func() {
+		dummyLoginHash.value, _ = auth.HashPassword("scriptureforge-invalid-login-dummy", auth.DefaultHashConfig)
+	})
+	if dummyLoginHash.value != "" {
+		_, _ = auth.VerifyPassword(password, dummyLoginHash.value)
+	}
+}
 
 func isWebAuthClient(r *http.Request) bool {
 	return strings.EqualFold(strings.TrimSpace(r.Header.Get("X-ScriptureForge-Client")), "web")
@@ -536,7 +552,7 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	).Scan(&newUserID)
 	if err != nil {
 		metricStatus = "conflict"
-		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Registration failed (email may already exist)", Code: http.StatusConflict})
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Registration failed", Code: http.StatusConflict})
 		return
 	}
 
@@ -608,6 +624,12 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		req.OrganizationID,
 	).Scan(&userID, &orgID, &role, &hash, &encryptedMFASecret, &mfaEnabled)
 	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			metricStatus = "database_error"
+			sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Authentication service unavailable", Code: http.StatusServiceUnavailable})
+			return
+		}
+		verifyDummyLoginPassword(req.Password)
 		metricStatus = "invalid_credentials"
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid credentials", Code: http.StatusUnauthorized})
 		return
@@ -680,6 +702,48 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	writeAuthResponse(w, r, AuthResponse{Token: token, RefreshToken: refreshToken, UserID: userID, OrganizationID: orgID}, http.StatusOK)
 }
 
+// ValidateActiveSession enforces the user-wide logout cutoff for protected
+// HTTP routes after JWT validation has established the tenant and user.
+func (h *AuthHandler) ValidateActiveSession(ctx context.Context, claims *auth.TokenClaims) error {
+	if h == nil || h.DB == nil {
+		return &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Authentication database is not configured", Code: http.StatusServiceUnavailable}
+	}
+	if claims == nil || claims.IssuedAt == nil {
+		return &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid session", Code: http.StatusUnauthorized}
+	}
+	tx, err := h.DB.Begin(ctx)
+	if err != nil {
+		return &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Authentication service unavailable", Code: http.StatusServiceUnavailable}
+	}
+	defer tx.Rollback(ctx)
+	if err := auth.SetTenantContext(ctx, tx, claims.OrganizationID); err != nil {
+		return err
+	}
+	var valid bool
+	err = tx.QueryRow(
+		ctx,
+		`SELECT COALESCE(sessions_revoked_at < $3, TRUE)
+		   FROM users
+		  WHERE id = $1 AND organization_id = $2`,
+		claims.UserID,
+		claims.OrganizationID,
+		claims.IssuedAt.Time,
+	).Scan(&valid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Invalid session", Code: http.StatusUnauthorized}
+	}
+	if err != nil {
+		return &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Authentication service unavailable", Code: http.StatusServiceUnavailable}
+	}
+	if !valid {
+		return &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Session has been revoked", Code: http.StatusUnauthorized}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Authentication service unavailable", Code: http.StatusServiceUnavailable}
+	}
+	return nil
+}
+
 func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Method not allowed", Code: http.StatusMethodNotAllowed})
@@ -729,6 +793,7 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 		   AND rt.organization_id = $2
 		   AND rt.revoked_at IS NULL
 		   AND rt.expires_at > CURRENT_TIMESTAMP
+		   AND (u.sessions_revoked_at IS NULL OR rt.created_at > u.sessions_revoked_at)
 		 FOR UPDATE`,
 		hashToken(req.RefreshToken),
 		req.OrganizationID,
@@ -834,7 +899,9 @@ func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 		`SELECT user_id
 		   FROM refresh_tokens
 		  WHERE token_hash = $1
-		    AND organization_id = $2`,
+		    AND organization_id = $2
+		    AND revoked_at IS NULL
+		    AND expires_at > CURRENT_TIMESTAMP`,
 		hashToken(req.RefreshToken),
 		req.OrganizationID,
 	).Scan(&userID); err != nil {

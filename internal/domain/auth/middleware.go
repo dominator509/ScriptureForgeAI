@@ -18,6 +18,10 @@ const (
 
 const RoomWebSocketSubprotocol = "scriptureforge-bearer"
 
+// SessionValidator lets the transport layer enforce server-side logout cutoffs
+// after the JWT has passed signature and claim validation.
+type SessionValidator func(context.Context, *TokenClaims) error
+
 func isMFAEnrollmentPath(path string) bool {
 	return path == "/api/v1/auth/mfa/enroll" || path == "/api/v1/auth/mfa/verify"
 }
@@ -35,16 +39,28 @@ func websocketBearerToken(r *http.Request) string {
 // RBACMiddleware intercepts incoming HTTP requests to validate JWTs and authorize access.
 // It maps the validated TokenClaims into the request context for downstream handlers.
 func RBACMiddleware(next http.Handler, requiredRole string) http.Handler {
+	return RBACMiddlewareWithSession(next, requiredRole, nil)
+}
+
+// RBACMiddlewareWithSession validates the JWT and, when configured, the
+// server-side session state before allowing a protected request to proceed.
+func RBACMiddlewareWithSession(next http.Handler, requiredRole string, validator SessionValidator) http.Handler {
 	if strings.TrimSpace(requiredRole) == "" {
-		return RBACMiddlewareAnyRole(next)
+		return RBACMiddlewareAnyRoleWithSession(next, validator)
 	}
-	return RBACMiddlewareAnyRole(next, requiredRole)
+	return RBACMiddlewareAnyRoleWithSession(next, validator, requiredRole)
 }
 
 // RBACMiddlewareAnyRole protects a route for one of several equivalent roles.
 // Role names are normalized so JWTs issued from the documented role vocabulary
 // and the lower-case database representation share the same authorization path.
 func RBACMiddlewareAnyRole(next http.Handler, requiredRoles ...string) http.Handler {
+	return RBACMiddlewareAnyRoleWithSession(next, nil, requiredRoles...)
+}
+
+// RBACMiddlewareAnyRoleWithSession is the session-aware form of the role
+// middleware. The legacy wrapper remains available for non-database callers.
+func RBACMiddlewareAnyRoleWithSession(next http.Handler, validator SessionValidator, requiredRoles ...string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Browser WebSocket clients cannot set Authorization headers, so accept the
 		// short-lived bearer token only in the negotiated room subprotocol header.
@@ -87,6 +103,20 @@ func RBACMiddlewareAnyRole(next http.Handler, requiredRoles ...string) http.Hand
 				Code:     http.StatusForbidden,
 			})
 			return
+		}
+		if validator != nil {
+			if err := validator(r.Context(), claims); err != nil {
+				if pe, ok := err.(*PlatformException); ok {
+					sendError(w, pe)
+				} else {
+					sendError(w, &PlatformException{
+						Category: AuthenticationFault,
+						Message:  "session validation failed",
+						Code:     http.StatusServiceUnavailable,
+					})
+				}
+				return
+			}
 		}
 
 		allowedRoles := make(map[string]struct{}, len(requiredRoles))

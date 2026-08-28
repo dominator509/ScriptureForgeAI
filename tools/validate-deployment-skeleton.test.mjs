@@ -334,3 +334,13 @@ test('validateNetworkPolicies rejects unrestricted egress', async () => {
     /must not restore unrestricted egress/,
   );
 });
+
+test('validateNetworkPolicies rejects database egress without destinations', async () => {
+  const networkPolicy = await terraformNetworkPolicyFixture();
+  const broken = networkPolicy.replaceAll('for_each = var.data_tier_cidrs', 'for_each = var.allowed_ingress_cidrs');
+  assert.notEqual(broken, networkPolicy, 'test fixture must remove data-tier destination scoping');
+  assert.throws(
+    () => validateNetworkPolicies(broken),
+    /database-port egress must be scoped to declared data-tier CIDRs/,
+  );
+});

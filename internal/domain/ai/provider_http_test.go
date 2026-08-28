@@ -11,6 +11,7 @@ import (
 func TestLoadProviderHTTPConfigClampsEnvironmentValues(t *testing.T) {
 	t.Setenv("AI_HTTP_TIMEOUT_MS", "999999")
 	t.Setenv("AI_MAX_RETRIES", "999")
+	t.Setenv("AI_MAX_OUTPUT_TOKENS", "999999")
 
 	config := LoadProviderHTTPConfig()
 	if config.Timeout != MaxProviderTimeout {
@@ -18,6 +19,9 @@ func TestLoadProviderHTTPConfigClampsEnvironmentValues(t *testing.T) {
 	}
 	if config.MaxRetries != MaxProviderRetries {
 		t.Fatalf("provider retries = %d, want %d", config.MaxRetries, MaxProviderRetries)
+	}
+	if config.MaxOutputTokens != MaxOutputTokens {
+		t.Fatalf("provider max output tokens = %d, want %d", config.MaxOutputTokens, MaxOutputTokens)
 	}
 }
 

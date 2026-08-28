@@ -41,6 +41,11 @@ This file records repository-level implementation history. It is not a substitut
 - Added Rust scripture-ingestion validation, Terraform validation gates, CI evidence binding, and Serena/Obsidian drift checks.
 - Added strict staging/production PostgreSQL TLS URL validation to the Go API and Rust scripture engine, with local-development compatibility and deployment-validator coverage.
 - Verified the current metrics-auth remediation head `e07f423b519566277bf5f9d72681309c79d8cb00` in hosted Security Pipeline Verification run `33184095128`; all workflow steps passed, including the synchronized Obsidian snapshot and CI release-evidence upload.
+- Enforced the existing session-revocation cutoff across protected HTTP routes and refresh issuance, denied expired-token logout side effects, and added regression coverage for pre-logout access tokens and independent refresh families.
+- Scoped user email uniqueness to `(organization_id, email)` through migration `000008_tenant_scoped_user_email`, made registration conflicts generic, and added dummy Argon2id verification for missing-user login attempts.
+- Added the bounded environment-driven `AI_MAX_OUTPUT_TOKENS` provider request budget and Terraform projection.
+- Scoped API/Rust database-port NetworkPolicy egress to declared `data_tier_cidrs` with validator regression coverage.
+- Made failed room-provisioning cleanup use a bounded context detached from client cancellation and emit sanitized dependency telemetry.
 
 ### Evidence boundary
 
