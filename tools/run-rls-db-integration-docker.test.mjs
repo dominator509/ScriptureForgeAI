@@ -118,7 +118,7 @@ test('runDockerRLSDBIntegration applies migrations, runs RLS tests, and cleans u
   let observedEnv;
   const exitCode = await runDockerRLSDBIntegration({
     config,
-    workspaceRoot: 'C:\\dev\\ScriptureForgeAI',
+    workspaceRoot: process.cwd(),
     runner,
     rlsRunner: async ({ env }) => {
       observedEnv = env;
