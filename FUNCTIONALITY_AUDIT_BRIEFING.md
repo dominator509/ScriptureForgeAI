@@ -10,6 +10,8 @@ The repository has moved from a skeletal implementation toward a locally verifie
 
 The highest-risk gaps are:
 
+Current-state note (2026-08-27): the branch tip is now `0c63a86a32795f5692fd85d2bf1280ac8f8b2c43`. The exact-SHA local run executed 35/35 gates with 34 passing; the only local failure was the Docker-backed RLS gate because the Docker Desktop backend timed out. Hosted push and pull-request runs `33146814553` and `33146821720` for this SHA failed before workflow steps (`runner_id=0`, `steps=[]`). The older release references below remain historical evidence.
+
 1. A prior clean pushed GitHub Actions run and exact-release `tools/ciprobe` proof exist for commit `610efd0e50cb1f949e4a0cff2f8a66e5bbb83eab` (run `32001756732`); the current branch tip `006559ea68d0cd56679d54af0728e306ffb2b40f` has focused deployment and documentation validation, while its push run `33071077208` failed before workflow steps started (`runner_id=0`, `steps=[]`). The full local matrix rerun was blocked at the Docker-backed RLS gate because the Docker daemon/config is access-denied. Final readiness still requires hosted CI recovery and recording the uploaded HTTPS artifact in the environment-specific staging manifest.
 2. The staging evidence manifest still has every production artifact pending: deployment, TLS, Kubernetes, secrets, RLS-through-API, Redis/WebSocket sequencing, Rust gRPC, observability, web/mobile smokes, Zoom, AI, load, rollback, backup/restore, and signoff.
 3. Local mobile crypto verification now covers AES-GCM, the architecture PBKDF2 600,000-iteration work factor, blank passphrase/salt rejection, key lifecycle cleanup, native-required fail-closed behavior, and the `react-native-quick-crypto` provider-selection path with a local provider harness; native mobile/EAS validation is still required for production AES-GCM proof outside Node/WebCrypto shims.
@@ -20,6 +22,7 @@ The highest-risk gaps are:
 
 ## Verification Performed
 
+- Current exact-SHA verification (2026-08-27): clean branch tip `0c63a86a32795f5692fd85d2bf1280ac8f8b2c43` executed 35/35 local gates with 34 passing; only the required Docker-backed `rls-db-integration` gate failed because the Docker Desktop backend timed out. GitHub Actions push run `33146814553` and pull-request run `33146821720` for the same SHA failed before workflow steps (`runner_id=0`, `steps=[]`), so hosted CI evidence remains externally blocked.
 - `git status --short --branch`: clean `main...origin/main` before audit.
 - Original audit: `rtk go test ./...` failed immediately because `go` was not found on PATH. Current 2026-06-27 verification uses repo-local Go `1.24.3`; the full local gate report includes passing Go test/vet.
 - Original audit: `rtk npm run build` in `web/` failed because `next` was not recognized. Current 2026-06-27 verification uses installed web dependencies; the full local gate report includes passing web audit, smoke, typecheck, and build gates.
