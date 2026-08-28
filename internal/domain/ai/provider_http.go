@@ -124,7 +124,14 @@ func NewProviderHTTPClient(config ProviderHTTPConfig) *http.Client {
 	if config.Timeout <= 0 || config.Timeout > MaxProviderTimeout {
 		config.Timeout = DefaultProviderTimeout
 	}
-	return &http.Client{Timeout: config.Timeout}
+	return &http.Client{
+		Timeout: config.Timeout,
+		// Provider requests carry bearer credentials. Never follow a redirect to
+		// an origin that was not validated by the provider endpoint guard.
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 }
 
 // DoProviderRequest retries only transient provider failures and rebuilds each request.

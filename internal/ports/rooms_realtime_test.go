@@ -823,8 +823,8 @@ func TestAllowedWSOriginRequiresPublicHTTPSOriginsInStagingAndProduction(t *test
 	}
 }
 
-func TestAllowedWSOriginRequiresConfiguredOriginsInStagingAndProduction(t *testing.T) {
-	for _, environment := range []string{"staging", "production", "prod"} {
+func TestAllowedWSOriginRequiresConfiguredOriginsInAllNonLocalEnvironments(t *testing.T) {
+	for _, environment := range []string{"staging", "production", "prod", "production-blue"} {
 		t.Run(environment, func(t *testing.T) {
 			t.Setenv("DEPLOYMENT_ENVIRONMENT", environment)
 			t.Setenv("ALLOWED_WS_ORIGINS", "")

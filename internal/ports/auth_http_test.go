@@ -74,6 +74,19 @@ func TestWebAuthResponseUsesHttpOnlyRefreshCookieAndOmitsTokenBody(t *testing.T)
 	}
 }
 
+func TestRefreshCookieIsSecureForNonLocalDeploymentEnvironment(t *testing.T) {
+	t.Setenv("DEPLOYMENT_ENVIRONMENT", "production-blue")
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
+	request.Header.Set("X-ScriptureForge-Client", "web")
+	recorder := httptest.NewRecorder()
+	setRefreshCookie(recorder, request, "opaque-refresh-token")
+
+	cookies := recorder.Result().Cookies()
+	if len(cookies) != 1 || !cookies[0].Secure {
+		t.Fatalf("non-local deployment refresh cookie = %#v, want Secure=true", cookies)
+	}
+}
+
 func TestRefreshTokenFromRequestPrefersBodyAndFallsBackToWebCookie(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", nil)
 	request.AddCookie(&http.Cookie{Name: refreshCookieName, Value: "cookie-token"})

@@ -142,10 +142,10 @@ func isLocalDevelopmentOrigin(raw string) bool {
 
 func requiresConfiguredWSOrigins() bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("DEPLOYMENT_ENVIRONMENT"))) {
-	case "prod", "production", "staging":
-		return true
-	default:
+	case "", "development", "dev", "test", "local":
 		return false
+	default:
+		return true
 	}
 }
 

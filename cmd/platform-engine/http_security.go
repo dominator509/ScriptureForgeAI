@@ -40,10 +40,10 @@ func loadAllowedBrowserOrigins() (map[string]struct{}, *PlatformException) {
 
 func requiresConfiguredBrowserOrigins() bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("DEPLOYMENT_ENVIRONMENT"))) {
-	case "staging", "production", "prod":
-		return true
-	default:
+	case "", "development", "dev", "test", "local":
 		return false
+	default:
+		return true
 	}
 }
 

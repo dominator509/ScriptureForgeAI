@@ -104,8 +104,10 @@ func secureRefreshCookie(r *http.Request) bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("DEPLOYMENT_ENVIRONMENT"))) {
 	case "staging", "production", "prod":
 		return true
-	default:
+	case "", "development", "dev", "test", "local":
 		return r.TLS != nil
+	default:
+		return true
 	}
 }
 
@@ -736,6 +738,11 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 		// descendants so a stolen refresh family cannot be advanced further.
 		if _, revokeErr := revokeRefreshTokenFamily(r.Context(), tx, hashToken(req.RefreshToken), req.OrganizationID); revokeErr != nil {
 			sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to contain refresh-token reuse", Code: http.StatusInternalServerError})
+			return
+		}
+		if commitErr := tx.Commit(r.Context()); commitErr != nil {
+			metricStatus = "containment_commit_failed"
+			sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to commit refresh-token reuse containment", Code: http.StatusInternalServerError})
 			return
 		}
 		metricStatus = "invalid_or_expired"

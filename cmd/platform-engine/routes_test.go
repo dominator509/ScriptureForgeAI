@@ -747,6 +747,23 @@ func TestWorkspaceSwitchRouteEnforcesOrgMatch(t *testing.T) {
 	}
 }
 
+func TestRoomCreateRouteRequiresModeratorOrAdmin(t *testing.T) {
+	t.Setenv("JWT_SECRET_KEY", "route-room-create-secret-0123456789")
+	router := setupRoutes(nil, nil, nil)
+	token, err := auth.GenerateToken("member-user-id", "55555555-5555-4555-8555-555555555555", "member", time.Minute)
+	if err != nil {
+		t.Fatalf("generate token: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/rooms/create", strings.NewReader(`{"title":"Member Room"}`))
+	request.Header.Set("Authorization", "Bearer "+token)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("member room create status = %d body = %s, want 403", recorder.Code, recorder.Body.String())
+	}
+}
+
 func exerciseRouteRawWithMethodAndAuth(t *testing.T, handler http.Handler, path string, body string, remoteAddr string, method string, token string) (int, http.Header, auth.PlatformException) {
 	t.Helper()
 	recorder := httptest.NewRecorder()

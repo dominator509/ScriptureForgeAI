@@ -3,6 +3,7 @@ package ai
 import (
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -55,5 +56,22 @@ func TestReadProviderResponseBodyRejectsOversizedPayload(t *testing.T) {
 	response := &http.Response{Body: io.NopCloser(strings.NewReader(strings.Repeat("x", int(MaxProviderResponseBytes+1))))}
 	if _, err := ReadProviderResponseBody(response); err == nil {
 		t.Fatal("ReadProviderResponseBody accepted an oversized payload")
+	}
+}
+
+func TestProviderHTTPClientDoesNotFollowRedirects(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://127.0.0.1:9/redirect-target", http.StatusFound)
+	}))
+	defer server.Close()
+
+	client := NewProviderHTTPClient(ProviderHTTPConfig{})
+	response, err := client.Get(server.URL)
+	if err != nil {
+		t.Fatalf("provider client request: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusFound {
+		t.Fatalf("provider redirect status = %d, want %d", response.StatusCode, http.StatusFound)
 	}
 }

@@ -20,13 +20,13 @@ const defaultAPIRequestTimeoutMs = 15000;
 
 function isStrictMobileEnvironment(env: MobileRuntimeEnv): boolean {
   const deploymentEnvironment = (env.EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT ?? '').toLowerCase();
-  return env.EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO === 'true' || ['staging', 'production', 'prod'].includes(deploymentEnvironment);
+  return env.EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO === 'true'
+    || !['', 'development', 'dev', 'test', 'local'].includes(deploymentEnvironment);
 }
 
 function assertNativeCryptoRequired(env: MobileRuntimeEnv): void {
-  const deploymentEnvironment = (env.EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT ?? '').toLowerCase();
-  if (['staging', 'production', 'prod'].includes(deploymentEnvironment) && env.EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO !== 'true') {
-    throw new Error('EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true is required for staging or production mobile builds');
+  if (isStrictMobileEnvironment(env) && env.EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO !== 'true') {
+    throw new Error('EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true is required for non-local mobile builds');
   }
 }
 

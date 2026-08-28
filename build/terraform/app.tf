@@ -1114,6 +1114,16 @@ resource "kubernetes_deployment" "web" {
             name  = "NEXT_PUBLIC_API_BASE_URL"
             value = "https://${var.api_hostname}"
           }
+
+          env {
+            name  = "NEXT_PUBLIC_WS_BASE_URL"
+            value = "wss://${var.api_hostname}"
+          }
+
+          env {
+            name  = "NEXT_PUBLIC_DEPLOYMENT_ENVIRONMENT"
+            value = var.environment
+          }
         }
       }
     }

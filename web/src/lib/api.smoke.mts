@@ -362,6 +362,13 @@ test('web runtime config rejects local or insecure endpoints in staging builds',
   );
 });
 
+test('web runtime config rejects missing endpoints for non-local environment names', () => {
+  assert.throws(
+    () => resolveWebRuntimeConfig({ NEXT_PUBLIC_DEPLOYMENT_ENVIRONMENT: 'production-blue' }),
+    /NEXT_PUBLIC_API_BASE_URL must use public non-local https/,
+  );
+});
+
 test('web runtime config accepts explicit staging HTTPS and WSS endpoints', () => {
   const config = resolveWebRuntimeConfig({
     NEXT_PUBLIC_DEPLOYMENT_ENVIRONMENT: 'staging',

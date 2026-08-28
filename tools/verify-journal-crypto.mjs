@@ -401,7 +401,7 @@ for (const requiredMobileConfigControl of [
   'resolveMobileRuntimeConfig',
   'EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT',
   'EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO',
-  'EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true is required for staging or production mobile builds',
+  'EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true is required for non-local mobile builds',
   'assertStrictMobileURL',
   'isReservedPlaceholderHost',
   "'https:'",

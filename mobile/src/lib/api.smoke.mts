@@ -312,6 +312,16 @@ test('mobile runtime config rejects staging or production builds without native 
   );
 });
 
+test('mobile runtime config rejects missing endpoints for non-local environment names', () => {
+  assert.throws(
+    () => resolveMobileRuntimeConfig({
+      EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT: 'production-blue',
+      EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO: 'true',
+    }),
+    /EXPO_PUBLIC_API_BASE_URL must use public non-local https/,
+  );
+});
+
 test('mobile runtime config accepts explicit staging HTTPS and WSS endpoints with native crypto enforcement', () => {
   const config = resolveMobileRuntimeConfig({
     EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT: 'staging',

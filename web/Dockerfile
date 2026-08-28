@@ -12,6 +12,13 @@ COPY --from=dependencies /workspace/web/node_modules ./web/node_modules
 COPY web/package.json web/package-lock.json ./web/
 COPY web/src ./web/src
 COPY web/tsconfig.json ./web/tsconfig.json
+ARG NEXT_PUBLIC_API_BASE_URL
+ARG NEXT_PUBLIC_WS_BASE_URL
+ARG NEXT_PUBLIC_DEPLOYMENT_ENVIRONMENT=production
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+ENV NEXT_PUBLIC_WS_BASE_URL=$NEXT_PUBLIC_WS_BASE_URL
+ENV NEXT_PUBLIC_DEPLOYMENT_ENVIRONMENT=$NEXT_PUBLIC_DEPLOYMENT_ENVIRONMENT
+RUN test -n "$NEXT_PUBLIC_API_BASE_URL" && test -n "$NEXT_PUBLIC_WS_BASE_URL"
 RUN npm run build --prefix web
 
 FROM node:22-bookworm-slim AS runtime

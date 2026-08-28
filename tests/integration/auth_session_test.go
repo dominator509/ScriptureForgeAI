@@ -280,6 +280,15 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 		t.Fatalf("old refresh token status = %d body = %s, want 401", oldTokenRecorder.Code, oldTokenRecorder.Body.String())
 	}
 
+	descendantRecorder := httptest.NewRecorder()
+	handler.RefreshHandler(descendantRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
+		"refresh_token":   refreshed.RefreshToken,
+		"organization_id": testOrgID,
+	}, observer))
+	if descendantRecorder.Code != http.StatusUnauthorized {
+		t.Fatalf("descendant refresh token status = %d body = %s, want 401 after parent replay", descendantRecorder.Code, descendantRecorder.Body.String())
+	}
+
 	crossTenantRecorder := httptest.NewRecorder()
 	handler.RefreshHandler(crossTenantRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
 		"refresh_token":   refreshed.RefreshToken,

@@ -29,6 +29,20 @@ func TestLoadAllowedBrowserOriginsFailsClosedInStrictEnvironments(t *testing.T) 
 	}
 }
 
+func TestBrowserSecurityFailsClosedForNonLocalEnvironmentNames(t *testing.T) {
+	t.Setenv("DEPLOYMENT_ENVIRONMENT", "production-blue")
+	t.Setenv("ALLOWED_WS_ORIGINS", "")
+	if _, errConfig := loadAllowedBrowserOrigins(); errConfig == nil {
+		t.Fatal("loadAllowedBrowserOrigins accepted missing origins for a non-local environment")
+	}
+
+	recorder := httptest.NewRecorder()
+	setAPISecurityHeaders(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/health", nil))
+	if recorder.Header().Get("Strict-Transport-Security") == "" {
+		t.Fatal("non-local environment omitted Strict-Transport-Security")
+	}
+}
+
 func TestAPISecurityMiddlewareSetsHeadersAndHandlesCredentialedPreflight(t *testing.T) {
 	t.Setenv("DEPLOYMENT_ENVIRONMENT", "development")
 	t.Setenv("ALLOWED_WS_ORIGINS", "http://localhost:3000")

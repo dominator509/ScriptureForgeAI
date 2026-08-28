@@ -21,7 +21,7 @@ const csrfHeaderName = 'X-CSRF-Token';
 
 function isStrictWebEnvironment(env: WebRuntimeEnv): boolean {
   const deploymentEnvironment = (env.NEXT_PUBLIC_DEPLOYMENT_ENVIRONMENT ?? '').toLowerCase();
-  return ['staging', 'production', 'prod'].includes(deploymentEnvironment);
+  return !['', 'development', 'dev', 'test', 'local'].includes(deploymentEnvironment);
 }
 
 function isLocalOrPrivateURL(value: string): boolean {
