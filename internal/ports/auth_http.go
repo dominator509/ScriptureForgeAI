@@ -204,12 +204,20 @@ func refreshLimitIdentity(refreshToken, orgID string) string {
 	return "refresh:" + hashToken(strings.ToLower(strings.TrimSpace(orgID))+"|"+hashToken(strings.TrimSpace(refreshToken)))
 }
 
+func mfaLimitIdentity(userID, orgID string) string {
+	return "mfa:" + hashToken(strings.ToLower(strings.TrimSpace(orgID))+"|"+strings.ToLower(strings.TrimSpace(userID)))
+}
+
 func (h *AuthHandler) enforceAuthAccountLimit(w http.ResponseWriter, r *http.Request, email, orgID string) bool {
 	return h.enforceAuthCredentialLimit(w, r, accountLimitIdentity(email, orgID), "Too many login attempts for this account; retry after the rate-limit window")
 }
 
 func (h *AuthHandler) enforceRefreshTokenLimit(w http.ResponseWriter, r *http.Request, refreshToken, orgID string) bool {
 	return h.enforceAuthCredentialLimit(w, r, refreshLimitIdentity(refreshToken, orgID), "Too many refresh attempts for this token; retry after the rate-limit window")
+}
+
+func (h *AuthHandler) enforceMFAVerifyLimit(w http.ResponseWriter, r *http.Request, userID, orgID string) bool {
+	return h.enforceAuthCredentialLimit(w, r, mfaLimitIdentity(userID, orgID), "Too many MFA verification attempts; retry after the rate-limit window")
 }
 
 func (h *AuthHandler) enforceAuthCredentialLimit(w http.ResponseWriter, r *http.Request, identity, message string) bool {
@@ -926,6 +934,9 @@ func (h *AuthHandler) MFAVerifyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if !privilegedRole(claims.Role) {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "MFA verification is available only for privileged users", Code: http.StatusForbidden})
+		return
+	}
+	if !h.enforceMFAVerifyLimit(w, r, claims.UserID, claims.OrganizationID) {
 		return
 	}
 

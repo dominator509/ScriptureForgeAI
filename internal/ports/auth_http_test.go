@@ -328,6 +328,43 @@ func TestRefreshTokenLimitRejectsRepeatedRefreshAttemptsAcrossClientIPs(t *testi
 	}
 }
 
+func TestMFAVerifyLimitRejectsRepeatedAttemptsAcrossClientIPs(t *testing.T) {
+	observer := observability.NewObserver(observability.Options{})
+	handler := &AuthHandler{AccountLimiter: testAuthAccountLimiter(1)}
+	claims := &auth.TokenClaims{UserID: "user-admin", OrganizationID: "org-a", Role: "admin"}
+
+	request := func(remoteAddr string) *http.Request {
+		r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/mfa/verify", strings.NewReader(`{"mfa_code":"123456"}`))
+		r.RemoteAddr = remoteAddr
+		r = r.WithContext(context.WithValue(r.Context(), auth.ContextKeyUser, claims))
+		return r.WithContext(observability.WithObserver(r.Context(), observer))
+	}
+
+	first := httptest.NewRecorder()
+	handler.MFAVerifyHandler(first, request("198.51.100.30:49152"))
+	if first.Code != http.StatusServiceUnavailable {
+		t.Fatalf("first MFA attempt status = %d body = %s, want dependency failure after limiter allows it", first.Code, first.Body.String())
+	}
+
+	second := httptest.NewRecorder()
+	handler.MFAVerifyHandler(second, request("198.51.100.31:49152"))
+	if second.Code != http.StatusTooManyRequests {
+		t.Fatalf("second MFA attempt status = %d body = %s, want 429", second.Code, second.Body.String())
+	}
+	var response auth.PlatformException
+	if err := json.NewDecoder(second.Body).Decode(&response); err != nil {
+		t.Fatalf("decode MFA limit response: %v", err)
+	}
+	if response.Code != http.StatusTooManyRequests || response.Category != "ABUSE_RATE_LIMIT_FAULT" || !strings.Contains(response.Message, "MFA verification attempts") {
+		t.Fatalf("MFA limit response = %#v", response)
+	}
+	for _, forbidden := range []string{"user-admin", "org-a", "198.51.100.30", "198.51.100.31"} {
+		if strings.Contains(observer.Snapshot(), forbidden) {
+			t.Fatalf("MFA limiter metrics leaked %q:\n%s", forbidden, observer.Snapshot())
+		}
+	}
+}
+
 func TestAuthAccountLimitIdentityIsHashedAndStable(t *testing.T) {
 	first := accountLimitIdentity("Member@Example.Test", "Org-A")
 	second := accountLimitIdentity(" member@example.test ", " org-a ")

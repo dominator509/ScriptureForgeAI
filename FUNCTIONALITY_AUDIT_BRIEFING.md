@@ -916,6 +916,8 @@ Status last updated: 2026-08-27
 
 2026-08-28 registration and room-session hardening: public registration now rejects caller-selected `organization_id` fields through strict JSON decoding, generates a fresh organization UUID server-side, and creates the organization, forced-member user, and initial refresh token in one RLS-scoped transaction. Web and mobile callers submit only a bounded `organization_name`; login, refresh, and logout continue to use the returned tenant ID. Validated JWTs now require an `exp` claim, and active room WebSockets close when that access token expires. Focused Go auth/realtime tests plus web/mobile smoke and build gates pass. This closes the local public-registration tenant-selection and active-socket token-lifetime gaps; invitation enrollment, deployed reconnect behavior, and staging evidence remain external.
 
+2026-08-28 MFA verification abuse hardening: privileged `/api/v1/auth/mfa/verify` attempts now use a hashed organization/user identity in the distributed `auth_account` limiter in addition to the route limiter, so rotating client IPs cannot bypass the TOTP guess budget. Focused Go handler tests pass and prove the second attempt is rejected before database work without leaking tenant or user identifiers in metrics. This closes the local MFA verification brute-force gap; deployed limiter behavior and telemetry remain external.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.
