@@ -1,6 +1,6 @@
 # ScriptureForgeAI Production Threat Model
 
-Status last updated: 2026-08-10
+Status last updated: 2026-08-28
 
 ## Scope
 
@@ -39,6 +39,7 @@ This is a repo-local threat model. It does not replace staging evidence for AWS 
 
 ## Current Security Evidence
 
+- AI audit confidentiality: generation writes retain only a fixed redacted prompt marker and byte length in `ai_request_logs`; migration `000007_ai_prompt_redaction` scrubs historical prompt bodies, while provider-side retention remains an external control.
 - Tenant isolation: `tests/integration/tenant_handler_rls_test.go` and `tests/integration/table_rls_test.go` cover same-tenant success and cross-tenant denial for handler paths and tenant tables.
 - Auth/session: `tests/integration/auth_session_test.go` and `cmd/platform-engine/routes_test.go` cover canonical and legacy routes, registration role forcing, short access-token TTL, refresh rotation/revocation, logout, privileged MFA, and auth abuse buckets.
 - Journal confidentiality: backend journal handlers reject plaintext/passphrase fields, persist ciphertext-only entries, and deny cross-user/cross-tenant reads; `tools/verify-journal-crypto.mjs` checks AES-GCM behavior, non-extractable keys, derivation byte wiping, disposed key-handle rejection, stale raw-key revocation, and untracked-key rejection in the Node-backed mobile/web crypto harness.

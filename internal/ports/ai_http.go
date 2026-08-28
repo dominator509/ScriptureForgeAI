@@ -33,6 +33,7 @@ const (
 	maxAIChunks                 = 64
 	maxAIAggregateResponseBytes = 8 << 20
 	aiResponseSeparator         = "\n\n"
+	redactedAIPrompt            = "[redacted]"
 )
 
 func sendAIError(w http.ResponseWriter, pe *ai.PlatformException) {
@@ -56,12 +57,13 @@ func (h *AIHandler) writeAIRequestLog(r *http.Request, claims *auth.TokenClaims,
 	var logID string
 	err = tx.QueryRow(
 		r.Context(),
-		`INSERT INTO ai_request_logs (organization_id, user_id, prompt, status, error_message)
-		 VALUES ($1, $2, $3, $4, $5)
+		`INSERT INTO ai_request_logs (organization_id, user_id, prompt, prompt_length, status, error_message)
+		 VALUES ($1, $2, $3, $4, $5, $6)
 		 RETURNING id`,
 		claims.OrganizationID,
 		claims.UserID,
-		prompt,
+		redactedAIPrompt,
+		len([]byte(prompt)),
 		status,
 		errorMessage,
 	).Scan(&logID)

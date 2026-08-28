@@ -68,6 +68,7 @@ test('migration list applies the complete ordered up-migration set', () => {
     '/migrations/000004_auth_mfa_assurance.up.sql',
     '/migrations/000005_mfa_legacy_plaintext_cleanup.up.sql',
     '/migrations/000006_auth_session_revocation.up.sql',
+    '/migrations/000007_ai_prompt_redaction.up.sql',
   ]);
   assert.deepEqual(migrationFiles, listMigrationFiles(), 'exported migration snapshot should match the current workspace');
 });
@@ -89,6 +90,17 @@ test('session revocation migration adds a user cutoff and reversible index', asy
   assert.match(up, /idx_users_sessions_revoked_at/);
   assert.match(down, /DROP INDEX IF EXISTS idx_users_sessions_revoked_at/);
   assert.match(down, /DROP COLUMN IF EXISTS sessions_revoked_at/);
+});
+
+test('AI prompt redaction migration scrubs content and fails closed on rollback', async () => {
+  const up = await readFile(resolve('migrations/000007_ai_prompt_redaction.up.sql'), 'utf8');
+  const down = await readFile(resolve('migrations/000007_ai_prompt_redaction.down.sql'), 'utf8');
+  assert.match(up, /prompt_length\s+INTEGER\s+NOT NULL/);
+  assert.match(up, /octet_length\(prompt\)/);
+  assert.match(up, /prompt\s*=\s*'\[redacted\]'/);
+  assert.match(up, /ai_request_logs_prompt_redacted/);
+  assert.match(down, /intentionally irreversible/i);
+  assert.match(down, /RAISE EXCEPTION/i);
 });
 
 test('runDockerRLSDBIntegration applies migrations, runs RLS tests, and cleans up', async () => {

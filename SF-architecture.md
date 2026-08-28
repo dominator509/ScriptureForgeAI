@@ -425,6 +425,7 @@ CREATE INDEX idx_participants_lookup ON room_participants(room_id, user_id);
     *   Generation fails closed with a typed `503` when required RAG, verification, LLM, MapReduce, database, or AI audit persistence dependencies are unavailable; successful or failed attempts are not served without an audit write.
     *   Readiness includes the RAG vector database and nonblank LLM API key, endpoint, model, and bounded HTTP client; direct RAG/LLM calls also return typed configuration faults when their dependency graph is incomplete.
     *   Aggregate curriculum assembly uses amortized buffering with an 8 MiB response envelope across the bounded chunk set; overflow is audit-recorded as a failed attempt and returns a typed `503` without serving partial output.
+    *   AI audit rows retain a fixed `[redacted]` prompt marker and byte length rather than prompt content, alongside status, errors, and citation trails. Migration `000007_ai_prompt_redaction` scrubs historical prompt bodies and deliberately fails closed on rollback.
     *   LLM network, malformed-response, and empty-response faults use sanitized typed errors; provider URLs, transport messages, and response bodies are not returned to callers.
     *   MapReduce uses UTF-8-safe bounded chunks and a capped worker pool with cancellation-aware scheduling; invalid processors and canceled work fail closed without unbounded goroutine fan-out.
     *   *Payload Structure:*

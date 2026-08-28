@@ -169,7 +169,7 @@ func TestAIRequestLogPersistsCitationsAndHonorsTenantRLS(t *testing.T) {
 	handler.writeAIRequestLog(request, &auth.TokenClaims{UserID: aiAuditUserA, OrganizationID: aiAuditOrgA, Role: "member"}, "bad citation", "failed", "verification failed: hallucinated citation", "")
 
 	withAIAuditTenant(ctx, t, db, aiAuditOrgA, func(ctx context.Context, tx pgx.Tx) {
-		var successCount, failureCount, citationCount int
+		var successCount, failureCount, citationCount, rawPromptCount int
 		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM ai_request_logs WHERE organization_id = $1 AND user_id = $2 AND status = 'succeeded'`, aiAuditOrgA, aiAuditUserA).Scan(&successCount); err != nil {
 			t.Fatalf("query AI success logs: %v", err)
 		}
@@ -179,8 +179,11 @@ func TestAIRequestLogPersistsCitationsAndHonorsTenantRLS(t *testing.T) {
 		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM citation_trails WHERE organization_id = $1 AND citation IN ('[Genesis 1:1]', '[John 1:1]') AND verified = TRUE`, aiAuditOrgA).Scan(&citationCount); err != nil {
 			t.Fatalf("query AI citation trails: %v", err)
 		}
-		if successCount != 1 || failureCount != 1 || citationCount != 2 {
-			t.Fatalf("AI audit counts success=%d failure=%d citations=%d, want 1/1/2", successCount, failureCount, citationCount)
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM ai_request_logs WHERE prompt <> '[redacted]' OR prompt_length <= 0`).Scan(&rawPromptCount); err != nil {
+			t.Fatalf("query redacted AI prompts: %v", err)
+		}
+		if successCount != 1 || failureCount != 1 || citationCount != 2 || rawPromptCount != 0 {
+			t.Fatalf("AI audit counts success=%d failure=%d citations=%d, want 1/1/2; raw_or_unmeasured=%d", successCount, failureCount, citationCount, rawPromptCount)
 		}
 	})
 
@@ -245,7 +248,7 @@ func TestGenerateCurriculumHandlerPersistsAuditRowsWithTenantRLS(t *testing.T) {
 
 	withAIAuditTenant(ctx, t, db, aiAuditOrgA, func(ctx context.Context, tx pgx.Tx) {
 		var logCount, citationCount int
-		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM ai_request_logs WHERE organization_id = $1 AND user_id = $2 AND prompt LIKE '%creation%' AND status = 'succeeded'`, aiAuditOrgA, aiAuditUserA).Scan(&logCount); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM ai_request_logs WHERE organization_id = $1 AND user_id = $2 AND prompt = '[redacted]' AND prompt_length > 0 AND status = 'succeeded'`, aiAuditOrgA, aiAuditUserA).Scan(&logCount); err != nil {
 			t.Fatalf("query handler AI audit logs: %v", err)
 		}
 		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM citation_trails WHERE organization_id = $1 AND citation = '[Genesis 1:1]' AND verified = TRUE`, aiAuditOrgA).Scan(&citationCount); err != nil {
@@ -258,7 +261,7 @@ func TestGenerateCurriculumHandlerPersistsAuditRowsWithTenantRLS(t *testing.T) {
 
 	withAIAuditTenant(ctx, t, db, aiAuditOrgB, func(ctx context.Context, tx pgx.Tx) {
 		var visibleLogs, visibleCitations int
-		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM ai_request_logs WHERE prompt LIKE '%creation%'`).Scan(&visibleLogs); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM ai_request_logs WHERE prompt = '[redacted]'`).Scan(&visibleLogs); err != nil {
 			t.Fatalf("query cross-tenant handler AI logs: %v", err)
 		}
 		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM citation_trails WHERE citation = '[Genesis 1:1]'`).Scan(&visibleCitations); err != nil {

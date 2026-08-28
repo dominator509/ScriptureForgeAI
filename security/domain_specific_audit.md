@@ -1,6 +1,6 @@
 # Domain-Specific Security Audit
 
-Status last updated: 2026-06-25
+Status last updated: 2026-08-28
 
 ## Theological Study Platform Risks
 
@@ -16,7 +16,7 @@ ScriptureForgeAI handles tenant-scoped study data, encrypted personal journal en
 
 - Tenant RLS tests cover same-tenant success and cross-tenant denial for handler paths and tenant tables.
 - Journal handlers reject plaintext/passphrase fields and persist ciphertext plus crypto metadata only.
-- AI generation routes fail verification when citations are absent or hallucinated and persist audit/citation rows.
+- AI generation routes fail verification when citations are absent or hallucinated and persist audit/citation rows without raw prompt content; audit rows retain a fixed redacted marker plus prompt length.
 - Room WebSocket handling validates JWT claims, origin, room membership, event envelopes, frame size, deadlines, reconnect behavior, Redis-backed sequence ordering, and heartbeat-time membership/session revocation.
 - Zoom integration validates webhook signatures, handles duplicate webhooks idempotently, maps meetings to internal rooms, and falls back when the Zoom client circuit is open.
 
