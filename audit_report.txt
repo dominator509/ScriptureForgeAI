@@ -1,3 +1,7 @@
+# Historical audit snapshot
+
+This file is retained for provenance only and is not a current production-readiness report. Its claims predate the remediation work and must not be treated as verified current behavior. Use `FUNCTIONALITY_AUDIT_BRIEFING.md` and the current local/CI/staging evidence gates for authoritative status.
+
 - Implemented strict IP-based Rate Limiting on /login and /register before hashing.
 - Implemented isolated bounded Goroutine Worker Pool for Argon2id hashing to prevent CPU starvation.
 - Implemented account lockout with mandatory password recovery after 5 failed attempts.
