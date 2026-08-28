@@ -80,7 +80,7 @@ jobs:
         unzip -q awscliv2.zip
         sudo ./aws/install --update
         rm -rf aws awscliv2.zip awscliv2.zip.sig
-        go install golang.org/x/tools/gopls@2e31135b736b96cd609904370c71563ce5447826
+        go install golang.org/x/tools/gopls@v0.20.0
         curl -fsSLo kubectl https://dl.k8s.io/release/v1.34.1/bin/linux/amd64/kubectl
         curl -fsSLo kubectl.sha256 https://dl.k8s.io/release/v1.34.1/bin/linux/amd64/kubectl.sha256
         echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check -
