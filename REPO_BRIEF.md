@@ -50,6 +50,8 @@ ScriptureForgeAI is a multi-tenant Bible study platform with authenticated works
 - `internal/`, `cmd/platform-engine/`, `pkg/crypto_utils/`
 - `web/`, `mobile/`, `services/scripture-engine/`
 - `migrations/`, `build/terraform/`, `docs/sub_roadmaps/`, `production-readiness/`, `tools/`
+- `services/platform-engine/` contains only the API Dockerfile; build it from the repository root. Local Compose uses pgvector, checked-in migrations, and current URL-based runtime configuration.
+- `scripts/disaster_recovery/` contains checksummed PostgreSQL backup/isolated-restore helpers; the historical mock report is not production evidence.
 - `CHANGELOG.md` records durable implementation history and keeps local code evidence separate from staging proof.
 
 ## Data / Auth / External Notes
@@ -80,6 +82,7 @@ ScriptureForgeAI is a multi-tenant Bible study platform with authenticated works
 - Privileged users without an enrolled factor receive a short-lived `mfa_enrollment_token` challenge after password verification. That JWT is purpose-bound to `/api/v1/auth/mfa/enroll` and `/api/v1/auth/mfa/verify`, never gets a refresh token, is rejected after activation, and must be exchanged for a normal login after TOTP setup; web/mobile keep the setup token only in component memory.
 - Client lifecycle: web and mobile API clients perform single-flight refresh-token rotation after expired access tokens, surface privileged MFA challenges as structured login results, reconnect room WebSockets with bounded backoff plus authenticated HTTP state polling fallback, and apply a configurable 1-120 second API request deadline (15 seconds by default) while preserving caller cancellation.
 - Dependency status: web PostCSS/nanoid and mobile leaf overrides are patched; Metro now resolves the dependency-free repository-owned `mobile/vendor/image-size` compatibility package, which removes the DRR-002 high-severity audit path while `mobile/metro.config.js` keeps the affected parser and asset formats blocked.
+- Recovery tooling: `scripts/disaster_recovery/backup.sh` requires `DATABASE_URL`, writes a PostgreSQL custom-format archive plus SHA-256 checksum under `.tmp/disaster-recovery`, and validates the archive before publishing the latest reference. `restore.sh` requires a distinct `TARGET_DATABASE_URL`, checksum verification, and both `CONFIRM_RESTORE=YES` and `ALLOW_DESTRUCTIVE_RESTORE=YES`; these helpers do not replace staging RPO/RTO evidence.
 - CI runtime status: the security workflow pins current Node24-compatible action majors for checkout, Go, Node, Terraform, and artifact upload; `tools/validate-ci-workflow.mjs` rejects a regression to legacy Node20 action majors.
 
 ## Do-Not-Touch / Risk Zones

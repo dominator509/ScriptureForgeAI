@@ -469,6 +469,7 @@ required gates:
 - gate: observability-validation
 - gate: rls-schema-validation
 - gate: deployment-skeleton-validation
+- gate: disaster-recovery-validation
 - gate: staging-evidence-validation
 - gate: staging-evidence-gap-report
 - gate: ci-workflow-validation

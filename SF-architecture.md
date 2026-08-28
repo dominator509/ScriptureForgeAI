@@ -591,6 +591,7 @@ the local and CI release gates can pass.
 *   No structural changes may occur directly within running database consoles. All data changes are driven exclusively by explicit linear migration files parsed through a file migration tool (`golang-migrate`).
 *   Migration logic scripts must supply balanced down steps for reversible schema operations. Security erasure migrations may be intentionally irreversible when their down step fails closed and documents that deleted secrets are never restored; `000005_mfa_legacy_plaintext_cleanup` uses this rule to remove legacy plaintext TOTP seeds and force re-enrollment.
 *   CI and disposable integration environments apply every ordered `*.up.sql` migration, so the tested database shape cannot omit a checked-in upgrade.
+*   **Recovery tooling boundary:** the repository's backup helper creates a validated, checksummed PostgreSQL custom-format archive, while restore requires a distinct explicitly supplied target database, checksum verification, and two deliberate confirmation variables before using `pg_restore --clean --exit-on-error`. The former nested in-memory API/WAL implementation and its recovery report are historical and are not part of the production runtime or readiness evidence. Staging must still prove encrypted backup, isolated restore, measured RPO/RTO, and rollback/degradation behavior through the resilience evidence contract.
 
 ---
 
