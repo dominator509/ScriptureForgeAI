@@ -65,9 +65,9 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y postgresql-client unzip
-        psql -h localhost -p 55433 -U postgres -d scriptureforge -v ON_ERROR_STOP=1 -f migrations/000001_init_extensions.up.sql
-        psql -h localhost -p 55433 -U postgres -d scriptureforge -v ON_ERROR_STOP=1 -f migrations/000002_core_schema.up.sql
-        psql -h localhost -p 55433 -U postgres -d scriptureforge -v ON_ERROR_STOP=1 -f migrations/000004_auth_mfa_assurance.up.sql
+        for migration in migrations/*.up.sql; do
+          psql -h localhost -p 55433 -U postgres -d scriptureforge -v ON_ERROR_STOP=1 -f "$migration"
+        done
 
     - name: Install Staging Evidence PATH Tools
       run: |

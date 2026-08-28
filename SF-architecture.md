@@ -589,7 +589,8 @@ the local and CI release gates can pass.
 
 <h3>15.2 Database Version Upgrades Strategy</h3>
 *   No structural changes may occur directly within running database consoles. All data changes are driven exclusively by explicit linear migration files parsed through a file migration tool (`golang-migrate`).
-*   Migration logic scripts must supply balanced down steps for every up operation. Schema mutations must adhere to a backward-compatible format, allowing legacy production clusters to operate smoothly alongside pending software updates during canary release cycles.
+*   Migration logic scripts must supply balanced down steps for reversible schema operations. Security erasure migrations may be intentionally irreversible when their down step fails closed and documents that deleted secrets are never restored; `000005_mfa_legacy_plaintext_cleanup` uses this rule to remove legacy plaintext TOTP seeds and force re-enrollment.
+*   CI and disposable integration environments apply every ordered `*.up.sql` migration, so the tested database shape cannot omit a checked-in upgrade.
 
 ---
 

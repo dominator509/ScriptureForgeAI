@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import test from 'node:test';
 import {
   buildDatabaseURL,
@@ -55,6 +57,26 @@ test('buildDatabaseURL matches the local Docker database', () => {
     buildDatabaseURL(defaultDockerRLSConfig),
     'postgres://postgres:scriptureforge@localhost:55433/scriptureforge?sslmode=disable',
   );
+});
+
+test('migration list applies the complete ordered up-migration set', () => {
+  assert.deepEqual(migrationFiles, [
+    '/migrations/000001_init_extensions.up.sql',
+    '/migrations/000002_core_schema.up.sql',
+    '/migrations/000003_scripture_text_reference.up.sql',
+    '/migrations/000004_auth_mfa_assurance.up.sql',
+    '/migrations/000005_mfa_legacy_plaintext_cleanup.up.sql',
+  ]);
+});
+
+test('legacy MFA cleanup clears unversioned seeds and fails closed on rollback', async () => {
+  const up = await readFile(resolve('migrations/000005_mfa_legacy_plaintext_cleanup.up.sql'), 'utf8');
+  const down = await readFile(resolve('migrations/000005_mfa_legacy_plaintext_cleanup.down.sql'), 'utf8');
+  assert.match(up, /mfa_secret\s*=\s*NULL/);
+  assert.match(up, /mfa_enabled\s*=\s*FALSE/);
+  assert.match(up, /mfa_secret\s+NOT LIKE\s+'v1\.%'/);
+  assert.match(down, /intentionally irreversible/i);
+  assert.match(down, /RAISE EXCEPTION/i);
 });
 
 test('runDockerRLSDBIntegration applies migrations, runs RLS tests, and cleans up', async () => {

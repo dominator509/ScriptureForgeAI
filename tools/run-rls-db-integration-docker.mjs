@@ -22,6 +22,7 @@ export const migrationFiles = [
   '/migrations/000002_core_schema.up.sql',
   '/migrations/000003_scripture_text_reference.up.sql',
   '/migrations/000004_auth_mfa_assurance.up.sql',
+  '/migrations/000005_mfa_legacy_plaintext_cleanup.up.sql',
 ];
 
 export function parseDockerRLSArgs(argv = []) {

@@ -289,7 +289,7 @@ Add environment-driven API base URLs, auth screens, room creation/listing, activ
 
 ## Remediation Tracker
 
-Status last updated: 2026-08-27
+Status last updated: 2026-08-28
 
 2026-08-27 current evidence update: `node tools/run-local-gates.mjs --continue-on-failure` completed against pushed commit `9a3d90ba6e3c25b72fdfc32e9f243674c05d7727` with `34/34` gates, `0` failures, `dry_run=false`, refreshed upstream metadata, a clean worktree, and `0/0` ahead/behind. GitHub Actions runs `33066720997` (push) and `33066729082` (pull request) for that commit failed before workflow steps started (`runner_id=0`, `steps=[]`), so hosted CI remains an external blocker; the prior successful run `32001756732` belongs to commit `610efd0e50cb1f949e4a0cff2f8a66e5bbb83eab`.
 2026-08-27 post-image-commit evidence update: focused deployment skeleton tests (20/20), local-gate report tests (34/34), Serena/Obsidian synchronization, roadmap artifact validation, and whitespace checks passed for `006559ea68d0cd56679d54af0728e306ffb2b40f`. The attempted full matrix could not complete because Docker client access to `C:\Users\domin\.docker` and `npipe:////./pipe/docker_engine` was denied; no full-matrix pass is claimed for this tip. GitHub Actions push run `33071077208` also failed before steps (`runner_id=0`, `steps=[]`), so hosted CI and Docker-backed RLS remain external blockers.
@@ -925,6 +925,8 @@ Status last updated: 2026-08-27
 2026-08-28 local-gate resilience hardening: the disposable Docker/RLS runner now verifies the Docker daemon with `docker info` and bounds every Docker subprocess, using a longer bounded budget for image startup. Docker daemon outages now fail the local gate quickly with an explicit environment blocker instead of allowing the full matrix to hang; this preserves the fail-closed RLS evidence requirement while making local diagnostics deterministic.
 
 2026-08-27 MFA enrollment bootstrap hardening: privileged users without an enrolled factor now receive a short-lived `mfa_enrollment_token` only after password verification. The token is purpose-bound and middleware accepts it only for `/api/v1/auth/mfa/enroll` and `/api/v1/auth/mfa/verify`; it has no refresh token or normal application access and is rejected after activation. Enrollment and verification re-check the current database role, and web/mobile expose setup helpers plus compact memory-only setup UI. Focused auth, route, integration, client smoke, and web/mobile typecheck gates pass. This closes the local MFA enrollment deadlock and setup-token replay window; deployed MFA/rate-limit observation and native/staging evidence remain external.
+
+2026-08-28 migration and WebSocket-origin hardening: `000005_mfa_legacy_plaintext_cleanup.up.sql` now clears legacy plaintext TOTP values and disables those factors so existing deployments can force safe re-enrollment without attempting secret conversion; its down migration fails closed because deleted secrets are not restorable. CI and the Docker RLS runner now apply the complete ordered `migrations/*.up.sql` set, including `000003`. The development WebSocket fallback now parses origins and accepts only exact `http://localhost` or `http://127.0.0.1` hosts, rejecting lookalike domains and paths. Focused Go and migration-runner tests pass; live migration execution, hosted CI, and staging evidence remain external.
 
 ## 100% Production Readiness Evidence Still Required
 

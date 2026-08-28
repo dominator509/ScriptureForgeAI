@@ -24,6 +24,7 @@ export const requiredMarkers = [
   { id: 'go-fuzz', text: 'go test -fuzz=FuzzSanitizeInput' },
   { id: 'go-test', text: 'node tools/run-go-core-gate.mjs --mode test --bin go' },
   { id: 'postgres-schema', text: 'Apply Postgres Integration Schema' },
+  { id: 'ci-all-migrations', text: 'for migration in migrations/*.up.sql' },
   { id: 'ci-postgres-unzip-install', text: 'sudo apt-get install -y postgresql-client unzip' },
   { id: 'ci-go-bin-path', text: 'echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"' },
   { id: 'ci-awscli-v2-download', text: 'curl -fsSLo awscliv2.zip https://awscli.amazonaws.com/awscli-exe-linux-x86_64-2.27.41.zip' },
