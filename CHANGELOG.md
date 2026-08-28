@@ -16,6 +16,7 @@ This file records repository-level implementation history. It is not a substitut
 - Wired the configured Zoom `MeetingAdapter` into production room creation, persisted tenant-scoped meeting mappings and safe join metadata, and kept host start URLs out of room responses.
 - Bound login refresh-token persistence to the existing tenant transaction and bound journal writes to the authenticated server-derived salt ID/version.
 - Added typed fail-closed authentication dependency handling for unconfigured database pools across registration, login, refresh, logout, and privileged MFA routes.
+- Closed the privileged MFA enrollment bootstrap deadlock: unenrolled privileged login now returns a no-refresh, short-lived purpose-bound setup token; middleware restricts it to MFA setup routes, handlers re-check the current role, and web/mobile expose memory-only enrollment and activation helpers.
 - Closed the public registration tenant-selection gap: registration now creates a server-generated workspace in the RLS-scoped transaction, forces the initial member role, and web/mobile callers send only a bounded workspace name.
 - Closed the room token lifetime gap: validated JWTs now require `exp`, and active room WebSockets close when the access token expires instead of retaining an authenticated stream indefinitely.
 - Bound privileged MFA verification attempts to the existing distributed tenant/user abuse limiter, preventing rotating client IPs from bypassing TOTP brute-force protection.

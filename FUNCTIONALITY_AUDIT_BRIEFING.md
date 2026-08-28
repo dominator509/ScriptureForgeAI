@@ -924,6 +924,8 @@ Status last updated: 2026-08-27
 
 2026-08-28 local-gate resilience hardening: the disposable Docker/RLS runner now verifies the Docker daemon with `docker info` and bounds every Docker subprocess, using a longer bounded budget for image startup. Docker daemon outages now fail the local gate quickly with an explicit environment blocker instead of allowing the full matrix to hang; this preserves the fail-closed RLS evidence requirement while making local diagnostics deterministic.
 
+2026-08-27 MFA enrollment bootstrap hardening: privileged users without an enrolled factor now receive a short-lived `mfa_enrollment_token` only after password verification. The token is purpose-bound and middleware accepts it only for `/api/v1/auth/mfa/enroll` and `/api/v1/auth/mfa/verify`; it has no refresh token or normal application access. Enrollment and verification re-check the current database role, and web/mobile expose setup helpers plus compact memory-only setup UI. Focused auth, route, integration, client smoke, and web/mobile typecheck gates pass. This closes the local MFA enrollment deadlock; deployed MFA/rate-limit observation and native/staging evidence remain external.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.

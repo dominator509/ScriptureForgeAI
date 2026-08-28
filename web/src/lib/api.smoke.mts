@@ -7,6 +7,7 @@ import {
   apiRequest,
   createRoom,
   configureSessionBridge,
+  enrollMFA,
   getJournalEntry,
   getJournalBootstrap,
   listJournalEntries,
@@ -19,6 +20,7 @@ import {
   roomStreamProtocols,
   roomStreamUrl,
   saveJournalEntry,
+  verifyMFA,
   WS_BASE_URL,
 } from './api.ts';
 import { JOURNAL_PBKDF2_ITERATIONS } from './crypto.ts';
@@ -175,12 +177,36 @@ test('web login exposes the privileged MFA challenge without storing an empty se
     requires_mfa: true,
     user_id: 'admin-1',
     organization_id: 'org-1',
+    mfa_enrollment_required: true,
+    mfa_enrollment_token: 'enrollment-token',
   }, 401);
 
   const session = await login({ email: 'admin@example.com', password: 'correct horse', organization_id: 'org-1' });
   assert.equal(session.requires_mfa, true);
   assert.equal(session.token, '');
   assert.equal(session.user_id, 'admin-1');
+  assert.equal(session.mfa_enrollment_required, true);
+  assert.equal(session.mfa_enrollment_token, 'enrollment-token');
+});
+
+test('web MFA enrollment helpers use the restricted bearer token and never send plaintext credentials', async () => {
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    calls.push({ url: String(input), init: init ?? {} });
+    if (String(input).endsWith('/api/v1/auth/mfa/enroll')) return jsonResponse({ secret: 'TOTP-SETUP-SECRET' });
+    return jsonResponse({ verified: true });
+  };
+
+  const enrollment = await enrollMFA('enrollment-token');
+  const verification = await verifyMFA('enrollment-token', '123456');
+  assert.equal(enrollment.secret, 'TOTP-SETUP-SECRET');
+  assert.equal(verification.verified, true);
+  assert.deepEqual(calls.map((call) => [call.url, call.init.method ?? 'GET']), [
+    [`${API_BASE_URL}/api/v1/auth/mfa/enroll`, 'POST'],
+    [`${API_BASE_URL}/api/v1/auth/mfa/verify`, 'POST'],
+  ]);
+  assert.equal(new Headers(calls[0]?.init.headers).get('Authorization'), 'Bearer enrollment-token');
+  assert.deepEqual(JSON.parse(String(calls[0]?.init.body)), {});
+  assert.deepEqual(JSON.parse(String(calls[1]?.init.body)), { mfa_code: '123456' });
 });
 
 test('web refresh can rely on the HttpOnly cookie without sending a refresh token body', async () => {

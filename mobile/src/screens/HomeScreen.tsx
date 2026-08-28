@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { SecureJournalContainer } from '../components/SecureJournalContainer';
-import { createRoom, getRoomState, listActiveRooms, loginAccount, logoutSession, registerAccount, roomStreamProtocols, roomStreamUrl, RoomEvent } from '../lib/api';
+import { createRoom, enrollMFA, getRoomState, listActiveRooms, loginAccount, logoutSession, registerAccount, roomStreamProtocols, roomStreamUrl, RoomEvent, verifyMFA } from '../lib/api';
 import { useAppStore } from '../lib/store';
 
 export const HomeScreen: React.FC = () => {
@@ -17,6 +17,8 @@ export const HomeScreen: React.FC = () => {
   const [organizationId, setOrganizationId] = useState('');
   const [organizationName, setOrganizationName] = useState('');
   const [mfaCode, setMfaCode] = useState('');
+  const [mfaEnrollmentToken, setMFAEnrollmentToken] = useState('');
+  const [mfaSecret, setMFASecret] = useState('');
   const [roomTitle, setRoomTitle] = useState('');
   const [status, setStatus] = useState('Sign in or register to sync rooms and journals.');
   const [streamStatus, setStreamStatus] = useState('No room selected.');
@@ -36,14 +38,43 @@ export const HomeScreen: React.FC = () => {
       if (nextSession.requires_mfa) {
         setSession(null);
         setRooms([]);
-        setStatus('MFA code required for this account.');
+        setMFAEnrollmentToken(nextSession.mfa_enrollment_token ?? '');
+        setMFASecret('');
+        if (nextSession.mfa_enrollment_required && nextSession.mfa_enrollment_token) {
+          try {
+            const enrollment = await enrollMFA(nextSession.mfa_enrollment_token);
+            setMFASecret(enrollment.secret);
+            setStatus('MFA setup required. Save the secret, then enter its code and activate MFA.');
+          } catch (error) {
+            setMFAEnrollmentToken('');
+            setStatus(error instanceof Error ? error.message : 'MFA setup failed.');
+          }
+        } else {
+          setStatus('MFA code required for this account.');
+        }
         return;
       }
+      setMFAEnrollmentToken('');
+      setMFASecret('');
       setSession(nextSession);
       await syncRooms(nextSession.token);
       setStatus('Signed in.');
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Login failed.');
+    }
+  };
+
+  const handleMFAActivation = async () => {
+    if (!mfaEnrollmentToken || !mfaCode.trim()) return;
+    try {
+      const result = await verifyMFA(mfaEnrollmentToken, mfaCode.trim());
+      if (!result.verified) throw new Error('MFA activation was not verified.');
+      setMFAEnrollmentToken('');
+      setMFASecret('');
+      setMfaCode('');
+      setStatus('MFA enabled. Sign in again with the current authenticator code.');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'MFA activation failed.');
     }
   };
 
@@ -93,6 +124,8 @@ export const HomeScreen: React.FC = () => {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Logout failed.');
     }
+    setMFAEnrollmentToken('');
+    setMFASecret('');
   };
 
   useEffect(() => {
@@ -190,6 +223,15 @@ export const HomeScreen: React.FC = () => {
         <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
         <TextInput style={styles.input} placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry />
         <TextInput style={styles.input} placeholder="MFA code" value={mfaCode} onChangeText={setMfaCode} keyboardType="number-pad" />
+        {mfaEnrollmentToken && (
+          <View style={styles.mfaSetup}>
+            <Text style={styles.setupText}>MFA secret for authenticator setup</Text>
+            <Text selectable style={styles.secret}>{mfaSecret}</Text>
+            <TouchableOpacity style={[styles.button, !mfaCode.trim() && styles.disabled]} onPress={() => void handleMFAActivation()} disabled={!mfaCode.trim()}>
+              <Text style={styles.buttonText}>Activate MFA</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         <View style={styles.row}>
           <TouchableOpacity style={styles.button} onPress={() => void handleLogin()}>
             <Text style={styles.buttonText}>Login</Text>
@@ -255,6 +297,9 @@ const styles = StyleSheet.create({
   buttonText: { color: '#fff', fontWeight: '700' },
   secondaryButtonText: { color: '#3730A3', fontWeight: '700' },
   status: { marginTop: 12, color: '#2563EB', fontSize: 12 },
+  mfaSetup: { borderWidth: 1, borderColor: '#C7D2FE', backgroundColor: '#EEF2FF', borderRadius: 6, padding: 10, marginBottom: 8, gap: 8 },
+  setupText: { color: '#312E81', fontSize: 12 },
+  secret: { color: '#312E81', fontSize: 12 },
   streamStatus: { marginTop: 12, color: '#047857', fontSize: 12 },
   link: { color: '#2563EB', fontWeight: '700' },
   disabled: { opacity: 0.5 },

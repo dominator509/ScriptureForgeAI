@@ -132,3 +132,35 @@ func TestRBACMiddlewareAnyRoleAllowsDocumentedAIRolesOnly(t *testing.T) {
 		})
 	}
 }
+
+func TestRBACMiddlewareRestrictsMFAEnrollmentTokensToSetupRoutes(t *testing.T) {
+	t.Setenv("JWT_SECRET_KEY", "mfa-enrollment-middleware-test-secret-0123456789")
+	token, err := GenerateMFAEnrollmentToken("user-mfa", "org-mfa", "admin", time.Minute)
+	if err != nil {
+		t.Fatalf("generate enrollment token: %v", err)
+	}
+	handler := RBACMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), "")
+
+	for _, test := range []struct {
+		name string
+		path string
+		want int
+	}{
+		{name: "enroll allowed", path: "/api/v1/auth/mfa/enroll", want: http.StatusNoContent},
+		{name: "verify allowed", path: "/api/v1/auth/mfa/verify", want: http.StatusNoContent},
+		{name: "journal denied", path: "/api/v1/journal_entries", want: http.StatusForbidden},
+		{name: "room denied", path: "/api/v1/rooms/active", want: http.StatusForbidden},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, test.path, nil)
+			request.Header.Set("Authorization", "Bearer "+token)
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+			if recorder.Code != test.want {
+				t.Fatalf("path %s status = %d, want %d", test.path, recorder.Code, test.want)
+			}
+		})
+	}
+}

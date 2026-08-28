@@ -493,10 +493,25 @@ func TestMFAEnrollAndVerifyFlowForPrivilegedUsers(t *testing.T) {
 
 	handler := &ports.AuthHandler{DB: db}
 	observer := observability.NewObserver(observability.Options{})
-	adminClaims := &auth.TokenClaims{
-		UserID:         authAdminID,
-		OrganizationID: authOrgID,
-		Role:           "admin",
+	loginRec := httptest.NewRecorder()
+	handler.LoginHandler(loginRec, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/login", map[string]any{
+		"email":           authAdminEmail,
+		"password":        authPassword,
+		"organization_id": authOrgID,
+	}, observer))
+	if loginRec.Code != http.StatusUnauthorized {
+		t.Fatalf("unenrolled admin login status = %d body = %s, want 401", loginRec.Code, loginRec.Body.String())
+	}
+	loginResp := decodeAuthResponse(t, loginRec)
+	if !loginResp.RequiresMFA || !loginResp.MFAEnrollmentRequired || loginResp.MFAEnrollmentToken == "" || loginResp.Token != "" || loginResp.RefreshToken != "" {
+		t.Fatalf("unenrolled admin login response = %#v, want restricted enrollment token without session tokens", loginResp)
+	}
+	adminClaims, err := auth.ValidateToken(loginResp.MFAEnrollmentToken)
+	if err != nil {
+		t.Fatalf("validate MFA enrollment token: %v", err)
+	}
+	if !adminClaims.MFAEnrollmentOnly {
+		t.Fatal("login returned a normal access token for MFA enrollment")
 	}
 
 	enrollReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/mfa/enroll", strings.NewReader(`{}`))

@@ -143,6 +143,8 @@ export interface AuthSession {
   user_id: string;
   organization_id: string;
   requires_mfa?: boolean;
+  mfa_enrollment_token?: string;
+  mfa_enrollment_required?: boolean;
 }
 
 export interface RoomEvent {
@@ -160,6 +162,16 @@ export interface ApiErrorBody {
   requires_mfa?: boolean;
   user_id?: string;
   organization_id?: string;
+  mfa_enrollment_token?: string;
+  mfa_enrollment_required?: boolean;
+}
+
+export interface MFAEnrollmentResponse {
+  secret: string;
+}
+
+export interface MFAVerifyResponse {
+  verified: boolean;
 }
 
 export class ApiError extends Error {
@@ -333,9 +345,25 @@ export async function loginAccount(
         user_id: error.body.user_id ?? '',
         organization_id: error.body.organization_id ?? organizationId,
         requires_mfa: true,
+        mfa_enrollment_token: error.body.mfa_enrollment_token,
+        mfa_enrollment_required: error.body.mfa_enrollment_required,
       };
     }
     throw error;
+  });
+}
+
+export async function enrollMFA(token: string): Promise<MFAEnrollmentResponse> {
+  return apiRequest<MFAEnrollmentResponse>('/api/v1/auth/mfa/enroll', token, {
+    method: 'POST',
+    body: '{}',
+  });
+}
+
+export async function verifyMFA(token: string, mfaCode: string): Promise<MFAVerifyResponse> {
+  return apiRequest<MFAVerifyResponse>('/api/v1/auth/mfa/verify', token, {
+    method: 'POST',
+    body: JSON.stringify({ mfa_code: mfaCode }),
   });
 }
 

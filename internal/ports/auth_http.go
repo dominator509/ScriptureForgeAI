@@ -66,11 +66,13 @@ type WorkspaceSwitchResponse struct {
 }
 
 type AuthResponse struct {
-	Token          string `json:"token,omitempty"`
-	RefreshToken   string `json:"refresh_token,omitempty"`
-	UserID         string `json:"user_id,omitempty"`
-	OrganizationID string `json:"organization_id,omitempty"`
-	RequiresMFA    bool   `json:"requires_mfa,omitempty"`
+	Token                 string `json:"token,omitempty"`
+	RefreshToken          string `json:"refresh_token,omitempty"`
+	MFAEnrollmentToken    string `json:"mfa_enrollment_token,omitempty"`
+	UserID                string `json:"user_id,omitempty"`
+	OrganizationID        string `json:"organization_id,omitempty"`
+	RequiresMFA           bool   `json:"requires_mfa,omitempty"`
+	MFAEnrollmentRequired bool   `json:"mfa_enrollment_required,omitempty"`
 }
 
 type MFAVerifyResponse struct {
@@ -88,6 +90,7 @@ const (
 	maxAuthOrganizationNameBytes = 255
 	maxAuthRefreshTokenBytes     = 512
 	maxAuthMFACodeBytes          = 16
+	mfaEnrollmentTokenTTL        = 10 * time.Minute
 	mfaCiphertextPrefix          = "v1."
 )
 
@@ -155,6 +158,12 @@ func writeAuthResponse(w http.ResponseWriter, r *http.Request, response AuthResp
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(response)
+}
+
+func writeMFAChallenge(w http.ResponseWriter, r *http.Request, response AuthResponse) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
+	writeAuthResponse(w, r, response, http.StatusUnauthorized)
 }
 
 func sendAuthError(w http.ResponseWriter, pe *auth.PlatformException) {
@@ -627,9 +636,18 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if privilegedRole(role) && !mfaEnabled {
 		metricStatus = "mfa_required"
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		_ = json.NewEncoder(w).Encode(AuthResponse{UserID: userID, OrganizationID: orgID, RequiresMFA: true})
+		enrollmentToken, tokenErr := auth.GenerateMFAEnrollmentToken(userID, orgID, role, mfaEnrollmentTokenTTL)
+		if tokenErr != nil {
+			sendAuthError(w, &auth.PlatformException{Category: auth.AuthenticationFault, Message: "Failed to issue MFA enrollment token", Code: http.StatusInternalServerError})
+			return
+		}
+		writeMFAChallenge(w, r, AuthResponse{
+			MFAEnrollmentToken:    enrollmentToken,
+			UserID:                userID,
+			OrganizationID:        orgID,
+			RequiresMFA:           true,
+			MFAEnrollmentRequired: true,
+		})
 		return
 	}
 	if privilegedRole(role) {
@@ -894,9 +912,14 @@ func (h *AuthHandler) MFAEnrollHandler(w http.ResponseWriter, r *http.Request) {
 		sendAuthError(w, err.(*auth.PlatformException))
 		return
 	}
+	var role string
 	var mfaEnabled bool
-	if err = tx.QueryRow(r.Context(), `SELECT COALESCE(mfa_enabled, false) FROM users WHERE id = $1 AND organization_id = $2`, claims.UserID, claims.OrganizationID).Scan(&mfaEnabled); err != nil {
+	if err = tx.QueryRow(r.Context(), `SELECT role, COALESCE(mfa_enabled, false) FROM users WHERE id = $1 AND organization_id = $2`, claims.UserID, claims.OrganizationID).Scan(&role, &mfaEnabled); err != nil {
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "MFA enrollment account was not found", Code: http.StatusNotFound})
+		return
+	}
+	if !privilegedRole(role) {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "MFA enrollment requires a current privileged role", Code: http.StatusForbidden})
 		return
 	}
 	if mfaEnabled {
@@ -968,16 +991,20 @@ func (h *AuthHandler) MFAVerifyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var encryptedMFASecret string
+	var encryptedMFASecret, role string
 	var mfaEnabled bool
 	err = tx.QueryRow(
 		r.Context(),
-		`SELECT COALESCE(mfa_secret, ''), COALESCE(mfa_enabled, false)
+		`SELECT role, COALESCE(mfa_secret, ''), COALESCE(mfa_enabled, false)
 		 FROM users
 		 WHERE id = $1 AND organization_id = $2`,
 		claims.UserID,
 		claims.OrganizationID,
-	).Scan(&encryptedMFASecret, &mfaEnabled)
+	).Scan(&role, &encryptedMFASecret, &mfaEnabled)
+	if err == nil && !privilegedRole(role) {
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "MFA verification requires a current privileged role", Code: http.StatusForbidden})
+		return
+	}
 	if err != nil || encryptedMFASecret == "" {
 		metricStatus = "not_configured"
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "MFA not configured", Code: http.StatusNotFound})

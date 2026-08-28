@@ -136,6 +136,8 @@ export interface AuthSession {
   user_id: string;
   organization_id: string;
   requires_mfa?: boolean;
+  mfa_enrollment_token?: string;
+  mfa_enrollment_required?: boolean;
 }
 
 export interface AuthCredentials {
@@ -149,6 +151,14 @@ export interface RegisterCredentials {
   email: string;
   password: string;
   organization_name: string;
+}
+
+export interface MFAEnrollmentResponse {
+  secret: string;
+}
+
+export interface MFAVerifyResponse {
+  verified: boolean;
 }
 
 export interface WorkspaceSwitchPayload {
@@ -193,6 +203,8 @@ export interface ApiErrorBody {
   requires_mfa?: boolean;
   user_id?: string;
   organization_id?: string;
+  mfa_enrollment_token?: string;
+  mfa_enrollment_required?: boolean;
 }
 
 export class ApiError extends Error {
@@ -382,9 +394,25 @@ export function login(credentials: AuthCredentials): Promise<AuthSession> {
         user_id: error.body.user_id ?? '',
         organization_id: error.body.organization_id ?? credentials.organization_id,
         requires_mfa: true,
+        mfa_enrollment_token: error.body.mfa_enrollment_token,
+        mfa_enrollment_required: error.body.mfa_enrollment_required,
       };
     }
     throw error;
+  });
+}
+
+export function enrollMFA(token: string): Promise<MFAEnrollmentResponse> {
+  return apiRequest<MFAEnrollmentResponse>('/api/v1/auth/mfa/enroll', token, {
+    method: 'POST',
+    body: '{}',
+  });
+}
+
+export function verifyMFA(token: string, mfaCode: string): Promise<MFAVerifyResponse> {
+  return apiRequest<MFAVerifyResponse>('/api/v1/auth/mfa/verify', token, {
+    method: 'POST',
+    body: JSON.stringify({ mfa_code: mfaCode }),
   });
 }
 

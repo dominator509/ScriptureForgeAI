@@ -45,6 +45,36 @@ func TestGenerateTokenRejectsWeakJWTSecret(t *testing.T) {
 	}
 }
 
+func TestGenerateMFAEnrollmentTokenIsPurposeBound(t *testing.T) {
+	t.Setenv("JWT_SECRET_KEY", "mfa-enrollment-token-test-secret-0123456789")
+	token, err := GenerateMFAEnrollmentToken("user-mfa", "org-mfa", "admin", 10*time.Minute)
+	if err != nil {
+		t.Fatalf("GenerateMFAEnrollmentToken returned error: %v", err)
+	}
+	claims, err := ValidateToken(token)
+	if err != nil {
+		t.Fatalf("ValidateToken returned error: %v", err)
+	}
+	if !claims.MFAEnrollmentOnly || claims.UserID != "user-mfa" || claims.OrganizationID != "org-mfa" || claims.Role != "admin" {
+		t.Fatalf("enrollment claims = %#v, want purpose-bound admin claims", claims)
+	}
+	if claims.ExpiresAt == nil || time.Until(claims.ExpiresAt.Time) > 10*time.Minute || time.Until(claims.ExpiresAt.Time) <= 9*time.Minute {
+		t.Fatalf("enrollment expiration = %v, want roughly ten minutes", claims.ExpiresAt)
+	}
+
+	normalToken, err := GenerateToken("user-mfa", "org-mfa", "admin", time.Minute)
+	if err != nil {
+		t.Fatalf("GenerateToken returned error: %v", err)
+	}
+	normalClaims, err := ValidateToken(normalToken)
+	if err != nil {
+		t.Fatalf("ValidateToken normal token returned error: %v", err)
+	}
+	if normalClaims.MFAEnrollmentOnly {
+		t.Fatal("normal access token unexpectedly carried MFA enrollment-only purpose")
+	}
+}
+
 func TestValidateTokenRejectsUnexpectedAlgorithmIssuerAndIdentity(t *testing.T) {
 	secret := "jwt-validation-contract-secret-0123456789"
 	t.Setenv("JWT_SECRET_KEY", secret)

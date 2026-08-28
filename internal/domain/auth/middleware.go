@@ -18,6 +18,10 @@ const (
 
 const RoomWebSocketSubprotocol = "scriptureforge-bearer"
 
+func isMFAEnrollmentPath(path string) bool {
+	return path == "/api/v1/auth/mfa/enroll" || path == "/api/v1/auth/mfa/verify"
+}
+
 func websocketBearerToken(r *http.Request) string {
 	protocols := strings.Split(r.Header.Get("Sec-WebSocket-Protocol"), ",")
 	for index := 0; index+1 < len(protocols); index++ {
@@ -74,6 +78,14 @@ func RBACMiddlewareAnyRole(next http.Handler, requiredRoles ...string) http.Hand
 					Code:     http.StatusUnauthorized,
 				})
 			}
+			return
+		}
+		if claims.MFAEnrollmentOnly && !isMFAEnrollmentPath(r.URL.Path) {
+			sendError(w, &PlatformException{
+				Category: AuthorizationFault,
+				Message:  "MFA enrollment token is restricted to MFA setup",
+				Code:     http.StatusForbidden,
+			})
 			return
 		}
 
