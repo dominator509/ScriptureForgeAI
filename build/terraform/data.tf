@@ -81,6 +81,10 @@ data "aws_secretsmanager_secret" "openai_api_key" {
   arn = var.app_secret_arns.openai_api_key
 }
 
+data "aws_secretsmanager_secret" "metrics_auth_token" {
+  arn = var.app_secret_arns.metrics_auth_token
+}
+
 data "aws_secretsmanager_secret" "zoom_credentials" {
   arn = var.app_secret_arns.zoom_credentials
 }

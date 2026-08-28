@@ -21,6 +21,7 @@ This file records repository-level implementation history. It is not a substitut
 - Closed the room token lifetime gap: validated JWTs now require `exp`, and active room WebSockets close when the access token expires instead of retaining an authenticated stream indefinitely.
 - Bound privileged MFA verification attempts to the existing distributed tenant/user abuse limiter, preventing rotating client IPs from bypassing TOTP brute-force protection.
 - Bounded the Rust metrics listener's first-request read with a clamped `RUST_ENGINE_METRICS_READ_TIMEOUT_MS` deadline to prevent idle-connection exhaustion.
+- Protected the Go API `/metrics` endpoint in non-local environments with constant-time bearer-token authentication, fail-closed missing-secret behavior, API-only Terraform secret injection, validator coverage, and authenticated staging probe support.
 - Added the irreversible `000005_mfa_legacy_plaintext_cleanup` migration to clear legacy plaintext TOTP seeds and force safe re-enrollment; CI and Docker-backed RLS setup now apply the complete ordered up-migration set, including `000003`.
 - Corrected local Compose to use the current root-context containers, pgvector migrations, and URL-based runtime configuration.
 - Removed the unreachable nested in-memory API/WAL runtime, replaced mock disaster-recovery scripts with checksummed PostgreSQL archive helpers requiring explicit isolated restores, and marked the old emulation report as historical; CI/local tooling now validates the boundary.

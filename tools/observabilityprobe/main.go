@@ -36,6 +36,7 @@ type config struct {
 	ProbeAlerts        bool
 	CollectorConfigURL string
 	APIMetricsURL      string
+	MetricsAuthToken   string
 	RustMetricsURL     string
 	TraceQueryURL      string
 	LogQueryURL        string
@@ -123,6 +124,7 @@ func parseFlags() config {
 	flag.BoolVar(&cfg.ProbeAlerts, "probe-alerts", false, "probe deployed dashboard, alert rules, alert manager, and retention evidence")
 	flag.StringVar(&cfg.CollectorConfigURL, "collector-config-url", os.Getenv("STAGING_COLLECTOR_CONFIG_URL"), "URL exposing redacted collector or deployment config for OTLP proof")
 	flag.StringVar(&cfg.APIMetricsURL, "api-metrics-url", os.Getenv("STAGING_API_METRICS_URL"), "deployed Go API Prometheus metrics URL")
+	flag.StringVar(&cfg.MetricsAuthToken, "metrics-auth-token", os.Getenv("STAGING_METRICS_AUTH_TOKEN"), "bearer token for the protected Go API metrics endpoint")
 	flag.StringVar(&cfg.RustMetricsURL, "rust-metrics-url", os.Getenv("STAGING_RUST_METRICS_URL"), "deployed Rust engine Prometheus metrics URL")
 	flag.StringVar(&cfg.TraceQueryURL, "trace-query-url", os.Getenv("STAGING_TRACE_QUERY_URL"), "trace backend query URL expected to include -trace-id")
 	flag.StringVar(&cfg.LogQueryURL, "log-query-url", os.Getenv("STAGING_LOG_QUERY_URL"), "log backend query URL expected to include -trace-id")
@@ -280,7 +282,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 	if cfg.ProbeOTEL {
 		probes = append(probes,
 			probeContainsAll(client, "collector-otlp-config", cfg.CollectorConfigURL, append([]string{"receivers", "otlp", "4317", "4318", "exporters", "service"}, releaseMarkers...)),
-			probeContainsAll(client, "api-prometheus-metrics", cfg.APIMetricsURL, append([]string{"scriptureforge_http_requests_total", "scriptureforge_http_request_duration_seconds_sum", "scriptureforge_http_requests_total{", "status=", "websocket_active_connections_count", `scriptureforge_dependency_operations_total{dependency="websocket",operation="room_broadcast",status="dropped"`, "ai_inference_duration_seconds_sum", "ai_inference_duration_seconds_count", `scriptureforge_dependency_operations_total{dependency="rust_engine",operation="vector_search",status="success"`, `scriptureforge_dependency_operation_duration_seconds_sum{dependency="rust_engine",operation="vector_search",status="success"`}, releaseMarkers...)),
+			probeContainsAllWithAuth(client, "api-prometheus-metrics", cfg.APIMetricsURL, append([]string{"scriptureforge_http_requests_total", "scriptureforge_http_request_duration_seconds_sum", "scriptureforge_http_requests_total{", "status=", "websocket_active_connections_count", `scriptureforge_dependency_operations_total{dependency="websocket",operation="room_broadcast",status="dropped"`, "ai_inference_duration_seconds_sum", "ai_inference_duration_seconds_count", `scriptureforge_dependency_operations_total{dependency="rust_engine",operation="vector_search",status="success"`, `scriptureforge_dependency_operation_duration_seconds_sum{dependency="rust_engine",operation="vector_search",status="success"`}, releaseMarkers...), cfg.MetricsAuthToken),
 			probeContainsAll(client, "rust-prometheus-metrics", cfg.RustMetricsURL, append([]string{"scriptureforge_rust_engine_embedding_requests_total", "scriptureforge_rust_engine_embedding_failures_total", "scriptureforge_rust_engine_vector_search_requests_total", "scriptureforge_rust_engine_vector_search_failures_total"}, releaseMarkers...)),
 			probeContainsAllWithExpectations(client, "trace-backend-search", cfg.TraceQueryURL, append([]string{cfg.TraceID, "scriptureforge-api", "scriptureforge-rust-engine", "route=" + cfg.ObservedRoute, "method=" + cfg.HTTPMethod}, releaseMarkers...), probeExpectations{TraceID: cfg.TraceID, ObservedRoute: cfg.ObservedRoute, HTTPMethod: cfg.HTTPMethod}),
 			probeContainsAllWithExpectations(client, "log-backend-trace-correlation", cfg.LogQueryURL, append([]string{cfg.TraceID, "trace_id", "scriptureforge-api", "scriptureforge-rust-engine", "route=" + cfg.ObservedRoute, "method=" + cfg.HTTPMethod, "timestamp=", "severity=", "service_version", "deployment_environment", "tenant_id=" + cfg.TenantID, "user_id=" + cfg.UserID, "role=" + cfg.Role, "distinct_otel_artifacts=true"}, releaseMarkers...), probeExpectations{TraceID: cfg.TraceID, ObservedRoute: cfg.ObservedRoute, HTTPMethod: cfg.HTTPMethod, TenantID: cfg.TenantID, UserID: cfg.UserID, Role: cfg.Role}),
@@ -551,11 +553,19 @@ func probeContainsAll(client *http.Client, name, target string, requiredAll []st
 	return probeContainsAllWithExpectations(client, name, target, requiredAll, probeExpectations{})
 }
 
+func probeContainsAllWithAuth(client *http.Client, name, target string, requiredAll []string, authToken string) probeResult {
+	return probeContainsWithAuth(client, name, target, requiredAll, true, probeExpectations{}, authToken)
+}
+
 func probeContainsAllWithExpectations(client *http.Client, name, target string, requiredAll []string, expected probeExpectations) probeResult {
 	return probeContains(client, name, target, requiredAll, true, expected)
 }
 
 func probeContains(client *http.Client, name, target string, required []string, requireAll bool, expected probeExpectations) probeResult {
+	return probeContainsWithAuth(client, name, target, required, requireAll, expected, "")
+}
+
+func probeContainsWithAuth(client *http.Client, name, target string, required []string, requireAll bool, expected probeExpectations, authToken string) probeResult {
 	start := time.Now()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -564,6 +574,7 @@ func probeContains(client *http.Client, name, target string, required []string, 
 		return failedProbe(name, target, err.Error())
 	}
 	req.Header.Set("User-Agent", "scriptureforge-observabilityprobe/1.0")
+	setMetricsAuthHeader(req, authToken)
 	resp, err := client.Do(req)
 	latency := time.Since(start).Milliseconds()
 	if err != nil {
@@ -691,6 +702,12 @@ func probeContains(client *http.Client, name, target string, required []string, 
 		AlertReceiver: alertReceiver,
 		DeliveryID:    deliveryID,
 		ResultSummary: summary,
+	}
+}
+
+func setMetricsAuthHeader(req *http.Request, token string) {
+	if token = strings.TrimSpace(token); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 }
 

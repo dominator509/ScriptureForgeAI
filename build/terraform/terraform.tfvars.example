@@ -100,6 +100,7 @@ app_secret_arns = {
   mfa_encryption_key          = "arn:aws:secretsmanager:us-east-1:123456789012:secret:scriptureforge/staging/mfa-encryption-key"
   redis_auth_token            = "arn:aws:secretsmanager:us-east-1:123456789012:secret:scriptureforge/staging/redis-auth-token"
   openai_api_key              = "arn:aws:secretsmanager:us-east-1:123456789012:secret:scriptureforge/staging/openai-api-key"
+  metrics_auth_token          = "arn:aws:secretsmanager:us-east-1:123456789012:secret:scriptureforge/staging/metrics-auth-token"
   zoom_credentials            = "arn:aws:secretsmanager:us-east-1:123456789012:secret:scriptureforge/staging/zoom-credentials"
   grpc_engine_shared_secret   = "arn:aws:secretsmanager:us-east-1:123456789012:secret:scriptureforge/staging/grpc-engine-shared-secret"
   grpc_engine_tls_credentials = "arn:aws:secretsmanager:us-east-1:123456789012:secret:scriptureforge/staging/grpc-engine-tls"

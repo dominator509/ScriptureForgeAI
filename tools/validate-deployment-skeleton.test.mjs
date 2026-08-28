@@ -6,6 +6,7 @@ import {
   validateDatabaseTransportConfig,
   validateTerraformEKSSecretEncryption,
   validateLocalComposeConfig,
+  validateMetricsAuthentication,
   validateTerraformImageDigestInputs,
   validatePlatformRuntimeConfig,
   validateTerraformReleaseInputGuards,
@@ -47,6 +48,26 @@ test('validatePlatformRuntimeConfig rejects missing local fallback marker', asyn
   assert.throws(
     () => validatePlatformRuntimeConfig(broken),
     /localhost:50051/,
+  );
+});
+
+test('validatePlatformRuntimeConfig rejects an unprotected API metrics surface', async () => {
+  const source = await readFile('cmd/platform-engine/main.go', 'utf8');
+  const broken = source.replace('protectedMetricsHandler(observer.MetricsHandler())', 'observer.MetricsHandler()');
+  assert.notEqual(broken, source, 'test fixture must remove the protected metrics route wiring');
+  assert.throws(
+    () => validatePlatformRuntimeConfig(broken),
+    /protectedMetricsHandler\(observer\.MetricsHandler\(\)\)/,
+  );
+});
+
+test('validateMetricsAuthentication rejects a guard that does not fail closed', async () => {
+  const source = await readFile('cmd/platform-engine/metrics_security.go', 'utf8');
+  const broken = source.replace('http.StatusServiceUnavailable', 'http.StatusOK');
+  assert.notEqual(broken, source, 'test fixture must weaken the missing-token response');
+  assert.throws(
+    () => validateMetricsAuthentication(broken),
+    /StatusServiceUnavailable/,
   );
 });
 
@@ -136,6 +157,19 @@ test('validateTerraformSecretInputs rejects plaintext workload secret inputs', a
   assert.throws(
     () => validateTerraformSecretInputs(broken, tfvarsExample, app),
     /app_secret_arns\.openai_api_key must be validated as a Secrets Manager ARN/,
+  );
+});
+
+test('validateTerraformSecretInputs rejects an unvalidated metrics auth secret ARN', async () => {
+  const { variables, tfvarsExample, app } = await terraformSecretFixtures();
+  const broken = variables.replace(
+    'can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.metrics_auth_token)),',
+    'length(var.app_secret_arns.metrics_auth_token) > 0,',
+  );
+  assert.notEqual(broken, variables, 'test fixture must remove the metrics auth secret ARN validation');
+  assert.throws(
+    () => validateTerraformSecretInputs(broken, tfvarsExample, app),
+    /app_secret_arns\.metrics_auth_token must be validated as a Secrets Manager ARN/,
   );
 });
 

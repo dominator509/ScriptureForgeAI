@@ -33,6 +33,7 @@ type config struct {
 	GRPCServerName     string
 	MetricsURL         string
 	APIMetricsURL      string
+	MetricsAuthToken   string
 	ReleaseCandidate   string
 	ServiceVersion     string
 	DeploymentEnv      string
@@ -42,18 +43,18 @@ type config struct {
 }
 
 type report struct {
-	ObservedAt           string        `json:"observed_at"`
-	GRPCTarget           string        `json:"grpc_target"`
-	GRPCTransportSecurity string       `json:"grpc_transport_security"`
-	MetricsTarget        string        `json:"metrics_target,omitempty"`
-	APIMetricsURL        string        `json:"api_metrics_target,omitempty"`
-	ThresholdPass        bool          `json:"threshold_pass"`
-	ReleaseCandidate     string        `json:"release_candidate"`
-	ServiceVersion       string        `json:"service_version"`
-	DeploymentEnv        string        `json:"deployment_environment"`
-	LoadRunID            string        `json:"load_run_id"`
-	Probes               []probeResult `json:"probes"`
-	EvidenceItems        []string      `json:"evidence_items"`
+	ObservedAt            string        `json:"observed_at"`
+	GRPCTarget            string        `json:"grpc_target"`
+	GRPCTransportSecurity string        `json:"grpc_transport_security"`
+	MetricsTarget         string        `json:"metrics_target,omitempty"`
+	APIMetricsURL         string        `json:"api_metrics_target,omitempty"`
+	ThresholdPass         bool          `json:"threshold_pass"`
+	ReleaseCandidate      string        `json:"release_candidate"`
+	ServiceVersion        string        `json:"service_version"`
+	DeploymentEnv         string        `json:"deployment_environment"`
+	LoadRunID             string        `json:"load_run_id"`
+	Probes                []probeResult `json:"probes"`
+	EvidenceItems         []string      `json:"evidence_items"`
 }
 
 type probeResult struct {
@@ -87,6 +88,7 @@ func parseFlags() config {
 	flag.StringVar(&cfg.GRPCServerName, "grpc-server-name", os.Getenv("GRPC_ENGINE_TLS_SERVER_NAME"), "Rust gRPC TLS server name")
 	flag.StringVar(&cfg.MetricsURL, "metrics-url", "", "optional Rust metrics URL, for example http://scriptureforge-rust-engine:9102/metrics")
 	flag.StringVar(&cfg.APIMetricsURL, "api-metrics-url", "", "deployed Go API metrics URL after an API flow has invoked the Rust engine")
+	flag.StringVar(&cfg.MetricsAuthToken, "metrics-auth-token", os.Getenv("STAGING_METRICS_AUTH_TOKEN"), "bearer token for the protected Go API metrics endpoint")
 	flag.StringVar(&cfg.ReleaseCandidate, "release-candidate", os.Getenv("RELEASE_CANDIDATE"), "release candidate Git SHA or tag expected in Rust evidence")
 	flag.StringVar(&cfg.ServiceVersion, "service-version", os.Getenv("SERVICE_VERSION"), "service version expected in Rust evidence")
 	flag.StringVar(&cfg.DeploymentEnv, "deployment-environment", os.Getenv("DEPLOYMENT_ENVIRONMENT"), "deployment environment expected in Rust evidence, for example staging")
@@ -162,7 +164,7 @@ func runWithDependencies(cfg config, output io.Writer, grpcProbe grpcProbeFunc, 
 	probes := []probeResult{
 		healthProbe,
 		probeMetrics(metricsClient, cfg.MetricsURL, cfg.Timeout, releaseMarkers),
-		probeAPIRustIntegrationMetrics(metricsClient, cfg.APIMetricsURL, cfg.Timeout, releaseMarkers),
+		probeAPIRustIntegrationMetricsWithAuth(metricsClient, cfg.APIMetricsURL, cfg.Timeout, releaseMarkers, cfg.MetricsAuthToken),
 	}
 	if probes[2].Passed {
 		probes[2].ResultSummary += "; verified config markers: distinct_metrics_targets=true"
@@ -338,6 +340,10 @@ func probeMetrics(client *http.Client, metricsURL string, timeout time.Duration,
 }
 
 func probeAPIRustIntegrationMetrics(client *http.Client, metricsURL string, timeout time.Duration, releaseMarkers []string) probeResult {
+	return probeAPIRustIntegrationMetricsWithAuth(client, metricsURL, timeout, releaseMarkers, "")
+}
+
+func probeAPIRustIntegrationMetricsWithAuth(client *http.Client, metricsURL string, timeout time.Duration, releaseMarkers []string, authToken string) probeResult {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	start := time.Now()
@@ -346,6 +352,7 @@ func probeAPIRustIntegrationMetrics(client *http.Client, metricsURL string, time
 		return failedProbe("api-rust-integration-metrics", metricsURL, err.Error())
 	}
 	req.Header.Set("User-Agent", "scriptureforge-rustprobe/1.0")
+	setMetricsAuthHeader(req, authToken)
 	resp, err := client.Do(req)
 	latency := time.Since(start).Milliseconds()
 	if err != nil {
@@ -384,6 +391,12 @@ func probeAPIRustIntegrationMetrics(client *http.Client, metricsURL string, time
 		APIRustVectorSearchOps:     operationCount,
 		APIRustVectorSearchSeconds: durationSum,
 		ResultSummary:              summary,
+	}
+}
+
+func setMetricsAuthHeader(req *http.Request, token string) {
+	if token = strings.TrimSpace(token); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 }
 

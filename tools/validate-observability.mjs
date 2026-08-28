@@ -17,6 +17,8 @@ export const observabilityArtifactPaths = {
   abuseLimiter: new URL('../internal/domain/abuse/limiter.go', import.meta.url),
   apiObservability: new URL('../internal/domain/observability/observability.go', import.meta.url),
   apiObservabilityTest: new URL('../internal/domain/observability/observability_test.go', import.meta.url),
+  platformMain: new URL('../cmd/platform-engine/main.go', import.meta.url),
+  metricsSecurity: new URL('../cmd/platform-engine/metrics_security.go', import.meta.url),
   authMiddleware: new URL('../internal/domain/auth/middleware.go', import.meta.url),
   observabilityProbe: new URL('../tools/observabilityprobe/main.go', import.meta.url),
   recordStagingEvidence: new URL('../tools/record-staging-evidence.mjs', import.meta.url),
@@ -31,6 +33,7 @@ export const observabilityProofMarkers = [
   'trace_id_shape_guard=true',
   'structured_log_canonical_fields=true',
   'metrics_endpoint=true',
+  'metrics_authentication=true',
   'dependency_spans=true',
   'websocket_profile_metrics=true',
   'ai_profile_metrics=true',
@@ -114,6 +117,8 @@ export function validateObservabilitySources(sources) {
     abuseLimiter,
     apiObservability,
     apiObservabilityTest,
+    platformMain,
+    metricsSecurity,
     authMiddleware,
     observabilityProbe,
     recordStagingEvidence,
@@ -191,6 +196,15 @@ for (const phrase of [
   'websocket_active_connections_count',
 ]) {
   assert.ok(apiObservability.includes(phrase), `API structured log observability missing ${phrase}`);
+}
+
+for (const phrase of [
+  'protectedMetricsHandler(observer.MetricsHandler())',
+]) {
+  assert.ok(platformMain.includes(phrase), `API metrics authentication missing ${phrase}`);
+}
+for (const phrase of ['METRICS_AUTH_TOKEN', 'ConstantTimeCompare', 'StatusServiceUnavailable']) {
+  assert.ok(metricsSecurity.includes(phrase), `API metrics authentication missing ${phrase}`);
 }
 
 for (const phrase of [
@@ -342,6 +356,9 @@ for (const [artifactName, artifactSource] of [
     assert.ok(artifactSource.includes(phrase), `${artifactName} missing staging OBS metric evidence marker ${phrase}`);
   }
 }
+
+assert.ok(observabilityProbe.includes('STAGING_METRICS_AUTH_TOKEN'), 'observability probe missing API metrics auth configuration');
+assert.ok(observabilityProbe.includes('probeContainsAllWithAuth'), 'observability probe missing authenticated API metrics request');
 
 for (const phrase of [
   'timestamp=',

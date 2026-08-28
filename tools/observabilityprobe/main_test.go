@@ -46,6 +46,23 @@ ai_inference_duration_seconds_count{profile="gpt-4.1",status="success"} 2
 scriptureforge_dependency_operations_total{dependency="rust_engine",operation="vector_search",status="success"} 1
 scriptureforge_dependency_operation_duration_seconds_sum{dependency="rust_engine",operation="vector_search",status="success"} 0.042`
 
+func TestAPIMetricsProbeUsesBearerToken(t *testing.T) {
+	var authorization string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authorization = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(completeAPIMetricsArtifact))
+	}))
+	defer server.Close()
+
+	result := probeContainsAllWithAuth(server.Client(), "api-prometheus-metrics", server.URL, []string{"scriptureforge_http_requests_total"}, "  staging-secret  ")
+	if !result.Passed {
+		t.Fatalf("API metrics probe failed: %+v", result)
+	}
+	if authorization != "Bearer staging-secret" {
+		t.Fatalf("expected trimmed bearer authorization, got %q", authorization)
+	}
+}
+
 func observabilityReleaseConfig() config {
 	return config{
 		ReleaseCandidate: "sha-obs",

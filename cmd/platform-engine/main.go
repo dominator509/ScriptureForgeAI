@@ -516,7 +516,7 @@ func setupRoutesWithLifecycle(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisC
 	observer := observability.NewDefaultObserver()
 	mux.HandleFunc("/live", liveHandler)
 	mux.HandleFunc("/ready", readyHandlerWithLifecycle(dbpool, redisClient, vectorDB, lifecycle))
-	mux.Handle("/metrics", observer.MetricsHandler())
+	mux.Handle("/metrics", protectedMetricsHandler(observer.MetricsHandler()))
 
 	// Auth Endpoints
 	authHandler := &ports.AuthHandler{DB: dbpool, AccountLimiter: abuseLimiter, MFAEncryptionKey: []byte(os.Getenv("MFA_ENCRYPTION_KEY"))}

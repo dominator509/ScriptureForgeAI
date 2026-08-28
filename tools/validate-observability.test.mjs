@@ -33,6 +33,7 @@ describe('validate-observability', () => {
       'trace_id_shape_guard=true',
       'structured_log_canonical_fields=true',
       'metrics_endpoint=true',
+      'metrics_authentication=true',
       'dependency_spans=true',
       'websocket_profile_metrics=true',
       'ai_profile_metrics=true',
@@ -93,6 +94,12 @@ describe('validate-observability', () => {
     );
 
     expectValidationFailure(cloneSources({ observabilityProbe }), /Rust metrics to come from an external staging artifact URL/);
+  });
+
+  it('rejects API metrics probe drift that drops bearer authentication', () => {
+    const observabilityProbe = baseSources.observabilityProbe.replaceAll('probeContainsAllWithAuth', 'probeContainsAll');
+
+    expectValidationFailure(cloneSources({ observabilityProbe }), /observability probe missing authenticated API metrics request/);
   });
 
   it('rejects observability evidence drift that allows bare tenant principal log markers', () => {

@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 
 const terraformDir = new URL('../build/terraform/', import.meta.url);
 const platformEngineMain = new URL('../cmd/platform-engine/main.go', import.meta.url);
+const platformMetricsSecurity = new URL('../cmd/platform-engine/metrics_security.go', import.meta.url);
 const scriptureEngineMain = new URL('../services/scripture-engine/src/main.rs', import.meta.url);
 const apiDockerfile = new URL('../services/platform-engine/Dockerfile', import.meta.url);
 const rustDockerfile = new URL('../services/scripture-engine/Dockerfile', import.meta.url);
@@ -25,6 +26,7 @@ export const deploymentSkeletonProofMarkers = [
   'immutable_workload_image_digests=true',
   'customer_managed_storage_kms=true',
   'eks_secrets_envelope_encryption=true',
+  'metrics_authentication=true',
   'staging_input_placeholders_rejected=true',
   'container_build_definitions=true',
   'database_tls_enforced=true',
@@ -44,8 +46,9 @@ const [app, service, variables, iam, versions, tfvarsExample, backendExample, ek
   readTerraform('backend.hcl.example'),
   readTerraform('eks.tf'),
 ]);
-const [platformMain, rustMain, apiContainer, rustContainer, webContainer, compose] = await Promise.all([
+const [platformMain, metricsSecurity, rustMain, apiContainer, rustContainer, webContainer, compose] = await Promise.all([
   readFile(platformEngineMain, 'utf8'),
+  readFile(platformMetricsSecurity, 'utf8'),
   readFile(scriptureEngineMain, 'utf8'),
   readFile(apiDockerfile, 'utf8'),
   readFile(rustDockerfile, 'utf8'),
@@ -73,6 +76,7 @@ export function validatePlatformRuntimeConfig(platformMain) {
       'DEPLOYMENT_ENVIRONMENT',
       'GRPC_ENGINE_ADDRESS environment variable is required in staging/production',
       'grpcAddr = "localhost:50051"',
+      'protectedMetricsHandler(observer.MetricsHandler())',
     ],
     'platform engine runtime config',
   );
@@ -87,6 +91,29 @@ export function validatePlatformRuntimeConfig(platformMain) {
   assert.ok(
     /default:\s*\n\s*return true/.test(platformMain),
     'platform engine must fail closed for unknown deployment environments',
+  );
+}
+
+export function validateMetricsAuthentication(metricsSecurity) {
+  requireIncludes(
+    metricsSecurity,
+    [
+      'func protectedMetricsHandler(next http.Handler) http.Handler',
+      'METRICS_AUTH_TOKEN',
+      'func requiresConfiguredMetricsAuthForEnvironment(environment string) bool',
+      'metrics unavailable',
+      'StatusServiceUnavailable',
+      'ConstantTimeCompare',
+    ],
+    'platform API metrics authentication',
+  );
+  assert.ok(
+    /case "", "development", "dev", "test", "local":\s*\n\s*return false/.test(metricsSecurity),
+    'platform API metrics authentication must retain explicit local-only exceptions',
+  );
+  assert.ok(
+    /default:\s*\n\s*return true/.test(metricsSecurity),
+    'platform API metrics authentication must fail closed for unknown environments',
   );
 }
 
@@ -214,7 +241,7 @@ export function validateTerraformSecretInputs(variables, tfvarsExample, app) {
   );
 
   const secretARNBlock = terraformVariableBlock(variables, 'app_secret_arns');
-  for (const key of ['database_url', 'jwt_secret_key', 'journal_salt_secret', 'mfa_encryption_key', 'redis_auth_token', 'openai_api_key', 'zoom_credentials', 'grpc_engine_shared_secret', 'grpc_engine_tls_credentials']) {
+  for (const key of ['database_url', 'jwt_secret_key', 'journal_salt_secret', 'mfa_encryption_key', 'redis_auth_token', 'openai_api_key', 'metrics_auth_token', 'zoom_credentials', 'grpc_engine_shared_secret', 'grpc_engine_tls_credentials']) {
     assert.match(secretARNBlock, new RegExp(`${key}\\s*=\\s*string`), `app_secret_arns missing ${key}`);
     assert.ok(
       secretARNBlock.includes(`can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.${key}))`),
@@ -361,6 +388,7 @@ requireIncludes(
     'database_url',
     'jwt_secret_key',
     'openai_api_key',
+    'metrics_auth_token',
     'zoom_credentials',
     'grpc_engine_shared_secret',
     'grpc_engine_tls_credentials',
@@ -417,6 +445,7 @@ requireIncludes(
     'data.aws_secretsmanager_secret.database_url.arn',
     'data.aws_secretsmanager_secret.jwt_secret_key.arn',
     'data.aws_secretsmanager_secret.openai_api_key.arn',
+    'data.aws_secretsmanager_secret.metrics_auth_token.arn',
     'data.aws_secretsmanager_secret.zoom_credentials.arn',
     'data.aws_secretsmanager_secret.grpc_engine_shared_secret.arn',
     'data.aws_secretsmanager_secret.grpc_engine_tls_credentials.arn',
@@ -469,6 +498,7 @@ requireIncludes(
     'name = "JWT_SECRET_KEY"',
     'name = "JOURNAL_SALT_SECRET"',
     'name = "OPENAI_API_KEY"',
+    'name = "METRICS_AUTH_TOKEN"',
     'name = "ZOOM_ACCOUNT_ID"',
     'name = "ZOOM_CLIENT_ID"',
     'name = "ZOOM_CLIENT_SECRET"',
@@ -596,6 +626,7 @@ validateTerraformReleaseInputGuards(variables);
 assert.ok(!tfvarsExample.includes('skip_final_snapshot = true'), 'tfvars example must not preserve production-hostile snapshot defaults');
 
 validatePlatformRuntimeConfig(platformMain);
+validateMetricsAuthentication(metricsSecurity);
 validateContainerBuildDefinitions(apiContainer, rustContainer, webContainer);
 validateLocalComposeConfig(compose);
 validateDatabaseTransportConfig(platformMain, rustMain);

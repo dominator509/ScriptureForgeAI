@@ -515,6 +515,7 @@ variable "app_secret_arns" {
     mfa_encryption_key          = string
     redis_auth_token            = string
     openai_api_key              = string
+    metrics_auth_token          = string
     zoom_credentials            = string
     grpc_engine_shared_secret   = string
     grpc_engine_tls_credentials = string
@@ -528,6 +529,7 @@ variable "app_secret_arns" {
       can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.mfa_encryption_key)),
       can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.redis_auth_token)),
       can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.openai_api_key)),
+      can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.metrics_auth_token)),
       can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.zoom_credentials)),
       can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.grpc_engine_shared_secret)),
       can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.grpc_engine_tls_credentials))

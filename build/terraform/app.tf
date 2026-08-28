@@ -46,6 +46,7 @@ resource "kubernetes_secret" "external_secret_refs" {
     mfa_encryption_key_arn          = data.aws_secretsmanager_secret.mfa_encryption_key.arn
     redis_auth_token_arn            = data.aws_secretsmanager_secret.redis_auth_token.arn
     openai_api_key_arn              = data.aws_secretsmanager_secret.openai_api_key.arn
+    metrics_auth_token_arn          = data.aws_secretsmanager_secret.metrics_auth_token.arn
     zoom_credentials_arn            = data.aws_secretsmanager_secret.zoom_credentials.arn
     grpc_engine_shared_secret_arn   = data.aws_secretsmanager_secret.grpc_engine_shared_secret.arn
     grpc_engine_tls_credentials_arn = data.aws_secretsmanager_secret.grpc_engine_tls_credentials.arn
@@ -115,6 +116,11 @@ resource "kubernetes_manifest" "app_secret_provider" {
             objectName  = data.aws_secretsmanager_secret.openai_api_key.arn
             objectType  = "secretsmanager"
             objectAlias = "openai_api_key"
+          },
+          {
+            objectName  = data.aws_secretsmanager_secret.metrics_auth_token.arn
+            objectType  = "secretsmanager"
+            objectAlias = "metrics_auth_token"
           },
           {
             objectName  = data.aws_secretsmanager_secret.grpc_engine_shared_secret.arn
@@ -191,6 +197,10 @@ resource "kubernetes_manifest" "app_secret_provider" {
             {
               objectName = "openai_api_key"
               key        = "OPENAI_API_KEY"
+            },
+            {
+              objectName = "metrics_auth_token"
+              key        = "METRICS_AUTH_TOKEN"
             },
             {
               objectName = "grpc_engine_shared_secret"
@@ -655,6 +665,16 @@ resource "kubernetes_deployment" "api" {
               secret_key_ref {
                 name = "scriptureforge-runtime-secrets"
                 key  = "OPENAI_API_KEY"
+              }
+            }
+          }
+
+          env {
+            name = "METRICS_AUTH_TOKEN"
+            value_from {
+              secret_key_ref {
+                name = "scriptureforge-runtime-secrets"
+                key  = "METRICS_AUTH_TOKEN"
               }
             }
           }

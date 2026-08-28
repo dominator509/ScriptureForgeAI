@@ -16,7 +16,7 @@ The current services expose:
 - OpenTelemetry request spans and low-cardinality dependency spans through an env-driven OTLP/HTTP trace exporter when `OTEL_EXPORTER_OTLP_ENDPOINT` is configured.
 - Rust gRPC JSON startup/request/error logs with `trace_id` extracted from W3C `traceparent` metadata and service/version/environment fields from deployment env.
 - Structured JSON access logs with canonical `timestamp` and `severity` fields plus `trace_id`, `component`, `service`, `service_version`, `deployment_environment`, verified `tenant_id`/`user_id`/`role` when JWT claims are present, `method`, normalized `path`, `status`, `duration_ms`, `remote_addr`, and legacy-compatible `at`/`level` aliases.
-- Prometheus text metrics at `/metrics` for `GET` requests on both the Go API and Rust engine. `HEAD` returns the same headers without a body for lightweight availability checks, and other methods return `405 Method Not Allowed` with `Allow: GET, HEAD`.
+- Prometheus text metrics at `/metrics` for `GET` requests on both the Go API and Rust engine. The Go API endpoint requires `Authorization: Bearer <METRICS_AUTH_TOKEN>` outside explicit local/development/test modes and returns `503` if its non-local token is missing; the Rust listener remains a separate metrics target. `HEAD` returns the same headers without a body for lightweight availability checks, and other methods return `405 Method Not Allowed` with `Allow: GET, HEAD`.
   - `scriptureforge_http_requests_total{method,path,status}`
   - `scriptureforge_http_request_duration_seconds_bucket{method,path,status,le}`
   - `scriptureforge_http_request_duration_seconds_sum{method,path,status}`
@@ -48,7 +48,7 @@ The Go API keeps OpenTelemetry disabled unless a collector endpoint is configure
 
 ## Deployment Wiring
 
-1. Scrape the Go API `/metrics` endpoint from the Kubernetes service or pod.
+1. Scrape the Go API `/metrics` endpoint from the Kubernetes service or pod with the API-only `METRICS_AUTH_TOKEN` bearer credential. Configure Prometheus or the staging evidence probe with the same secret without placing it in URLs or report bodies.
 2. Scrape the Rust engine `/metrics` endpoint on port `9102` from the Kubernetes service or pod.
 3. Ship JSON stdout logs to the staging log backend and preserve `trace_id`, `component`, `service_version`, `deployment_environment`, and verified tenant principal fields.
 4. Set `OTEL_EXPORTER_OTLP_ENDPOINT` on the Go API deployment and verify spans arrive at the staging collector/backend.
@@ -59,7 +59,7 @@ The Go API keeps OpenTelemetry disabled unless a collector endpoint is configure
    - Logs: at least 14 days for staging, 30 days for production.
    - Traces: at least 7 days for staging, 14 days for production.
 8. Run a staging smoke that creates traceable requests across auth, journal, room polling, room stream handshake, Rust gRPC embedding/search, AI fail-closed behavior, and Zoom webhook verification.
-9. Capture `tools/observabilityprobe` evidence from non-local, non-private public telemetry/artifact URLs for collector, API metrics, trace query, log query, dashboard, alert, and retention proofs. The Rust metrics URL may remain an in-cluster service URL when the probe is run from inside the staging network.
+9. Capture `tools/observabilityprobe` evidence from non-local, non-private public telemetry/artifact URLs for collector, API metrics, trace query, log query, dashboard, alert, and retention proofs. Supply `STAGING_METRICS_AUTH_TOKEN` or `-metrics-auth-token` for the protected API metrics scrape. The Rust metrics URL may remain an in-cluster service URL when the probe is run from inside the staging network.
 
 ## Incident Triage
 

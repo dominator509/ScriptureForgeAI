@@ -310,6 +310,27 @@ func TestAPIRustIntegrationMetricsRequirePositiveSamples(t *testing.T) {
 	}
 }
 
+func TestAPIRustIntegrationMetricsUsesBearerToken(t *testing.T) {
+	var authorization string
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		authorization = req.Header.Get("Authorization")
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(completeAPIRustIntegrationMetrics())),
+			Header:     make(http.Header),
+			Request:    req,
+		}, nil
+	})}
+
+	result := probeAPIRustIntegrationMetricsWithAuth(client, "https://api.staging.scriptureforge.ai/metrics", time.Second, nil, "  staging-secret  ")
+	if !result.Passed {
+		t.Fatalf("API metrics probe failed: %+v", result)
+	}
+	if authorization != "Bearer staging-secret" {
+		t.Fatalf("expected trimmed bearer authorization, got %q", authorization)
+	}
+}
+
 func completeRustMetrics() string {
 	lines := []string{
 		"# HELP scriptureforge_rust_engine_embedding_requests_total Total embedding requests handled by the Rust scripture engine.",

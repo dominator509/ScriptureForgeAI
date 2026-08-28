@@ -337,10 +337,11 @@ rtk go run ./tools/rustprobe \
   -grpc-server-name=scriptureforge-rust-engine \
   -metrics-url=http://scriptureforge-rust-engine:9102/metrics \
   -api-metrics-url=https://api.staging.example/metrics \
+  -metrics-auth-token="$STAGING_METRICS_AUTH_TOKEN" \
   -timeout=5s
 ```
 
-The report includes `RUST-GRPC-001` in `evidence_items`, verifies the standard gRPC health service reports `SERVING` over mTLS, requires the Rust metrics endpoint to expose the embedding/vector-search request and failure counters, and requires the deployed Go API `/metrics` endpoint to show a successful `rust_engine` `vector_search` dependency operation after a staging API flow has invoked the Rust engine. The probe requires CA/client certificate/client key/server-name inputs, rejects local/loopback gRPC targets, malformed gRPC addresses, missing metrics URLs, and local/loopback metrics URLs before issuing release-evidence probes. Attach the resulting JSON with `tools/record-staging-evidence.mjs`.
+The report includes `RUST-GRPC-001` in `evidence_items`, verifies the standard gRPC health service reports `SERVING` over mTLS, requires the Rust metrics endpoint to expose the embedding/vector-search request and failure counters, and requires the deployed Go API `/metrics` endpoint to show a successful `rust_engine` `vector_search` dependency operation after a staging API flow has invoked the Rust engine. In non-local environments the Go API metrics request must use `-metrics-auth-token` or `STAGING_METRICS_AUTH_TOKEN`; the Rust metrics request remains unauthenticated on its separate listener. The probe requires CA/client certificate/client key/server-name inputs, rejects local/loopback gRPC targets, malformed gRPC addresses, missing metrics URLs, and local/loopback metrics URLs before issuing release-evidence probes. Attach the resulting JSON with `tools/record-staging-evidence.mjs`.
 The recorder rejects `RUST-GRPC-001` reports that use local loopback targets, omit the Rust metrics probe, omit the API integration metrics probe, or omit verified marker summaries for gRPC health, the ScriptureForge health service name, `SERVING`, `scriptureforge_rust_engine_embedding_requests_total`, `scriptureforge_rust_engine_embedding_failures_total`, `scriptureforge_rust_engine_vector_search_requests_total`, `scriptureforge_rust_engine_vector_search_failures_total`, Prometheus metrics, `Go API rust_engine vector_search success`, `scriptureforge_dependency_operations_total`, and `scriptureforge_dependency_operation_duration_seconds_sum`; release evidence must include deployed gRPC health plus complete Rust and API-side operational metrics proof.
 The strict release manifest validator also requires those Rust marker summaries, so a generic `rustprobe` report cannot satisfy `RUST-GRPC-001`.
 
@@ -442,6 +443,7 @@ rtk go run ./tools/observabilityprobe \
   -probe-otel \
   -collector-config-url=https://observability.staging.example/collector-config \
   -api-metrics-url=https://api.staging.example/metrics \
+  -metrics-auth-token="$STAGING_METRICS_AUTH_TOKEN" \
   -rust-metrics-url=http://scriptureforge-rust-engine:9102/metrics \
   -trace-query-url=https://traces.staging.example/search?trace_id=$STAGING_TRACE_ID \
   -log-query-url=https://logs.staging.example/search?trace_id=$STAGING_TRACE_ID \
@@ -461,7 +463,7 @@ rtk go run ./tools/observabilityprobe \
   -retention-url=https://observability.staging.example/retention-proof
 ```
 
-The report includes `OBS-OTEL-001`, `OBS-ALERT-001`, or both in `evidence_items` only for the requested passing modes. The OTEL probe requires the trace and log backend query URLs to include the supplied `-trace-id`, so broad search endpoints cannot satisfy trace-correlation evidence by coincidence. The probe rejects local/loopback telemetry hosts and artifacts marked mock, placeholder, synthetic, stubbed, test-only, dry-run, or local-only. This is still proof collection, not a substitute for importing dashboards, firing a test alert, and confirming the staging telemetry backend retains traces, logs, and metrics for at least 30 days.
+The report includes `OBS-OTEL-001`, `OBS-ALERT-001`, or both in `evidence_items` only for the requested passing modes. The OTEL probe requires the trace and log backend query URLs to include the supplied `-trace-id`, so broad search endpoints cannot satisfy trace-correlation evidence by coincidence. The API metrics request uses `-metrics-auth-token` or `STAGING_METRICS_AUTH_TOKEN` for the protected non-local Go metrics endpoint; Rust metrics remain a separate target. The probe rejects local/loopback telemetry hosts and artifacts marked mock, placeholder, synthetic, stubbed, test-only, dry-run, or local-only. This is still proof collection, not a substitute for importing dashboards, firing a test alert, and confirming the staging telemetry backend retains traces, logs, and metrics for at least 30 days.
 The probe and recorder reject observability reports unless the requested OTEL and alert evidence items include exactly their required passing probes with HTTP 200 responses from non-local HTTP(S) staging telemetry surfaces and verified marker summaries for collector config, API HTTP metrics, API-side `rust_engine` vector-search dependency metrics, Rust embedding/vector-search request and failure counters, trace/log correlation, dashboard import, the full production alert-rule suite, alert delivery, and retention.
 The strict release manifest validator also requires those observability marker summaries, so generic `observabilityprobe` reports cannot satisfy `OBS-OTEL-001` or `OBS-ALERT-001`.
 

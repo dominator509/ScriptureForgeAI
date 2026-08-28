@@ -100,6 +100,7 @@ data "aws_iam_policy_document" "app_secrets_read" {
       data.aws_secretsmanager_secret.mfa_encryption_key.arn,
       data.aws_secretsmanager_secret.redis_auth_token.arn,
       data.aws_secretsmanager_secret.openai_api_key.arn,
+      data.aws_secretsmanager_secret.metrics_auth_token.arn,
       data.aws_secretsmanager_secret.zoom_credentials.arn,
       data.aws_secretsmanager_secret.grpc_engine_shared_secret.arn,
       data.aws_secretsmanager_secret.grpc_engine_tls_credentials.arn
