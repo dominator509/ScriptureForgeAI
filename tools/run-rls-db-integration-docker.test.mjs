@@ -61,7 +61,7 @@ test('buildDatabaseURL matches the local Docker database', () => {
 });
 
 test('migration list applies the complete ordered up-migration set', () => {
-  assert.deepEqual(listMigrationFiles(resolve('C:\\dev\\ScriptureForgeAI')), [
+  assert.deepEqual(listMigrationFiles(process.cwd()), [
     '/migrations/000001_init_extensions.up.sql',
     '/migrations/000002_core_schema.up.sql',
     '/migrations/000003_scripture_text_reference.up.sql',
