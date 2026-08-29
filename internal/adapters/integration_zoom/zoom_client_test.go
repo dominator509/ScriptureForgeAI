@@ -75,6 +75,38 @@ func TestZoomClientUsesFiniteFallbackHTTPClient(t *testing.T) {
 	}
 }
 
+func TestZoomHTTPClientDoesNotFollowRedirects(t *testing.T) {
+	var calls int
+	client := newZoomHTTPClient(time.Second)
+	client.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		return &http.Response{
+			StatusCode: http.StatusFound,
+			Header:     http.Header{"Location": []string{"https://unexpected.example/redirect"}},
+			Body:       io.NopCloser(strings.NewReader("redirect")),
+			Request:    r,
+		}, nil
+	})
+
+	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://api.zoom.us/v2/meetings/12345", nil)
+	if err != nil {
+		t.Fatalf("build Zoom request: %v", err)
+	}
+	request.Header.Set("Authorization", "Bearer test-token")
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatalf("redirect response returned error: %v", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusFound {
+		t.Fatalf("redirect response status = %d, want %d", response.StatusCode, http.StatusFound)
+	}
+	if calls != 1 {
+		t.Fatalf("transport calls = %d, want one request without redirect follow", calls)
+	}
+}
+
 func TestZoomMeetingIdentifiersRejectPathInjection(t *testing.T) {
 	client := &ZoomClient{AccountID: "account", ClientID: "client", ClientSecret: "secret"}
 	if err := client.TerminateMeeting(context.Background(), "123/status"); err == nil {

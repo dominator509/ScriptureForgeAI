@@ -83,8 +83,22 @@ func NewZoomClient() *ZoomClient {
 		AccountID:    os.Getenv("ZOOM_ACCOUNT_ID"),
 		ClientID:     os.Getenv("ZOOM_CLIENT_ID"),
 		ClientSecret: os.Getenv("ZOOM_CLIENT_SECRET"),
-		HTTPClient:   &http.Client{Timeout: zoomHTTPTimeout()},
+		HTTPClient:   newZoomHTTPClient(zoomHTTPTimeout()),
 		MaxRetries:   zoomMaxRetries(),
+	}
+}
+
+func newZoomHTTPClient(timeout time.Duration) *http.Client {
+	if timeout <= 0 || timeout > maxZoomHTTPTimeout {
+		timeout = defaultZoomHTTPTimeout
+	}
+	return &http.Client{
+		Timeout: timeout,
+		// Zoom requests carry OAuth bearer credentials. Never follow a redirect
+		// that could move those credentials to an unexpected origin.
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
 }
 
@@ -123,7 +137,7 @@ func (c *ZoomClient) httpClient() *http.Client {
 	if c != nil && c.HTTPClient != nil {
 		return c.HTTPClient
 	}
-	return &http.Client{Timeout: defaultZoomHTTPTimeout}
+	return newZoomHTTPClient(defaultZoomHTTPTimeout)
 }
 
 func (c *ZoomClient) circuitOpen() bool {
