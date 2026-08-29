@@ -593,9 +593,9 @@ variable "allowed_ws_origins" {
 }
 
 variable "trust_proxy_headers" {
-  description = "Whether the API should trust X-Forwarded-For/X-Real-IP from the managed ingress for abuse-rate-limit client identity."
+  description = "Whether the API may trust X-Forwarded-For/X-Real-IP from an ingress that strips and overwrites caller-supplied forwarding headers; leave false unless that contract is verified."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "trusted_proxy_cidrs" {
@@ -604,9 +604,12 @@ variable "trusted_proxy_cidrs" {
 
   validation {
     condition = length(var.trusted_proxy_cidrs) > 0 && alltrue([
-      for cidr in var.trusted_proxy_cidrs : can(cidrhost(cidr, 0))
+      for cidr in var.trusted_proxy_cidrs : can(cidrhost(cidr, 0)) && can(regex(
+        "^(10[.]|172[.](1[6-9]|2[0-9]|3[01])[.]|192[.]168[.]|[Ff][Dd][0-9A-Fa-f]*:)",
+        cidrhost(cidr, 0),
+      ))
     ])
-    error_message = "trusted_proxy_cidrs must contain one or more valid CIDRs."
+    error_message = "trusted_proxy_cidrs must contain one or more valid private-network CIDRs for verified ingress peers."
   }
 }
 

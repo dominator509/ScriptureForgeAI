@@ -19,6 +19,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"scriptureforge/tools/probehttp"
 )
 
 type config struct {
@@ -189,7 +191,7 @@ func run(cfg config, output io.Writer) error {
 	}
 	releaseMarkers := releaseMarkers(cfg.ReleaseCandidate, cfg.ServiceVersion, cfg.LoadRunID)
 
-	client := &http.Client{Timeout: cfg.Timeout}
+	client := probehttp.NewClient(cfg.Timeout)
 	results := make([]probeResult, 0, 6)
 	evidenceItems := []string{"DEPLOY-TLS-001"}
 	sslLabsMarkers := append([]string{"staging artifact", "SSL Labs", "grade=A+", "ssl_labs_grade=A+"}, releaseMarkers...)

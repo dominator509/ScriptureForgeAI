@@ -23,9 +23,10 @@ import (
 	"github.com/gorilla/websocket"
 	"scriptureforge/internal/domain/auth"
 	"scriptureforge/internal/ports"
+	"scriptureforge/tools/probehttp"
 )
 
-var artifactHTTPClient = &http.Client{Timeout: 5 * time.Second}
+var artifactHTTPClient = probehttp.NewClient(5 * time.Second)
 
 type config struct {
 	Target                    string
@@ -234,7 +235,7 @@ func run(cfg config, output io.Writer) error {
 		if isStagingEvidenceTarget(cfg.Target, false) {
 			client := artifactHTTPClient
 			if client == nil {
-				client = &http.Client{Timeout: cfg.Timeout}
+				client = probehttp.NewClient(cfg.Timeout)
 			}
 			if client.Timeout == 0 {
 				client.Timeout = cfg.Timeout
@@ -436,7 +437,7 @@ func runWebSocketLoad(cfg config, output io.Writer) error {
 	if isStagingEvidenceTarget(cfg.Target, true) {
 		client := artifactHTTPClient
 		if client == nil {
-			client = &http.Client{Timeout: cfg.Timeout}
+			client = probehttp.NewClient(cfg.Timeout)
 		}
 		if client.Timeout == 0 {
 			client.Timeout = cfg.Timeout

@@ -14,6 +14,10 @@ This file records repository-level implementation history. It is not a substitut
 - Normalized web/mobile API and WebSocket base URLs at the client configuration boundary, rejecting credential-bearing, query-bearing, or fragment-bearing strict-environment endpoints before they can generate malformed requests or socket paths.
 - Made AI provider environment values whitespace-safe: blank API keys fail closed before chat or embedding transport, while configured endpoint and model values are trimmed at construction.
 - Made Zoom account, client, and client-secret configuration whitespace-safe before OAuth requests, including direct client wiring used by tests and operators.
+- Added a shared release-probe HTTP transport that disables ambient proxies and redirects, validates DNS-resolved destinations against restricted networks at dial time, and is used by all production-facing evidence probes.
+- Made Terraform default `TRUST_PROXY_HEADERS=false`; enabling forwarded client identity now requires an explicitly verified ingress overwrite contract in addition to exact trusted proxy CIDRs.
+- Removed the CI same-channel `kubectl` binary/checksum download; CI now requires the hosted runner's existing client and verifies its PATH/version before strict staging checks.
+- Pinned the Rust CI and Scripture Engine build lanes to Rust `1.97.1` and copied the builder CA bundle into the runtime image so runtime image construction does not install an unpinned apt package.
 - Added replica-wide Redis leased semaphores for active room WebSocket caps across global, tenant, and user scopes, with renewal, crash expiry, and fail-closed outage handling.
 - Wired production abuse limiting to an atomic Redis fixed-window backend shared across replicas, with bounded remote identity registration and fail-closed 503 behavior when Redis is unavailable; local nil-client fallback remains explicit for isolated tests.
 - Added a dedicated unauthenticated Redis abuse budget for `/api/webhooks/zoom`, with route coverage and strict staging evidence requiring the `zoom_webhook` profile and its redacted request/window assignments.

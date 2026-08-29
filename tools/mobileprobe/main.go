@@ -14,6 +14,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"scriptureforge/tools/probehttp"
 )
 
 var (
@@ -121,7 +123,7 @@ func parseFlags() config {
 }
 
 func run(cfg config, output io.Writer) error {
-	return runWithClient(cfg, output, &http.Client{Timeout: cfg.Timeout})
+	return runWithClient(cfg, output, probehttp.NewClient(cfg.Timeout))
 }
 
 func runWithClient(cfg config, output io.Writer, client *http.Client) error {
@@ -161,7 +163,7 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 		return err
 	}
 	if client == nil {
-		client = &http.Client{Timeout: cfg.Timeout}
+		client = probehttp.NewClient(cfg.Timeout)
 	}
 
 	releaseMarkers := []string{

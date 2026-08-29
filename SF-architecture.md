@@ -623,6 +623,12 @@ the local and CI release gates can pass.
   └─ Progressive Routing Shift: 1% -> 10% -> 50% -> 100%
 ```
 
+Release evidence probes use the repository's hardened `tools/probehttp` transport for
+remote artifact and staging requests. It disables ambient proxies and redirects, resolves
+DNS before connecting, rejects restricted destinations, and dials only the validated address;
+CI checks the hosted runner's existing `kubectl` path/version and does not install a mutable
+binary/checksum pair. Deployment execution and artifact authenticity remain staging-owned.
+
 The staging deployment verification step must attach real Terraform and Kubernetes artifacts through `tools/deploymentprobe`. `DEPLOY-TF-001` and `DEPLOY-K8S-001` evidence is accepted only when probe summaries carry both verified deployment markers and `staging artifact` provenance; Terraform approval fallback evidence must include a structured `change_ticket=<ticket-id>` marker when it substitutes for apply output, and strict-release validation rejects approval summaries that omit that ticket ID. Mock, placeholder, synthetic, stubbed, test-only, dry-run, localhost, or loopback artifacts are treated as non-production evidence.
 
 ### 16.1 Infrastructure Configuration Framework (Terraform Plan Abstract)

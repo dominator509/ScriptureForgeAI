@@ -102,10 +102,16 @@ test('validateCIWorkflow rejects missing staging evidence PATH tool installation
     /ci-go-bin-path/,
   );
 
-  const missingKubectl = text.replace('https://dl.k8s.io/release/v1.34.1/bin/linux/amd64/kubectl', 'https://example.invalid/kubectl');
+  const missingKubectl = text.replace('command -v kubectl', 'command -v kubernetes');
   assert.throws(
     () => validateCIWorkflow(missingKubectl),
-    /ci-kubectl-install/,
+    /ci-kubectl-runner/,
+  );
+
+  const missingKubectlVersion = text.replace('kubectl version --client=true', 'kubectl --help');
+  assert.throws(
+    () => validateCIWorkflow(missingKubectlVersion),
+    /ci-kubectl-version/,
   );
 
   const missingAWSDownload = text.replace('https://awscli.amazonaws.com/awscli-exe-linux-x86_64-2.27.41.zip', 'https://example.invalid/awscli.zip');
@@ -124,6 +130,16 @@ test('validateCIWorkflow rejects missing staging evidence PATH tool installation
   assert.throws(
     () => validateCIWorkflow(missingUnzip),
     /ci-postgres-unzip-install/,
+  );
+});
+
+test('validateCIWorkflow rejects a floating Rust toolchain', async () => {
+  const text = await readFile('.github/workflows/security.yml', 'utf8');
+  const broken = text.replace('toolchain: 1.97.1', 'toolchain: stable');
+  assert.notEqual(broken, text, 'fixture workflow must include an exact Rust toolchain');
+  assert.throws(
+    () => validateCIWorkflow(broken),
+    /ci-rust-toolchain/,
   );
 });
 

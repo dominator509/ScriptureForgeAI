@@ -45,7 +45,9 @@ jobs:
           mobile/package-lock.json
 
     - name: Set up Rust
-      uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+      uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # Rust 1.97.1
+      with:
+        toolchain: 1.97.1
 
     - name: Set up Terraform
       uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1 (node24)
@@ -81,11 +83,8 @@ jobs:
         sudo ./aws/install --update
         rm -rf aws awscliv2.zip awscliv2.zip.sig
         go install golang.org/x/tools/gopls@v0.20.0
-        curl -fsSLo kubectl https://dl.k8s.io/release/v1.34.1/bin/linux/amd64/kubectl
-        curl -fsSLo kubectl.sha256 https://dl.k8s.io/release/v1.34.1/bin/linux/amd64/kubectl.sha256
-        echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check -
-        sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
-        rm kubectl kubectl.sha256
+        command -v kubectl
+        kubectl version --client=true
 
     - name: Validate CI Project PATH Readiness
       run: node tools/verify-project-path.mjs --ci

@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"scriptureforge/tools/probehttp"
 )
 
 var prometheusSamplePattern = regexp.MustCompile(`(?m)^([A-Za-z_:][A-Za-z0-9_:]*)(?:\{[^}\n]*\})?\s+([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)\s*(?:\n|$)`)
@@ -100,7 +101,7 @@ func parseFlags() config {
 }
 
 func run(cfg config, output io.Writer) error {
-	return runWithDependencies(cfg, output, nil, http.DefaultClient)
+	return runWithDependencies(cfg, output, nil, probehttp.NewClient(cfg.Timeout))
 }
 
 type grpcProbeFunc func(config) probeResult
@@ -148,7 +149,7 @@ func runWithDependencies(cfg config, output io.Writer, grpcProbe grpcProbeFunc, 
 		grpcProbe = probeGRPCHealth
 	}
 	if metricsClient == nil {
-		metricsClient = http.DefaultClient
+		metricsClient = probehttp.NewClient(cfg.Timeout)
 	}
 
 	releaseMarkers := []string{

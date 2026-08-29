@@ -164,15 +164,17 @@ export function validateContainerBuildDefinitions(apiContainer, rustContainer, w
   requireIncludes(
     rustContainer,
     [
-      'FROM rust:1.97-bookworm AS build',
+      'FROM rust:1.97.1-bookworm AS build',
       'COPY proto ./proto',
       'cargo build --release --locked',
+      'COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt',
       'EXPOSE 50051 9102',
       'USER scriptureforge',
       'ENTRYPOINT ["/usr/local/bin/scriptureforge-engine"]',
     ],
     'Rust container build',
   );
+  assert.ok(!rustContainer.includes('apt-get install'), 'Rust runtime must not install unpinned apt packages');
   assert.ok(!rustContainer.includes('sleep infinity'), 'Rust container must not use a placeholder sleep entrypoint');
 
   requireIncludes(
@@ -379,6 +381,21 @@ export function validateTerraformReleaseInputGuards(variables) {
       assert.ok(block.includes(marker), `${hostnameVariable} validation must reject ${marker}`);
     }
   }
+}
+
+export function validateTrustedProxyInputs(variables, tfvarsExample) {
+  const headersBlock = terraformVariableBlock(variables, 'trust_proxy_headers');
+  assert.match(headersBlock, /default\s*=\s*false/, 'trust_proxy_headers must default to disabled');
+  assert.ok(
+    headersBlock.includes('strips and overwrites caller-supplied forwarding headers'),
+    'trust_proxy_headers must document the ingress overwrite contract',
+  );
+
+  const cidrBlock = terraformVariableBlock(variables, 'trusted_proxy_cidrs');
+  assert.ok(cidrBlock.includes('cidrhost(cidr, 0)'), 'trusted_proxy_cidrs must validate CIDR addresses');
+  assert.ok(cidrBlock.includes('10[.]') && cidrBlock.includes('192[.]168[.]'), 'trusted_proxy_cidrs must restrict IPv4 peers to private ranges');
+  assert.ok(cidrBlock.includes('[Ff][Dd]'), 'trusted_proxy_cidrs must support private IPv6 peers');
+  assert.match(tfvarsExample, /trusted_proxy_cidrs\s*=\s*\[\s*"10[.]0[.]0[.]0\/8"\s*\]/, 'terraform.tfvars.example must show a private trusted proxy CIDR');
 }
 
 export function validateNetworkPolicies(networkPolicy) {
@@ -669,6 +686,7 @@ validateTerraformImageDigestInputs(variables, tfvarsExample, app);
 validateTerraformStorageKMSInputs(variables, tfvarsExample, data);
 validateTerraformEKSSecretEncryption(variables, tfvarsExample, eks);
 validateTerraformReleaseInputGuards(variables);
+validateTrustedProxyInputs(variables, tfvarsExample);
 validateNetworkPolicies(networkPolicy);
 assert.ok(!tfvarsExample.includes('skip_final_snapshot = true'), 'tfvars example must not preserve production-hostile snapshot defaults');
 

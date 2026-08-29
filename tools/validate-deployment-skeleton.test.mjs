@@ -10,6 +10,7 @@ import {
   validateTerraformImageDigestInputs,
   validatePlatformRuntimeConfig,
   validateTerraformReleaseInputGuards,
+  validateTrustedProxyInputs,
   validateTerraformSecretInputs,
   validateTerraformStorageKMSInputs,
   validateNetworkPolicies,
@@ -89,10 +90,27 @@ test('validateContainerBuildDefinitions rejects placeholder workload entrypoints
   assert.throws(
     () => validateContainerBuildDefinitions(
       'FROM golang:1.24.3-bookworm AS build\nCOPY go.mod go.sum ./\nCOPY cmd ./cmd\nCOPY internal ./internal\ngo build -trimpath ./cmd/platform-engine\nUSER nonroot:nonroot\nENTRYPOINT ["/usr/local/bin/scriptureforge-api"]\nsleep infinity',
-      'FROM rust:1.97-bookworm AS build\nCOPY proto ./proto\ncargo build --release --locked\nEXPOSE 50051 9102\nUSER scriptureforge\nENTRYPOINT ["/usr/local/bin/scriptureforge-engine"]\nsleep infinity',
+      'FROM rust:1.97.1-bookworm AS build\nCOPY proto ./proto\ncargo build --release --locked\nCOPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt\nEXPOSE 50051 9102\nUSER scriptureforge\nENTRYPOINT ["/usr/local/bin/scriptureforge-engine"]\nsleep infinity',
       'COPY web/package.json web/package-lock.json ./web/\nnpm ci --prefix web\nnpm run build --prefix web\nnpm ci --omit=dev\nUSER node\nCMD ["npm", "run", "start"]',
     ),
     /must not use a placeholder sleep entrypoint/,
+  );
+});
+
+test('validateContainerBuildDefinitions rejects unpinned Rust runtime packages', async () => {
+  const [api, rust, web] = await Promise.all([
+    readFile('services/platform-engine/Dockerfile', 'utf8'),
+    readFile('services/scripture-engine/Dockerfile', 'utf8'),
+    readFile('web/Dockerfile', 'utf8'),
+  ]);
+  const broken = rust.replace(
+    'RUN useradd --system --uid 65532 --no-create-home scriptureforge',
+    'RUN apt-get update && apt-get install --yes ca-certificates\nRUN useradd --system --uid 65532 --no-create-home scriptureforge',
+  );
+  assert.notEqual(broken, rust, 'test fixture must add an apt runtime install');
+  assert.throws(
+    () => validateContainerBuildDefinitions(api, broken, web),
+    /Rust runtime must not install unpinned apt packages/,
   );
 });
 
@@ -318,6 +336,21 @@ test('validateTerraformReleaseInputGuards rejects placeholder hostname validatio
   assert.throws(
     () => validateTerraformReleaseInputGuards(broken),
     /api_hostname validation must reject \.example/,
+  );
+});
+
+test('validateTrustedProxyInputs accepts the fail-closed proxy header contract', async () => {
+  const { variables, tfvarsExample } = await terraformSecretFixtures();
+  assert.doesNotThrow(() => validateTrustedProxyInputs(variables, tfvarsExample));
+});
+
+test('validateTrustedProxyInputs rejects an enabled-by-default proxy header contract', async () => {
+  const { variables, tfvarsExample } = await terraformSecretFixtures();
+  const broken = variables.replace('default     = false', 'default     = true');
+  assert.notEqual(broken, variables, 'test fixture must enable proxy headers by default');
+  assert.throws(
+    () => validateTrustedProxyInputs(broken, tfvarsExample),
+    /default to disabled/,
   );
 });
 

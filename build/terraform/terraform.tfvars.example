@@ -110,6 +110,8 @@ app_secret_arns = {
 grpc_engine_tls_server_name = "scriptureforge-rust-engine"
 
 # Only trust forwarded client headers from the actual ingress/proxy peer ranges.
+# Keep this false until ingress stripping/overwriting is verified in the target environment.
+trust_proxy_headers = false
 trusted_proxy_cidrs = ["10.0.0.0/8"]
 
 # Exact provider hosts permitted to receive AI bearer credentials.
