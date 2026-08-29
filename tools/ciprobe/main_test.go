@@ -1,8 +1,10 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -92,6 +94,59 @@ func TestCIProbeAcceptsLocalArtifactFile(t *testing.T) {
 		t.Fatalf("local artifact probe should propagate structured run identity: %+v", result)
 	}
 	assertProbeSummaryProofMarkers(t, result)
+}
+
+func TestCIProbeAcceptsGitHubArtifactZIP(t *testing.T) {
+	archive := zipArtifact(t, successfulRunArtifact())
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/zip")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(archive)
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := runWithClient(config{
+		RunArtifactURL: "https://api.github.com/repos/example/scriptureforgeai/actions/artifacts/42/zip?artifact=ci-release-evidence",
+		CommitSHA:      testCommitSHA,
+		WorkflowName:   "Security Pipeline Verification",
+		Timeout:        time.Second,
+	}, &output, clientForHTTPServer(t, server))
+	if err != nil {
+		t.Fatalf("expected GitHub artifact ZIP probe to pass: %v\n%s", err, output.String())
+	}
+
+	var result report
+	if err := json.Unmarshal(output.Bytes(), &result); err != nil {
+		t.Fatalf("invalid report JSON: %v", err)
+	}
+	if !result.ThresholdPass || result.ArtifactCommitSHA != testCommitSHA {
+		t.Fatalf("ZIP artifact evidence was not decoded: %+v", result)
+	}
+}
+
+func TestDecodeArtifactTextRejectsOversizedEvidenceEntry(t *testing.T) {
+	archive := zipArtifact(t, strings.Repeat("x", maxArtifactTextBytes+1))
+	if _, err := decodeArtifactText(archive); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("expected oversized ZIP entry rejection, got %v", err)
+	}
+}
+
+func zipArtifact(t *testing.T, content string) []byte {
+	t.Helper()
+	var output bytes.Buffer
+	writer := zip.NewWriter(&output)
+	entry, err := writer.Create("ci-release-evidence.txt")
+	if err != nil {
+		t.Fatalf("create ZIP entry: %v", err)
+	}
+	if _, err := io.WriteString(entry, content); err != nil {
+		t.Fatalf("write ZIP entry: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close ZIP: %v", err)
+	}
+	return output.Bytes()
 }
 
 func assertProbeSummaryProofMarkers(t *testing.T, result report) {

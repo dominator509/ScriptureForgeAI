@@ -1,6 +1,8 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"regexp"
 	"strings"
 	"time"
@@ -74,8 +77,8 @@ func main() {
 
 func parseFlags() config {
 	cfg := config{WorkflowName: "Security Pipeline Verification"}
-	flag.StringVar(&cfg.RunArtifactURL, "run-artifact-url", os.Getenv("STAGING_CI_RUN_ARTIFACT_URL"), "GitHub Actions run summary or artifact URL for the release candidate SHA")
-	flag.StringVar(&cfg.RunArtifactFile, "run-artifact-file", os.Getenv("STAGING_CI_RUN_ARTIFACT_FILE"), "local GitHub Actions run summary or artifact file for the release candidate SHA")
+	flag.StringVar(&cfg.RunArtifactURL, "run-artifact-url", os.Getenv("STAGING_CI_RUN_ARTIFACT_URL"), "GitHub Actions run summary or artifact URL (text or ZIP) for the release candidate SHA")
+	flag.StringVar(&cfg.RunArtifactFile, "run-artifact-file", os.Getenv("STAGING_CI_RUN_ARTIFACT_FILE"), "local GitHub Actions run summary or artifact file (text or ZIP) for the release candidate SHA")
 	flag.StringVar(&cfg.CommitSHA, "commit-sha", os.Getenv("STAGING_RELEASE_COMMIT"), "full 40-character release candidate commit SHA")
 	flag.StringVar(&cfg.WorkflowName, "workflow-name", envOrDefault("STAGING_CI_WORKFLOW_NAME", cfg.WorkflowName), "expected GitHub Actions workflow name")
 	flag.DurationVar(&cfg.Timeout, "timeout", 5*time.Second, "per-probe timeout")
@@ -172,13 +175,15 @@ func probeCIArtifact(client *http.Client, cfg config) probeResult {
 		return failedProbe("github-actions-release-run", cfg.RunArtifactURL, err.Error())
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512*1024))
-	bodyText := string(body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxArtifactBytes+1))
+	bodyText, decodeErr := decodeArtifactText(body)
 	metadata := extractCIArtifactMetadata(bodyText)
-	passed := resp.StatusCode >= 200 && resp.StatusCode < 300 && ciArtifactTextPasses(bodyText, cfg) && ciArtifactMetadataPasses(metadata, cfg)
+	passed := resp.StatusCode >= 200 && resp.StatusCode < 300 && decodeErr == nil && ciArtifactTextPasses(bodyText, cfg) && ciArtifactMetadataPasses(metadata, cfg)
 	summary := fmt.Sprintf("got HTTP %d in %dms", resp.StatusCode, latency)
 	if passed {
 		summary += "; " + strings.Join(requiredProofMarkers(), " ")
+	} else if decodeErr != nil {
+		summary += "; artifact decode failed"
 	} else {
 		summary += "; artifact must prove the exact release SHA completed all required CI gates successfully"
 	}
@@ -198,12 +203,14 @@ func probeCIArtifactFile(cfg config) probeResult {
 	if err != nil {
 		return failedProbe("github-actions-release-run", cfg.RunArtifactFile, err.Error())
 	}
-	bodyText := string(body)
+	bodyText, decodeErr := decodeArtifactText(body)
 	metadata := extractCIArtifactMetadata(bodyText)
-	passed := ciArtifactTextPasses(bodyText, cfg) && ciArtifactMetadataPasses(metadata, cfg)
+	passed := decodeErr == nil && ciArtifactTextPasses(bodyText, cfg) && ciArtifactMetadataPasses(metadata, cfg)
 	summary := fmt.Sprintf("read local artifact in %dms", latency)
 	if passed {
 		summary += "; " + strings.Join(requiredProofMarkers(), " ")
+	} else if decodeErr != nil {
+		summary += "; artifact decode failed"
 	} else {
 		summary += "; artifact must prove the exact release SHA completed all required CI gates successfully"
 	}
@@ -213,6 +220,51 @@ func probeCIArtifactFile(cfg config) probeResult {
 	metadata.LatencyMS = latency
 	metadata.ResultSummary = summary
 	return metadata
+}
+
+const (
+	maxArtifactBytes     = 5 * 1024 * 1024
+	maxArtifactTextBytes = 512 * 1024
+)
+
+func decodeArtifactText(body []byte) (string, error) {
+	if len(body) > maxArtifactBytes {
+		return "", fmt.Errorf("artifact exceeds %d-byte limit", maxArtifactBytes)
+	}
+	if !bytes.HasPrefix(body, []byte("PK\x03\x04")) {
+		return string(body), nil
+	}
+
+	archive, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		return "", fmt.Errorf("read artifact ZIP: %w", err)
+	}
+	var evidenceFile *zip.File
+	for _, file := range archive.File {
+		if file.FileInfo().IsDir() || path.Base(file.Name) != "ci-release-evidence.txt" {
+			continue
+		}
+		if evidenceFile != nil {
+			return "", errors.New("artifact ZIP contains multiple ci-release-evidence.txt files")
+		}
+		evidenceFile = file
+	}
+	if evidenceFile == nil {
+		return "", errors.New("artifact ZIP does not contain ci-release-evidence.txt")
+	}
+	reader, err := evidenceFile.Open()
+	if err != nil {
+		return "", fmt.Errorf("open ci-release-evidence.txt from artifact ZIP: %w", err)
+	}
+	defer reader.Close()
+	text, err := io.ReadAll(io.LimitReader(reader, maxArtifactTextBytes+1))
+	if err != nil {
+		return "", fmt.Errorf("read ci-release-evidence.txt from artifact ZIP: %w", err)
+	}
+	if len(text) > maxArtifactTextBytes {
+		return "", fmt.Errorf("ci-release-evidence.txt exceeds %d-byte limit", maxArtifactTextBytes)
+	}
+	return string(text), nil
 }
 
 func extractCIArtifactMetadata(text string) probeResult {
