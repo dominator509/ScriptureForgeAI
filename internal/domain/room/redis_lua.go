@@ -41,9 +41,25 @@ func NewRoomStateManager(rdb *redis.Client) *RoomStateManager {
 	return &RoomStateManager{client: rdb}
 }
 
+func (rsm *RoomStateManager) requireClient() (*redis.Client, error) {
+	if rsm == nil || rsm.client == nil {
+		return nil, &PlatformException{
+			Category: RoomStateFault,
+			Message:  "room state backend is not configured",
+			Code:     503,
+		}
+	}
+	return rsm.client, nil
+}
+
 // UpdateParticipantDuration safely increments a user's duration in a room using a Lua script
 // to avoid data race conditions under high concurrent WebSocket loads.
 func (rsm *RoomStateManager) UpdateParticipantDuration(ctx context.Context, roomID, userID string, durationSeconds int) error {
+	client, err := rsm.requireClient()
+	if err != nil {
+		return err
+	}
+
 	// Lua script: Increment duration safely.
 	// KEYS[1] = room key
 	// ARGV[1] = user ID
@@ -60,7 +76,7 @@ func (rsm *RoomStateManager) UpdateParticipantDuration(ctx context.Context, room
 
 	participantsKey := roomKey(roomID, "participants")
 
-	err := script.Run(ctx, rsm.client, []string{participantsKey}, userID, durationSeconds).Err()
+	err = script.Run(ctx, client, []string{participantsKey}, userID, durationSeconds).Err()
 	if err != nil {
 		return &PlatformException{
 			Category: RoomStateFault,
@@ -73,6 +89,11 @@ func (rsm *RoomStateManager) UpdateParticipantDuration(ctx context.Context, room
 
 // SetRoomActiveState atomically updates the active status of a room
 func (rsm *RoomStateManager) SetRoomActiveState(ctx context.Context, roomID string, active bool) error {
+	client, err := rsm.requireClient()
+	if err != nil {
+		return err
+	}
+
 	script := redis.NewScript(`
 		redis.call("HSET", KEYS[1], "active", ARGV[1])
 		return 1
@@ -84,7 +105,7 @@ func (rsm *RoomStateManager) SetRoomActiveState(ctx context.Context, roomID stri
 		activeStr = "true"
 	}
 
-	err := script.Run(ctx, rsm.client, []string{metaKey}, activeStr).Err()
+	err = script.Run(ctx, client, []string{metaKey}, activeStr).Err()
 	if err != nil {
 		return &PlatformException{
 			Category: RoomStateFault,
@@ -107,6 +128,11 @@ func (rsm *RoomStateManager) AppendRoomEventAndPublish(ctx context.Context, room
 }
 
 func (rsm *RoomStateManager) appendRoomEvent(ctx context.Context, roomID, eventJSON, sourceID string) (int64, error) {
+	client, err := rsm.requireClient()
+	if err != nil {
+		return 0, err
+	}
+
 	script := redis.NewScript(`
 		local seq = redis.call("INCR", KEYS[1])
 		local event = cjson.decode(ARGV[1])
@@ -125,7 +151,7 @@ func (rsm *RoomStateManager) appendRoomEvent(ctx context.Context, roomID, eventJ
 	stateKey := roomKey(roomID, "latest")
 	eventChannel := roomKey(roomID, "events")
 	ttlSeconds := int((24 * time.Hour).Seconds())
-	seq, err := script.Run(ctx, rsm.client, []string{seqKey, stateKey, eventChannel}, eventJSON, ttlSeconds, sourceID).Int64()
+	seq, err := script.Run(ctx, client, []string{seqKey, stateKey, eventChannel}, eventJSON, ttlSeconds, sourceID).Int64()
 	if err != nil {
 		return 0, &PlatformException{
 			Category: RoomStateFault,
@@ -138,8 +164,13 @@ func (rsm *RoomStateManager) appendRoomEvent(ctx context.Context, roomID, eventJ
 
 // GetLatestRoomEvent retrieves the last accepted event for HTTP polling fallback.
 func (rsm *RoomStateManager) GetLatestRoomEvent(ctx context.Context, roomID string) (string, error) {
+	client, err := rsm.requireClient()
+	if err != nil {
+		return "", err
+	}
+
 	stateKey := roomKey(roomID, "latest")
-	value, err := rsm.client.Get(ctx, stateKey).Result()
+	value, err := client.Get(ctx, stateKey).Result()
 	if err == redis.Nil {
 		return "{}", nil
 	}
@@ -157,15 +188,17 @@ func (rsm *RoomStateManager) GetLatestRoomEvent(ctx context.Context, roomID stri
 // for signed provider callbacks. The caller releases the key when processing
 // fails so the provider can safely retry the delivery.
 func (rsm *RoomStateManager) ClaimWebhookDelivery(ctx context.Context, deliveryID string, ttl time.Duration) (bool, error) {
-	if rsm == nil || rsm.client == nil {
-		return false, fmt.Errorf("room state backend is not configured")
+	client, err := rsm.requireClient()
+	if err != nil {
+		return false, err
 	}
-	return rsm.client.SetNX(ctx, "room:webhook:"+deliveryID, "1", ttl).Result()
+	return client.SetNX(ctx, "room:webhook:"+deliveryID, "1", ttl).Result()
 }
 
 func (rsm *RoomStateManager) ReleaseWebhookDelivery(ctx context.Context, deliveryID string) error {
-	if rsm == nil || rsm.client == nil {
-		return fmt.Errorf("room state backend is not configured")
+	client, err := rsm.requireClient()
+	if err != nil {
+		return err
 	}
-	return rsm.client.Del(ctx, "room:webhook:"+deliveryID).Err()
+	return client.Del(ctx, "room:webhook:"+deliveryID).Err()
 }

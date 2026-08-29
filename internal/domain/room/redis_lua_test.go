@@ -3,6 +3,7 @@ package room
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -11,6 +12,49 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 )
+
+func TestRoomStateManagerFailsClosedWithoutRedisClient(t *testing.T) {
+	ctx := context.Background()
+	managers := []*RoomStateManager{NewRoomStateManager(nil), nil}
+	for index, manager := range managers {
+		t.Run(fmt.Sprintf("manager-%d", index), func(t *testing.T) {
+			assertRoomStateUnavailable := func(err error) {
+				t.Helper()
+				var platformErr *PlatformException
+				if !errors.As(err, &platformErr) {
+					t.Fatalf("error = %T %v, want *PlatformException", err, err)
+				}
+				if platformErr.Category != RoomStateFault || platformErr.Code != 503 {
+					t.Fatalf("platform error = %+v, want ROOM_STATE_FAULT/503", platformErr)
+				}
+			}
+
+			assertRoomStateUnavailable(manager.UpdateParticipantDuration(ctx, "room", "user", 1))
+			assertRoomStateUnavailable(manager.SetRoomActiveState(ctx, "room", true))
+			if _, err := manager.AppendRoomEvent(ctx, "room", `{"type":"cursor"}`); err != nil {
+				assertRoomStateUnavailable(err)
+			} else {
+				t.Fatal("AppendRoomEvent unexpectedly succeeded")
+			}
+			if _, err := manager.AppendRoomEventAndPublish(ctx, "room", `{"type":"cursor"}`, "source"); err != nil {
+				assertRoomStateUnavailable(err)
+			} else {
+				t.Fatal("AppendRoomEventAndPublish unexpectedly succeeded")
+			}
+			if _, err := manager.GetLatestRoomEvent(ctx, "room"); err != nil {
+				assertRoomStateUnavailable(err)
+			} else {
+				t.Fatal("GetLatestRoomEvent unexpectedly succeeded")
+			}
+			if _, err := manager.ClaimWebhookDelivery(ctx, "delivery", time.Minute); err != nil {
+				assertRoomStateUnavailable(err)
+			} else {
+				t.Fatal("ClaimWebhookDelivery unexpectedly succeeded")
+			}
+			assertRoomStateUnavailable(manager.ReleaseWebhookDelivery(ctx, "delivery"))
+		})
+	}
+}
 
 func TestAppendRoomEventAssignsContiguousSequencesUnderConcurrency(t *testing.T) {
 	server := miniredis.RunT(t)
