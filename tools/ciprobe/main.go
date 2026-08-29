@@ -22,6 +22,7 @@ import (
 type config struct {
 	RunArtifactURL  string
 	RunArtifactFile string
+	ArtifactToken   string
 	CommitSHA       string
 	WorkflowName    string
 	Timeout         time.Duration
@@ -77,12 +78,13 @@ func main() {
 
 func parseFlags() config {
 	cfg := config{WorkflowName: "Security Pipeline Verification"}
-	flag.StringVar(&cfg.RunArtifactURL, "run-artifact-url", os.Getenv("STAGING_CI_RUN_ARTIFACT_URL"), "GitHub Actions run summary or artifact URL (text or ZIP) for the release candidate SHA")
+	flag.StringVar(&cfg.RunArtifactURL, "run-artifact-url", os.Getenv("STAGING_CI_RUN_ARTIFACT_URL"), "GitHub Actions run summary or artifact URL (text or ZIP) for the release candidate SHA; token from STAGING_CI_ARTIFACT_TOKEN or GitHub token env is optional")
 	flag.StringVar(&cfg.RunArtifactFile, "run-artifact-file", os.Getenv("STAGING_CI_RUN_ARTIFACT_FILE"), "local GitHub Actions run summary or artifact file (text or ZIP) for the release candidate SHA")
 	flag.StringVar(&cfg.CommitSHA, "commit-sha", os.Getenv("STAGING_RELEASE_COMMIT"), "full 40-character release candidate commit SHA")
 	flag.StringVar(&cfg.WorkflowName, "workflow-name", envOrDefault("STAGING_CI_WORKFLOW_NAME", cfg.WorkflowName), "expected GitHub Actions workflow name")
 	flag.DurationVar(&cfg.Timeout, "timeout", 5*time.Second, "per-probe timeout")
 	flag.Parse()
+	cfg.ArtifactToken = artifactTokenForURL(cfg.RunArtifactURL)
 	return cfg
 }
 
@@ -169,6 +171,9 @@ func probeCIArtifact(client *http.Client, cfg config) probeResult {
 		return failedProbe("github-actions-release-run", cfg.RunArtifactURL, err.Error())
 	}
 	req.Header.Set("User-Agent", "scriptureforge-ciprobe/1.0")
+	if token := strings.TrimSpace(cfg.ArtifactToken); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	resp, err := client.Do(req)
 	latency := time.Since(start).Milliseconds()
 	if err != nil {
@@ -265,6 +270,25 @@ func decodeArtifactText(body []byte) (string, error) {
 		return "", fmt.Errorf("ci-release-evidence.txt exceeds %d-byte limit", maxArtifactTextBytes)
 	}
 	return string(text), nil
+}
+
+func artifactTokenForURL(rawURL string) string {
+	if token := strings.TrimSpace(os.Getenv("STAGING_CI_ARTIFACT_TOKEN")); token != "" {
+		return token
+	}
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || !isGitHubArtifactHost(parsed.Hostname()) {
+		return ""
+	}
+	if token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); token != "" {
+		return token
+	}
+	return strings.TrimSpace(os.Getenv("GH_TOKEN"))
+}
+
+func isGitHubArtifactHost(host string) bool {
+	host = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
+	return host == "api.github.com" || host == "github.com"
 }
 
 func extractCIArtifactMetadata(text string) probeResult {

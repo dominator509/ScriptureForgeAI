@@ -125,6 +125,53 @@ func TestCIProbeAcceptsGitHubArtifactZIP(t *testing.T) {
 	}
 }
 
+func TestCIProbeUsesConfiguredArtifactTokenWithoutEmittingIt(t *testing.T) {
+	archive := zipArtifact(t, successfulRunArtifact())
+	const token = "test-artifact-token"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+token {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/zip")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(archive)
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := runWithClient(config{
+		RunArtifactURL: "https://api.github.com/repos/example/scriptureforgeai/actions/artifacts/42/zip?artifact=ci-release-evidence",
+		ArtifactToken:  token,
+		CommitSHA:      testCommitSHA,
+		WorkflowName:   "Security Pipeline Verification",
+		Timeout:        time.Second,
+	}, &output, clientForHTTPServer(t, server))
+	if err != nil {
+		t.Fatalf("expected authenticated GitHub artifact probe to pass: %v\n%s", err, output.String())
+	}
+	if strings.Contains(output.String(), token) {
+		t.Fatalf("artifact token must not be emitted in probe output: %s", output.String())
+	}
+}
+
+func TestArtifactTokenFallbackIsRestrictedToGitHubHosts(t *testing.T) {
+	t.Setenv("STAGING_CI_ARTIFACT_TOKEN", "")
+	t.Setenv("GITHUB_TOKEN", "github-token")
+	t.Setenv("GH_TOKEN", "gh-token")
+
+	if token := artifactTokenForURL("https://ci-artifacts.staging.scriptureforge.ai/ci/ci-release-evidence.txt"); token != "" {
+		t.Fatalf("ambient GitHub token must not be sent to external artifact hosts")
+	}
+	if token := artifactTokenForURL("https://api.github.com/repos/example/scriptureforgeai/actions/artifacts/42/zip"); token != "github-token" {
+		t.Fatalf("expected GitHub token for GitHub artifact host, got %q", token)
+	}
+	t.Setenv("STAGING_CI_ARTIFACT_TOKEN", "explicit-token")
+	if token := artifactTokenForURL("https://ci-artifacts.staging.scriptureforge.ai/ci/ci-release-evidence.txt"); token != "explicit-token" {
+		t.Fatalf("expected explicit staging token, got %q", token)
+	}
+}
+
 func TestDecodeArtifactTextRejectsOversizedEvidenceEntry(t *testing.T) {
 	archive := zipArtifact(t, strings.Repeat("x", maxArtifactTextBytes+1))
 	if _, err := decodeArtifactText(archive); err == nil || !strings.Contains(err.Error(), "exceeds") {
