@@ -18,6 +18,7 @@ This file records repository-level implementation history. It is not a substitut
 - Made Terraform default `TRUST_PROXY_HEADERS=false`; enabling forwarded client identity now requires an explicitly verified ingress overwrite contract in addition to exact trusted proxy CIDRs.
 - Removed the CI same-channel `kubectl` binary/checksum download; CI now requires the hosted runner's existing client and verifies its PATH/version before strict staging checks.
 - Pinned the Rust CI and Scripture Engine build lanes to Rust `1.97.1` and copied the builder CA bundle into the runtime image so runtime image construction does not install an unpinned apt package.
+- Verified exact release tip `fc7e105cb0f979535e78cd63ee56cd49ab3fef8f` in hosted Security Pipeline Verification pull-request run `33280938361` (#717); all workflow gates passed, while staging-manifest ingestion and deployed evidence remain external.
 - Added replica-wide Redis leased semaphores for active room WebSocket caps across global, tenant, and user scopes, with renewal, crash expiry, and fail-closed outage handling.
 - Wired production abuse limiting to an atomic Redis fixed-window backend shared across replicas, with bounded remote identity registration and fail-closed 503 behavior when Redis is unavailable; local nil-client fallback remains explicit for isolated tests.
 - Added a dedicated unauthenticated Redis abuse budget for `/api/webhooks/zoom`, with route coverage and strict staging evidence requiring the `zoom_webhook` profile and its redacted request/window assignments.
