@@ -46,12 +46,12 @@ type openaiResponse struct {
 
 // NewLLMClient initializes the explicit boundary client.
 func NewLLMClient() *LLMClient {
-	key := os.Getenv("OPENAI_API_KEY")
-	endpoint := os.Getenv("AI_CHAT_ENDPOINT")
+	key := strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
+	endpoint := strings.TrimSpace(os.Getenv("AI_CHAT_ENDPOINT"))
 	if endpoint == "" {
 		endpoint = "https://api.openai.com/v1/chat/completions"
 	}
-	model := os.Getenv("AI_CHAT_MODEL")
+	model := strings.TrimSpace(os.Getenv("AI_CHAT_MODEL"))
 	if model == "" {
 		model = "gpt-4"
 	}
@@ -100,7 +100,7 @@ func (c *LLMClient) CreateCompletion(ctx context.Context, safePrompt string, com
 		observability.ObserveDependencyFromContext(ctx, "ai_provider", "chat_completion", status, duration)
 		observability.ObserveAIInferenceFromContext(ctx, c.Model, status, duration)
 	}()
-	if c.APIKey == "" {
+	if strings.TrimSpace(c.APIKey) == "" {
 		status = "configuration_error"
 		return "", &ai.PlatformException{
 			Category: "AI_CONFIGURATION_FAULT",

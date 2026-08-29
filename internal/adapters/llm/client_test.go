@@ -22,23 +22,37 @@ func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 
 func TestExecuteFailsClosedWhenAPIKeyMissingEvenInTesting(t *testing.T) {
 	t.Setenv("GO_ENV", "testing")
-	client := &LLMClient{
-		Endpoint:   "http://127.0.0.1/should-not-be-called",
-		Model:      "test-model",
-		HTTPClient: http.DefaultClient,
-		MaxRetries: 0,
-	}
+	for _, apiKey := range []string{"", "   \t"} {
+		client := &LLMClient{
+			APIKey:     apiKey,
+			Endpoint:   "http://127.0.0.1/should-not-be-called",
+			Model:      "test-model",
+			HTTPClient: http.DefaultClient,
+			MaxRetries: 0,
+		}
 
-	response, err := client.Execute(context.Background(), "study genesis", "[Genesis 1:1] In the beginning", ai.NewResponseVerificationSubsystem())
-	if err == nil {
-		t.Fatalf("Execute returned nil error and response %q, want fail-closed missing-key error", response)
+		response, err := client.Execute(context.Background(), "study genesis", "[Genesis 1:1] In the beginning", ai.NewResponseVerificationSubsystem())
+		if err == nil {
+			t.Fatalf("Execute returned nil error and response %q for API key %q, want fail-closed missing-key error", response, apiKey)
+		}
+		pe, ok := err.(*ai.PlatformException)
+		if !ok {
+			t.Fatalf("Execute error = %T %v, want *ai.PlatformException", err, err)
+		}
+		if pe.Category != "AI_CONFIGURATION_FAULT" || pe.Code != http.StatusServiceUnavailable {
+			t.Fatalf("missing-key error = %#v, want AI_CONFIGURATION_FAULT 503", pe)
+		}
 	}
-	pe, ok := err.(*ai.PlatformException)
-	if !ok {
-		t.Fatalf("Execute error = %T %v, want *ai.PlatformException", err, err)
-	}
-	if pe.Category != "AI_CONFIGURATION_FAULT" || pe.Code != http.StatusServiceUnavailable {
-		t.Fatalf("missing-key error = %#v, want AI_CONFIGURATION_FAULT 503", pe)
+}
+
+func TestNewLLMClientTrimsProviderEnvironmentValues(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", " provider-key ")
+	t.Setenv("AI_CHAT_ENDPOINT", " https://api.openai.com/v1/chat/completions ")
+	t.Setenv("AI_CHAT_MODEL", " provider-model ")
+
+	client := NewLLMClient()
+	if client.APIKey != "provider-key" || client.Endpoint != "https://api.openai.com/v1/chat/completions" || client.Model != "provider-model" {
+		t.Fatalf("provider configuration = key %q endpoint %q model %q, want trimmed values", client.APIKey, client.Endpoint, client.Model)
 	}
 }
 
