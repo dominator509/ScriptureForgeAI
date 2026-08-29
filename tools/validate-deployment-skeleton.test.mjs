@@ -89,11 +89,27 @@ test('validateContainerBuildDefinitions accepts production workload Dockerfiles'
 test('validateContainerBuildDefinitions rejects placeholder workload entrypoints', () => {
   assert.throws(
     () => validateContainerBuildDefinitions(
-      'FROM golang:1.24.3-bookworm AS build\nCOPY go.mod go.sum ./\nCOPY cmd ./cmd\nCOPY internal ./internal\ngo build -trimpath ./cmd/platform-engine\nUSER nonroot:nonroot\nENTRYPOINT ["/usr/local/bin/scriptureforge-api"]\nsleep infinity',
-      'FROM rust:1.97.1-bookworm AS build\nCOPY proto ./proto\ncargo build --release --locked\nCOPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt\nEXPOSE 50051 9102\nUSER scriptureforge\nENTRYPOINT ["/usr/local/bin/scriptureforge-engine"]\nsleep infinity',
-      'COPY web/package.json web/package-lock.json ./web/\nnpm ci --prefix web\nnpm run build --prefix web\nnpm ci --omit=dev\nUSER node\nCMD ["npm", "run", "start"]',
+      'FROM golang:1.24.3-bookworm@sha256:29d97266c1d341b7424e2f5085440b74654ae0b61ecdba206bc12d6264844e21 AS build\nCOPY go.mod go.sum ./\nCOPY cmd ./cmd\nCOPY internal ./internal\ngo build -trimpath ./cmd/platform-engine\nUSER nonroot:nonroot\nENTRYPOINT ["/usr/local/bin/scriptureforge-api"]\nsleep infinity',
+      'FROM rust:1.97.1-bookworm@sha256:0e2bcaef56d041a486784e54104a81aebe0da44bd03019bd70bc0401e42e4a97 AS build\nCOPY proto ./proto\ncargo build --release --locked\nCOPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt\nEXPOSE 50051 9102\nUSER scriptureforge\nENTRYPOINT ["/usr/local/bin/scriptureforge-engine"]\nsleep infinity',
+      'FROM node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5 AS runtime\nCOPY web/package.json web/package-lock.json ./web/\nnpm ci --prefix web\nnpm run build --prefix web\nnpm ci --omit=dev\nUSER node\nCMD ["npm", "run", "start"]',
     ),
     /must not use a placeholder sleep entrypoint/,
+  );
+});
+
+test('validateContainerBuildDefinitions rejects mutable base image tags', async () => {
+  const [api, rust, web] = await Promise.all([
+    readFile('services/platform-engine/Dockerfile', 'utf8'),
+    readFile('services/scripture-engine/Dockerfile', 'utf8'),
+    readFile('web/Dockerfile', 'utf8'),
+  ]);
+  const broken = api.replace(
+    'golang:1.24.3-bookworm@sha256:29d97266c1d341b7424e2f5085440b74654ae0b61ecdba206bc12d6264844e21',
+    'golang:1.24.3-bookworm',
+  );
+  assert.throws(
+    () => validateContainerBuildDefinitions(broken, rust, web),
+    /FROM image must use an immutable sha256 digest/,
   );
 });
 
@@ -117,6 +133,18 @@ test('validateContainerBuildDefinitions rejects unpinned Rust runtime packages',
 test('validateLocalComposeConfig accepts the current local service wiring', async () => {
   const compose = await readFile('docker-compose.yml', 'utf8');
   assert.doesNotThrow(() => validateLocalComposeConfig(compose));
+});
+
+test('validateLocalComposeConfig rejects mutable service image tags', async () => {
+  const compose = await readFile('docker-compose.yml', 'utf8');
+  const broken = compose.replace(
+    'redis:7@sha256:71da9275c5f3fcb97d0fa0c8c5b36cc995327265420f17a04bfd544f458059f7',
+    'redis:7',
+  );
+  assert.throws(
+    () => validateLocalComposeConfig(broken),
+    /local Docker Compose image must use an immutable sha256 digest/,
+  );
 });
 
 test('validateLocalComposeConfig rejects legacy service contexts and environment names', async () => {

@@ -23,7 +23,7 @@ test('parseDockerRLSArgs keeps conservative defaults and supports overrides', ()
     '--container-name',
     'sfai-test-db',
     '--image',
-    'pgvector/pgvector:pg16',
+    'pgvector/pgvector@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b',
   ]), {
     ...defaultDockerRLSConfig,
     keep: true,
@@ -35,7 +35,7 @@ test('parseDockerRLSArgs keeps conservative defaults and supports overrides', ()
 test('buildDockerRunCommand mounts migrations into pgvector container', () => {
   const command = buildDockerRunCommand(defaultDockerRLSConfig, 'C:\\dev\\ScriptureForgeAI');
   assert.deepEqual(command.slice(0, 4), ['docker', 'run', '--name', 'scriptureforge-rls-db']);
-  assert.equal(command.includes('pgvector/pgvector:pg16'), true);
+  assert.equal(command.includes('pgvector/pgvector@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b'), true);
   assert.equal(command.includes('POSTGRES_PASSWORD=scriptureforge'), true);
   assert.equal(command.includes('POSTGRES_DB=scriptureforge'), true);
   assert.equal(command.includes('55433:5432'), true);

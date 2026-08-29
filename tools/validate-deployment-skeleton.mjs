@@ -144,10 +144,13 @@ export function validateDatabaseTransportConfig(platformMain, rustMain) {
 }
 
 export function validateContainerBuildDefinitions(apiContainer, rustContainer, webContainer) {
+  assertPinnedDockerfileBases(apiContainer, 'API container build');
+  assertPinnedDockerfileBases(rustContainer, 'Rust container build');
+  assertPinnedDockerfileBases(webContainer, 'web container build');
   requireIncludes(
     apiContainer,
     [
-      'FROM golang:1.24.3-bookworm AS build',
+      'FROM golang:1.24.3-bookworm@sha256:29d97266c1d341b7424e2f5085440b74654ae0b61ecdba206bc12d6264844e21 AS build',
       'COPY go.mod go.sum ./',
       'COPY cmd ./cmd',
       'COPY internal ./internal',
@@ -164,7 +167,7 @@ export function validateContainerBuildDefinitions(apiContainer, rustContainer, w
   requireIncludes(
     rustContainer,
     [
-      'FROM rust:1.97.1-bookworm AS build',
+      'FROM rust:1.97.1-bookworm@sha256:0e2bcaef56d041a486784e54104a81aebe0da44bd03019bd70bc0401e42e4a97 AS build',
       'COPY proto ./proto',
       'cargo build --release --locked',
       'COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt',
@@ -189,13 +192,46 @@ export function validateContainerBuildDefinitions(apiContainer, rustContainer, w
     ],
     'web container build',
   );
+  assertExpectedDockerfileBases(apiContainer, 'API container build', [
+    'golang:1.24.3-bookworm@sha256:29d97266c1d341b7424e2f5085440b74654ae0b61ecdba206bc12d6264844e21',
+    'gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab',
+  ]);
+  assertExpectedDockerfileBases(rustContainer, 'Rust container build', [
+    'rust:1.97.1-bookworm@sha256:0e2bcaef56d041a486784e54104a81aebe0da44bd03019bd70bc0401e42e4a97',
+    'debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171',
+  ]);
+  assertExpectedDockerfileBases(webContainer, 'web container build', [
+    'node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5',
+  ]);
+}
+
+function assertPinnedDockerfileBases(source, label) {
+  const refs = [...String(source).matchAll(/^\s*FROM\s+(?:--platform=\S+\s+)?([^\s]+)(?:\s+AS\s+[^\s]+)?\s*$/gim)]
+    .map((match) => match[1]);
+  assert.ok(refs.length > 0, `${label} must declare at least one FROM image`);
+  for (const ref of refs) {
+    assert.match(ref, /@sha256:[0-9a-f]{64}$/i, `${label} FROM image must use an immutable sha256 digest: ${ref}`);
+  }
+}
+
+function assertExpectedDockerfileBases(source, label, expectedRefs) {
+  const refs = [...String(source).matchAll(/^\s*FROM\s+(?:--platform=\S+\s+)?([^\s]+)(?:\s+AS\s+[^\s]+)?\s*$/gim)]
+    .map((match) => match[1]);
+  for (const expectedRef of expectedRefs) {
+    assert.ok(refs.includes(expectedRef), `${label} must retain the expected pinned base image: ${expectedRef}`);
+  }
 }
 
 export function validateLocalComposeConfig(compose) {
+  const imageRefs = [...String(compose).matchAll(/^\s*image:\s*([^\s#]+)\s*$/gim)].map((match) => match[1]);
+  for (const ref of imageRefs) {
+    assert.match(ref, /@sha256:[0-9a-f]{64}$/i, `local Docker Compose image must use an immutable sha256 digest: ${ref}`);
+  }
   requireIncludes(
     compose,
     [
-      'image: pgvector/pgvector@sha256:eac621400b7b7ff52493883e41e930e3d104695fea5b68cc0c42370cf7880067',
+      'image: pgvector/pgvector@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b',
+      'image: redis:7@sha256:71da9275c5f3fcb97d0fa0c8c5b36cc995327265420f17a04bfd544f458059f7',
       './migrations:/docker-entrypoint-initdb.d:ro',
       'context: .',
       'dockerfile: services/platform-engine/Dockerfile',

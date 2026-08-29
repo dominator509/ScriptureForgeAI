@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { runRLSDBIntegration } from './run-rls-db-integration.mjs';
 
 export const defaultDockerRLSConfig = {
-  image: 'pgvector/pgvector:pg16',
+  image: 'pgvector/pgvector@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b',
   containerName: 'scriptureforge-rls-db',
   host: 'localhost',
   port: '55433',

@@ -2,7 +2,7 @@
 # skeleton and inject secrets through AWS Secrets Manager and the CSI driver.
 services:
   postgres:
-    image: pgvector/pgvector@sha256:eac621400b7b7ff52493883e41e930e3d104695fea5b68cc0c42370cf7880067
+    image: pgvector/pgvector@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: scriptureforge-dev-root
@@ -19,7 +19,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:7
+    image: redis:7@sha256:71da9275c5f3fcb97d0fa0c8c5b36cc995327265420f17a04bfd544f458059f7
     ports:
       - "6379:6379"
     healthcheck:

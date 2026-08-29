@@ -20,7 +20,7 @@ export const ciWorkflowProofMarkers = [
 export const requiredMarkers = [
   { id: 'go-setup', text: "go-version: '1.24.3'" },
   { id: 'codex-branch-push', text: '"codex/**"' },
-  { id: 'postgres-service', text: 'pgvector/pgvector@sha256:eac621400b7b7ff52493883e41e930e3d104695fea5b68cc0c42370cf7880067' },
+  { id: 'postgres-service', text: 'pgvector/pgvector@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b' },
   { id: 'go-fuzz', text: 'go test -fuzz=FuzzSanitizeInput' },
   { id: 'go-test', text: 'node tools/run-go-core-gate.mjs --mode test --bin go' },
   { id: 'postgres-schema', text: 'Apply Postgres Integration Schema' },
