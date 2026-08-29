@@ -84,3 +84,75 @@ func TestProcessFailsClosedForInvalidInputs(t *testing.T) {
 		t.Fatalf("processor failure = %#v, want MAPREDUCE_PROCESSING_FAULT", err)
 	}
 }
+
+type captureCompletionService struct {
+	request CompletionRequest
+	err     error
+}
+
+func (s *captureCompletionService) CreateCompletion(_ context.Context, request CompletionRequest) (string, error) {
+	s.request = request
+	if s.err != nil {
+		return "", s.err
+	}
+	return "generated", nil
+}
+
+func TestMapReducePipelineUsesConfiguredChatModel(t *testing.T) {
+	t.Setenv("AI_CHAT_MODEL", "env-model")
+	service := &captureCompletionService{}
+	pipeline := &MapReducePipeline{LLM: service}
+
+	response, err := pipeline.executeReduce(context.Background(), "prompt")
+	if err != nil {
+		t.Fatalf("executeReduce returned error: %v", err)
+	}
+	if response != "generated" {
+		t.Fatalf("response = %q, want generated", response)
+	}
+	if service.request.Model != "env-model" {
+		t.Fatalf("model = %q, want env-model", service.request.Model)
+	}
+}
+
+func TestMapReducePipelineModelFieldOverridesEnvironment(t *testing.T) {
+	t.Setenv("AI_CHAT_MODEL", "env-model")
+	service := &captureCompletionService{}
+	pipeline := &MapReducePipeline{LLM: service, Model: "configured-model"}
+
+	if _, err := pipeline.executeReduce(context.Background(), "prompt"); err != nil {
+		t.Fatalf("executeReduce returned error: %v", err)
+	}
+	if service.request.Model != "configured-model" {
+		t.Fatalf("model = %q, want configured-model", service.request.Model)
+	}
+}
+
+func TestMapReducePipelineKeepsCurrentDefaultModel(t *testing.T) {
+	t.Setenv("AI_CHAT_MODEL", "")
+	service := &captureCompletionService{}
+	pipeline := &MapReducePipeline{LLM: service}
+
+	if _, err := pipeline.executeReduce(context.Background(), "prompt"); err != nil {
+		t.Fatalf("executeReduce returned error: %v", err)
+	}
+	if service.request.Model != defaultMapReduceModel {
+		t.Fatalf("model = %q, want %q", service.request.Model, defaultMapReduceModel)
+	}
+}
+
+func TestMapReducePipelineDoesNotExposeCompletionErrorDetails(t *testing.T) {
+	service := &captureCompletionService{err: errors.New("provider secret should not escape")}
+	pipeline := &MapReducePipeline{LLM: service}
+
+	_, err := pipeline.executeReduce(context.Background(), "prompt")
+	if err == nil {
+		t.Fatal("executeReduce returned nil error")
+	}
+	if strings.Contains(err.Error(), "provider secret") {
+		t.Fatalf("completion error leaked through mapreduce fault: %v", err)
+	}
+	if fault, ok := err.(*PlatformException); !ok || fault.Category != "MAPREDUCE_PROCESSING_FAULT" {
+		t.Fatalf("error = %#v, want MAPREDUCE_PROCESSING_FAULT", err)
+	}
+}

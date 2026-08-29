@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"os"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -11,6 +12,7 @@ const (
 	defaultMapReduceChunkSize   = 4000
 	defaultMapReduceConcurrency = 4
 	maxMapReduceConcurrency     = 8
+	defaultMapReduceModel       = "gpt-4-turbo"
 )
 
 // MapReduceWorker asynchronously divides extensive textual outlines into manageable chunks.
@@ -174,7 +176,18 @@ type LLMService interface {
 }
 
 type MapReducePipeline struct {
-	LLM LLMService
+	LLM   LLMService
+	Model string
+}
+
+func (mr *MapReducePipeline) reduceModel() string {
+	if model := strings.TrimSpace(mr.Model); model != "" {
+		return model
+	}
+	if model := strings.TrimSpace(os.Getenv("AI_CHAT_MODEL")); model != "" {
+		return model
+	}
+	return defaultMapReduceModel
 }
 
 func (mr *MapReducePipeline) executeReduce(ctx context.Context, prompt string) (string, error) {
@@ -186,12 +199,12 @@ func (mr *MapReducePipeline) executeReduce(ctx context.Context, prompt string) (
 	}
 
 	response, err := mr.LLM.CreateCompletion(ctx, CompletionRequest{
-		Model:       "gpt-4-turbo",
+		Model:       mr.reduceModel(),
 		Prompt:      prompt,
 		Temperature: 0.2,
 	})
 	if err != nil {
-		return "", mapReduceFault("failed to execute reduce: " + err.Error())
+		return "", mapReduceFault("failed to execute reduce")
 	}
 	return response, nil
 }

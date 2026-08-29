@@ -427,6 +427,7 @@ CREATE INDEX idx_participants_lookup ON room_participants(room_id, user_id);
     *   Aggregate curriculum assembly uses amortized buffering with an 8 MiB response envelope across the bounded chunk set; overflow is audit-recorded as a failed attempt and returns a typed `503` without serving partial output.
     *   AI audit rows retain a fixed `[redacted]` prompt marker and byte length rather than prompt content, alongside status, errors, and citation trails. Migration `000007_ai_prompt_redaction` scrubs historical prompt bodies and deliberately fails closed on rollback.
     *   LLM chat requests include `AI_MAX_OUTPUT_TOKENS`, defaulting to 2048 and clamped to 8192, so provider output and retry cost remain bounded per completion.
+    *   Chat and MapReduce reducer model selection uses `AI_CHAT_MODEL` or an explicit pipeline model, with the existing reducer default retained only when configuration is unset; provider error details are redacted at the reducer boundary.
     *   LLM network, malformed-response, and empty-response faults use sanitized typed errors; provider URLs, transport messages, and response bodies are not returned to callers.
     *   MapReduce uses UTF-8-safe bounded chunks and a capped worker pool with cancellation-aware scheduling; invalid processors and canceled work fail closed without unbounded goroutine fan-out.
     *   *Payload Structure:*
