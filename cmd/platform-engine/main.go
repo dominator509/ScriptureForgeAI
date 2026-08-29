@@ -71,6 +71,7 @@ const (
 	defaultRedisWriteTimeout        = 3 * time.Second
 	minRedisTimeout                 = 100 * time.Millisecond
 	maxRedisTimeout                 = time.Minute
+	requiredDatabaseApplicationUser = "scriptureforge_app"
 )
 
 type PlatformException struct {
@@ -125,6 +126,13 @@ func loadConfig() (*Config, *PlatformException) {
 		}
 	}
 	if err := validateDatabaseURLTransport(dbURL, requiresConfiguredGRPCAddress()); err != nil {
+		return nil, &PlatformException{
+			Category: ConfigurationFault,
+			Message:  err.Error(),
+			Code:     500,
+		}
+	}
+	if err := validateDatabaseURLPrincipal(dbURL, requiresConfiguredGRPCAddress()); err != nil {
 		return nil, &PlatformException{
 			Category: ConfigurationFault,
 			Message:  err.Error(),
@@ -509,6 +517,21 @@ func validateDatabaseURLTransport(rawURL string, requireTLS bool) error {
 	default:
 		return fmt.Errorf("DATABASE_URL must set sslmode=require, verify-ca, or verify-full in staging/production")
 	}
+}
+
+func validateDatabaseURLPrincipal(rawURL string, requireScopedUser bool) error {
+	if !requireScopedUser {
+		return nil
+	}
+
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.User == nil || strings.TrimSpace(parsed.User.Username()) == "" {
+		return fmt.Errorf("DATABASE_URL must use the %s scoped application user in staging/production", requiredDatabaseApplicationUser)
+	}
+	if !strings.EqualFold(strings.TrimSpace(parsed.User.Username()), requiredDatabaseApplicationUser) {
+		return fmt.Errorf("DATABASE_URL must use the %s scoped application user in staging/production", requiredDatabaseApplicationUser)
+	}
+	return nil
 }
 
 func setupRoutes(dbpool *pgxpool.Pool, vectorDB ai.VectorDB, redisClient *redis.Client) http.Handler {

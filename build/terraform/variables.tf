@@ -517,7 +517,7 @@ variable "web_autoscaling" {
 }
 
 variable "app_secret_arns" {
-  description = "Existing AWS Secrets Manager ARNs used by workloads. JWT, journal salt, and MFA encryption secrets must be distinct high-entropy values; the gRPC shared secret is also high-entropy; grpc_engine_tls_credentials must be JSON with ca_pem, server_cert_pem, server_key_pem, client_cert_pem, and client_key_pem keys."
+  description = "Existing AWS Secrets Manager ARNs used by workloads. DATABASE_URL must contain the TLS-enabled scriptureforge_app scoped runtime user; JWT, journal salt, and MFA encryption secrets must be distinct high-entropy values; the gRPC shared secret is also high-entropy; grpc_engine_tls_credentials must be JSON with ca_pem, server_cert_pem, server_key_pem, client_cert_pem, and client_key_pem keys."
   type = object({
     database_url                = string
     jwt_secret_key              = string

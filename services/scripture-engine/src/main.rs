@@ -26,6 +26,7 @@ const MAX_BOOK_BYTES: usize = 128;
 const MAX_TEXT_CONTENT_BYTES: usize = 128 * 1024;
 const GRPC_AUTHORIZATION_HEADER: &str = "authorization";
 const GRPC_TENANT_HEADER: &str = "x-scriptureforge-organization-id";
+const REQUIRED_DATABASE_APPLICATION_USER: &str = "scriptureforge_app";
 const DEFAULT_METRICS_READ_TIMEOUT: Duration = Duration::from_secs(5);
 const MIN_METRICS_READ_TIMEOUT: Duration = Duration::from_millis(100);
 const MAX_METRICS_READ_TIMEOUT: Duration = Duration::from_secs(30);
@@ -437,6 +438,29 @@ fn validate_database_url_transport(
     }
 }
 
+fn validate_database_url_principal(
+    database_url: &str,
+    require_scoped_user: bool,
+) -> Result<(), &'static str> {
+    if !require_scoped_user {
+        return Ok(());
+    }
+
+    let options = PgConnectOptions::from_str(database_url).map_err(|_| {
+        "DATABASE_URL must use the scriptureforge_app scoped application user in staging/production"
+    })?;
+    if !options
+        .get_username()
+        .trim()
+        .eq_ignore_ascii_case(REQUIRED_DATABASE_APPLICATION_USER)
+    {
+        return Err(
+            "DATABASE_URL must use the scriptureforge_app scoped application user in staging/production",
+        );
+    }
+    Ok(())
+}
+
 fn authorize_grpc_request(
     mut request: Request<()>,
     shared_secret: Option<&str>,
@@ -551,6 +575,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("DATABASE_URL must not be empty".into());
     }
     validate_database_url_transport(&database_url, requires_grpc_security())?;
+    validate_database_url_principal(&database_url, requires_grpc_security())?;
 
     let db_pool = PgPoolOptions::new()
         .max_connections(5)
@@ -882,10 +907,10 @@ mod tests {
         grpc_tls_config, json_escape, metrics_address, metrics_read_timeout,
         metrics_response_for_request, observability_config, requires_grpc_security_for_environment,
         resolve_organization_id, scripture_engine_service_name, traceparent_from_request,
-        validate_database_url_transport, validate_embed_text_request,
-        validate_vector_search_request, AuthenticatedTenant, RustEngineMetrics,
-        DEFAULT_METRICS_READ_TIMEOUT, EMBEDDING_DIMENSION, MAX_METRICS_READ_TIMEOUT,
-        MAX_VECTOR_SEARCH_RESULTS, MIN_METRICS_READ_TIMEOUT,
+        validate_database_url_principal, validate_database_url_transport,
+        validate_embed_text_request, validate_vector_search_request, AuthenticatedTenant,
+        RustEngineMetrics, DEFAULT_METRICS_READ_TIMEOUT, EMBEDDING_DIMENSION,
+        MAX_METRICS_READ_TIMEOUT, MAX_VECTOR_SEARCH_RESULTS, MIN_METRICS_READ_TIMEOUT,
     };
     use std::sync::atomic::Ordering;
     use std::time::Duration;
@@ -913,6 +938,30 @@ mod tests {
             validate_database_url_transport("postgres://local.example/scriptureforge", false)
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn database_url_principal_requires_scoped_application_user_only_in_strict_environments() {
+        for database_url in [
+            "postgres://scriptureforge_app:password@db.example/scriptureforge?sslmode=require",
+            "postgres://SCRIPTUREFORGE_APP:password@db.example/scriptureforge?sslmode=verify-full",
+        ] {
+            assert!(validate_database_url_principal(database_url, true).is_ok());
+        }
+
+        for database_url in [
+            "postgres://db.example/scriptureforge?sslmode=require",
+            "postgres://postgres:password@db.example/scriptureforge?sslmode=require",
+            "postgres://forge_admin_root:password@db.example/scriptureforge?sslmode=require",
+            "postgres://other_app:password@db.example/scriptureforge?sslmode=require",
+        ] {
+            assert!(validate_database_url_principal(database_url, true).is_err());
+        }
+        assert!(validate_database_url_principal(
+            "postgres://postgres@localhost/scriptureforge",
+            false
+        )
+        .is_ok());
     }
 
     #[test]
