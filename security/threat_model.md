@@ -50,7 +50,7 @@ This is a repo-local threat model. It does not replace staging evidence for AWS 
 
 ## Residual Risks Blocking Production Claim
 
-- GitHub Actions push run `33196601954` and pull-request run `33196610386` passed for exact release `93a54a8124f444d059538679ae492495da9d1e5c`; the uploaded HTTPS release artifact still needs to be recorded in the staging manifest.
+- GitHub Actions hosted pull-request run `33259420498` passed for exact release `c2501f85349dc00d80344cde831a54b0a9736757`; the uploaded HTTPS release artifact still needs to be recorded in the staging manifest.
 - No staging `terraform plan/apply` has proven live AWS, EKS, RDS, Redis, ALB, DNS, ACM, IRSA, Secrets Store CSI, or rollback paths.
 - Native-device/EAS validation is still required for mobile AES-GCM outside Node/WebCrypto shims.
 - Deployed OTLP collector/backend, dashboard import, alert delivery, and retention evidence are still missing.
