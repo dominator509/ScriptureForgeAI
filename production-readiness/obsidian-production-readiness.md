@@ -5,7 +5,7 @@ title: ScriptureForgeAI Production Readiness
 type: dashboard
 status: active
 owner: "team"
-updated: 2026-08-28
+updated: 2026-08-29
 tags:
   - production-readiness
   - serena
@@ -470,13 +470,13 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 
 <!-- OBSIDIAN-STAGING-EVIDENCE-SNAPSHOT-START -->
 ## Staging Evidence Snapshot (staging)
-- release_candidate: replace-with-git-sha-or-tag
+- release_candidate: 38712c473f734d5e01a1e2acc133742de340a1bd
 - strict_release_ready: no
 - strict_staging_path_ready: yes
 - non_manifest_blockers: 0
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: replace-with-git-sha-or-tag
+- expected_release_candidate: 38712c473f734d5e01a1e2acc133742de340a1bd
 - release_candidate_matches_expected: yes
 - blocking items:
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
