@@ -950,6 +950,8 @@ Status last updated: 2026-08-29
 
 2026-08-29 current release evidence: the latest behavior-changing hardening commit `b880c1886644fbc64a15214c70661efaaf5b27bf` passed hosted pull-request run `33260522160`. The CI artifact is not yet ingested into the environment-specific staging manifest; Terraform apply, deployed RLS/Redis/Rust/observability/client/provider/DR evidence, native mobile evidence, and owner/security signoff remain open.
 
+2026-08-29 mobile session continuity hardening: the Expo client now stores only normal access/refresh identity fields through platform SecureStore, excludes MFA enrollment tokens, serializes persistence operations so logout wins over earlier writes, and refreshes or clears the record before marking the app ready. Mobile smoke/typecheck coverage proves secure-record shape, invalid-state cleanup, startup refresh rotation, and rejected-session cleanup. This closes the local mobile app-restart session-loss gap; native-device/EAS, deployed endpoint, and staging evidence remain external.
+
 ## 100% Production Readiness Evidence Still Required
 
 - Source control and CI: Commit and push the current remediation set, then prove GitHub Actions passes on the exact branch intended for release and record a passing `tools/ciprobe` report for `SRC-CI-001`.

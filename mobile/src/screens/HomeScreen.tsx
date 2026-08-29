@@ -6,6 +6,7 @@ import { useAppStore } from '../lib/store';
 
 export const HomeScreen: React.FC = () => {
   const session = useAppStore((state) => state.session);
+  const sessionHydrated = useAppStore((state) => state.sessionHydrated);
   const setSession = useAppStore((state) => state.setSession);
   const rooms = useAppStore((state) => state.rooms);
   const setRooms = useAppStore((state) => state.setRooms);
@@ -20,7 +21,7 @@ export const HomeScreen: React.FC = () => {
   const [mfaEnrollmentToken, setMFAEnrollmentToken] = useState('');
   const [mfaSecret, setMFASecret] = useState('');
   const [roomTitle, setRoomTitle] = useState('');
-  const [status, setStatus] = useState('Sign in or register to sync rooms and journals.');
+  const [status, setStatus] = useState('Restoring secure session.');
   const [streamStatus, setStreamStatus] = useState('No room selected.');
   const [latestEvent, setLatestEvent] = useState<RoomEvent | null>(null);
 
@@ -31,6 +32,37 @@ export const HomeScreen: React.FC = () => {
       setActiveRoom(nextRooms[0].id);
     }
   };
+
+  useEffect(() => {
+    if (!sessionHydrated) {
+      setStatus('Restoring secure session.');
+      return undefined;
+    }
+    setStatus((current) => {
+      if (current !== 'Restoring secure session.') return current;
+      return session ? 'Session restored.' : 'Sign in or register to sync rooms and journals.';
+    });
+    return undefined;
+  }, [sessionHydrated, session?.user_id, session?.organization_id]);
+
+  useEffect(() => {
+    if (!sessionHydrated || !session) return undefined;
+    let disposed = false;
+    void listActiveRooms(session.token)
+      .then((nextRooms) => {
+        if (disposed) return;
+        setRooms(nextRooms);
+        if (!useAppStore.getState().activeRoomId && nextRooms.length > 0) {
+          setActiveRoom(nextRooms[0].id);
+        }
+      })
+      .catch(() => {
+        if (!disposed) setStatus('Session restored, but room sync is unavailable.');
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [sessionHydrated, session?.token, setRooms, setActiveRoom]);
 
   const handleLogin = async () => {
     try {
@@ -57,7 +89,6 @@ export const HomeScreen: React.FC = () => {
       setMFAEnrollmentToken('');
       setMFASecret('');
       setSession(nextSession);
-      await syncRooms(nextSession.token);
       setStatus('Signed in.');
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Login failed.');
@@ -82,7 +113,6 @@ export const HomeScreen: React.FC = () => {
     try {
       const nextSession = await registerAccount(email, password, organizationName);
       setSession(nextSession);
-      await syncRooms(nextSession.token);
       setStatus('Registered and signed in.');
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Registration failed.');
@@ -233,10 +263,10 @@ export const HomeScreen: React.FC = () => {
           </View>
         )}
         <View style={styles.row}>
-          <TouchableOpacity style={styles.button} onPress={() => void handleLogin()}>
+          <TouchableOpacity style={[styles.button, !sessionHydrated && styles.disabled]} onPress={() => void handleLogin()} disabled={!sessionHydrated}>
             <Text style={styles.buttonText}>Login</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryButton} onPress={() => void handleRegister()}>
+          <TouchableOpacity style={[styles.secondaryButton, !sessionHydrated && styles.disabled]} onPress={() => void handleRegister()} disabled={!sessionHydrated}>
             <Text style={styles.secondaryButtonText}>Register</Text>
           </TouchableOpacity>
         </View>
@@ -251,7 +281,7 @@ export const HomeScreen: React.FC = () => {
       <View style={styles.panel}>
         <View style={styles.panelHeader}>
           <Text style={styles.panelTitle}>Rooms</Text>
-          <TouchableOpacity onPress={() => void handleRefreshRooms()} disabled={!session}>
+          <TouchableOpacity onPress={() => void handleRefreshRooms()} disabled={!sessionHydrated || !session}>
             <Text style={[styles.link, !session && styles.disabledText]}>Refresh</Text>
           </TouchableOpacity>
         </View>

@@ -47,6 +47,7 @@ export const mobileSmokeProofMarkers = [
   'mobile_api_encrypted_journal=true',
   'mobile_api_rooms_ws=true',
   'mobile_runtime_native_required_guard=true',
+  'mobile_session_secure_storage=true',
   'mobile_crypto_aes_gcm=true',
   'mobile_crypto_associated_data=true',
   'mobile_crypto_associated_data_input_guard=true',
@@ -234,6 +235,7 @@ export function validateLocalGateReport(report, {
     if (result.id === 'mobile-smoke') {
       const output = `${result.stdout_tail}\n${result.stderr_tail}`;
       assert.match(output, /mobile api smoke proof:/, 'mobile-smoke output must include the mobile API smoke proof summary');
+      assert.match(output, /mobile session storage smoke proof:/, 'mobile-smoke output must include the mobile session storage smoke proof summary');
       assert.match(output, /mobile crypto smoke proof:/, 'mobile-smoke output must include the mobile crypto smoke proof summary');
       for (const marker of mobileSmokeProofMarkers) {
         assert.ok(output.includes(marker), `mobile-smoke output must include ${marker}`);
