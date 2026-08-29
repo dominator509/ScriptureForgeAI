@@ -36,6 +36,7 @@ export const goTestProofMarkers = [
   'zoom_webhook_signature_test=true',
   'zoom_webhook_duplicate_idempotency_test=true',
   'zoom_webhook_room_mapping_test=true',
+  'zoom_room_status_reconciliation_test=true',
   'repo_go_toolchain=true',
 ];
 
@@ -106,6 +107,7 @@ export const goTestRequiredZoomTests = [
   'TestCreateMeetingUsesOfflineFallbackWhenCredentialsMissing',
   'TestCreateMeetingDoesNotUseAmbientTestModeMockWhenCredentialsMissing',
   'TestGetMeetingStatusEmitsZoomDependencyMetric',
+  'TestTerminalMeetingStatusesAreReconciled',
   'TestZoomWebhookRejectsInvalidSignature',
   'TestZoomWebhookRejectsStaleSignedDelivery',
   'TestZoomWebhookMapsMeetingToRoomAndIsDuplicateSafe',

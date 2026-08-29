@@ -407,6 +407,29 @@ func TestRoomHandlersHonorTenantIsolation(t *testing.T) {
 		t.Fatalf("active room meeting mapping = %#v, want persisted Zoom identity and join URL", ownerRooms[0])
 	}
 
+	meetingAdapter.status = "finished"
+	finishedActiveRec := httptest.NewRecorder()
+	roomHandler.ActiveRoomsHandler(finishedActiveRec, ownerActiveReq)
+	if finishedActiveRec.Code != http.StatusOK {
+		t.Fatalf("finished Zoom meeting active-room status = %d body = %s", finishedActiveRec.Code, finishedActiveRec.Body.String())
+	}
+	var finishedRooms []RoomResponse
+	if err := json.Unmarshal(finishedActiveRec.Body.Bytes(), &finishedRooms); err != nil {
+		t.Fatalf("decode finished Zoom meeting rooms: %v", err)
+	}
+	if len(finishedRooms) != 0 {
+		t.Fatalf("finished Zoom meeting remained active: %#v", finishedRooms)
+	}
+	withTenantIsolationContext(ctx, t, db, tenantIsolationOrgA, func(ctx context.Context, tx pgx.Tx) {
+		var active bool
+		if err := tx.QueryRow(ctx, `SELECT is_active FROM live_rooms WHERE id = $1`, created.ID).Scan(&active); err != nil {
+			t.Fatalf("query reconciled Zoom room state: %v", err)
+		}
+		if active {
+			t.Fatal("finished Zoom meeting remained active in durable room state")
+		}
+	})
+
 	blockedStateReq := httptest.NewRequest(http.MethodGet, "/api/v1/rooms/state/"+created.ID, nil)
 	blockedStateReq = blockedStateReq.WithContext(context.WithValue(blockedStateReq.Context(), auth.ContextKeyUser, &auth.TokenClaims{
 		UserID:         tenantIsolationUserB,

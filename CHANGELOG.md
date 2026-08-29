@@ -47,6 +47,7 @@ This file records repository-level implementation history. It is not a substitut
 - Scoped API/Rust database-port NetworkPolicy egress to declared `data_tier_cidrs` with validator regression coverage.
 - Made failed room-provisioning cleanup use a bounded context detached from client cancellation and emit sanitized dependency telemetry.
 - Added verified Zoom webhook lifecycle persistence: `meeting.started` and `meeting.ended` update the mapped durable `live_rooms.is_active` row under a dedicated exact-meeting RLS update policy before Redis publication, with tenant integration coverage.
+- Added bounded missed-webhook reconciliation to `GET /api/v1/rooms/active`: terminal external meeting statuses deactivate exact tenant-scoped durable and Redis room state, while provider errors preserve state for retry and offline fallback rooms are skipped.
 - Bound AI citations to RAG segment labels: verification now accepts only exact source labels at segment starts, and retrieved line breaks are normalized so citation-like source text cannot become metadata.
 - Refreshed the durable audit, roadmap, threat-model, and Obsidian records with the passing exact-SHA hosted CI evidence and the remaining staging-only release blockers.
 

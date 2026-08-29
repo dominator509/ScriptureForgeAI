@@ -22,7 +22,7 @@ This is a repo-local threat model. It does not replace staging evidence for AWS 
 | API to PostgreSQL | Tenant data, refresh tokens, journal ciphertext, AI audit rows | `auth.SetTenantContext`, transaction-scoped `app.current_org_id`, RLS, tenant-aware constraints, tenant-scoped email uniqueness, server-side refresh token hashing, HTTP/refresh session-cutoff checks |
 | API to Redis | Room state and sequence counters | Redis Lua mutation path, sequence ordering tests, room membership checks before mutation |
 | API to AI provider | Prompts, citations, generated content | Missing-key fail-closed behavior, bounded HTTP client, timeout/retry config, citation verification, `ai_request_logs`, `citation_trails` |
-| API to Zoom | Meeting creation and webhook events | Bounded HTTP client, retry/circuit breaker, offline fallback, webhook signature verification, idempotency, tenant-scoped meeting-to-room mapping, durable lifecycle state update before Redis publication |
+| API to Zoom | Meeting creation, status reconciliation, and webhook events | Bounded HTTP client, retry/circuit breaker, offline fallback, bounded active-room status reconciliation, webhook signature verification, idempotency, tenant-scoped meeting-to-room mapping, durable lifecycle state update before Redis publication |
 | EKS workload to secrets | Database URL, JWT, OpenAI, Zoom credentials | IRSA workload service account, Secrets Store CSI skeleton, Secrets Manager ARN inputs, secret hygiene validator |
 | API/Rust/web to observability | Logs, metrics, traces, trace IDs | Structured logs, `/metrics`, W3C `traceparent`, OTLP env wiring, dashboards, alerts, retention runbook |
 

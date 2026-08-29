@@ -33,9 +33,10 @@ type CreateRoomRequest struct {
 }
 
 const (
-	maxRoomRequestBodyBytes = 16 * 1024
-	maxRoomTitleBytes       = 256
-	roomCleanupTimeout      = 5 * time.Second
+	maxRoomRequestBodyBytes   = 16 * 1024
+	maxRoomTitleBytes         = 256
+	roomCleanupTimeout        = 5 * time.Second
+	roomReconciliationTimeout = 2 * time.Second
 )
 
 type RoomResponse struct {
@@ -144,6 +145,91 @@ func (h *RoomHandler) deactivateRoomAfterStateFailure(ctx context.Context, claim
 		return fmt.Errorf("room state compensation affected %d rows", tag.RowsAffected())
 	}
 	return tx.Commit(ctx)
+}
+
+func isTerminalMeetingStatus(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "finished", "ended", "cancelled", "canceled", "deleted":
+		return true
+	default:
+		return false
+	}
+}
+
+func shouldReconcileMeeting(roomResp RoomResponse) bool {
+	return strings.TrimSpace(roomResp.MeetingID) != "" &&
+		!strings.EqualFold(strings.TrimSpace(roomResp.MeetingProvider), "offline")
+}
+
+func (h *RoomHandler) deactivateReconciledRoom(ctx context.Context, claims *auth.TokenClaims, roomID, meetingID string) error {
+	tx, err := h.DB.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err := auth.SetTenantContext(ctx, tx, claims.OrganizationID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(
+		ctx,
+		`UPDATE live_rooms
+		 SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
+		 WHERE organization_id = $1
+		   AND id = $2
+		   AND meeting_external_id = $3
+		   AND is_active = TRUE`,
+		claims.OrganizationID,
+		roomID,
+		meetingID,
+	); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	if h.StateManager != nil {
+		if err := h.StateManager.SetRoomActiveState(ctx, roomID, false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// reconcileActiveRooms closes the stale-active window when a provider webhook
+// is delayed or lost. Provider errors preserve the durable state because an
+// unavailable provider is not evidence that a meeting has ended.
+func (h *RoomHandler) reconcileActiveRooms(ctx context.Context, claims *auth.TokenClaims, rooms []RoomResponse) ([]RoomResponse, error) {
+	if h.MeetingAdapter == nil || h.DB == nil || len(rooms) == 0 {
+		return rooms, nil
+	}
+	reconcileCtx, cancel := context.WithTimeout(ctx, roomReconciliationTimeout)
+	defer cancel()
+
+	kept := make([]RoomResponse, 0, len(rooms))
+	for _, roomResp := range rooms {
+		if !shouldReconcileMeeting(roomResp) {
+			kept = append(kept, roomResp)
+			continue
+		}
+		started := time.Now()
+		providerStatus, err := h.MeetingAdapter.GetMeetingStatus(reconcileCtx, roomResp.MeetingID)
+		if err != nil {
+			observability.ObserveDependencyFromContext(ctx, "zoom", "room_status_reconciliation", "error", time.Since(started))
+			kept = append(kept, roomResp)
+			continue
+		}
+		if !isTerminalMeetingStatus(providerStatus) {
+			observability.ObserveDependencyFromContext(ctx, "zoom", "room_status_reconciliation", "active", time.Since(started))
+			kept = append(kept, roomResp)
+			continue
+		}
+		if err := h.deactivateReconciledRoom(reconcileCtx, claims, roomResp.ID, roomResp.MeetingID); err != nil {
+			observability.ObserveDependencyFromContext(ctx, "zoom", "room_status_reconciliation", "error", time.Since(started))
+			return nil, err
+		}
+		observability.ObserveDependencyFromContext(ctx, "zoom", "room_status_reconciliation", "terminal", time.Since(started))
+	}
+	return kept, nil
 }
 
 func scanActiveRoomRows(rows pgx.Rows) ([]RoomResponse, error) {
@@ -391,6 +477,17 @@ func (h *RoomHandler) ActiveRoomsHandler(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		observability.ObserveDependencyFromContext(r.Context(), "postgres", "rooms_active", status, time.Since(start))
 		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to read rooms", Code: http.StatusInternalServerError})
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		observability.ObserveDependencyFromContext(r.Context(), "postgres", "rooms_active", status, time.Since(start))
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to finish room lookup", Code: http.StatusInternalServerError})
+		return
+	}
+	rooms, err = h.reconcileActiveRooms(r.Context(), claims, rooms)
+	if err != nil {
+		observability.ObserveDependencyFromContext(r.Context(), "postgres", "rooms_active", status, time.Since(start))
+		sendAuthError(w, &auth.PlatformException{Category: auth.AuthorizationFault, Message: "Failed to reconcile room state", Code: http.StatusServiceUnavailable})
 		return
 	}
 	status = "success"

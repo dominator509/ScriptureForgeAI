@@ -16,6 +16,8 @@ type testMeetingAdapter struct {
 	createdConfig         room.MeetingConfig
 	terminatedID          string
 	terminationContextErr error
+	status                string
+	statusCalls           int
 }
 
 func (a *testMeetingAdapter) CreateMeeting(_ context.Context, config room.MeetingConfig) (*room.MeetingDetails, error) {
@@ -30,7 +32,31 @@ func (a *testMeetingAdapter) TerminateMeeting(ctx context.Context, meetingID str
 }
 
 func (a *testMeetingAdapter) GetMeetingStatus(context.Context, string) (string, error) {
-	return "started", nil
+	a.statusCalls++
+	if a.status == "" {
+		return "started", nil
+	}
+	return a.status, nil
+}
+
+func TestTerminalMeetingStatusesAreReconciled(t *testing.T) {
+	for _, test := range []struct {
+		status   string
+		terminal bool
+	}{
+		{status: "finished", terminal: true},
+		{status: "ended", terminal: true},
+		{status: "CANCELED", terminal: true},
+		{status: "waiting", terminal: false},
+		{status: "started", terminal: false},
+		{status: "offline", terminal: false},
+	} {
+		t.Run(test.status, func(t *testing.T) {
+			if got := isTerminalMeetingStatus(test.status); got != test.terminal {
+				t.Fatalf("isTerminalMeetingStatus(%q) = %t, want %t", test.status, got, test.terminal)
+			}
+		})
+	}
 }
 
 func TestPersistedMeetingDetailsExposeOnlySafeJoinMetadata(t *testing.T) {

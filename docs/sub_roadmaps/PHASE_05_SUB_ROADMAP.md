@@ -23,7 +23,7 @@ External evidence: pending multi-replica load, deployed Redis telemetry, and rea
 
 ## Acceptance Evidence
 
-- Local: room tests cover invalid origins/membership/events, Redis ordering/fan-out, shutdown, polling, and Zoom fakes.
+- Local: room tests cover invalid origins/membership/events, Redis ordering/fan-out, shutdown, polling, Zoom fakes, and terminal-status reconciliation of mapped external rooms.
 - Merge: canonical room routes and event envelope remain mirrored in the architecture and readiness surfaces.
 - Release: staging artifacts must prove authenticated WSS, contiguous sequence numbers, polling latest-state parity, and distinct replica telemetry.
 
