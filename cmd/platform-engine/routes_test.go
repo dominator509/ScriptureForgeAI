@@ -357,6 +357,7 @@ func TestLoadConfigAcceptsExplicitProductionGRPCAddress(t *testing.T) {
 	t.Setenv("ALLOWED_WS_ORIGINS", "https://app.staging.scriptureforge.ai")
 	t.Setenv("JWT_SECRET_KEY", "jwt-staging-secret-012345678901234567890")
 	t.Setenv("JOURNAL_SALT_SECRET", "journal-staging-secret-012345678901234567890")
+	t.Setenv("MFA_ENCRYPTION_KEY", "mfa-staging-secret-012345678901234567890")
 	t.Setenv("GRPC_ENGINE_ADDRESS", "scriptureforge-rust-engine:50051")
 	t.Setenv("GRPC_ENGINE_SHARED_SECRET", "01234567890123456789012345678901")
 	t.Setenv("GRPC_ENGINE_TLS_CA_PEM", "test-ca")
@@ -434,6 +435,29 @@ func TestLoadConfigRequiresStrongDistinctAuthAndJournalSecretsInProduction(t *te
 		cfg, errConfig := loadConfig()
 		if errConfig == nil || cfg != nil || !strings.Contains(errConfig.Message, "distinct") {
 			t.Fatalf("loadConfig = cfg=%#v err=%#v, want distinct-secret rejection", cfg, errConfig)
+		}
+	})
+
+	t.Run("rejects missing MFA encryption key", func(t *testing.T) {
+		baseEnv(t)
+		t.Setenv("JWT_SECRET_KEY", "jwt-production-secret-012345678901234")
+		t.Setenv("JOURNAL_SALT_SECRET", "journal-production-secret-012345678901234")
+		t.Setenv("MFA_ENCRYPTION_KEY", "")
+		cfg, errConfig := loadConfig()
+		if errConfig == nil || cfg != nil || !strings.Contains(errConfig.Message, "MFA_ENCRYPTION_KEY") {
+			t.Fatalf("loadConfig = cfg=%#v err=%#v, want missing MFA_ENCRYPTION_KEY rejection", cfg, errConfig)
+		}
+	})
+
+	t.Run("rejects MFA encryption key reuse", func(t *testing.T) {
+		baseEnv(t)
+		jwtSecret := "jwt-production-secret-012345678901234"
+		t.Setenv("JWT_SECRET_KEY", jwtSecret)
+		t.Setenv("JOURNAL_SALT_SECRET", "journal-production-secret-012345678901234")
+		t.Setenv("MFA_ENCRYPTION_KEY", jwtSecret)
+		cfg, errConfig := loadConfig()
+		if errConfig == nil || cfg != nil || !strings.Contains(errConfig.Message, "MFA_ENCRYPTION_KEY") || !strings.Contains(errConfig.Message, "distinct") {
+			t.Fatalf("loadConfig = cfg=%#v err=%#v, want MFA key reuse rejection", cfg, errConfig)
 		}
 	})
 }

@@ -206,18 +206,27 @@ func loadConfig() (*Config, *PlatformException) {
 	if requiresConfiguredGRPCAddress() {
 		jwtSecret := os.Getenv("JWT_SECRET_KEY")
 		journalSaltSecret := os.Getenv("JOURNAL_SALT_SECRET")
-		for name, value := range map[string]string{
-			"JWT_SECRET_KEY":      jwtSecret,
-			"JOURNAL_SALT_SECRET": journalSaltSecret,
-		} {
-			if err := auth.ValidateSecretStrength(name, value); err != nil {
-				return nil, &PlatformException{Category: ConfigurationFault, Message: err.Error() + " in staging/production", Code: 500}
-			}
+		if err := auth.ValidateSecretStrength("JWT_SECRET_KEY", jwtSecret); err != nil {
+			return nil, &PlatformException{Category: ConfigurationFault, Message: err.Error() + " in staging/production", Code: 500}
+		}
+		if err := auth.ValidateSecretStrength("JOURNAL_SALT_SECRET", journalSaltSecret); err != nil {
+			return nil, &PlatformException{Category: ConfigurationFault, Message: err.Error() + " in staging/production", Code: 500}
 		}
 		if jwtSecret == journalSaltSecret {
 			return nil, &PlatformException{
 				Category: ConfigurationFault,
 				Message:  "JOURNAL_SALT_SECRET must be distinct from JWT_SECRET_KEY in staging/production",
+				Code:     500,
+			}
+		}
+		mfaEncryptionKey := os.Getenv("MFA_ENCRYPTION_KEY")
+		if err := auth.ValidateSecretStrength("MFA_ENCRYPTION_KEY", mfaEncryptionKey); err != nil {
+			return nil, &PlatformException{Category: ConfigurationFault, Message: err.Error() + " in staging/production", Code: 500}
+		}
+		if mfaEncryptionKey == jwtSecret || mfaEncryptionKey == journalSaltSecret {
+			return nil, &PlatformException{
+				Category: ConfigurationFault,
+				Message:  "MFA_ENCRYPTION_KEY must be distinct from JWT_SECRET_KEY and JOURNAL_SALT_SECRET in staging/production",
 				Code:     500,
 			}
 		}
