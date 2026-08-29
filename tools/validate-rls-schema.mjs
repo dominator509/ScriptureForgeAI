@@ -25,6 +25,7 @@ export function validateRLSSchema(
   roomHandlerText = '',
   socketHandlerText = '',
   zoomWebhookText = '',
+  zoomRoomStateMigrationText = '',
 ) {
   assert.deepEqual(
     discoverTenantScopedTables(migrationText),
@@ -178,17 +179,25 @@ export function validateRLSSchema(
     validateProductionRoomMembershipWiring(platformMainText, roomHandlerText, socketHandlerText);
   }
   if (zoomWebhookText) {
+    const zoomMigrationText = `${migrationText}\n${zoomRoomStateMigrationText}`;
     assert.match(
-      migrationText,
+      zoomMigrationText,
       /CREATE POLICY\s+live_room_webhook_mapping_policy\s+ON\s+live_rooms[\s\S]*?app\.webhook_lookup_verified[\s\S]*?app\.webhook_lookup_meeting_id/m,
       'live_rooms must define the verified Zoom mapping RLS policy',
+    );
+    assert.match(
+      zoomMigrationText,
+      /CREATE POLICY\s+live_room_webhook_state_update_policy\s+ON\s+live_rooms[\s\S]*?FOR UPDATE[\s\S]*?app\.webhook_lookup_verified[\s\S]*?app\.webhook_lookup_meeting_id/m,
+      'live_rooms must define the verified Zoom durable-state update policy',
     );
     for (const requiredZoomMappingProof of [
       'func (h *WebhookHandler) resolveRoomID',
       "set_config('app.webhook_lookup_verified', 'true', true)",
       "set_config('app.webhook_lookup_meeting_id', $2, true)",
       'SELECT id FROM live_rooms WHERE meeting_external_id = $1',
-      'http.StatusServiceUnavailable',
+      'func (h *WebhookHandler) setDurableRoomActive',
+      'UPDATE live_rooms',
+       'http.StatusServiceUnavailable',
     ]) {
       assert.ok(
         zoomWebhookText.includes(requiredZoomMappingProof),
@@ -274,6 +283,7 @@ async function main() {
     roomHandlerText,
     socketHandlerText,
     zoomWebhookText,
+    zoomRoomStateMigrationText,
   ] = await Promise.all([
     readFile('migrations/000002_core_schema.up.sql', 'utf8'),
     readFile('tests/integration/table_rls_test.go', 'utf8'),
@@ -286,6 +296,7 @@ async function main() {
     readFile('internal/ports/rooms_http.go', 'utf8'),
     readFile('internal/ports/driving_wss.go', 'utf8'),
     readFile('internal/adapters/integration_zoom/zoom_webhook.go', 'utf8'),
+    readFile('migrations/000009_zoom_webhook_room_state.up.sql', 'utf8'),
   ]);
   const result = validateRLSSchema(
     migrationText,
@@ -299,6 +310,7 @@ async function main() {
     roomHandlerText,
     socketHandlerText,
     zoomWebhookText,
+    zoomRoomStateMigrationText,
   );
   console.log(`RLS schema invariants validated across ${result.tenantScopedTableCount} tenant-scoped tables`);
 }

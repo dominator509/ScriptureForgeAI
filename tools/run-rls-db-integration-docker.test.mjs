@@ -70,6 +70,7 @@ test('migration list applies the complete ordered up-migration set', () => {
     '/migrations/000006_auth_session_revocation.up.sql',
     '/migrations/000007_ai_prompt_redaction.up.sql',
     '/migrations/000008_tenant_scoped_user_email.up.sql',
+    '/migrations/000009_zoom_webhook_room_state.up.sql',
   ]);
   assert.deepEqual(migrationFiles, listMigrationFiles(), 'exported migration snapshot should match the current workspace');
 });
@@ -111,6 +112,16 @@ test('tenant-scoped email migration removes the global uniqueness oracle', async
   assert.match(up, /UNIQUE INDEX IF NOT EXISTS idx_users_organization_email ON users\(organization_id, email\)/);
   assert.match(down, /DROP INDEX IF EXISTS idx_users_organization_email/);
   assert.match(down, /ADD CONSTRAINT users_email_key UNIQUE \(email\)/);
+});
+
+test('Zoom webhook room-state migration allows only verified mapped updates', async () => {
+  const up = await readFile(resolve('migrations/000009_zoom_webhook_room_state.up.sql'), 'utf8');
+  const down = await readFile(resolve('migrations/000009_zoom_webhook_room_state.down.sql'), 'utf8');
+  assert.match(up, /CREATE POLICY\s+live_room_webhook_state_update_policy\s+ON\s+live_rooms/);
+  assert.match(up, /FOR UPDATE/);
+  assert.match(up, /app\.webhook_lookup_verified/);
+  assert.match(up, /app\.webhook_lookup_meeting_id/);
+  assert.match(down, /DROP POLICY IF EXISTS live_room_webhook_state_update_policy ON live_rooms/);
 });
 
 test('runDockerRLSDBIntegration applies migrations, runs RLS tests, and cleans up', async () => {

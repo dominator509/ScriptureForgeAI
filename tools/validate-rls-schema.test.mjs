@@ -16,6 +16,7 @@ async function fixtures() {
     roomHandlerText,
     socketHandlerText,
     zoomWebhookText,
+    zoomRoomStateMigrationText,
   ] = await Promise.all([
     readFile('migrations/000002_core_schema.up.sql', 'utf8'),
     readFile('tests/integration/table_rls_test.go', 'utf8'),
@@ -28,6 +29,7 @@ async function fixtures() {
     readFile('internal/ports/rooms_http.go', 'utf8'),
     readFile('internal/ports/driving_wss.go', 'utf8'),
     readFile('internal/adapters/integration_zoom/zoom_webhook.go', 'utf8'),
+    readFile('migrations/000009_zoom_webhook_room_state.up.sql', 'utf8'),
   ]);
   return {
     migrationText,
@@ -41,6 +43,7 @@ async function fixtures() {
     roomHandlerText,
     socketHandlerText,
     zoomWebhookText,
+    zoomRoomStateMigrationText,
   };
 }
 
@@ -57,6 +60,7 @@ test('validateRLSSchema accepts current tenant-scoped schema and integration tes
     roomHandlerText,
     socketHandlerText,
     zoomWebhookText,
+    zoomRoomStateMigrationText,
   } = await fixtures();
   assert.deepEqual(
     validateRLSSchema(
@@ -71,6 +75,7 @@ test('validateRLSSchema accepts current tenant-scoped schema and integration tes
       roomHandlerText,
       socketHandlerText,
       zoomWebhookText,
+      zoomRoomStateMigrationText,
     ),
     { tenantScopedTableCount: 9 },
   );

@@ -181,6 +181,40 @@ func (h *WebhookHandler) resolveRoomID(ctx context.Context, meetingID string) (s
 	return roomID, nil
 }
 
+func (h *WebhookHandler) setDurableRoomActive(ctx context.Context, roomID, meetingID string, active bool) error {
+	if h.DB == nil {
+		return nil
+	}
+	tx, err := h.DB.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin durable Zoom room state update: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `
+		SELECT
+			set_config('app.current_org_id', $1, true),
+			set_config('app.webhook_lookup_verified', 'true', true),
+			set_config('app.webhook_lookup_meeting_id', $2, true)
+	`, zoomWebhookNoTenantOrgID, meetingID); err != nil {
+		return fmt.Errorf("configure durable Zoom room state context: %w", err)
+	}
+	tag, err := tx.Exec(ctx, `
+		UPDATE live_rooms
+		SET is_active = $1, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $2 AND meeting_external_id = $3
+	`, active, roomID, meetingID)
+	if err != nil {
+		return fmt.Errorf("update durable Zoom room state: %w", err)
+	}
+	if tag.RowsAffected() != 1 {
+		return fmt.Errorf("durable Zoom room state update affected %d rows", tag.RowsAffected())
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit durable Zoom room state update: %w", err)
+	}
+	return nil
+}
+
 // verifyZoomSignature validates the Zoom webhook signature to ensure authenticity
 func verifyZoomSignature(r *http.Request, body []byte) bool {
 	zoomSignature := r.Header.Get("x-zm-signature")
@@ -291,17 +325,20 @@ func (h *WebhookHandler) HandleZoomWebhook(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Map Zoom business logic events to local Redis state mutations
+	// Persist the authoritative room state before publishing the Redis state.
+	// A failed Redis update is still retryable, while the durable update is idempotent.
 	var mutationErr error
 	switch payload.Event {
 	case "meeting.started":
 		log.Printf("Webhook: Meeting %s started", meetingID)
-		if h.StateManager != nil {
+		mutationErr = h.setDurableRoomActive(r.Context(), roomID, meetingID, true)
+		if mutationErr == nil && h.StateManager != nil {
 			mutationErr = h.StateManager.SetRoomActiveState(r.Context(), roomID, true)
 		}
 	case "meeting.ended":
 		log.Printf("Webhook: Meeting %s ended", meetingID)
-		if h.StateManager != nil {
+		mutationErr = h.setDurableRoomActive(r.Context(), roomID, meetingID, false)
+		if mutationErr == nil && h.StateManager != nil {
 			mutationErr = h.StateManager.SetRoomActiveState(r.Context(), roomID, false)
 		}
 	default:

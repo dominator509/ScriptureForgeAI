@@ -1,9 +1,14 @@
 package ports
 
 import (
+	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,6 +20,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"scriptureforge/internal/adapters/integration_zoom"
 	"scriptureforge/internal/domain/auth"
 	"scriptureforge/internal/domain/observability"
 	"scriptureforge/internal/domain/room"
@@ -524,6 +530,58 @@ func TestZoomWebhookRoomMappingRLSBinding(t *testing.T) {
 	if mappedRoomID != roomID {
 		t.Fatalf("zoom webhook mapping verified exact meeting room=%s, want %s", mappedRoomID, roomID)
 	}
+}
+
+func TestZoomWebhookUpdatesDurableRoomStateWithRLS(t *testing.T) {
+	db := openTenantIsolationDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	seedTenantIsolationFixtures(ctx, t, db)
+	const (
+		roomID    = "31313131-3131-4313-8313-313131313131"
+		meetingID = "zoom-durable-state-meeting"
+		secret    = "zoom-durable-state-secret"
+	)
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		cleanupTenantIsolationFixtures(cleanupCtx, t, db)
+	})
+
+	withTenantIsolationContext(ctx, t, db, tenantIsolationOrgA, func(ctx context.Context, tx pgx.Tx) {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO live_rooms (id, organization_id, host_user_id, title, meeting_external_id, is_active)
+			VALUES ($1, $2, $3, 'Zoom Durable State Room', $4, TRUE)
+		`, roomID, tenantIsolationOrgA, tenantIsolationUserA, meetingID); err != nil {
+			t.Fatalf("seed durable Zoom state room: %v", err)
+		}
+	})
+
+	t.Setenv("ZOOM_WEBHOOK_SECRET_TOKEN", secret)
+	handler := integration_zoom.NewWebhookHandler(tenantIsolationStateStore{}, db)
+	body := fmt.Sprintf(`{"event":"meeting.ended","payload":{"object":{"id":"%s"}}}`, meetingID)
+	timestamp := fmt.Sprintf("%d", time.Now().Unix())
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte("v0:" + timestamp + ":" + body))
+	request := httptest.NewRequest(http.MethodPost, "/api/webhooks/zoom", bytes.NewBufferString(body))
+	request.Header.Set("x-zm-request-timestamp", timestamp)
+	request.Header.Set("x-zm-signature", "v0="+hex.EncodeToString(mac.Sum(nil)))
+	recorder := httptest.NewRecorder()
+
+	handler.HandleZoomWebhook(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("durable Zoom state webhook status = %d body = %s, want 200", recorder.Code, recorder.Body.String())
+	}
+
+	withTenantIsolationContext(ctx, t, db, tenantIsolationOrgA, func(ctx context.Context, tx pgx.Tx) {
+		var active bool
+		if err := tx.QueryRow(ctx, `SELECT is_active FROM live_rooms WHERE id = $1`, roomID).Scan(&active); err != nil {
+			t.Fatalf("query durable Zoom state room: %v", err)
+		}
+		if active {
+			t.Fatal("meeting.ended left the durable live room active")
+		}
+	})
 }
 
 func TestSocketStreamIsTenantScoped(t *testing.T) {

@@ -22,7 +22,7 @@ This is a repo-local threat model. It does not replace staging evidence for AWS 
 | API to PostgreSQL | Tenant data, refresh tokens, journal ciphertext, AI audit rows | `auth.SetTenantContext`, transaction-scoped `app.current_org_id`, RLS, tenant-aware constraints, tenant-scoped email uniqueness, server-side refresh token hashing, HTTP/refresh session-cutoff checks |
 | API to Redis | Room state and sequence counters | Redis Lua mutation path, sequence ordering tests, room membership checks before mutation |
 | API to AI provider | Prompts, citations, generated content | Missing-key fail-closed behavior, bounded HTTP client, timeout/retry config, citation verification, `ai_request_logs`, `citation_trails` |
-| API to Zoom | Meeting creation and webhook events | Bounded HTTP client, retry/circuit breaker, offline fallback, webhook signature verification, idempotency, meeting-to-room mapping |
+| API to Zoom | Meeting creation and webhook events | Bounded HTTP client, retry/circuit breaker, offline fallback, webhook signature verification, idempotency, tenant-scoped meeting-to-room mapping, durable lifecycle state update before Redis publication |
 | EKS workload to secrets | Database URL, JWT, OpenAI, Zoom credentials | IRSA workload service account, Secrets Store CSI skeleton, Secrets Manager ARN inputs, secret hygiene validator |
 | API/Rust/web to observability | Logs, metrics, traces, trace IDs | Structured logs, `/metrics`, W3C `traceparent`, OTLP env wiring, dashboards, alerts, retention runbook |
 
@@ -45,7 +45,7 @@ This is a repo-local threat model. It does not replace staging evidence for AWS 
 - Journal confidentiality: backend journal handlers reject plaintext/passphrase fields, persist ciphertext-only entries, and deny cross-user/cross-tenant reads; `tools/verify-journal-crypto.mjs` checks AES-GCM behavior, non-extractable keys, derivation byte wiping, disposed key-handle rejection, stale raw-key revocation, and untracked-key rejection in the Node-backed mobile/web crypto harness.
 - WebSocket integrity: `internal/ports/rooms_realtime_test.go`, `internal/domain/room/redis_lua_test.go`, and `tools/loadtest` cover membership-gated events, rejected invalid frames, reconnect behavior, HTTP polling, and Redis-backed ordering.
 - AI safety/auditability: `internal/adapters/llm/client_test.go` and `internal/ports/ai_audit_integration_test.go` cover missing-key failure, timeouts, citation-free/hallucinated-citation rejection, and audit persistence without live provider calls.
-- Zoom resilience: `internal/adapters/integration_zoom/*_test.go` covers timeouts, circuit-open fallback, signature denial, duplicate webhook safety, and meeting-to-room mapping.
+- Zoom resilience: `internal/adapters/integration_zoom/*_test.go` covers timeouts, circuit-open fallback, signature denial, duplicate webhook safety, and meeting-to-room mapping; `TestZoomWebhookUpdatesDurableRoomStateWithRLS` proves a signed end event updates the mapped durable room before Redis publication.
 - Deployment security shape: `tools/validate-deployment-skeleton.mjs`, Terraform fmt/validate, and `security/secret_handling_review.md` cover TLS ingress skeleton, remote state shape, workload secret references, IRSA/CSI wiring, default-deny Kubernetes network policy with explicit data-tier destinations, resource controls, health probes, and secret hygiene.
 
 ## Residual Risks Blocking Production Claim
