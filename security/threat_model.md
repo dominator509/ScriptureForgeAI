@@ -30,12 +30,12 @@ This is a repo-local threat model. It does not replace staging evidence for AWS 
 
 | Threat | Primary Target | Current Mitigations | Remaining Production Evidence |
 | --- | --- | --- | --- |
-| Spoofing | User/admin identity, WebSocket participants, Zoom webhooks | JWT claim verification, privileged-role TOTP enforcement, refresh rotation/revocation, WebSocket JWT checks, Zoom signature verification | Clean pushed CI, staging auth abuse telemetry, live Zoom webhook delivery proof |
+| Spoofing | User/admin identity, WebSocket participants, Zoom webhooks | JWT claim verification, privileged-role TOTP enforcement, refresh rotation/revocation, WebSocket JWT checks, Zoom signature verification | CI artifact ingestion into the staging manifest, staging auth abuse telemetry, live Zoom webhook delivery proof |
 | Tampering | Journal payloads, room events, AI citations, deployment config | Strict journal payload decoding, encrypted-only journal storage, room event envelopes, Redis Lua sequence mutation, citation verification, Terraform invariant validator | Staging Redis ordering proof, deployed config drift monitoring |
 | Repudiation | Auth, AI generation, room/socket incidents, Zoom callbacks | JSON access logs with trace IDs, `/metrics`, `ai_request_logs`, `citation_trails`, webhook idempotency records | Deployed log/metric/trace retention, dashboard import, alert delivery |
 | Information Disclosure | Tenant data, journal plaintext, secrets, provider responses | PostgreSQL RLS, tenant handler tests, AES-GCM client crypto, passphrase/salt byte wiping, disposable journal key handles with stale-key revocation, plaintext journal rejection, secret hygiene scanning, IRSA/CSI skeleton | Staging secret sync proof, native-device crypto validation, cloud access review |
 | Denial of Service | Auth, AI, journal, rooms, WebSockets, dependencies | Configurable route/socket abuse limits with bounded identity buckets, bounded HTTP clients, WebSocket frame limits/deadlines, circuit breaker for Zoom, local load harness | Staging load test against real ingress/API/Redis/Postgres/AI, rate-limit observation under real client identity |
-| Elevation of Privilege | Tenant boundaries, privileged roles, workload secret access | RLS on tenant tables, `auth.SetTenantContext`, role-forcing registration tests, privileged MFA, least-privilege Secrets Manager IAM skeleton | Staging IAM/IRSA proof, clean SAST/SCA/TruffleHog results, threat-model review signoff |
+| Elevation of Privilege | Tenant boundaries, privileged roles, workload secret access | RLS on tenant tables, `auth.SetTenantContext`, role-forcing registration tests, privileged MFA, least-privilege Secrets Manager IAM skeleton | Staging IAM/IRSA proof, threat-model review signoff, and staging-manifest CI artifact ingestion |
 
 ## Current Security Evidence
 
@@ -50,10 +50,11 @@ This is a repo-local threat model. It does not replace staging evidence for AWS 
 
 ## Residual Risks Blocking Production Claim
 
-- GitHub Actions push run `33191451787` and pull-request run `33191464152` passed for exact release `0e96d5812792d3564878cd31658c216c2bbcc7b4`; the uploaded HTTPS release artifact still needs to be recorded in the staging manifest.
+- GitHub Actions push run `33196601954` and pull-request run `33196610386` passed for exact release `93a54a8124f444d059538679ae492495da9d1e5c`; the uploaded HTTPS release artifact still needs to be recorded in the staging manifest.
 - No staging `terraform plan/apply` has proven live AWS, EKS, RDS, Redis, ALB, DNS, ACM, IRSA, Secrets Store CSI, or rollback paths.
 - Native-device/EAS validation is still required for mobile AES-GCM outside Node/WebCrypto shims.
 - Deployed OTLP collector/backend, dashboard import, alert delivery, and retention evidence are still missing.
 - Staging performance evidence for the 5,000 req/s and P99 under 200ms target is still missing.
+- AI citation verification still proves citation presence against retrieved context, not claim-to-source semantic grounding; structured source spans and claim validation remain a product/security requirement.
 - DRR-001 is closed: the locked Expo xcode tooling path now resolves `uuid@11.1.1` with a passing CommonJS compatibility smoke.
 - DRR-002 is closed locally: Metro resolves the dependency-free repository-owned `mobile/vendor/image-size` compatibility package, which omits the affected HEIF/ICNS/JXL parsers; `mobile/metro.config.js` also blocks the affected parser and asset formats. The package and mobile audit/build gates must be re-run whenever Expo/Metro changes.

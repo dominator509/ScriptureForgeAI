@@ -101,6 +101,6 @@ ScriptureForgeAI is a multi-tenant Bible study platform with authenticated works
 
 - Exact staging AWS inputs, remote state, DNS, and secret-manager dependencies are environment-owned.
 - Staging must prove the Secrets Store CSI JSON shape for `grpc_engine_tls_credentials`, certificate rotation, Rust health/readiness, and Go-to-Rust mTLS/tenant binding with `tools/rustprobe`.
-- Production readiness still depends on clean git sync state, pushed CI evidence, and staging proof manifests.
+- Production readiness still depends on clean git sync state, staging proof manifests, and deployment/provider/operator evidence; the current branch's exact-SHA hosted CI gates are passing.
 - Native EAS/Expo crypto behavior requires separate staged-device validation beyond local smoke checks.
 - Mobile dependency closure is locally closed through the tested repository-owned image-size compatibility package; re-evaluate it on every Expo/Metro refresh and see `security/dependency_risk_register.md#DRR-002`.
