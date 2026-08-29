@@ -40,7 +40,7 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 - [x] **Historical Exact-Release CI Gate**: GitHub Actions push run `33159284084` and pull-request run `33159292139` passed for `24f6d7d9885ec357a569fc30216832c4d20bf9d5`, including real PostgreSQL/RLS integration, client, Rust, Terraform, secret-scanning, clean-source, and CI release-evidence gates.
 - [ ] **Historical Local Gate Evidence**: exact SHA `7e52902ba92032e05bebf27b5293b6cb61c5a7ca` ran 35/35 gates at `2026-08-28T09:46:40Z` and passed 34 with a clean worktree, refreshed remote metadata, and 0/0 divergence; `rls-db-integration` is the only failure because the local Docker server endpoint is unreachable. The required DB-backed proof remains fail-closed and unclaimed until Docker or a migrated database is reachable.
 - [x] **Historical Exact-Release CI Gate**: GitHub Actions push run `33191451787` and pull-request run `33191464152` passed for `0e96d5812792d3564878cd31658c216c2bbcc7b4`, including PostgreSQL/RLS integration, web/mobile, Rust, Terraform, secret-scanning, clean-source, and CI release-evidence gates. The uploaded HTTPS artifact still must be recorded in the environment-specific staging manifest before `SRC-CI-001` can close.
-- [x] **Current Exact-Release CI Gate**: GitHub Actions hosted push run `33272268323` and pull-request run `33272272920` passed for exact pushed release tip `83f58cf75201a8d73ddea59379e03c7a37671b30`; PostgreSQL/RLS integration, local gate runner, web/mobile, Rust, Terraform, secret-scanning, clean-source, and CI release-evidence upload all passed. The uploaded HTTPS artifact still must be recorded in the environment-specific staging manifest before `SRC-CI-001` can close.
+- [x] **Current Exact-Release CI Gate**: GitHub Actions hosted push run `33274164696` and pull-request run `33274169703` passed for exact pushed release tip `73061d1620fd5fa16a3dfdbf50cafb916ea705ab`; PostgreSQL/RLS integration, local gate runner, web/mobile, Rust, Terraform, secret-scanning, clean-source, and CI release-evidence upload all passed. The uploaded HTTPS artifact still must be recorded in the environment-specific staging manifest before `SRC-CI-001` can close.
 - [x] **Security Boundary Hardening Gate**: refresh-token family containment commits replay revocation before denial, current-MFA assurance protects privilege elevation, room creation requires moderator/admin authorization, strict AI RBAC/citation grammar, exact AI provider-host allowlisting with redirect rejection, trusted-proxy peer CIDR enforcement, Zoom idempotency/URL validation and Redis-backed webhook dedupe, journal identity cleanup, WebSocket event/byte budgets, Rust tenant-transaction vector search, immutable CI inputs, and API/Rust SecretProviderClass separation are covered by focused validation. The checked-in legacy-data cleanup migration now requires a superuser or BYPASSRLS migration role before clearing plaintext MFA seeds; live staging execution remains external.
 - [x] **MFA Enrollment Bootstrap Gate**: unenrolled privileged logins now return a short-lived purpose-bound enrollment token with no refresh token; middleware limits it to `/api/v1/auth/mfa/enroll` and `/api/v1/auth/mfa/verify`, current-role checks protect state changes, the token is rejected after activation, and web/mobile setup helpers keep it in memory until a fresh MFA login. Local auth, integration, smoke, and typecheck evidence passes; deployed MFA/rate-limit observation remains external.
 - [ ] **CI Release Evidence Manifest Ingestion**: record the uploaded HTTPS `ci-release-evidence` artifact URL and passing `tools/ciprobe` report in the environment-specific staging manifest.
@@ -474,13 +474,13 @@ Serena setup source: [[serena-setup|production-readiness/serena-setup.md]]
 
 <!-- OBSIDIAN-STAGING-EVIDENCE-SNAPSHOT-START -->
 ## Staging Evidence Snapshot (staging)
-- release_candidate: replace-with-git-sha-or-tag
+- release_candidate: 73061d1620fd5fa16a3dfdbf50cafb916ea705ab
 - strict_release_ready: no
 - strict_staging_path_ready: yes
 - non_manifest_blockers: 0
 - counts: passed=0, pending_external=21, blocked=0, failed=0, accepted_risk=0
 - proof_markers: strict_release_readiness_computed=true, strict_staging_path_readiness_computed=true, release_candidate_match_checked=true, pending_external_items_counted=true, non_manifest_blockers_counted=true, contract_drift_blockers_counted=true, accepted_risk_status_counted=true, accepted_risk_metadata_freshness_checked=true, strict_release_validation_checked=true, blocking_items_listed=true, blocking_item_required_evidence_listed=true
-- expected_release_candidate: replace-with-git-sha-or-tag
+- expected_release_candidate: 73061d1620fd5fa16a3dfdbf50cafb916ea705ab
 - release_candidate_matches_expected: yes
 - blocking items:
   - SRC-CI-001 [pending_external]: Clean pushed GitHub Actions run for the exact release branch.
