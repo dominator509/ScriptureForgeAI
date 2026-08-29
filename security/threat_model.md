@@ -50,11 +50,11 @@ This is a repo-local threat model. It does not replace staging evidence for AWS 
 
 ## Residual Risks Blocking Production Claim
 
-- GitHub Actions hosted pull-request run `33259420498` passed for exact release `c2501f85349dc00d80344cde831a54b0a9736757`; the uploaded HTTPS release artifact still needs to be recorded in the staging manifest.
+- GitHub Actions hosted pull-request run `33260522160` passed for exact release `b880c1886644fbc64a15214c70661efaaf5b27bf`; the uploaded HTTPS release artifact still needs to be recorded in the staging manifest.
 - No staging `terraform plan/apply` has proven live AWS, EKS, RDS, Redis, ALB, DNS, ACM, IRSA, Secrets Store CSI, or rollback paths.
 - Native-device/EAS validation is still required for mobile AES-GCM outside Node/WebCrypto shims.
 - Deployed OTLP collector/backend, dashboard import, alert delivery, and retention evidence are still missing.
 - Staging performance evidence for the 5,000 req/s and P99 under 200ms target is still missing.
-- AI citation verification still proves citation presence against retrieved context, not claim-to-source semantic grounding; structured source spans and claim validation remain a product/security requirement.
+- AI citation verification now binds citations to exact labels at the start of retrieved RAG segments and rejects labels mentioned only inside another segment's text; it still does not prove claim-to-source semantic grounding, so structured source spans and claim validation remain a product/security requirement.
 - DRR-001 is closed: the locked Expo xcode tooling path now resolves `uuid@11.1.1` with a passing CommonJS compatibility smoke.
 - DRR-002 is closed locally: Metro resolves the dependency-free repository-owned `mobile/vendor/image-size` compatibility package, which omits the affected HEIF/ICNS/JXL parsers; `mobile/metro.config.js` also blocks the affected parser and asset formats. The package and mobile audit/build gates must be re-run whenever Expo/Metro changes.
