@@ -847,6 +847,7 @@ function stdoutForGate(id) {
   if (id === 'mobile-smoke') {
     return [
       'mobile api smoke proof:',
+      'mobile session storage smoke proof:',
       'mobile crypto smoke proof:',
       ...mobileSmokeProofMarkers,
     ].join('\n');
