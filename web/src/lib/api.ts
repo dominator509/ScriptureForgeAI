@@ -99,7 +99,7 @@ function assertStrictWebURL(name: string, value: string, protocol: 'https:' | 'w
   } catch {
     throw new Error(`${name} must be an absolute ${protocol}// URL for staging or production web builds`);
   }
-  if (parsed.protocol !== protocol || isLocalOrPrivateURL(value)) {
+  if (parsed.protocol !== protocol || parsed.username !== '' || parsed.password !== '' || parsed.search !== '' || parsed.hash !== '' || isLocalOrPrivateURL(value)) {
     throw new Error(`${name} must use public non-local ${protocol}// for staging or production web builds`);
   }
 }
@@ -113,10 +113,14 @@ function resolveAPIRequestTimeout(raw: string | undefined): number {
   return timeoutMs;
 }
 
+function normalizeBaseURL(value: string): string {
+  return value.trim().replace(/\/+$/, '');
+}
+
 export function resolveWebRuntimeConfig(env: WebRuntimeEnv = process.env): WebRuntimeConfig {
   const strictStaging = isStrictWebEnvironment(env);
-  const apiBaseUrl = env.NEXT_PUBLIC_API_BASE_URL ?? localAPIBaseURL;
-  const wsBaseUrl = env.NEXT_PUBLIC_WS_BASE_URL ?? localWSBaseURL;
+  const apiBaseUrl = normalizeBaseURL(env.NEXT_PUBLIC_API_BASE_URL ?? localAPIBaseURL);
+  const wsBaseUrl = normalizeBaseURL(env.NEXT_PUBLIC_WS_BASE_URL ?? localWSBaseURL);
   const requestTimeoutMs = resolveAPIRequestTimeout(env.NEXT_PUBLIC_API_REQUEST_TIMEOUT_MS);
   if (strictStaging) {
     assertStrictWebURL('NEXT_PUBLIC_API_BASE_URL', apiBaseUrl, 'https:');

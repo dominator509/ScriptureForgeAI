@@ -381,6 +381,32 @@ test('web runtime config accepts explicit staging HTTPS and WSS endpoints', () =
   assert.equal(config.strictStaging, true);
 });
 
+test('web runtime config normalizes endpoint slashes and rejects URL metadata', () => {
+  const config = resolveWebRuntimeConfig({
+    NEXT_PUBLIC_DEPLOYMENT_ENVIRONMENT: 'staging',
+    NEXT_PUBLIC_API_BASE_URL: ' https://web-api.staging.scriptureforge.ai/// ',
+    NEXT_PUBLIC_WS_BASE_URL: 'wss://web-api.staging.scriptureforge.ai/',
+  });
+
+  assert.equal(config.apiBaseUrl, 'https://web-api.staging.scriptureforge.ai');
+  assert.equal(config.wsBaseUrl, 'wss://web-api.staging.scriptureforge.ai');
+
+  for (const apiBaseUrl of [
+    'https://user:password@web-api.staging.scriptureforge.ai',
+    'https://web-api.staging.scriptureforge.ai/?unexpected=query',
+    'https://web-api.staging.scriptureforge.ai/#unexpected-fragment',
+  ]) {
+    assert.throws(
+      () => resolveWebRuntimeConfig({
+        NEXT_PUBLIC_DEPLOYMENT_ENVIRONMENT: 'staging',
+        NEXT_PUBLIC_API_BASE_URL: apiBaseUrl,
+        NEXT_PUBLIC_WS_BASE_URL: 'wss://web-api.staging.scriptureforge.ai',
+      }),
+      /NEXT_PUBLIC_API_BASE_URL must use public non-local https/,
+    );
+  }
+});
+
 after(() => {
   console.log(`web api smoke proof: ${webAPISmokeProofMarkers.join(', ')}`);
 });

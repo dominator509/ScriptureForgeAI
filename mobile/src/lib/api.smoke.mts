@@ -335,6 +335,34 @@ test('mobile runtime config accepts explicit staging HTTPS and WSS endpoints wit
   assert.equal(config.strictStaging, true);
 });
 
+test('mobile runtime config normalizes endpoint slashes and rejects URL metadata', () => {
+  const config = resolveMobileRuntimeConfig({
+    EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT: 'staging',
+    EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO: 'true',
+    EXPO_PUBLIC_API_BASE_URL: ' https://mobile-api.staging.scriptureforge.ai/// ',
+    EXPO_PUBLIC_WS_BASE_URL: 'wss://mobile-api.staging.scriptureforge.ai/',
+  });
+
+  assert.equal(config.apiBaseUrl, 'https://mobile-api.staging.scriptureforge.ai');
+  assert.equal(config.wsBaseUrl, 'wss://mobile-api.staging.scriptureforge.ai');
+
+  for (const apiBaseUrl of [
+    'https://user:password@mobile-api.staging.scriptureforge.ai',
+    'https://mobile-api.staging.scriptureforge.ai/?unexpected=query',
+    'https://mobile-api.staging.scriptureforge.ai/#unexpected-fragment',
+  ]) {
+    assert.throws(
+      () => resolveMobileRuntimeConfig({
+        EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT: 'staging',
+        EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO: 'true',
+        EXPO_PUBLIC_API_BASE_URL: apiBaseUrl,
+        EXPO_PUBLIC_WS_BASE_URL: 'wss://mobile-api.staging.scriptureforge.ai',
+      }),
+      /EXPO_PUBLIC_API_BASE_URL must use public non-local https/,
+    );
+  }
+});
+
 after(() => {
   console.log(`mobile api smoke proof: ${mobileAPISmokeProofMarkers.join(', ')}`);
 });
