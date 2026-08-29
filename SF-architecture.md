@@ -429,7 +429,7 @@ CREATE INDEX idx_participants_lookup ON room_participants(room_id, user_id);
     *   LLM chat requests include `AI_MAX_OUTPUT_TOKENS`, defaulting to 2048 and clamped to 8192, so provider output and retry cost remain bounded per completion.
     *   Chat and MapReduce reducer model selection uses `AI_CHAT_MODEL` or an explicit pipeline model, with the existing reducer default retained only when configuration is unset; provider error details are redacted at the reducer boundary.
     *   LLM network, malformed-response, and empty-response faults use sanitized typed errors; provider URLs, transport messages, and response bodies are not returned to callers.
-    *   MapReduce uses UTF-8-safe bounded chunks and a capped worker pool with cancellation-aware scheduling; invalid processors and canceled work fail closed without unbounded goroutine fan-out.
+    *   MapReduce uses UTF-8-safe bounded chunks, emits an intact rune when a configured limit is smaller than that rune, and uses a capped worker pool with cancellation-aware scheduling; invalid processors and canceled work fail closed without unbounded goroutine fan-out.
     *   *Payload Structure:*
         ```json
         {

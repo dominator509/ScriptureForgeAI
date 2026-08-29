@@ -51,6 +51,7 @@ This file records repository-level implementation history. It is not a substitut
 - Hardened the Redis room-state adapter to return typed `503`-class room-state faults for nil receivers or unconfigured clients across event, active-state, participant-duration, polling, and webhook-idempotency operations instead of panicking.
 - Added mobile session continuity through exact Expo SecureStore dependency pinning, serialized secure persistence, startup refresh/cleanup, and memory-only MFA enrollment state; mobile smoke coverage proves the record boundary and bootstrap behavior.
 - Bound AI citations to RAG segment labels: verification now accepts only exact source labels at segment starts, and retrieved line breaks are normalized so citation-like source text cannot become metadata.
+- Hardened MapReduce chunk splitting so a limit smaller than the first UTF-8 rune emits that rune intact instead of returning invalid text; regression coverage preserves bounded processing behavior.
 - Refreshed the durable audit, roadmap, threat-model, and Obsidian records with the passing exact-SHA hosted CI evidence and the remaining staging-only release blockers.
 
 ### Evidence boundary

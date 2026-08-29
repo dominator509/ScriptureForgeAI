@@ -30,7 +30,8 @@ func NewMapReduceWorker(maxChunkSize int) *MapReduceWorker {
 }
 
 // Chunk splits a large string into smaller slices based on the configured MaxChunkSize.
-// It prefers paragraph, sentence, and word boundaries while guaranteeing a UTF-8-safe byte limit.
+// It prefers paragraph, sentence, and word boundaries while guaranteeing UTF-8-safe boundaries.
+// If the configured limit is smaller than one rune, that rune is emitted intact.
 func (m *MapReduceWorker) Chunk(text string) []string {
 	maxChunkSize := defaultMapReduceChunkSize
 	if m != nil && m.MaxChunkSize > 0 {
@@ -57,12 +58,22 @@ func (m *MapReduceWorker) Chunk(text string) []string {
 }
 
 func safeChunkBoundary(text string, maxBytes int) int {
+	if len(text) == 0 {
+		return 0
+	}
+	if maxBytes <= 0 {
+		maxBytes = 1
+	}
+	if maxBytes >= len(text) {
+		return len(text)
+	}
 	boundary := maxBytes
 	for boundary > 0 && boundary < len(text) && !utf8.RuneStart(text[boundary]) {
 		boundary--
 	}
 	if boundary <= 0 {
-		return maxBytes
+		_, runeSize := utf8.DecodeRuneInString(text)
+		return runeSize
 	}
 
 	segment := text[:boundary]

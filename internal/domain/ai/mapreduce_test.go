@@ -27,6 +27,30 @@ func TestChunkGuaranteesConfiguredUTF8SafeLimit(t *testing.T) {
 	}
 }
 
+func TestChunkPreservesUTF8WhenLimitFallsInsideFirstRune(t *testing.T) {
+	worker := NewMapReduceWorker(1)
+	input := "界abc"
+	chunks := worker.Chunk(input)
+
+	if len(chunks) < 2 {
+		t.Fatalf("chunk count = %d, want multiple chunks", len(chunks))
+	}
+	if chunks[0] != "界" {
+		t.Fatalf("first chunk = %q, want the complete first rune", chunks[0])
+	}
+	if len(chunks[0]) > utf8.UTFMax {
+		t.Fatalf("first chunk byte length = %d, want <= %d", len(chunks[0]), utf8.UTFMax)
+	}
+	for index, chunk := range chunks {
+		if !utf8.ValidString(chunk) {
+			t.Fatalf("chunk %d is not valid UTF-8: %q", index, chunk)
+		}
+	}
+	if got := strings.Join(chunks, ""); got != input {
+		t.Fatalf("joined chunks = %q, want %q", got, input)
+	}
+}
+
 func TestProcessBoundsConcurrentProcessorsAndPreservesOrder(t *testing.T) {
 	worker := NewMapReduceWorker(1)
 	worker.MaxConcurrent = 3
