@@ -13,6 +13,7 @@ This file records repository-level implementation history. It is not a substitut
 - Hardened room creation and synchronization with authenticated WSS, strict event envelopes, Redis sequencing/fan-out, polling fallback, and shutdown cleanup.
 - Normalized web/mobile API and WebSocket base URLs at the client configuration boundary, rejecting credential-bearing, query-bearing, or fragment-bearing strict-environment endpoints before they can generate malformed requests or socket paths.
 - Made AI provider environment values whitespace-safe: blank API keys fail closed before chat or embedding transport, while configured endpoint and model values are trimmed at construction.
+- Made Zoom account, client, and client-secret configuration whitespace-safe before OAuth requests, including direct client wiring used by tests and operators.
 - Added replica-wide Redis leased semaphores for active room WebSocket caps across global, tenant, and user scopes, with renewal, crash expiry, and fail-closed outage handling.
 - Wired production abuse limiting to an atomic Redis fixed-window backend shared across replicas, with bounded remote identity registration and fail-closed 503 behavior when Redis is unavailable; local nil-client fallback remains explicit for isolated tests.
 - Added a dedicated unauthenticated Redis abuse budget for `/api/webhooks/zoom`, with route coverage and strict staging evidence requiring the `zoom_webhook` profile and its redacted request/window assignments.

@@ -80,9 +80,9 @@ func validateZoomMeetingURL(raw string) error {
 
 func NewZoomClient() *ZoomClient {
 	return &ZoomClient{
-		AccountID:    os.Getenv("ZOOM_ACCOUNT_ID"),
-		ClientID:     os.Getenv("ZOOM_CLIENT_ID"),
-		ClientSecret: os.Getenv("ZOOM_CLIENT_SECRET"),
+		AccountID:    strings.TrimSpace(os.Getenv("ZOOM_ACCOUNT_ID")),
+		ClientID:     strings.TrimSpace(os.Getenv("ZOOM_CLIENT_ID")),
+		ClientSecret: strings.TrimSpace(os.Getenv("ZOOM_CLIENT_SECRET")),
 		HTTPClient:   newZoomHTTPClient(zoomHTTPTimeout()),
 		MaxRetries:   zoomMaxRetries(),
 	}
@@ -228,17 +228,20 @@ func (c *ZoomClient) doWithRetry(buildRequest func() (*http.Request, error)) (*h
 
 // getAccessToken executes the Server-to-Server OAuth flow.
 func (c *ZoomClient) getAccessToken(ctx context.Context) (string, error) {
-	if c.AccountID == "" || c.ClientID == "" || c.ClientSecret == "" {
+	accountID := strings.TrimSpace(c.AccountID)
+	clientID := strings.TrimSpace(c.ClientID)
+	clientSecret := strings.TrimSpace(c.ClientSecret)
+	if accountID == "" || clientID == "" || clientSecret == "" {
 		return "", fmt.Errorf("zoom credentials are not fully configured")
 	}
 
-	tokenURL := fmt.Sprintf("https://zoom.us/oauth/token?grant_type=account_credentials&account_id=%s", url.QueryEscape(c.AccountID))
+	tokenURL := fmt.Sprintf("https://zoom.us/oauth/token?grant_type=account_credentials&account_id=%s", url.QueryEscape(accountID))
 	resp, err := c.doWithRetry(func() (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, nil)
 		if err != nil {
 			return nil, err
 		}
-		req.SetBasicAuth(c.ClientID, c.ClientSecret)
+		req.SetBasicAuth(clientID, clientSecret)
 		return req, nil
 	})
 	if err != nil {

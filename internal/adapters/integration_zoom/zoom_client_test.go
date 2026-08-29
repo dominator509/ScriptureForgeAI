@@ -35,12 +35,18 @@ func TestZoomClientConfigurationIsBounded(t *testing.T) {
 	t.Run("configured values", func(t *testing.T) {
 		t.Setenv("ZOOM_HTTP_TIMEOUT_MS", "9000")
 		t.Setenv("ZOOM_MAX_RETRIES", "1")
+		t.Setenv("ZOOM_ACCOUNT_ID", " account-1 ")
+		t.Setenv("ZOOM_CLIENT_ID", " client-1 ")
+		t.Setenv("ZOOM_CLIENT_SECRET", " secret-1 ")
 		client := NewZoomClient()
 		if client.HTTPClient.Timeout != 9*time.Second {
 			t.Fatalf("configured timeout = %s, want 9s", client.HTTPClient.Timeout)
 		}
 		if client.MaxRetries != 1 {
 			t.Fatalf("configured retries = %d, want 1", client.MaxRetries)
+		}
+		if client.AccountID != "account-1" || client.ClientID != "client-1" || client.ClientSecret != "secret-1" {
+			t.Fatalf("configured credentials were not trimmed: %#v", client)
 		}
 	})
 
@@ -310,6 +316,26 @@ func TestCreateMeetingUsesOfflineFallbackWhenCredentialsMissing(t *testing.T) {
 	meeting, err := client.CreateMeeting(context.Background(), room.MeetingConfig{HostID: "host-2"})
 	if err != nil {
 		t.Fatalf("missing-credential fallback returned error: %v", err)
+	}
+	if meeting.JoinURL != "offline://in-person" {
+		t.Fatalf("meeting join url = %q, want offline fallback", meeting.JoinURL)
+	}
+}
+
+func TestCreateMeetingUsesOfflineFallbackWhenCredentialsAreWhitespace(t *testing.T) {
+	client := &ZoomClient{
+		AccountID:    " \t",
+		ClientID:     " \t",
+		ClientSecret: " \t",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			t.Fatal("HTTP transport should not be called with whitespace credentials")
+			return nil, nil
+		})},
+	}
+
+	meeting, err := client.CreateMeeting(context.Background(), room.MeetingConfig{HostID: "host-whitespace"})
+	if err != nil {
+		t.Fatalf("whitespace-credential fallback returned error: %v", err)
 	}
 	if meeting.JoinURL != "offline://in-person" {
 		t.Fatalf("meeting join url = %q, want offline fallback", meeting.JoinURL)
