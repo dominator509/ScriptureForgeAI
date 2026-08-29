@@ -181,7 +181,7 @@ func (g *GRPCScriptureClient) Close() error {
 
 // generateEmbedding calls OpenAI to turn the query string into a 1536-dimensional vector
 func generateEmbedding(ctx context.Context, text string) ([]float32, error) {
-	apiKey := os.Getenv("OPENAI_API_KEY")
+	apiKey := strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
 	if apiKey == "" {
 		return nil, newRAGSearchFault()
 	}
@@ -191,11 +191,11 @@ func generateEmbedding(ctx context.Context, text string) ([]float32, error) {
 		Model string `json:"model"`
 	}
 
-	model := os.Getenv("AI_EMBEDDING_MODEL")
+	model := strings.TrimSpace(os.Getenv("AI_EMBEDDING_MODEL"))
 	if model == "" {
 		model = "text-embedding-3-small"
 	}
-	endpoint := os.Getenv("AI_EMBEDDING_ENDPOINT")
+	endpoint := strings.TrimSpace(os.Getenv("AI_EMBEDDING_ENDPOINT"))
 	if endpoint == "" {
 		endpoint = "https://api.openai.com/v1/embeddings"
 	}

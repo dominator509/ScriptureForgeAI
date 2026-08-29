@@ -178,21 +178,23 @@ func TestGRPCScriptureClientReadinessRequiresServingHealth(t *testing.T) {
 
 func TestGenerateEmbeddingFailsClosedWithoutAPIKey(t *testing.T) {
 	t.Setenv("GO_ENV", "testing")
-	t.Setenv("OPENAI_API_KEY", "")
+	for _, apiKey := range []string{"", "   \t"} {
+		t.Setenv("OPENAI_API_KEY", apiKey)
 
-	embedding, err := generateEmbedding(context.Background(), "creation")
-	if embedding != nil {
-		t.Fatalf("generateEmbedding returned a synthetic vector without a provider key: %v", embedding)
-	}
-	var platformErr *PlatformException
-	if !errors.As(err, &platformErr) {
-		t.Fatalf("generateEmbedding error = %T %v, want PlatformException", err, err)
-	}
-	if platformErr.Code != http.StatusServiceUnavailable || platformErr.Category != RAGSearchFault {
-		t.Fatalf("embedding fault = %+v, want sanitized 503 RAG fault", platformErr)
-	}
-	if strings.Contains(platformErr.Message, "OPENAI_API_KEY") {
-		t.Fatalf("embedding fault leaked provider configuration: %q", platformErr.Message)
+		embedding, err := generateEmbedding(context.Background(), "creation")
+		if embedding != nil {
+			t.Fatalf("generateEmbedding returned a synthetic vector without a provider key %q: %v", apiKey, embedding)
+		}
+		var platformErr *PlatformException
+		if !errors.As(err, &platformErr) {
+			t.Fatalf("generateEmbedding error = %T %v, want PlatformException", err, err)
+		}
+		if platformErr.Code != http.StatusServiceUnavailable || platformErr.Category != RAGSearchFault {
+			t.Fatalf("embedding fault = %+v, want sanitized 503 RAG fault", platformErr)
+		}
+		if strings.Contains(platformErr.Message, "OPENAI_API_KEY") {
+			t.Fatalf("embedding fault leaked provider configuration: %q", platformErr.Message)
+		}
 	}
 }
 
@@ -311,6 +313,36 @@ func TestGenerateEmbeddingRetriesWithFreshRequestBody(t *testing.T) {
 	}
 	if attempts != 2 || len(embedding) != 2 || embedding[0] != 0.25 || embedding[1] != 0.5 {
 		t.Fatalf("embedding attempts=%d value=%v, want two valid attempts", attempts, embedding)
+	}
+}
+
+func TestGenerateEmbeddingTrimsProviderEnvironmentValues(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", " provider-key ")
+	t.Setenv("AI_EMBEDDING_MODEL", " provider-model ")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			Model string `json:"model"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode embedding request: %v", err)
+		}
+		if request.Model != "provider-model" {
+			t.Fatalf("embedding model = %q, want trimmed model", request.Model)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{"embedding": []float32{0.25}}},
+		})
+	}))
+	defer server.Close()
+	t.Setenv("AI_EMBEDDING_ENDPOINT", " "+server.URL+" ")
+	t.Setenv("AI_ALLOWED_PROVIDER_HOSTS", "127.0.0.1")
+
+	embedding, err := generateEmbedding(context.Background(), "creation")
+	if err != nil {
+		t.Fatalf("generateEmbedding error: %v", err)
+	}
+	if len(embedding) != 1 || embedding[0] != 0.25 {
+		t.Fatalf("embedding = %v, want trimmed provider configuration result", embedding)
 	}
 }
 
