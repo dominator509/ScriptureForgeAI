@@ -307,8 +307,8 @@ const abuseRateLimitProfileSegments = [
 const concreteIAMRoleARNPattern = /\brole_arn=arn:aws:iam::[0-9]{12}:role\/[A-Za-z0-9+=,.@_/-]+\b/i;
 const securitySegmentMarkerRequirements = new Map([
   ['irsa-service-account', ['staging artifact', 'namespace=staging', 'service_account=scriptureforge-api', 'role_arn=arn:aws:iam::', 'eks.amazonaws.com/role-arn', 'scriptureforge', 'trust policy', 'sts:AssumeRoleWithWebIdentity', 'release_candidate=', 'service_version=', 'load_run_id=']],
-  ['secret-provider-class', ['staging artifact', 'namespace=staging', 'service_account=scriptureforge-api', 'role_arn=arn:aws:iam::', 'SecretProviderClass', 'secrets-store.csi.k8s.io', 'provider', 'aws', 'objects', 'objectName', 'objectType', 'secretsmanager', 'objectAlias', 'jmesPath', 'secretObjects', 'type', 'Opaque', 'DATABASE_URL', 'JWT_SECRET_KEY', 'OPENAI_API_KEY', 'ZOOM_WEBHOOK_SECRET_TOKEN', 'release_candidate=', 'service_version=', 'load_run_id=']],
-  ['synced-secret-metadata-redacted', ['staging artifact', 'namespace=staging', 'scriptureforge-runtime-secrets', 'type', 'Opaque', 'DATABASE_URL', 'JWT_SECRET_KEY', 'OPENAI_API_KEY', 'ZOOM_WEBHOOK_SECRET_TOKEN', 'redacted', 'stringData absent', 'managed by secrets-store.csi.k8s.io', 'ownerReferences', 'secrets-store.csi.k8s.io/managed=true', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['secret-provider-class', ['staging artifact', 'namespace=staging', 'service_account=scriptureforge-api', 'role_arn=arn:aws:iam::', 'SecretProviderClass', 'secrets-store.csi.k8s.io', 'provider', 'aws', 'objects', 'objectName', 'objectType', 'secretsmanager', 'objectAlias', 'jmesPath', 'secretObjects', 'type', 'Opaque', 'DATABASE_URL', 'JWT_SECRET_KEY', 'OPENAI_API_KEY', 'JOURNAL_SALT_SECRET', 'MFA_ENCRYPTION_KEY', 'ZOOM_WEBHOOK_SECRET_TOKEN', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['synced-secret-metadata-redacted', ['staging artifact', 'namespace=staging', 'scriptureforge-runtime-secrets', 'type', 'Opaque', 'DATABASE_URL', 'JWT_SECRET_KEY', 'OPENAI_API_KEY', 'JOURNAL_SALT_SECRET', 'MFA_ENCRYPTION_KEY', 'ZOOM_WEBHOOK_SECRET_TOKEN', 'redacted', 'stringData absent', 'managed by secrets-store.csi.k8s.io', 'ownerReferences', 'secrets-store.csi.k8s.io/managed=true', 'release_candidate=', 'service_version=', 'load_run_id=']],
   ['iam-secrets-policy', ['staging artifact', 'role_arn=arn:aws:iam::', 'secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret', 'arn:aws:secretsmanager:', 'scoped resource', 'no wildcard resources', 'release_candidate=', 'service_version=', 'load_run_id=']],
   ['scoped-secrets-access-test', ['staging artifact', 'namespace=staging', 'service_account=scriptureforge-api', 'role_arn=arn:aws:iam::', 'allowed', 'configured secret', 'denied', 'unscoped secret', 'AccessDenied', 'distinct_secret_artifacts=true', 'release_candidate=', 'service_version=', 'load_run_id=']],
 ]);
@@ -597,6 +597,8 @@ export const strictProbeFamilies = {
       'DATABASE_URL',
       'JWT_SECRET_KEY',
       'OPENAI_API_KEY',
+      'JOURNAL_SALT_SECRET',
+      'MFA_ENCRYPTION_KEY',
       'ZOOM_WEBHOOK_SECRET_TOKEN',
       'synced-secret-metadata-redacted',
       'scriptureforge-runtime-secrets',

@@ -127,6 +127,7 @@ secretObjects:
   - key: JWT_SECRET_KEY
   - key: OPENAI_API_KEY
   - key: JOURNAL_SALT_SECRET
+  - key: MFA_ENCRYPTION_KEY
   - key: ZOOM_WEBHOOK_SECRET_TOKEN`))
 		case "/synced-secret":
 			_, _ = w.Write([]byte(`staging artifact namespace=staging
@@ -137,6 +138,7 @@ data:
   JWT_SECRET_KEY: REDACTED
   OPENAI_API_KEY: REDACTED
   JOURNAL_SALT_SECRET: REDACTED
+  MFA_ENCRYPTION_KEY: REDACTED
   ZOOM_WEBHOOK_SECRET_TOKEN: REDACTED
 stringData absent
 managed by secrets-store.csi.k8s.io ownerReferences secrets-store.csi.k8s.io/managed=true`))
@@ -173,8 +175,8 @@ managed by secrets-store.csi.k8s.io ownerReferences secrets-store.csi.k8s.io/man
 	}
 	expectedMarkers := map[string][]string{
 		"irsa-service-account":            {"staging artifact", "namespace=staging", "service_account=scriptureforge-api", "role_arn=arn:aws:iam::", "role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets", "eks.amazonaws.com/role-arn", "scriptureforge", "trust policy", "sts:AssumeRoleWithWebIdentity", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion, "load_run_id=" + securityLoadRunID},
-		"secret-provider-class":           {"staging artifact", "namespace=staging", "service_account=scriptureforge-api", "role_arn=arn:aws:iam::", "role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets", "SecretProviderClass", "secrets-store.csi.k8s.io", "provider", "aws", "objects", "objectName", "objectType", "secretsmanager", "objectAlias", "jmesPath", "secretObjects", "type", "Opaque", "DATABASE_URL", "JWT_SECRET_KEY", "OPENAI_API_KEY", "JOURNAL_SALT_SECRET", "ZOOM_WEBHOOK_SECRET_TOKEN", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion, "load_run_id=" + securityLoadRunID},
-		"synced-secret-metadata-redacted": {"staging artifact", "namespace=staging", "scriptureforge-runtime-secrets", "type", "Opaque", "DATABASE_URL", "JWT_SECRET_KEY", "OPENAI_API_KEY", "JOURNAL_SALT_SECRET", "ZOOM_WEBHOOK_SECRET_TOKEN", "redacted", "stringData absent", "managed by secrets-store.csi.k8s.io", "ownerReferences", "secrets-store.csi.k8s.io/managed=true", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion, "load_run_id=" + securityLoadRunID},
+		"secret-provider-class":           {"staging artifact", "namespace=staging", "service_account=scriptureforge-api", "role_arn=arn:aws:iam::", "role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets", "SecretProviderClass", "secrets-store.csi.k8s.io", "provider", "aws", "objects", "objectName", "objectType", "secretsmanager", "objectAlias", "jmesPath", "secretObjects", "type", "Opaque", "DATABASE_URL", "JWT_SECRET_KEY", "OPENAI_API_KEY", "JOURNAL_SALT_SECRET", "MFA_ENCRYPTION_KEY", "ZOOM_WEBHOOK_SECRET_TOKEN", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion, "load_run_id=" + securityLoadRunID},
+		"synced-secret-metadata-redacted": {"staging artifact", "namespace=staging", "scriptureforge-runtime-secrets", "type", "Opaque", "DATABASE_URL", "JWT_SECRET_KEY", "OPENAI_API_KEY", "JOURNAL_SALT_SECRET", "MFA_ENCRYPTION_KEY", "ZOOM_WEBHOOK_SECRET_TOKEN", "redacted", "stringData absent", "managed by secrets-store.csi.k8s.io", "ownerReferences", "secrets-store.csi.k8s.io/managed=true", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion, "load_run_id=" + securityLoadRunID},
 		"iam-secrets-policy":              {"staging artifact", "role_arn=arn:aws:iam::", "role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets", "secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret", "arn:aws:secretsmanager:", "scoped resource", "no wildcard resources", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion, "load_run_id=" + securityLoadRunID},
 		"scoped-secrets-access-test":      {"staging artifact", "namespace=staging", "service_account=scriptureforge-api", "role_arn=arn:aws:iam::", "role_arn=arn:aws:iam::123456789012:role/scriptureforge-app-secrets", "allowed", "configured secret", "denied", "unscoped secret", "AccessDenied", "distinct_secret_artifacts=true", "release_candidate=" + securityReleaseCandidate, "service_version=" + securityServiceVersion, "load_run_id=" + securityLoadRunID},
 	}
