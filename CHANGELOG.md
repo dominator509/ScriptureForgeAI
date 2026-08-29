@@ -46,6 +46,7 @@ This file records repository-level implementation history. It is not a substitut
 - Added the bounded environment-driven `AI_MAX_OUTPUT_TOKENS` provider request budget and Terraform projection.
 - Scoped API/Rust database-port NetworkPolicy egress to declared `data_tier_cidrs` with validator regression coverage.
 - Made failed room-provisioning cleanup use a bounded context detached from client cancellation and emit sanitized dependency telemetry.
+- Refreshed the durable audit, roadmap, threat-model, and Obsidian records with the passing exact-SHA hosted CI evidence and the remaining staging-only release blockers.
 
 ### Evidence boundary
 
