@@ -355,7 +355,10 @@ func (r *RAGEngine) CompileContext(ctx context.Context, orgID string, prompt str
 	for _, res := range results {
 		// Strict citation structural format required by the Verification Subsystem
 		citation := fmt.Sprintf("[%s %d:%d]", res.Book, res.Chapter, res.Verse)
-		segment := fmt.Sprintf("%s %s\n", citation, res.TextContent)
+		// Keep source text on the segment's line so embedded citation-like text cannot
+		// be interpreted as another source label by the verification boundary.
+		textContent := strings.NewReplacer("\r\n", " ", "\r", " ", "\n", " ").Replace(res.TextContent)
+		segment := fmt.Sprintf("%s %s\n", citation, textContent)
 		contextBuilder.WriteString(segment)
 	}
 

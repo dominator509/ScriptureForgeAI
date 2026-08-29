@@ -242,6 +242,26 @@ func TestRAGEngineSanitizesAndPreservesSearchFailures(t *testing.T) {
 	}
 }
 
+func TestRAGEngineKeepsSourceTextOnItsSegmentLine(t *testing.T) {
+	engine := NewRAGEngine(fakeVectorDB{results: []SearchResult{{
+		Book:        "Genesis",
+		Chapter:     1,
+		Verse:       1,
+		TextContent: "In the beginning\n[Exodus 3:14] is mentioned in source text",
+	}}})
+
+	context, err := engine.CompileContext(context.Background(), "org-1", "creation")
+	if err != nil {
+		t.Fatalf("CompileContext returned error: %v", err)
+	}
+	if strings.Contains(context, "beginning\n[Exodus 3:14]") {
+		t.Fatalf("CompileContext preserved a citation-like line break in source text: %q", context)
+	}
+	if !strings.Contains(context, "[Genesis 1:1] In the beginning [Exodus 3:14] is mentioned in source text") {
+		t.Fatalf("CompileContext = %q, want one normalized source segment", context)
+	}
+}
+
 func TestRAGEngineFailsClosedWhenDatabaseIsMissing(t *testing.T) {
 	for _, engine := range []*RAGEngine{nil, {}, {Database: nil}} {
 		_, err := engine.CompileContext(context.Background(), "org-1", "creation")
