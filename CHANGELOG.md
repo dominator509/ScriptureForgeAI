@@ -6,6 +6,8 @@ This file records repository-level implementation history. It is not a substitut
 
 ### Production-readiness remediation
 
+- Pinned every repository-controlled API, Rust, and web Dockerfile stage plus local/CI/RLS Postgres and Redis image reference to an exact registry manifest digest; deployment regression tests now reject mutable `FROM` and Compose `image:` references.
+- Refreshed the exact branch-tip local gate report for `4915f69cce74aa455f5c69ad1f9e929a2d7679cc`: 35/35 gates ran with 34 passing, a clean worktree, refreshed upstream metadata, and only the fail-closed Docker-backed RLS gate blocked by the unavailable local Docker daemon.
 - Added irreversible AI audit prompt redaction: historical `ai_request_logs` bodies are scrubbed, and new rows retain only a fixed redaction marker plus prompt byte length while preserving status, errors, and citation trails.
 - Added Terraform Kubernetes network-policy skeleton: application namespace ingress/egress defaults to deny, with explicit API, Rust, web, DNS, data-tier, Prometheus, OTLP, and HTTPS provider flows plus regression validation against unrestricted pod egress.
 - Enforced typed Go JSON ingress contracts and typed room WebSocket error envelopes.
