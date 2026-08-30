@@ -1,6 +1,6 @@
 # ScriptureForgeAI Production Threat Model
 
-Status last updated: 2026-08-28
+Status last updated: 2026-08-29
 
 ## Scope
 
@@ -50,7 +50,8 @@ This is a repo-local threat model. It does not replace staging evidence for AWS 
 
 ## Residual Risks Blocking Production Claim
 
-- GitHub Actions hosted pull-request run `33260522160` passed for exact release `b880c1886644fbc64a15214c70661efaaf5b27bf`; the uploaded HTTPS release artifact still needs to be recorded in the staging manifest.
+- GitHub Actions hosted pull-request run `33280938361` passed for exact behavior release `fc7e105cb0f979535e78cd63ee56cd49ab3fef8f`; pushed follow-up `89d71720552fa6a430558a2f4921bf03d5d8fcbe` pins repository-controlled container references and awaits hosted verification. The uploaded HTTPS release artifact still needs to be recorded in the staging manifest.
+- Parent-image signing/provenance, ECR publication, and deployed workload digest verification remain release/staging evidence; local Dockerfile, Compose, CI, and RLS harness validators now reject mutable image references.
 - No staging `terraform plan/apply` has proven live AWS, EKS, RDS, Redis, ALB, DNS, ACM, IRSA, Secrets Store CSI, or rollback paths.
 - Native-device/EAS validation is still required for mobile AES-GCM outside Node/WebCrypto shims.
 - Deployed OTLP collector/backend, dashboard import, alert delivery, and retention evidence are still missing.

@@ -1,13 +1,13 @@
 # Static Analysis And Supply Chain Report
 
-Status last updated: 2026-08-10
+Status last updated: 2026-08-29
 
 ## Static Application Security Testing
 
 Current CI is configured to run:
 
 - `go test ./...`
-- DB-backed Go integration tests against `pgvector/pgvector:pg16`
+- DB-backed Go integration tests against the digest-pinned `pgvector/pgvector` Postgres service
 - `go vet ./...`
 - web smoke/typecheck/build gates
 - mobile smoke/build-compatible gates
@@ -41,5 +41,6 @@ Terraform now lives in split files under `build/terraform` rather than the delet
 - Aurora PostgreSQL backup retention, backup/maintenance windows, CloudWatch PostgreSQL log export, tag copying to snapshots, deletion protection, and named final snapshot.
 - API/Rust/web rolling update strategy with rollout history retention and zero unavailable pods during deploys.
 - Terraform fmt/validate and deployment skeleton invariant validation.
+- Repository-controlled Dockerfile, Compose, CI, and RLS image references are digest-pinned; deployment regression tests reject mutable base/service image tags. Registry signing/provenance and deployed digest verification remain external.
 
 Live production readiness still requires staging `plan/apply`, TLS/DNS/ACM proof, remote-state access proof, and real cluster/runtime validation.

@@ -629,6 +629,13 @@ DNS before connecting, rejects restricted destinations, and dials only the valid
 CI checks the hosted runner's existing `kubectl` path/version and does not install a mutable
 binary/checksum pair. Deployment execution and artifact authenticity remain staging-owned.
 
+The container supply-chain boundary is repository-controlled through exact registry
+manifest digests: every API, Rust, and web Dockerfile stage, plus local/CI/RLS
+Postgres and Redis workload references, must use `@sha256:<digest>`. Deployment
+validation rejects mutable `FROM` and Compose `image:` references. Parent-image
+signing/provenance, ECR publication, and deployed digest verification remain
+staging/release evidence rather than local source claims.
+
 The staging deployment verification step must attach real Terraform and Kubernetes artifacts through `tools/deploymentprobe`. `DEPLOY-TF-001` and `DEPLOY-K8S-001` evidence is accepted only when probe summaries carry both verified deployment markers and `staging artifact` provenance; Terraform approval fallback evidence must include a structured `change_ticket=<ticket-id>` marker when it substitutes for apply output, and strict-release validation rejects approval summaries that omit that ticket ID. Mock, placeholder, synthetic, stubbed, test-only, dry-run, localhost, or loopback artifacts are treated as non-production evidence.
 
 ### 16.1 Infrastructure Configuration Framework (Terraform Plan Abstract)

@@ -35,7 +35,7 @@ export const stalePhrases = [
 
 export const requiredCoverage = {
   'security/threat_model.md': [
-    'Status last updated: 2026-08-28',
+    'Status last updated: 2026-08-29',
     'STRIDE Analysis',
     'Trust Boundaries',
     'Spoofing',
