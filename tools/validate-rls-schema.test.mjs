@@ -309,13 +309,13 @@ test('validateProductionRoomMembershipWiring rejects production socket membershi
   );
 });
 
-test('validateProductionRoomMembershipWiring rejects tenantless socket membership checks', async () => {
+test('validateProductionRoomMembershipWiring rejects socket membership checks without an active-room guard', async () => {
   const { platformMainText, roomHandlerText, socketHandlerText } = await fixtures();
-  const broken = socketHandlerText.replace('WHERE organization_id = $1 AND room_id = $2 AND user_id = $3', 'WHERE room_id = $1 AND user_id = $2');
-  assert.notEqual(broken, socketHandlerText, 'test fixture must weaken socket membership SQL');
+  const broken = socketHandlerText.replace('AND rooms.is_active = TRUE', '');
+  assert.notEqual(broken, socketHandlerText, 'test fixture must remove the active-room socket guard');
   assert.throws(
     () => validateProductionRoomMembershipWiring(platformMainText, roomHandlerText, broken),
-    /SocketConnection membership validation must use tenant-scoped Postgres\/RLS checks/,
+    /SocketConnection membership validation must use tenant-scoped Postgres\/RLS checks and require an active room/,
   );
 });
 

@@ -105,6 +105,7 @@ export function validateRLSSchema(
     'tenant B room state status',
     'tenant A room state status',
     'cross-tenant socket dial expected to fail',
+    'TestSocketStreamRejectsInactiveRoom',
     'tenant B event append count = %d, want 0',
     'zoom webhook mapping without verified context visible rows=%d, want 0',
     'zoom webhook mapping verified exact meeting room=%s, want %s',
@@ -252,9 +253,14 @@ export function validateProductionRoomMembershipWiring(platformMainText, roomHan
   assert.ok(
     socketHandlerText.includes('func (s *SocketConnection) validateRoomMembership') &&
       socketHandlerText.includes('auth.SetTenantContext') &&
-      socketHandlerText.includes('FROM room_participants') &&
-      socketHandlerText.includes('WHERE organization_id = $1 AND room_id = $2 AND user_id = $3'),
-    'SocketConnection membership validation must use tenant-scoped Postgres/RLS checks',
+      socketHandlerText.includes('FROM room_participants participants') &&
+      socketHandlerText.includes('INNER JOIN live_rooms rooms') &&
+      socketHandlerText.includes('rooms.organization_id = participants.organization_id') &&
+      socketHandlerText.includes('participants.organization_id = $1') &&
+      socketHandlerText.includes('participants.room_id = $2') &&
+      socketHandlerText.includes('participants.user_id = $3') &&
+      socketHandlerText.includes('rooms.is_active = TRUE'),
+    'SocketConnection membership validation must use tenant-scoped Postgres/RLS checks and require an active room',
   );
 }
 

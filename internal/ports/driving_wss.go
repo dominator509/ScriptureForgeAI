@@ -302,8 +302,14 @@ func (s *SocketConnection) validateRoomMembership(r *http.Request, claims *auth.
 	err = tx.QueryRow(
 		r.Context(),
 		`SELECT COUNT(*)
-		 FROM room_participants
-		 WHERE organization_id = $1 AND room_id = $2 AND user_id = $3`,
+		 FROM room_participants participants
+		 INNER JOIN live_rooms rooms
+			 ON rooms.id = participants.room_id
+			AND rooms.organization_id = participants.organization_id
+		 WHERE participants.organization_id = $1
+		   AND participants.room_id = $2
+		   AND participants.user_id = $3
+		   AND rooms.is_active = TRUE`,
 		claims.OrganizationID,
 		roomID,
 		claims.UserID,

@@ -685,6 +685,70 @@ func TestSocketStreamIsTenantScoped(t *testing.T) {
 	}
 }
 
+func TestSocketStreamRejectsInactiveRoom(t *testing.T) {
+	t.Setenv("ALLOWED_WS_ORIGINS", "")
+	t.Setenv("DEPLOYMENT_ENVIRONMENT", "")
+
+	db := openTenantIsolationDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	seedTenantIsolationFixtures(ctx, t, db)
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		cleanupTenantIsolationFixtures(cleanupCtx, t, db)
+	})
+
+	var roomID string
+	withTenantIsolationContext(ctx, t, db, tenantIsolationOrgA, func(ctx context.Context, tx pgx.Tx) {
+		if err := tx.QueryRow(
+			ctx,
+			`INSERT INTO live_rooms (organization_id, host_user_id, title, meeting_provider, meeting_metadata, is_active)
+			 VALUES ($1, $2, $3, 'offline', '{"mode":"offline"}'::jsonb, FALSE)
+			 RETURNING id`,
+			tenantIsolationOrgA,
+			tenantIsolationUserA,
+			"Inactive Room",
+		).Scan(&roomID); err != nil {
+			t.Fatalf("seed inactive room: %v", err)
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO room_participants (organization_id, room_id, user_id) VALUES ($1, $2, $3)`, tenantIsolationOrgA, roomID, tenantIsolationUserA); err != nil {
+			t.Fatalf("seed inactive room participant: %v", err)
+		}
+	})
+
+	socket := &SocketConnection{
+		DB:           db,
+		StateManager: &fakeRoomEventStore{},
+		Hub:          NewRoomHub(),
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims := &auth.TokenClaims{
+			UserID:         tenantIsolationUserA,
+			OrganizationID: tenantIsolationOrgA,
+			Role:           "member",
+			RegisteredClaims: jwt.RegisteredClaims{
+				IssuedAt: jwt.NewNumericDate(time.Now().Add(-time.Minute)),
+			},
+		}
+		socket.HandleLiveRoom(w, r.WithContext(context.WithValue(r.Context(), auth.ContextKeyUser, claims)))
+	}))
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/v1/rooms/stream/" + roomID
+	conn, response, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err == nil {
+		_ = conn.Close()
+		t.Fatal("inactive-room socket dial expected to fail")
+	}
+	if response == nil || response.StatusCode != http.StatusForbidden {
+		if response == nil {
+			t.Fatalf("inactive-room socket response is nil: %v", err)
+		}
+		t.Fatalf("inactive-room socket status = %d, want %d", response.StatusCode, http.StatusForbidden)
+	}
+}
+
 func TestAuthRefreshLogoutHonorTenantIsolation(t *testing.T) {
 	db := openTenantIsolationDB(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)

@@ -290,6 +290,11 @@ Phase 06: Web & Mobile UX Assembly
 • `/api/v1/auth/mfa/verify` activates staged enrollment only after a valid code; active factors cannot be replaced through the seed endpoint without an explicit recovery design.
 • Integration coverage proves staged enrollment, activation, cache policy, and active-factor replacement denial; this remains within the planned PR3 auth/session/MFA contract.
 
+### 2026-08-30 Inactive Room Stream Lifecycle Hardening
+• Database-backed room WebSocket authorization now requires tenant-scoped membership in an active `live_rooms` row during both connection upgrade and the existing authorization heartbeat.
+• Zoom terminal-state reconciliation and Redis-compensation deactivation therefore block new room streams and close existing sockets before further event mutation; the Postgres/RLS integration suite covers inactive-room upgrade denial.
+• Live provider delivery and multi-replica timing evidence remain external release gates under `EXT-ZOOM-001` and `PERF-WS-001`.
+
 6. CODING AGENT OPERATING RULES (FOR IMPLEMENTATION LEAD)
 •
 • Look Before You Leap: Before executing textual changes, partial file rewrites, or code injection steps, the implementation lead must parse the target code asset and all corresponding sibling interface declarations fully to maintain consistent architectural design boundaries.
