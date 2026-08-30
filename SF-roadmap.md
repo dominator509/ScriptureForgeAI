@@ -298,7 +298,7 @@ Phase 06: Web & Mobile UX Assembly
 ### 2026-08-30 CI Release-Candidate Provenance Hardening
 • Pull-request release evidence now binds the artifact to `github.event.pull_request.head.sha` while preserving the workflow execution SHA for provenance.
 • `tools/ciprobe`, `tools/record-staging-evidence.mjs`, and workflow-marker validation reject artifacts or reports that omit or mismatch the release-candidate binding.
-• A fresh hosted artifact and environment-specific staging-manifest recording remain required before `SRC-CI-001` can close.
+• Hosted run `33334227649` (#739) produced an artifact whose release-candidate and artifact SHAs both match `f0127b2d81297666c7d7cde0035270d0614bafc6`; environment-specific staging-manifest recording remains required before `SRC-CI-001` can close.
 
 6. CODING AGENT OPERATING RULES (FOR IMPLEMENTATION LEAD)
 •

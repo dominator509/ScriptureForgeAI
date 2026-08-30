@@ -93,7 +93,8 @@ ScriptureForgeAI is a multi-tenant Bible study platform with authenticated works
 
 ## CI Evidence Provenance
 
-- Pull-request release evidence records the workflow execution SHA separately from `github.event.pull_request.head.sha`; the head SHA is the release candidate used by `tools/ciprobe` and staging evidence recording. A fresh hosted artifact and environment-specific manifest entry are still required for `SRC-CI-001`.
+- Pull-request release evidence records the workflow execution SHA separately from `github.event.pull_request.head.sha`; the head SHA is the release candidate used by `tools/ciprobe` and staging evidence recording. An environment-specific manifest entry is still required for `SRC-CI-001`.
+- Hosted run `33334227649` (#739) verified this contract for `f0127b2d81297666c7d7cde0035270d0614bafc6`; artifact `9738590747` passed `ciprobe` with matching release and artifact SHAs. The environment-specific staging manifest still needs the HTTPS report/artifact entry.
 
 ## Do-Not-Touch / Risk Zones
 
