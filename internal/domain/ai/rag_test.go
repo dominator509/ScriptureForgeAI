@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -121,6 +122,57 @@ func TestGRPCScriptureClientRejectsMissingTenant(t *testing.T) {
 	client := &GRPCScriptureClient{client: &fakeScriptureEngineClient{}}
 	if _, err := client.Search(context.Background(), "", "creation", 1); err == nil {
 		t.Fatal("Search accepted an empty organization ID")
+	}
+}
+
+func TestGRPCScriptureClientRejectsInvalidTopKBeforeEmbedding(t *testing.T) {
+	called := false
+	client := &GRPCScriptureClient{
+		client: &fakeScriptureEngineClient{},
+		embeddingFn: func(context.Context, string) ([]float32, error) {
+			called = true
+			return make([]float32, embeddingDimension), nil
+		},
+	}
+	for _, topK := range []int{0, maxVectorSearchResults + 1, int(^uint32(0))} {
+		_, err := client.Search(context.Background(), "org-1", "creation", topK)
+		if err == nil {
+			t.Fatalf("Search accepted invalid topK=%d", topK)
+		}
+	}
+	if called {
+		t.Fatal("Search invoked the embedding provider for invalid topK")
+	}
+}
+
+func TestGRPCScriptureClientRejectsInvalidEmbeddingVector(t *testing.T) {
+	client := &GRPCScriptureClient{
+		client: &fakeScriptureEngineClient{},
+		embeddingFn: func(context.Context, string) ([]float32, error) {
+			return make([]float32, embeddingDimension-1), nil
+		},
+	}
+	if _, err := client.Search(context.Background(), "org-1", "creation", 1); err == nil {
+		t.Fatal("Search accepted an embedding with the wrong dimension")
+	}
+
+	client.embeddingFn = func(context.Context, string) ([]float32, error) {
+		embedding := make([]float32, embeddingDimension)
+		embedding[0] = float32(math.NaN())
+		return embedding, nil
+	}
+	if _, err := client.Search(context.Background(), "org-1", "creation", 1); err == nil {
+		t.Fatal("Search accepted a non-finite embedding value")
+	}
+}
+
+func TestGRPCScriptureClientCloseIsNilSafe(t *testing.T) {
+	var nilClient *GRPCScriptureClient
+	if err := nilClient.Close(); err != nil {
+		t.Fatalf("nil client Close() error = %v, want nil", err)
+	}
+	if err := (&GRPCScriptureClient{}).Close(); err != nil {
+		t.Fatalf("client without connection Close() error = %v, want nil", err)
 	}
 }
 

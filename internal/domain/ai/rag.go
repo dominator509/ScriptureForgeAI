@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"strings"
@@ -24,6 +25,8 @@ import (
 
 const (
 	grpcMaxMessageBytes     = 1024 * 1024
+	embeddingDimension      = 1536
+	maxVectorSearchResults  = 100
 	grpcAuthorizationHeader = "authorization"
 	grpcTenantHeader        = "x-scriptureforge-organization-id"
 	grpcReadinessTimeout    = 2 * time.Second
@@ -176,7 +179,22 @@ func grpcTransportCredentials(caPEM, clientCertPEM, clientKeyPEM, serverName str
 }
 
 func (g *GRPCScriptureClient) Close() error {
+	if g == nil || g.conn == nil {
+		return nil
+	}
 	return g.conn.Close()
+}
+
+func validateEmbeddingVector(embedding []float32) error {
+	if len(embedding) != embeddingDimension {
+		return fmt.Errorf("embedding must contain exactly %d dimensions", embeddingDimension)
+	}
+	for _, value := range embedding {
+		if math.IsNaN(float64(value)) || math.IsInf(float64(value), 0) {
+			return errors.New("embedding must contain only finite values")
+		}
+	}
+	return nil
 }
 
 // generateEmbedding calls OpenAI to turn the query string into a 1536-dimensional vector
@@ -256,9 +274,15 @@ func generateEmbedding(ctx context.Context, text string) ([]float32, error) {
 
 // Search maps the Go request to the Rust gRPC protobuf request
 func (g *GRPCScriptureClient) Search(ctx context.Context, orgID string, query string, topK int) ([]SearchResult, error) {
+	if g == nil || g.client == nil {
+		return nil, newRAGSearchFault()
+	}
 	orgID = strings.TrimSpace(orgID)
 	if orgID == "" {
 		return nil, fmt.Errorf("organization ID is required for Rust gRPC requests")
+	}
+	if topK < 1 || topK > maxVectorSearchResults {
+		return nil, fmt.Errorf("topK must be between 1 and %d", maxVectorSearchResults)
 	}
 	started := time.Now()
 	status := "success"
@@ -275,6 +299,10 @@ func (g *GRPCScriptureClient) Search(ctx context.Context, orgID string, query st
 	if err != nil {
 		status = "embedding_error"
 		return nil, sanitizeRAGSearchError(err)
+	}
+	if err := validateEmbeddingVector(realVector); err != nil {
+		status = "embedding_error"
+		return nil, newRAGSearchFault()
 	}
 
 	req := &engine.VectorSearchRequest{
