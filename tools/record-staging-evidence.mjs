@@ -1050,6 +1050,13 @@ function validateCIEvidence(report, manifest) {
     return;
   }
   assert.match(String(report.commit_sha ?? ''), /^[a-fA-F0-9]{40}$/, 'SRC-CI-001 report must include full commit_sha');
+  assert.match(String(report.workflow_commit_sha ?? ''), /^[a-fA-F0-9]{40}$/, 'SRC-CI-001 report must include full workflow_commit_sha');
+  assert.match(String(report.release_candidate_sha ?? ''), /^[a-fA-F0-9]{40}$/, 'SRC-CI-001 report must include full release_candidate_sha');
+  assert.equal(
+    String(report.release_candidate_sha ?? '').trim().toLowerCase(),
+    String(report.commit_sha ?? '').trim().toLowerCase(),
+    'SRC-CI-001 report release_candidate_sha must match commit_sha',
+  );
   const manifestReleaseCandidate = String(manifest.release_candidate ?? '').trim();
   if (manifestReleaseCandidate) {
     assert.equal(
@@ -1089,6 +1096,16 @@ function validateCIEvidence(report, manifest) {
     String(releaseRun.artifact_commit_sha ?? '').trim().toLowerCase(),
     String(report.commit_sha ?? '').trim().toLowerCase(),
     'github-actions-release-run probe artifact_commit_sha must match report commit_sha',
+  );
+  assert.equal(
+    String(releaseRun.workflow_commit_sha ?? '').trim().toLowerCase(),
+    String(report.workflow_commit_sha ?? '').trim().toLowerCase(),
+    'github-actions-release-run probe workflow_commit_sha must match report workflow_commit_sha',
+  );
+  assert.equal(
+    String(releaseRun.release_candidate_sha ?? '').trim().toLowerCase(),
+    String(report.release_candidate_sha ?? '').trim().toLowerCase(),
+    'github-actions-release-run probe release_candidate_sha must match report release_candidate_sha',
   );
   assert.equal(String(releaseRun.run_id ?? ''), String(report.run_id ?? ''), 'github-actions-release-run probe run_id must match report run_id');
   assert.equal(String(releaseRun.run_attempt ?? ''), String(report.run_attempt ?? ''), 'github-actions-release-run probe run_attempt must match report run_attempt');

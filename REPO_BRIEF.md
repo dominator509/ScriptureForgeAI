@@ -91,6 +91,10 @@ ScriptureForgeAI is a multi-tenant Bible study platform with authenticated works
 - Recovery tooling: `scripts/disaster_recovery/backup.sh` requires `DATABASE_URL`, writes a PostgreSQL custom-format archive plus SHA-256 checksum under `.tmp/disaster-recovery`, and validates the archive before publishing the latest reference. `restore.sh` requires a distinct `TARGET_DATABASE_URL`, checksum verification, and both `CONFIRM_RESTORE=YES` and `ALLOW_DESTRUCTIVE_RESTORE=YES`; these helpers do not replace staging RPO/RTO evidence.
 - CI runtime status: the security workflow pins current Node24-compatible action majors for checkout, Go, Node, Terraform, and artifact upload, and pins the Rust action to toolchain `1.97.1`; `tools/validate-ci-workflow.mjs` rejects a regression to legacy Node20 action majors or a floating Rust toolchain. CI uses the hosted runner's existing `kubectl` only for PATH/version readiness and does not download a same-channel binary/checksum pair. `tools/ciprobe` accepts the raw CI evidence text or the ZIP archive produced by GitHub Actions; remote URL checks may use `STAGING_CI_ARTIFACT_TOKEN`, while ambient `GITHUB_TOKEN`/`GH_TOKEN` fallback is restricted to GitHub hosts and tokens are never emitted.
 
+## CI Evidence Provenance
+
+- Pull-request release evidence records the workflow execution SHA separately from `github.event.pull_request.head.sha`; the head SHA is the release candidate used by `tools/ciprobe` and staging evidence recording. A fresh hosted artifact and environment-specific manifest entry are still required for `SRC-CI-001`.
+
 ## Do-Not-Touch / Risk Zones
 
 - Do not commit `.env*`, Terraform state files, local evidence manifests, or generated caches/targets.

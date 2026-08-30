@@ -36,6 +36,8 @@ type report struct {
 	CommitSHA            string        `json:"commit_sha"`
 	WorkflowName         string        `json:"workflow_name"`
 	ArtifactCommitSHA    string        `json:"artifact_commit_sha,omitempty"`
+	WorkflowCommitSHA    string        `json:"workflow_commit_sha,omitempty"`
+	ReleaseCandidateSHA  string        `json:"release_candidate_sha,omitempty"`
 	Repository           string        `json:"repository,omitempty"`
 	Ref                  string        `json:"ref,omitempty"`
 	RefName              string        `json:"ref_name,omitempty"`
@@ -57,6 +59,8 @@ type probeResult struct {
 	StatusCode           int    `json:"status_code,omitempty"`
 	LatencyMS            int64  `json:"latency_ms,omitempty"`
 	ArtifactCommitSHA    string `json:"artifact_commit_sha,omitempty"`
+	WorkflowCommitSHA    string `json:"workflow_commit_sha,omitempty"`
+	ReleaseCandidateSHA  string `json:"release_candidate_sha,omitempty"`
 	RunURL               string `json:"run_url,omitempty"`
 	RunID                string `json:"run_id,omitempty"`
 	RunAttempt           string `json:"run_attempt,omitempty"`
@@ -131,6 +135,8 @@ func runWithClient(cfg config, output io.Writer, client *http.Client) error {
 		CommitSHA:            cfg.CommitSHA,
 		WorkflowName:         cfg.WorkflowName,
 		ArtifactCommitSHA:    probes[0].ArtifactCommitSHA,
+		WorkflowCommitSHA:    probes[0].WorkflowCommitSHA,
+		ReleaseCandidateSHA:  probes[0].ReleaseCandidateSHA,
 		Repository:           probes[0].Repository,
 		Ref:                  probes[0].Ref,
 		RefName:              probes[0].RefName,
@@ -296,6 +302,8 @@ func isGitHubArtifactHost(host string) bool {
 func extractCIArtifactMetadata(text string) probeResult {
 	return probeResult{
 		ArtifactCommitSHA:    extractLineValue(text, "commit:"),
+		WorkflowCommitSHA:    extractLineValue(text, "workflow_commit:"),
+		ReleaseCandidateSHA:  extractLineValue(text, "release_candidate:"),
 		RunURL:               extractLineValue(text, "run_url:"),
 		RunID:                extractLineValue(text, "run_id:"),
 		RunAttempt:           extractLineValue(text, "run_attempt:"),
@@ -319,6 +327,8 @@ func ciArtifactTextPasses(text string, cfg config) bool {
 		"ref:",
 		"ref_name:",
 		"event_name:",
+		"workflow_commit:",
+		"release_candidate:",
 		"run_id:",
 		"run_attempt:",
 		"run_number:",
@@ -339,6 +349,12 @@ func ciArtifactTextPasses(text string, cfg config) bool {
 
 func ciArtifactMetadataPasses(metadata probeResult, cfg config) bool {
 	if !strings.EqualFold(strings.TrimSpace(metadata.ArtifactCommitSHA), cfg.CommitSHA) {
+		return false
+	}
+	if !isFullCommitSHA(metadata.WorkflowCommitSHA) {
+		return false
+	}
+	if !strings.EqualFold(strings.TrimSpace(metadata.ReleaseCandidateSHA), cfg.CommitSHA) {
 		return false
 	}
 	if !isPositiveInteger(metadata.RunID) || !isPositiveInteger(metadata.RunAttempt) || !isPositiveInteger(metadata.RunNumber) {
@@ -396,6 +412,7 @@ func requiredProofMarkers() []string {
 		"proof markers:",
 		"full_commit_sha_required=true",
 		"artifact_commit_sha_structural_binding_required=true",
+		"release_candidate_sha_binding=true",
 		"github_run_provenance_required=true",
 		"github_run_id_url_binding_required=true",
 		"source_control_clean_verified=true",

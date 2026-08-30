@@ -35,6 +35,8 @@ test('buildReleaseEvidence emits ciprobe-compatible successful run markers', () 
   assert.match(body, /ref: refs\/heads\/main/);
   assert.match(body, /ref_name: main/);
   assert.match(body, /event_name: push/);
+  assert.match(body, /workflow_commit: 0123456789abcdef0123456789abcdef01234567/);
+  assert.match(body, /release_candidate: 0123456789abcdef0123456789abcdef01234567/);
   assert.match(body, /commit: 0123456789abcdef0123456789abcdef01234567/);
   assert.match(body, /run_attempt: 1/);
   assert.match(body, /run_number: 42/);
@@ -58,6 +60,23 @@ test('buildReleaseEvidence emits ciprobe-compatible successful run markers', () 
 
 test('buildReleaseEvidence rejects short commit SHAs', () => {
   assert.throws(() => buildReleaseEvidence({ ...env, GITHUB_SHA: '0123456' }), /40-character/);
+  assert.throws(() => buildReleaseEvidence({ ...env, RELEASE_CANDIDATE_SHA: '0123456' }), /RELEASE_CANDIDATE_SHA.*40-character/);
+});
+
+test('buildReleaseEvidence binds pull-request evidence to the head release candidate', () => {
+  const body = buildReleaseEvidence({
+    ...env,
+    GITHUB_SHA: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    GITHUB_EVENT_NAME: 'pull_request',
+    GITHUB_REF: 'refs/pull/28/merge',
+    GITHUB_REF_NAME: '28/merge',
+    RELEASE_CANDIDATE_SHA: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+  });
+
+  assert.match(body, /workflow_commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/);
+  assert.match(body, /release_candidate: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/);
+  assert.match(body, /commit: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/);
+  assert.match(body, /release_candidate_sha_binding=true/);
 });
 
 test('buildReleaseEvidence requires source ref and event provenance', () => {

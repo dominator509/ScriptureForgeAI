@@ -92,7 +92,8 @@ export const requiredMarkers = [
   { id: 'ci-source-control-cached-diff', text: 'git diff --cached --quiet' },
   { id: 'ci-source-control-untracked-status', text: 'git status --short' },
   { id: 'ci-evidence-write', text: 'node tools/write-ci-release-evidence.mjs --output artifacts/ci-release-evidence.txt' },
-  { id: 'ci-evidence-validate', text: 'go run ./tools/ciprobe -run-artifact-file artifacts/ci-release-evidence.txt -commit-sha "$GITHUB_SHA"' },
+  { id: 'ci-release-candidate-sha', text: 'RELEASE_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}' },
+  { id: 'ci-evidence-validate', text: 'go run ./tools/ciprobe -run-artifact-file artifacts/ci-release-evidence.txt -commit-sha "$RELEASE_CANDIDATE_SHA"' },
   { id: 'ci-evidence-upload', text: 'actions/upload-artifact@' },
 ];
 

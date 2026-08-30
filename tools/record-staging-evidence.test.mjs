@@ -923,6 +923,8 @@ test('recordEvidence records production-grade CI release evidence', () => {
       commit_sha: '0123456789abcdef0123456789abcdef01234567',
       workflow_name: 'Security Pipeline Verification',
       artifact_commit_sha: '0123456789abcdef0123456789abcdef01234567',
+      workflow_commit_sha: '0123456789abcdef0123456789abcdef01234567',
+      release_candidate_sha: '0123456789abcdef0123456789abcdef01234567',
       repository: 'example/scriptureforgeai',
       ref: 'refs/heads/main',
       ref_name: 'main',
@@ -940,6 +942,8 @@ test('recordEvidence records production-grade CI release evidence', () => {
           passed: true,
           target: 'https://artifacts.staging.scriptureforge.ai/ci/ci-release-evidence.txt',
           artifact_commit_sha: '0123456789abcdef0123456789abcdef01234567',
+          workflow_commit_sha: '0123456789abcdef0123456789abcdef01234567',
+          release_candidate_sha: '0123456789abcdef0123456789abcdef01234567',
           run_url: 'https://github.com/example/scriptureforgeai/actions/runs/1234567890',
           run_id: '1234567890',
           run_attempt: '1',
@@ -974,6 +978,8 @@ function ciReleaseEvidenceReport(probeOverrides = {}) {
     commit_sha: '0123456789abcdef0123456789abcdef01234567',
     workflow_name: 'Security Pipeline Verification',
     artifact_commit_sha: '0123456789abcdef0123456789abcdef01234567',
+    workflow_commit_sha: '0123456789abcdef0123456789abcdef01234567',
+    release_candidate_sha: '0123456789abcdef0123456789abcdef01234567',
     repository: 'example/scriptureforgeai',
     ref: 'refs/heads/main',
     ref_name: 'main',
@@ -991,6 +997,8 @@ function ciReleaseEvidenceReport(probeOverrides = {}) {
         passed: true,
         target: 'https://artifacts.staging.scriptureforge.ai/ci/ci-release-evidence.txt',
         artifact_commit_sha: '0123456789abcdef0123456789abcdef01234567',
+        workflow_commit_sha: '0123456789abcdef0123456789abcdef01234567',
+        release_candidate_sha: '0123456789abcdef0123456789abcdef01234567',
         run_url: 'https://github.com/example/scriptureforgeai/actions/runs/1234567890',
         run_id: '1234567890',
         run_attempt: '1',
@@ -1087,6 +1095,8 @@ test('recordEvidence rejects CI evidence for a different release candidate', () 
         threshold_pass: true,
         commit_sha: 'fedcba9876543210fedcba9876543210fedcba98',
         workflow_name: 'Security Pipeline Verification',
+        workflow_commit_sha: 'fedcba9876543210fedcba9876543210fedcba98',
+        release_candidate_sha: 'fedcba9876543210fedcba9876543210fedcba98',
         repository: 'example/scriptureforgeai',
         ref: 'refs/heads/main',
         ref_name: 'main',
@@ -1127,6 +1137,8 @@ test('recordEvidence rejects CI evidence without GitHub run identity', () => {
         commit_sha: '0123456789abcdef0123456789abcdef01234567',
         workflow_name: 'Security Pipeline Verification',
         artifact_commit_sha: '0123456789abcdef0123456789abcdef01234567',
+        workflow_commit_sha: '0123456789abcdef0123456789abcdef01234567',
+        release_candidate_sha: '0123456789abcdef0123456789abcdef01234567',
         repository: 'example/scriptureforgeai',
         ref: 'refs/heads/main',
         ref_name: 'main',
@@ -1156,6 +1168,8 @@ test('recordEvidence rejects CI evidence without source-control provenance', () 
         commit_sha: '0123456789abcdef0123456789abcdef01234567',
         workflow_name: 'Security Pipeline Verification',
         artifact_commit_sha: '0123456789abcdef0123456789abcdef01234567',
+        workflow_commit_sha: '0123456789abcdef0123456789abcdef01234567',
+        release_candidate_sha: '0123456789abcdef0123456789abcdef01234567',
         repository: 'example/scriptureforgeai',
         ref: 'refs/heads/main',
         ref_name: 'main',
@@ -2547,6 +2561,23 @@ test('recordEvidence rejects mobile evidence without verified marker summaries',
       'go run ./tools/mobileprobe',
     ),
     /mobile-native-crypto-smoke result_summary must include verified marker aes_gcm_roundtrip=true/,
+  );
+});
+
+test('recordEvidence rejects CI evidence whose release candidate is not bound to the probe', () => {
+  assert.throws(
+    () => recordEvidence(
+      {
+        release_candidate: '0123456789abcdef0123456789abcdef01234567',
+        items: [{ id: 'SRC-CI-001', status: 'pending_external' }],
+      },
+      ciReleaseEvidenceReport({
+        release_candidate_sha: 'fedcba9876543210fedcba9876543210fedcba98',
+      }),
+      'artifacts/ciprobe.json',
+      'go run ./tools/ciprobe -run-artifact-url https://artifacts.staging.scriptureforge.ai/ci/ci-release-evidence.txt',
+    ),
+    /github-actions-release-run probe release_candidate_sha must match report release_candidate_sha/,
   );
 });
 

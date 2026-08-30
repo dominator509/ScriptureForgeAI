@@ -251,10 +251,14 @@ jobs:
         fi
 
     - name: Write CI Release Evidence
+      env:
+        RELEASE_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       run: node tools/write-ci-release-evidence.mjs --output artifacts/ci-release-evidence.txt
 
     - name: Validate CI Release Evidence
-      run: go run ./tools/ciprobe -run-artifact-file artifacts/ci-release-evidence.txt -commit-sha "$GITHUB_SHA"
+      env:
+        RELEASE_CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: go run ./tools/ciprobe -run-artifact-file artifacts/ci-release-evidence.txt -commit-sha "$RELEASE_CANDIDATE_SHA"
 
     - name: Upload CI Release Evidence
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1 (node24)

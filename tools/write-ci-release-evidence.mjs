@@ -11,6 +11,7 @@ export const requiredGates = [
 export const ciReleaseEvidenceProofMarkers = [
   'full_commit_sha_required=true',
   'artifact_commit_sha_structural_binding_required=true',
+  'release_candidate_sha_binding=true',
   'github_run_provenance_required=true',
   'github_run_id_url_binding_required=true',
   'source_control_clean_verified=true',
@@ -27,7 +28,8 @@ export const ciReleaseEvidenceProofMarkers = [
 export function buildReleaseEvidence(env = process.env) {
   const workflow = env.GITHUB_WORKFLOW ?? 'Security Pipeline Verification';
   const job = env.GITHUB_JOB ?? 'security-audit';
-  const sha = env.GITHUB_SHA ?? '';
+  const workflowSHA = env.GITHUB_SHA ?? '';
+  const releaseCandidateSHA = env.RELEASE_CANDIDATE_SHA ?? workflowSHA;
   const runId = env.GITHUB_RUN_ID ?? '';
   const runAttempt = env.GITHUB_RUN_ATTEMPT ?? '';
   const runNumber = env.GITHUB_RUN_NUMBER ?? '';
@@ -39,7 +41,8 @@ export function buildReleaseEvidence(env = process.env) {
   const actor = env.GITHUB_ACTOR ?? '';
   const serverURL = env.GITHUB_SERVER_URL ?? 'https://github.com';
 
-  assert.match(sha, /^[a-fA-F0-9]{40}$/, 'GITHUB_SHA must be a full 40-character commit SHA');
+  assert.match(workflowSHA, /^[a-fA-F0-9]{40}$/, 'GITHUB_SHA must be a full 40-character commit SHA');
+  assert.match(releaseCandidateSHA, /^[a-fA-F0-9]{40}$/, 'RELEASE_CANDIDATE_SHA must be a full 40-character commit SHA');
   assert.ok(workflow.length > 0, 'GITHUB_WORKFLOW is required');
   assert.ok(job.length > 0, 'GITHUB_JOB is required');
   assert.ok(repository.length > 0, 'GITHUB_REPOSITORY is required');
@@ -61,7 +64,9 @@ export function buildReleaseEvidence(env = process.env) {
     `ref_name: ${refName}`,
     `ref_type: ${refType}`,
     `event_name: ${eventName}`,
-    `commit: ${sha}`,
+    `workflow_commit: ${workflowSHA}`,
+    `release_candidate: ${releaseCandidateSHA}`,
+    `commit: ${releaseCandidateSHA}`,
     `run_id: ${runId}`,
     `run_attempt: ${runAttempt}`,
     `run_number: ${runNumber}`,

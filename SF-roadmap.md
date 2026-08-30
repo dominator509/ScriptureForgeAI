@@ -295,6 +295,11 @@ Phase 06: Web & Mobile UX Assembly
 • Zoom terminal-state reconciliation and Redis-compensation deactivation therefore block new room streams and close existing sockets before further event mutation; the Postgres/RLS integration suite covers inactive-room upgrade denial.
 • Live provider delivery and multi-replica timing evidence remain external release gates under `EXT-ZOOM-001` and `PERF-WS-001`.
 
+### 2026-08-30 CI Release-Candidate Provenance Hardening
+• Pull-request release evidence now binds the artifact to `github.event.pull_request.head.sha` while preserving the workflow execution SHA for provenance.
+• `tools/ciprobe`, `tools/record-staging-evidence.mjs`, and workflow-marker validation reject artifacts or reports that omit or mismatch the release-candidate binding.
+• A fresh hosted artifact and environment-specific staging-manifest recording remain required before `SRC-CI-001` can close.
+
 6. CODING AGENT OPERATING RULES (FOR IMPLEMENTATION LEAD)
 •
 • Look Before You Leap: Before executing textual changes, partial file rewrites, or code injection steps, the implementation lead must parse the target code asset and all corresponding sibling interface declarations fully to maintain consistent architectural design boundaries.
