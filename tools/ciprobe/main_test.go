@@ -125,6 +125,73 @@ func TestCIProbeAcceptsGitHubArtifactZIP(t *testing.T) {
 	}
 }
 
+func TestCIProbeFollowsGitHubArtifactRedirectWithoutForwardingToken(t *testing.T) {
+	archive := zipArtifact(t, successfulRunArtifact())
+	const token = "test-artifact-token"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/artifacts/42/zip") {
+			if r.Header.Get("Authorization") != "Bearer "+token {
+				t.Fatalf("GitHub artifact request did not receive its token")
+			}
+			w.Header().Set("Location", "https://productionresultssa13.blob.core.windows.net/ci-release-evidence/42")
+			w.WriteHeader(http.StatusFound)
+			return
+		}
+		if r.Header.Get("Authorization") != "" {
+			t.Fatalf("storage redirect must not receive GitHub authorization")
+		}
+		w.Header().Set("Content-Type", "application/zip")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(archive)
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := runWithClient(config{
+		RunArtifactURL: "https://api.github.com/repos/example/scriptureforgeai/actions/artifacts/42/zip?artifact=ci-release-evidence",
+		ArtifactToken:  token,
+		CommitSHA:      testCommitSHA,
+		WorkflowName:   "Security Pipeline Verification",
+		Timeout:        time.Second,
+	}, &output, clientForHTTPServer(t, server))
+	if err != nil {
+		t.Fatalf("expected redirected GitHub artifact probe to pass: %v\n%s", err, output.String())
+	}
+
+	var result report
+	if err := json.Unmarshal(output.Bytes(), &result); err != nil {
+		t.Fatalf("invalid report JSON: %v", err)
+	}
+	if !result.ThresholdPass || result.Probes[0].StatusCode != http.StatusOK {
+		t.Fatalf("redirected artifact evidence was not decoded: %+v", result)
+	}
+	if result.Probes[0].Target != "https://api.github.com/repos/example/scriptureforgeai/actions/artifacts/42/zip?artifact=ci-release-evidence" {
+		t.Fatalf("report must retain stable artifact URL: %+v", result.Probes[0])
+	}
+	if strings.Contains(output.String(), token) {
+		t.Fatalf("artifact token must not be emitted in probe output: %s", output.String())
+	}
+}
+
+func TestCIProbeRejectsInsecureArtifactRedirect(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", "http://productionresultssa13.blob.core.windows.net/ci-release-evidence/42")
+		w.WriteHeader(http.StatusFound)
+	}))
+	defer server.Close()
+
+	var output bytes.Buffer
+	err := runWithClient(config{
+		RunArtifactURL: "https://api.github.com/repos/example/scriptureforgeai/actions/artifacts/42/zip?artifact=ci-release-evidence",
+		CommitSHA:      testCommitSHA,
+		WorkflowName:   "Security Pipeline Verification",
+		Timeout:        time.Second,
+	}, &output, clientForHTTPServer(t, server))
+	if err == nil || !strings.Contains(output.String(), "CI artifact redirect must use https") {
+		t.Fatalf("expected insecure redirect rejection, got %v\n%s", err, output.String())
+	}
+}
+
 func TestCIProbeUsesConfiguredArtifactTokenWithoutEmittingIt(t *testing.T) {
 	archive := zipArtifact(t, successfulRunArtifact())
 	const token = "test-artifact-token"

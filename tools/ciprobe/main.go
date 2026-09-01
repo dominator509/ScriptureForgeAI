@@ -182,7 +182,7 @@ func probeCIArtifact(client *http.Client, cfg config) probeResult {
 	if token := strings.TrimSpace(cfg.ArtifactToken); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	resp, err := client.Do(req)
+	resp, err := getArtifactResponse(client, req)
 	latency := time.Since(start).Milliseconds()
 	if err != nil {
 		return failedProbe("github-actions-release-run", cfg.RunArtifactURL, err.Error())
@@ -207,6 +207,45 @@ func probeCIArtifact(client *http.Client, cfg config) probeResult {
 	metadata.LatencyMS = latency
 	metadata.ResultSummary = summary
 	return metadata
+}
+
+func getArtifactResponse(client *http.Client, req *http.Request) (*http.Response, error) {
+	requestClient := *client
+	requestClient.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	resp, err := requestClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < http.StatusMultipleChoices || resp.StatusCode >= http.StatusBadRequest {
+		return resp, nil
+	}
+
+	location := strings.TrimSpace(resp.Header.Get("Location"))
+	_ = resp.Body.Close()
+	if location == "" {
+		return nil, errors.New("CI artifact redirect did not include a Location header")
+	}
+	redirectURL, err := req.URL.Parse(location)
+	if err != nil {
+		return nil, fmt.Errorf("CI artifact redirect URL is invalid: %w", err)
+	}
+	if redirectURL.Scheme != "https" {
+		return nil, errors.New("CI artifact redirect must use https")
+	}
+	if redirectURL.Host == "" || isReservedPlaceholderHost(redirectURL.Hostname()) || isLocalOrPrivateHost(redirectURL.Hostname()) {
+		return nil, errors.New("CI artifact redirect must use a public HTTPS host")
+	}
+
+	redirectRequest, err := http.NewRequestWithContext(req.Context(), req.Method, redirectURL.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("CI artifact redirect request is invalid: %w", err)
+	}
+	redirectRequest.Header.Set("User-Agent", req.Header.Get("User-Agent"))
+	// The signed storage URL is the only credential needed after GitHub's redirect.
+	// Do not forward the GitHub bearer token to the storage provider.
+	return requestClient.Do(redirectRequest)
 }
 
 func probeCIArtifactFile(cfg config) probeResult {
