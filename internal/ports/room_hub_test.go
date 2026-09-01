@@ -1,6 +1,9 @@
 package ports
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestRoomHubEvictsLaggingSubscriberAndReportsDrop(t *testing.T) {
 	hub := NewRoomHub()
@@ -30,5 +33,17 @@ func TestRoomHubEvictsLaggingSubscriberAndReportsDrop(t *testing.T) {
 	afterEviction := hub.Broadcast("room-1", RoomEvent{Type: "cursor", RoomID: "room-1"})
 	if afterEviction.Delivered != 0 || afterEviction.Dropped != 0 {
 		t.Fatalf("post-eviction broadcast result = %+v, want no subscribers", afterEviction)
+	}
+}
+
+func TestValidPublishedRoomEventRejectsNullPayload(t *testing.T) {
+	event := RoomEvent{
+		Type:     "cursor",
+		RoomID:   "room-1",
+		Sequence: 1,
+		Payload:  json.RawMessage("null"),
+	}
+	if validPublishedRoomEvent(event, "room-1") {
+		t.Fatal("validPublishedRoomEvent accepted a null payload")
 	}
 }

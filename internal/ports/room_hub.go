@@ -1,6 +1,7 @@
 package ports
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -233,7 +234,7 @@ func (h *RoomHub) retrySubscription(ctx context.Context, roomID string, failed *
 
 func validPublishedRoomEvent(event RoomEvent, roomID string) bool {
 	return event.RoomID == roomID && event.Sequence > 0 && validRoomEventType(event.Type) &&
-		len(event.Payload) > 0 && json.Valid(event.Payload)
+		len(event.Payload) > 0 && !bytes.Equal(bytes.TrimSpace(event.Payload), []byte("null")) && json.Valid(event.Payload)
 }
 
 // Close stops all Redis subscriptions owned by this process.
