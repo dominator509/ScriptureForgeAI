@@ -1,6 +1,6 @@
 # ScriptureForgeAI Production Threat Model
 
-Status last updated: 2026-09-01
+Status last updated: 2026-08-29
 
 ## Scope
 
