@@ -6,6 +6,8 @@ This file records repository-level implementation history. It is not a substitut
 
 ### Production-readiness remediation
 
+- Hardened Rust structured log escaping so every JSON control character is encoded before emission, with regression coverage for the full U+0000 through U+001F range.
+- Refreshed the mobile Browserslist dependency chain to close the current high-severity advisory set without changing the Expo/React Native lane; the lockfile-only update is covered by a green mobile audit and build check.
 - Aligned the audit, roadmap, and durable repo brief with the implemented route/schema contract, marking historical mismatches and stale evidence snapshots without expanding product scope.
 - Reconciled the audit briefing, roadmap, and Obsidian readiness tracker with the current ignored staging manifest; older exact-release CI snapshots are explicitly historical while the remaining 20 evidence items stay external.
 - Pinned every repository-controlled API, Rust, and web Dockerfile stage plus local/CI/RLS Postgres and Redis image reference to an exact registry manifest digest; deployment regression tests now reject mutable `FROM` and Compose `image:` references.

@@ -1,6 +1,6 @@
 # Dependency Risk Register
 
-Status last updated: 2026-08-10
+Status last updated: 2026-09-01
 
 This register tracks active dependency findings and recently closed decisions. It does not replace fresh `npm audit`, Go/Rust advisory scanning, or CI security gates.
 
@@ -32,3 +32,13 @@ This register tracks active dependency findings and recently closed decisions. I
 - Risk owner: Mobile/release owner
 - Required follow-up: Re-evaluate the local compatibility package when Expo/Metro or `image-size` releases change; no high-severity audit waiver is active.
 - Release gate: The mobile audit gate must remain green and the local package validator must remain enforced in CI.
+
+## DRR-003: Mobile Metro Browserslist advisories
+
+- Status: Closed (2026-09-01)
+- Scope: `mobile/package-lock.json`
+- Current locked versions: `browserslist@4.28.8`, `caniuse-lite@1.0.30001810`, `update-browserslist-db@1.3.2`
+- Source: `npm audit --prefix mobile --audit-level=high`
+- Advisories: GHSA-c83g-rgw3-j3cx and GHSA-73wf-gq98-2v4g, affecting Browserslist releases through `4.28.6`.
+- Closure evidence: a lockfile-only compatible refresh kept the existing Expo 56 / React Native 0.86 dependency lane; the refreshed audit, mobile smoke suite, TypeScript check, and crypto verification pass with no high-or-worse findings.
+- Required follow-up: re-run the mobile audit whenever Expo, Metro, or browser-data dependencies are refreshed.

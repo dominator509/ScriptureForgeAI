@@ -886,12 +886,23 @@ fn emit_log(level: &str, event: &str, fields: &[(&str, String)]) {
 }
 
 fn json_escape(value: &str) -> String {
-    value
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('\t', "\\t")
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '"' => escaped.push_str("\\\""),
+            '\\' => escaped.push_str("\\\\"),
+            '\u{08}' => escaped.push_str("\\b"),
+            '\u{0c}' => escaped.push_str("\\f"),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            control if control <= '\u{1f}' => {
+                escaped.push_str(&format!("\\u{:04x}", control as u32));
+            }
+            other => escaped.push(other),
+        }
+    }
+    escaped
 }
 
 #[cfg(test)]
@@ -1260,6 +1271,23 @@ mod tests {
             json_escape("quote\" slash\\ newline\n"),
             "quote\\\" slash\\\\ newline\\n"
         );
+    }
+
+    #[test]
+    fn json_escape_handles_all_json_control_characters() {
+        for code_point in 0..=0x1f {
+            let character = char::from_u32(code_point).expect("control code point");
+            let escaped = json_escape(&character.to_string());
+            let expected = match code_point {
+                0x08 => "\\b".to_string(),
+                0x0c => "\\f".to_string(),
+                0x09 => "\\t".to_string(),
+                0x0a => "\\n".to_string(),
+                0x0d => "\\r".to_string(),
+                other => format!("\\u{:04x}", other),
+            };
+            assert_eq!(escaped, expected, "control code point U+{:04X}", code_point);
+        }
     }
 
     #[test]
