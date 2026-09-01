@@ -26,6 +26,11 @@ type roomSubscription struct {
 	pubsub *redis.PubSub
 }
 
+const (
+	roomSubscriptionRetryInitial = 100 * time.Millisecond
+	roomSubscriptionRetryMax     = 2 * time.Second
+)
+
 type publishedRoomEvent struct {
 	SourceID string    `json:"source_id"`
 	Event    RoomEvent `json:"event"`
@@ -140,36 +145,90 @@ func roomEventChannel(roomID string) string {
 }
 
 func (h *RoomHub) consumeSubscription(ctx context.Context, roomID string, pubsub *redis.PubSub) {
-	if _, err := pubsub.Receive(ctx); err != nil {
-		if ctx.Err() == nil {
-			log.Printf("room pubsub subscription unavailable room=%s: %v", roomID, err)
-		}
-		return
-	}
+	current := pubsub
+	retryDelay := roomSubscriptionRetryInitial
 	for {
-		select {
-		case message, ok := <-pubsub.Channel():
+		if _, err := current.Receive(ctx); err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			log.Printf("room pubsub subscription unavailable room=%s: %v", roomID, err)
+			next, ok := h.retrySubscription(ctx, roomID, current, retryDelay)
 			if !ok {
 				return
 			}
-			var published publishedRoomEvent
-			if err := json.Unmarshal([]byte(message.Payload), &published); err != nil || !validPublishedRoomEvent(published.Event, roomID) {
-				log.Printf("room pubsub event rejected room=%s", roomID)
-				continue
+			current = next
+			retryDelay = nextRoomSubscriptionRetry(retryDelay)
+			continue
+		}
+		retryDelay = roomSubscriptionRetryInitial
+		messages := current.Channel()
+		channelClosed := false
+		for !channelClosed {
+			select {
+			case message, ok := <-messages:
+				if !ok {
+					channelClosed = true
+					continue
+				}
+				var published publishedRoomEvent
+				if err := json.Unmarshal([]byte(message.Payload), &published); err != nil || !validPublishedRoomEvent(published.Event, roomID) {
+					log.Printf("room pubsub event rejected room=%s", roomID)
+					continue
+				}
+				if published.SourceID == h.instanceID {
+					continue
+				}
+				started := time.Now()
+				status := "success"
+				if result := h.Broadcast(roomID, published.Event); result.Dropped > 0 {
+					status = "dropped"
+				}
+				observability.ObserveDependencyFromContext(ctx, "websocket", "room_broadcast", status, time.Since(started))
+			case <-ctx.Done():
+				return
 			}
-			if published.SourceID == h.instanceID {
-				continue
-			}
-			started := time.Now()
-			status := "success"
-			if result := h.Broadcast(roomID, published.Event); result.Dropped > 0 {
-				status = "dropped"
-			}
-			observability.ObserveDependencyFromContext(ctx, "websocket", "room_broadcast", status, time.Since(started))
-		case <-ctx.Done():
+		}
+		next, retry := h.retrySubscription(ctx, roomID, current, retryDelay)
+		if !retry {
 			return
 		}
+		current = next
+		retryDelay = nextRoomSubscriptionRetry(retryDelay)
 	}
+}
+
+func nextRoomSubscriptionRetry(delay time.Duration) time.Duration {
+	next := delay * 2
+	if next > roomSubscriptionRetryMax {
+		return roomSubscriptionRetryMax
+	}
+	return next
+}
+
+func (h *RoomHub) retrySubscription(ctx context.Context, roomID string, failed *redis.PubSub, delay time.Duration) (*redis.PubSub, bool) {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-ctx.Done():
+		return nil, false
+	}
+
+	next := h.redisClient.Subscribe(ctx, roomEventChannel(roomID))
+	h.mu.Lock()
+	subscription, subscribed := h.subscriptions[roomID]
+	active := subscribed && subscription.pubsub == failed && len(h.rooms[roomID]) > 0 && ctx.Err() == nil
+	if active {
+		subscription.pubsub = next
+	}
+	h.mu.Unlock()
+	if !active {
+		_ = next.Close()
+		return nil, false
+	}
+	_ = failed.Close()
+	return next, true
 }
 
 func validPublishedRoomEvent(event RoomEvent, roomID string) bool {

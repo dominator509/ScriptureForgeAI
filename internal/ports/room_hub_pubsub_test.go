@@ -72,3 +72,56 @@ func TestRedisRoomHubCloseStopsSubscriptions(t *testing.T) {
 		t.Fatalf("room subscribers = %d, want 0 after close", hub.subscriberCount("room-close"))
 	}
 }
+
+func TestRedisRoomHubRetriesUnavailableSubscription(t *testing.T) {
+	server, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("start miniredis: %v", err)
+	}
+	addr := server.Addr()
+	server.Close()
+
+	client := redis.NewClient(&redis.Options{
+		Addr:         addr,
+		DialTimeout:  100 * time.Millisecond,
+		ReadTimeout:  100 * time.Millisecond,
+		WriteTimeout: 100 * time.Millisecond,
+		MaxRetries:   0,
+	})
+	hub := NewRedisRoomHub(client)
+	events, unsubscribe := hub.Subscribe("room-reconnect")
+	defer unsubscribe()
+	defer hub.Close()
+	defer client.Close()
+
+	time.Sleep(250 * time.Millisecond)
+	recoveredServer := miniredis.NewMiniRedis()
+	if err := recoveredServer.StartAddr(addr); err != nil {
+		t.Fatalf("restart miniredis: %v", err)
+	}
+	defer recoveredServer.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	payload := `{"source_id":"reconnect-source","event":{"type":"cursor","room_id":"room-reconnect","sequence":1,"payload":{"verse":"Romans 8:1"},"sent_at":"2026-08-16T00:00:00Z"}}`
+	for {
+		publishCtx, publishCancel := context.WithTimeout(ctx, 250*time.Millisecond)
+		err := client.Publish(publishCtx, roomEventChannel("room-reconnect"), payload).Err()
+		publishCancel()
+		if err == nil {
+			select {
+			case event := <-events:
+				if event.Sequence != 1 || event.RoomID != "room-reconnect" {
+					t.Fatalf("reconnected event = %+v, want room-reconnect sequence 1", event)
+				}
+				return
+			default:
+			}
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("room hub did not recover its Redis subscription; last publish error: %v", err)
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+}
