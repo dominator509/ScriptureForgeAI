@@ -98,6 +98,23 @@ Historical state note (2026-08-29): behavior hardening commit `fc7e105cb0f979535
 
 The F-AUD sections below preserve the original audit finding text and should be read with the remediation tracker for current status. Items that still show original evidence may already have local remediation evidence later in this briefing; production closure remains gated by the staging evidence manifest and current deployment evidence.
 
+### Current Status Tracker
+
+The original finding text below is historical evidence. Current repository status and remaining release gates are:
+
+- **F-AUD-001**: Locally closed; tenant-scoped handlers, all nine tenant tables, and RLS/CI proofs are covered. Remaining: deployed API/database RLS proof (`DATA-RLS-001`).
+- **F-AUD-002**: Locally closed; versioned auth, sessions, refresh rotation, and privileged MFA are covered. Remaining: staging abuse, session, and revocation evidence.
+- **F-AUD-003**: Locally closed; room authorization, tenant/origin checks, event validation, Redis sequencing, reconnect, and polling are covered. Remaining: deployed multi-replica fanout and sequence proof.
+- **F-AUD-004**: Locally closed; encrypted journal persistence, ownership, associated data, and no-plaintext checks are covered. Remaining: deployed web/mobile and native-device proof.
+- **F-AUD-005**: Locally closed; fail-closed AI configuration, bounded clients, audit logging, and citation verification are covered. Remaining: real-provider degradation and audit evidence.
+- **F-AUD-006**: Locally closed; vendored `protoc`, Rust build/health, TLS, and mTLS wiring are covered. Remaining: deployed health, metrics, and mTLS proof.
+- **F-AUD-007**: Locally closed; web audit, smoke, typecheck, and build gates pass. Remaining: deployed browser smoke evidence.
+- **F-AUD-008**: Locally and in hosted CI closed; Go tests, vet, and exact-SHA artifact probing pass. Remaining: keep release evidence current for each candidate.
+- **F-AUD-009**: Locally and in hosted CI closed as a Terraform skeleton. Remaining: real staging inputs, remote state, plan/apply, and rollout evidence.
+- **F-AUD-010**: Locally closed; Zoom timeout, retry, circuit, fallback, mapping, and idempotency paths are covered. Remaining: live Zoom evidence.
+- **F-AUD-011**: Locally closed; mobile auth, API, crypto, room flows, and build smoke are covered. Remaining: EAS/native-device and staging proof.
+- **F-AUD-012**: Locally closed; web API, auth, journal, room, and WebSocket configuration smoke are covered. Remaining: deployed browser smoke evidence.
+
 ### F-AUD-001: Tenant isolation RLS is not connected to application sessions
 
 Severity: Critical
