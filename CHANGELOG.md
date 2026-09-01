@@ -6,6 +6,7 @@ This file records repository-level implementation history. It is not a substitut
 
 ### Production-readiness remediation
 
+- Reconciled the audit briefing, roadmap, and Obsidian readiness tracker with the current ignored staging manifest; older exact-release CI snapshots are explicitly historical while the remaining 20 evidence items stay external.
 - Pinned every repository-controlled API, Rust, and web Dockerfile stage plus local/CI/RLS Postgres and Redis image reference to an exact registry manifest digest; deployment regression tests now reject mutable `FROM` and Compose `image:` references.
 - Added gRPC retrieval input bounds: `topK` is constrained to the Rust engine limit, provider vectors must contain 1536 finite values before dispatch, and partially initialized client shutdown is nil-safe.
 - Bound database-backed room WebSocket membership to active tenant-scoped rooms on handshake and authorization heartbeat, with Postgres/RLS regression coverage for inactive-room rejection.
