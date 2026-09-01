@@ -94,7 +94,7 @@ ScriptureForgeAI is a multi-tenant Bible study platform with authenticated works
 ## CI Evidence Provenance
 
 - Pull-request release evidence records the workflow execution SHA separately from `github.event.pull_request.head.sha`; the head SHA is the release candidate used by `tools/ciprobe` and staging evidence recording. The current ignored environment-specific manifest records the HTTPS artifact and passing `SRC-CI-001` entry; the manifest remains untracked by design because it is environment evidence.
-- Hosted run `33479672281` (#745) verified this contract for `00930d349dbad259ca7685a1906aa4d05f005197`; artifact `9789557040` (`sha256:7bc3f7d7dc4bbd688855ecf997c1ea15130c9237cec6d39d174c9f2b0917bc1e`) passed `ciprobe` with matching release and artifact SHAs. The ignored environment-specific staging manifest records `SRC-CI-001`; deployment, staging, provider, native-device, performance, recovery, and signoff evidence remain external.
+- The latest hosted run and uploaded artifact are recorded in the ignored environment-specific staging manifest; `ciprobe` and manifest validation require matching release and artifact SHAs under `SRC-CI-001`. Deployment, staging, provider, native-device, performance, recovery, and signoff evidence remain external.
 
 ## Do-Not-Touch / Risk Zones
 
@@ -107,7 +107,7 @@ ScriptureForgeAI is a multi-tenant Bible study platform with authenticated works
 
 - Exact staging AWS inputs, remote state, DNS, and secret-manager dependencies are environment-owned.
 - Staging must prove the Secrets Store CSI JSON shape for `grpc_engine_tls_credentials`, certificate rotation, Rust health/readiness, and Go-to-Rust mTLS/tenant binding with `tools/rustprobe`.
-- Production readiness still depends on clean git sync state, staging proof manifests, and deployment/provider/operator evidence; exact-SHA hosted CI gates passed for current branch tip `00930d349dbad259ca7685a1906aa4d05f005197` in Security Pipeline Verification pull-request run `33479672281` (#745).
+- Production readiness still depends on clean git sync state, staging proof manifests, and deployment/provider/operator evidence; exact-SHA hosted CI evidence for the current release candidate is recorded in the ignored staging manifest.
 - Container supply-chain guard: API/Rust/web Dockerfile stages and local/CI/RLS Postgres/Redis image references are pinned to exact SHA-256 registry manifests, and `tools/validate-deployment-skeleton.mjs` rejects mutable `FROM`/`image:` references. Hosted run #723 passed the pinned-image code tip `89d71720552fa6a430558a2f4921bf03d5d8fcbe`, run #729 passed remediation tip `288bff38fadb754be62b55535f39051711a8e976`, and run #733 passed the current retrieval-boundary hardening tip `127a12f8e82ea0f84fbe4a1d7d43c77b8a8e30d5`; parent-image signing/provenance, ECR publication, and deployed digest proof remain external.
 - Native EAS/Expo crypto behavior requires separate staged-device validation beyond local smoke checks.
 - Mobile dependency closure is locally closed through the tested repository-owned image-size compatibility package; re-evaluate it on every Expo/Metro refresh and see `security/dependency_risk_register.md#DRR-002`.
