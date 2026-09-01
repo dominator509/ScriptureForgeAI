@@ -50,7 +50,7 @@ This is a repo-local threat model. It does not replace staging evidence for AWS 
 
 ## Residual Risks Blocking Production Claim
 
-- GitHub Actions hosted pull-request run `33280938361` passed for exact behavior release `fc7e105cb0f979535e78cd63ee56cd49ab3fef8f`; pinned-image code tip `89d71720552fa6a430558a2f4921bf03d5d8fcbe` passed run `33282131872`, remediation tip `288bff38fadb754be62b55535f39051711a8e976` passed run `33283577957`, and current retrieval-boundary hardening tip `127a12f8e82ea0f84fbe4a1d7d43c77b8a8e30d5` passed run `33285093062` (#733). The uploaded HTTPS release artifact still needs to be recorded in the staging manifest.
+- GitHub Actions hosted pull-request run `33478779708` (#743) passed for current role-contract hardening release `e6e308afa19d71e0444e0c980f2c31ad61824855`; artifact `9789243703` passed `ciprobe` with matching release and artifact SHAs, and the local environment-specific staging manifest records `SRC-CI-001`. Earlier exact-release runs remain historical; deployment, staging, native-device, provider, observability, performance, and signoff evidence are still external.
 - Parent-image signing/provenance, ECR publication, and deployed workload digest verification remain release/staging evidence; local Dockerfile, Compose, CI, and RLS harness validators now reject mutable image references.
 - No staging `terraform plan/apply` has proven live AWS, EKS, RDS, Redis, ALB, DNS, ACM, IRSA, Secrets Store CSI, or rollback paths.
 - Native-device/EAS validation is still required for mobile AES-GCM outside Node/WebCrypto shims.
