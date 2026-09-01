@@ -1,0 +1,719 @@
+variable "aws_region" {
+  description = "AWS region for the deployment skeleton."
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "environment" {
+  description = "Deployment environment name, such as staging or production."
+  type        = string
+  default     = "staging"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{1,30}$", var.environment))
+    error_message = "environment must be lowercase alphanumeric with optional hyphens."
+  }
+}
+
+variable "vpc_id" {
+  description = "Existing VPC ID for EKS, RDS, Redis, and ingress."
+  type        = string
+
+  validation {
+    condition     = can(regex("^vpc-[a-f0-9]+$", var.vpc_id))
+    error_message = "vpc_id must look like an AWS VPC ID."
+  }
+}
+
+variable "private_subnet_ids" {
+  description = "Private subnet IDs for EKS nodes, RDS, and Redis placement."
+  type        = list(string)
+
+  validation {
+    condition     = length(var.private_subnet_ids) >= 2
+    error_message = "At least two private subnet IDs are required."
+  }
+}
+
+variable "data_tier_cidrs" {
+  description = "CIDR ranges for the subnets containing RDS and Redis; workload egress is restricted to these ranges."
+  type        = list(string)
+
+  validation {
+    condition     = length(var.data_tier_cidrs) > 0 && length(var.data_tier_cidrs) <= 32 && alltrue([for cidr in var.data_tier_cidrs : can(cidrhost(cidr, 0))])
+    error_message = "data_tier_cidrs must contain one to 32 valid subnet CIDRs."
+  }
+}
+
+variable "public_subnet_ids" {
+  description = "Public subnet IDs for external ingress load balancers."
+  type        = list(string)
+
+  validation {
+    condition     = length(var.public_subnet_ids) >= 2
+    error_message = "At least two public subnet IDs are required for ingress."
+  }
+}
+
+variable "allowed_ingress_cidrs" {
+  description = "CIDR ranges allowed to reach public ingress."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
+variable "ai_max_output_tokens" {
+  description = "Maximum output tokens requested from the AI chat provider."
+  type        = number
+  default     = 2048
+
+  validation {
+    condition     = var.ai_max_output_tokens >= 128 && var.ai_max_output_tokens <= 8192
+    error_message = "ai_max_output_tokens must be between 128 and 8192."
+  }
+}
+
+variable "database_instance_class" {
+  description = "Aurora PostgreSQL instance class."
+  type        = string
+  default     = "db.r6g.large"
+}
+
+variable "database_kms_key_arn" {
+  description = "Customer-managed AWS KMS key ARN used to encrypt the Aurora PostgreSQL cluster and snapshots."
+  type        = string
+
+  validation {
+    condition     = can(regex("^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key/[0-9a-fA-F-]+$", var.database_kms_key_arn)) || can(regex("^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:alias/[A-Za-z0-9/_-]+$", var.database_kms_key_arn))
+    error_message = "database_kms_key_arn must be a customer-managed AWS KMS key or alias ARN."
+  }
+}
+
+variable "redis_kms_key_arn" {
+  description = "Customer-managed AWS KMS key ARN used to encrypt the Redis replication group."
+  type        = string
+
+  validation {
+    condition     = can(regex("^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key/[0-9a-fA-F-]+$", var.redis_kms_key_arn)) || can(regex("^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:alias/[A-Za-z0-9/_-]+$", var.redis_kms_key_arn))
+    error_message = "redis_kms_key_arn must be a customer-managed AWS KMS key or alias ARN."
+  }
+}
+
+variable "eks_secrets_kms_key_arn" {
+  description = "Customer-managed AWS KMS key ARN used for EKS Kubernetes Secret envelope encryption."
+  type        = string
+
+  validation {
+    condition     = can(regex("^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key/[0-9a-fA-F-]+$", var.eks_secrets_kms_key_arn)) || can(regex("^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:alias/[A-Za-z0-9/_-]+$", var.eks_secrets_kms_key_arn))
+    error_message = "eks_secrets_kms_key_arn must be a customer-managed AWS KMS key or alias ARN."
+  }
+}
+
+variable "database_backup_retention_days" {
+  description = "Aurora PostgreSQL automated backup retention period in days."
+  type        = number
+  default     = 14
+
+  validation {
+    condition     = var.database_backup_retention_days >= 7 && var.database_backup_retention_days <= 35
+    error_message = "database_backup_retention_days must be between 7 and 35 days."
+  }
+}
+
+variable "database_preferred_backup_window" {
+  description = "UTC backup window for Aurora PostgreSQL automated backups."
+  type        = string
+  default     = "07:00-09:00"
+}
+
+variable "database_preferred_maintenance_window" {
+  description = "UTC maintenance window for Aurora PostgreSQL."
+  type        = string
+  default     = "sun:09:00-sun:10:00"
+}
+
+variable "api_image" {
+  description = "Immutable container image digest for the Go API service."
+  type        = string
+
+  validation {
+    condition     = can(regex("@sha256:[0-9a-f]{64}$", var.api_image))
+    error_message = "api_image must be pinned to an immutable sha256 digest, for example repository/scriptureforge-api@sha256:<64 lowercase hex chars>."
+  }
+}
+
+variable "api_http_read_header_timeout_ms" {
+  description = "Maximum milliseconds the API waits for request headers."
+  type        = number
+  default     = 5000
+
+  validation {
+    condition     = var.api_http_read_header_timeout_ms >= 100 && var.api_http_read_header_timeout_ms <= 120000
+    error_message = "api_http_read_header_timeout_ms must be between 100 and 120000 milliseconds."
+  }
+}
+
+variable "api_request_timeout_ms" {
+  description = "Maximum milliseconds ordinary API handlers may use for database, cache, and provider work; upgraded room streams are exempt."
+  type        = number
+  default     = 15000
+
+  validation {
+    condition     = var.api_request_timeout_ms >= 1000 && var.api_request_timeout_ms <= 120000
+    error_message = "api_request_timeout_ms must be between 1000 and 120000 milliseconds."
+  }
+}
+
+variable "api_shutdown_timeout_ms" {
+  description = "Maximum milliseconds the API waits for graceful shutdown after readiness is marked draining."
+  type        = number
+  default     = 10000
+
+  validation {
+    condition     = var.api_shutdown_timeout_ms >= 1000 && var.api_shutdown_timeout_ms <= 120000
+    error_message = "api_shutdown_timeout_ms must be between 1000 and 120000 milliseconds."
+  }
+}
+
+variable "api_http_read_timeout_ms" {
+  description = "Maximum milliseconds the API waits while reading an HTTP request."
+  type        = number
+  default     = 30000
+
+  validation {
+    condition     = var.api_http_read_timeout_ms >= 100 && var.api_http_read_timeout_ms <= 300000
+    error_message = "api_http_read_timeout_ms must be between 100 and 300000 milliseconds."
+  }
+}
+
+variable "api_http_write_timeout_ms" {
+  description = "Maximum milliseconds the API waits while writing an HTTP response."
+  type        = number
+  default     = 30000
+
+  validation {
+    condition     = var.api_http_write_timeout_ms >= 100 && var.api_http_write_timeout_ms <= 300000
+    error_message = "api_http_write_timeout_ms must be between 100 and 300000 milliseconds."
+  }
+}
+
+variable "api_http_idle_timeout_ms" {
+  description = "Maximum milliseconds an API keep-alive connection may remain idle."
+  type        = number
+  default     = 60000
+
+  validation {
+    condition     = var.api_http_idle_timeout_ms >= 100 && var.api_http_idle_timeout_ms <= 600000
+    error_message = "api_http_idle_timeout_ms must be between 100 and 600000 milliseconds."
+  }
+}
+
+variable "api_http_max_header_bytes" {
+  description = "Maximum HTTP request header bytes accepted by the API."
+  type        = number
+  default     = 1048576
+
+  validation {
+    condition     = var.api_http_max_header_bytes >= 4096 && var.api_http_max_header_bytes <= 16777216
+    error_message = "api_http_max_header_bytes must be between 4096 and 16777216 bytes."
+  }
+}
+
+variable "zoom_http_timeout_ms" {
+  description = "Maximum milliseconds allowed for each outbound Zoom request."
+  type        = number
+  default     = 3500
+
+  validation {
+    condition     = var.zoom_http_timeout_ms >= 100 && var.zoom_http_timeout_ms <= 30000
+    error_message = "zoom_http_timeout_ms must be between 100 and 30000 milliseconds."
+  }
+}
+
+variable "zoom_max_retries" {
+  description = "Maximum transient retries for each Zoom request."
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = var.zoom_max_retries >= 0 && var.zoom_max_retries <= 3
+    error_message = "zoom_max_retries must be between 0 and 3."
+  }
+}
+
+variable "api_startup_dependency_timeout_ms" {
+  description = "Maximum milliseconds the API waits for PostgreSQL and Redis during startup health checks."
+  type        = number
+  default     = 10000
+
+  validation {
+    condition     = var.api_startup_dependency_timeout_ms >= 1000 && var.api_startup_dependency_timeout_ms <= 60000
+    error_message = "api_startup_dependency_timeout_ms must be between 1000 and 60000 milliseconds."
+  }
+}
+
+variable "api_db_pool_max_conns" {
+  description = "Maximum PostgreSQL connections per API pod."
+  type        = number
+  default     = 10
+
+  validation {
+    condition     = var.api_db_pool_max_conns >= 1 && var.api_db_pool_max_conns <= 100
+    error_message = "api_db_pool_max_conns must be between 1 and 100."
+  }
+}
+
+variable "api_db_pool_min_conns" {
+  description = "Minimum PostgreSQL connections kept warm per API pod; must not exceed api_db_pool_max_conns."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.api_db_pool_min_conns >= 0 && var.api_db_pool_min_conns <= 50
+    error_message = "api_db_pool_min_conns must be between 0 and 50."
+  }
+}
+
+variable "api_db_pool_max_conn_lifetime_ms" {
+  description = "Maximum PostgreSQL connection lifetime per API pod."
+  type        = number
+  default     = 1800000
+
+  validation {
+    condition     = var.api_db_pool_max_conn_lifetime_ms >= 60000 && var.api_db_pool_max_conn_lifetime_ms <= 86400000
+    error_message = "api_db_pool_max_conn_lifetime_ms must be between 60000 and 86400000 milliseconds."
+  }
+}
+
+variable "api_db_pool_max_conn_idle_time_ms" {
+  description = "Maximum idle time for PostgreSQL connections per API pod."
+  type        = number
+  default     = 300000
+
+  validation {
+    condition     = var.api_db_pool_max_conn_idle_time_ms >= 60000 && var.api_db_pool_max_conn_idle_time_ms <= 86400000
+    error_message = "api_db_pool_max_conn_idle_time_ms must be between 60000 and 86400000 milliseconds."
+  }
+}
+
+variable "api_redis_pool_size" {
+  description = "Redis connection pool size per API pod."
+  type        = number
+  default     = 10
+
+  validation {
+    condition     = var.api_redis_pool_size >= 1 && var.api_redis_pool_size <= 100
+    error_message = "api_redis_pool_size must be between 1 and 100."
+  }
+}
+
+variable "api_redis_max_active_conns" {
+  description = "Maximum active Redis connections per API pod; must be at least api_redis_pool_size."
+  type        = number
+  default     = 10
+
+  validation {
+    condition     = var.api_redis_max_active_conns >= 1 && var.api_redis_max_active_conns <= 100
+    error_message = "api_redis_max_active_conns must be between 1 and 100."
+  }
+}
+
+variable "api_redis_pool_timeout_ms" {
+  description = "Maximum milliseconds the API waits for an available Redis connection."
+  type        = number
+  default     = 5000
+
+  validation {
+    condition     = var.api_redis_pool_timeout_ms >= 100 && var.api_redis_pool_timeout_ms <= 60000
+    error_message = "api_redis_pool_timeout_ms must be between 100 and 60000 milliseconds."
+  }
+}
+
+variable "api_redis_dial_timeout_ms" {
+  description = "Maximum milliseconds the API waits to establish a Redis connection."
+  type        = number
+  default     = 5000
+
+  validation {
+    condition     = var.api_redis_dial_timeout_ms >= 100 && var.api_redis_dial_timeout_ms <= 60000
+    error_message = "api_redis_dial_timeout_ms must be between 100 and 60000 milliseconds."
+  }
+}
+
+variable "api_redis_read_timeout_ms" {
+  description = "Maximum milliseconds the API waits for a Redis read."
+  type        = number
+  default     = 3000
+
+  validation {
+    condition     = var.api_redis_read_timeout_ms >= 100 && var.api_redis_read_timeout_ms <= 60000
+    error_message = "api_redis_read_timeout_ms must be between 100 and 60000 milliseconds."
+  }
+}
+
+variable "api_redis_write_timeout_ms" {
+  description = "Maximum milliseconds the API waits for a Redis write."
+  type        = number
+  default     = 3000
+
+  validation {
+    condition     = var.api_redis_write_timeout_ms >= 100 && var.api_redis_write_timeout_ms <= 60000
+    error_message = "api_redis_write_timeout_ms must be between 100 and 60000 milliseconds."
+  }
+}
+
+variable "web_image" {
+  description = "Immutable container image digest for the Next.js web service."
+  type        = string
+
+  validation {
+    condition     = can(regex("@sha256:[0-9a-f]{64}$", var.web_image))
+    error_message = "web_image must be pinned to an immutable sha256 digest, for example repository/scriptureforge-web@sha256:<64 lowercase hex chars>."
+  }
+}
+
+variable "rust_engine_image" {
+  description = "Immutable container image digest for the Rust gRPC scripture engine."
+  type        = string
+
+  validation {
+    condition     = can(regex("@sha256:[0-9a-f]{64}$", var.rust_engine_image))
+    error_message = "rust_engine_image must be pinned to an immutable sha256 digest, for example repository/scriptureforge-rust-engine@sha256:<64 lowercase hex chars>."
+  }
+}
+
+variable "api_resources" {
+  description = "Kubernetes CPU and memory requests/limits for the Go API container."
+  type = object({
+    requests = object({
+      cpu    = string
+      memory = string
+    })
+    limits = object({
+      cpu    = string
+      memory = string
+    })
+  })
+  default = {
+    requests = {
+      cpu    = "250m"
+      memory = "256Mi"
+    }
+    limits = {
+      cpu    = "1000m"
+      memory = "768Mi"
+    }
+  }
+}
+
+variable "rust_engine_resources" {
+  description = "Kubernetes CPU and memory requests/limits for the Rust gRPC scripture engine container."
+  type = object({
+    requests = object({
+      cpu    = string
+      memory = string
+    })
+    limits = object({
+      cpu    = string
+      memory = string
+    })
+  })
+  default = {
+    requests = {
+      cpu    = "250m"
+      memory = "256Mi"
+    }
+    limits = {
+      cpu    = "1000m"
+      memory = "768Mi"
+    }
+  }
+}
+
+variable "web_resources" {
+  description = "Kubernetes CPU and memory requests/limits for the Next.js web container."
+  type = object({
+    requests = object({
+      cpu    = string
+      memory = string
+    })
+    limits = object({
+      cpu    = string
+      memory = string
+    })
+  })
+  default = {
+    requests = {
+      cpu    = "150m"
+      memory = "192Mi"
+    }
+    limits = {
+      cpu    = "500m"
+      memory = "512Mi"
+    }
+  }
+}
+
+variable "api_autoscaling" {
+  description = "Horizontal Pod Autoscaler settings for the Go API deployment."
+  type = object({
+    min_replicas                         = number
+    max_replicas                         = number
+    target_cpu_utilization_percentage    = number
+    target_memory_utilization_percentage = number
+  })
+  default = {
+    min_replicas                         = 2
+    max_replicas                         = 10
+    target_cpu_utilization_percentage    = 65
+    target_memory_utilization_percentage = 75
+  }
+
+  validation {
+    condition     = var.api_autoscaling.min_replicas >= 2 && var.api_autoscaling.max_replicas >= var.api_autoscaling.min_replicas
+    error_message = "api_autoscaling must keep at least two replicas and max_replicas must be >= min_replicas."
+  }
+}
+
+variable "rust_engine_autoscaling" {
+  description = "Horizontal Pod Autoscaler settings for the Rust scripture engine deployment."
+  type = object({
+    min_replicas                         = number
+    max_replicas                         = number
+    target_cpu_utilization_percentage    = number
+    target_memory_utilization_percentage = number
+  })
+  default = {
+    min_replicas                         = 2
+    max_replicas                         = 8
+    target_cpu_utilization_percentage    = 65
+    target_memory_utilization_percentage = 75
+  }
+
+  validation {
+    condition     = var.rust_engine_autoscaling.min_replicas >= 2 && var.rust_engine_autoscaling.max_replicas >= var.rust_engine_autoscaling.min_replicas
+    error_message = "rust_engine_autoscaling must keep at least two replicas and max_replicas must be >= min_replicas."
+  }
+}
+
+variable "web_autoscaling" {
+  description = "Horizontal Pod Autoscaler settings for the Next.js web deployment."
+  type = object({
+    min_replicas                         = number
+    max_replicas                         = number
+    target_cpu_utilization_percentage    = number
+    target_memory_utilization_percentage = number
+  })
+  default = {
+    min_replicas                         = 2
+    max_replicas                         = 6
+    target_cpu_utilization_percentage    = 70
+    target_memory_utilization_percentage = 80
+  }
+
+  validation {
+    condition     = var.web_autoscaling.min_replicas >= 2 && var.web_autoscaling.max_replicas >= var.web_autoscaling.min_replicas
+    error_message = "web_autoscaling must keep at least two replicas and max_replicas must be >= min_replicas."
+  }
+}
+
+variable "app_secret_arns" {
+  description = "Existing AWS Secrets Manager ARNs used by workloads. DATABASE_URL must contain the TLS-enabled scriptureforge_app scoped runtime user; JWT, journal salt, and MFA encryption secrets must be distinct high-entropy values; the gRPC shared secret is also high-entropy; grpc_engine_tls_credentials must be JSON with ca_pem, server_cert_pem, server_key_pem, client_cert_pem, and client_key_pem keys."
+  type = object({
+    database_url                = string
+    jwt_secret_key              = string
+    journal_salt_secret         = string
+    mfa_encryption_key          = string
+    redis_auth_token            = string
+    openai_api_key              = string
+    metrics_auth_token          = string
+    zoom_credentials            = string
+    grpc_engine_shared_secret   = string
+    grpc_engine_tls_credentials = string
+  })
+
+  validation {
+    condition = alltrue([
+      can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.database_url)),
+      can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.jwt_secret_key)),
+      can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.journal_salt_secret)),
+      can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.mfa_encryption_key)),
+      can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.redis_auth_token)),
+      can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.openai_api_key)),
+      can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.metrics_auth_token)),
+      can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.zoom_credentials)),
+      can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.grpc_engine_shared_secret)),
+      can(regex("^arn:aws:secretsmanager:", var.app_secret_arns.grpc_engine_tls_credentials))
+    ])
+    error_message = "app_secret_arns values must be AWS Secrets Manager ARNs."
+  }
+}
+
+variable "grpc_engine_tls_server_name" {
+  description = "DNS name in the Rust gRPC server certificate and the Go API mTLS client configuration."
+  type        = string
+  default     = "scriptureforge-rust-engine"
+
+  validation {
+    condition     = length(trimspace(var.grpc_engine_tls_server_name)) > 0 && !contains(["localhost", "127.0.0.1"], lower(trimspace(var.grpc_engine_tls_server_name)))
+    error_message = "grpc_engine_tls_server_name must be a non-local service DNS name."
+  }
+}
+
+variable "eks_oidc_thumbprint_list" {
+  description = "OIDC root CA thumbprints for the EKS issuer used by IRSA. Confirm in staging before apply."
+  type        = list(string)
+  default     = ["9e99a48a9960b14926bb7f3b02e22da0afd10efd"]
+
+  validation {
+    condition     = length(var.eks_oidc_thumbprint_list) > 0
+    error_message = "At least one OIDC thumbprint is required for the EKS IAM OIDC provider."
+  }
+}
+
+variable "allowed_ws_origins" {
+  description = "Comma-separated browser origins allowed for WebSocket upgrades."
+  type        = string
+
+  validation {
+    condition = (
+      length(trimspace(var.allowed_ws_origins)) > 0 &&
+      alltrue([
+        for origin in split(",", var.allowed_ws_origins) :
+        startswith(trimspace(origin), "https://") &&
+        !strcontains(lower(trimspace(origin)), "localhost") &&
+        !strcontains(lower(trimspace(origin)), "example.com") &&
+        !strcontains(lower(trimspace(origin)), ".example") &&
+        !strcontains(lower(trimspace(origin)), ".test") &&
+        !strcontains(lower(trimspace(origin)), ".invalid") &&
+        !strcontains(trimspace(origin), "*")
+      ])
+    )
+    error_message = "allowed_ws_origins must be comma-separated HTTPS origins for real staging/production hosts; localhost, wildcard, example, test, and invalid origins are not allowed."
+  }
+}
+
+variable "trust_proxy_headers" {
+  description = "Whether the API may trust X-Forwarded-For/X-Real-IP from an ingress that strips and overwrites caller-supplied forwarding headers; leave false unless that contract is verified."
+  type        = bool
+  default     = false
+}
+
+variable "trusted_proxy_cidrs" {
+  description = "CIDR ranges for ingress or proxy peers whose forwarded client headers may be trusted."
+  type        = list(string)
+
+  validation {
+    condition = length(var.trusted_proxy_cidrs) > 0 && alltrue([
+      for cidr in var.trusted_proxy_cidrs : can(cidrhost(cidr, 0)) && can(regex(
+        "^(10[.]|172[.](1[6-9]|2[0-9]|3[01])[.]|192[.]168[.]|[Ff][Dd][0-9A-Fa-f]*:)",
+        cidrhost(cidr, 0),
+      ))
+    ])
+    error_message = "trusted_proxy_cidrs must contain one or more valid private-network CIDRs for verified ingress peers."
+  }
+}
+
+variable "ai_allowed_provider_hosts" {
+  description = "Exact provider hostnames allowed to receive AI bearer credentials."
+  type        = list(string)
+  default     = ["api.openai.com"]
+
+  validation {
+    condition = (
+      length(var.ai_allowed_provider_hosts) > 0 &&
+      alltrue([
+        for hostname in var.ai_allowed_provider_hosts : can(regex("^[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9]$", hostname))
+      ])
+    )
+    error_message = "ai_allowed_provider_hosts must contain one or more exact DNS hostnames without schemes, paths, wildcards, or credentials."
+  }
+}
+
+variable "service_version" {
+  description = "Release or image version label attached to application telemetry."
+  type        = string
+
+  validation {
+    condition = (
+      length(trimspace(var.service_version)) > 0 &&
+      !contains(["unversioned", "latest"], lower(trimspace(var.service_version))) &&
+      !strcontains(lower(trimspace(var.service_version)), "replace-with")
+    )
+    error_message = "service_version must be an explicit release value, not unversioned, latest, or a replace-with placeholder."
+  }
+}
+
+variable "otel_exporter_otlp_endpoint" {
+  description = "Optional OTLP/HTTP collector endpoint for Go API traces. Leave empty to keep tracing export disabled."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      var.otel_exporter_otlp_endpoint == "" ||
+      can(regex("^(https?://)?[A-Za-z0-9._-]+(:[0-9]{2,5})?(/.*)?$", var.otel_exporter_otlp_endpoint))
+    )
+    error_message = "otel_exporter_otlp_endpoint must be empty or an OTLP HTTP collector endpoint."
+  }
+}
+
+variable "otel_exporter_otlp_insecure" {
+  description = "Set true only for plaintext in-cluster OTLP collector traffic."
+  type        = bool
+  default     = false
+}
+
+variable "api_hostname" {
+  description = "Hostname for the Go API ingress."
+  type        = string
+
+  validation {
+    condition = (
+      can(regex("^[A-Za-z0-9][A-Za-z0-9.-]+[.][A-Za-z]{2,}$", var.api_hostname)) &&
+      lower(trimspace(var.api_hostname)) != "localhost" &&
+      !strcontains(lower(trimspace(var.api_hostname)), "example.com") &&
+      !strcontains(lower(trimspace(var.api_hostname)), ".example") &&
+      !strcontains(lower(trimspace(var.api_hostname)), ".test") &&
+      !strcontains(lower(trimspace(var.api_hostname)), ".invalid")
+    )
+    error_message = "api_hostname must be a real DNS hostname; localhost, example, test, and invalid hosts are not allowed for staging/production."
+  }
+}
+
+variable "web_hostname" {
+  description = "Hostname for the web ingress."
+  type        = string
+
+  validation {
+    condition = (
+      can(regex("^[A-Za-z0-9][A-Za-z0-9.-]+[.][A-Za-z]{2,}$", var.web_hostname)) &&
+      lower(trimspace(var.web_hostname)) != "localhost" &&
+      !strcontains(lower(trimspace(var.web_hostname)), "example.com") &&
+      !strcontains(lower(trimspace(var.web_hostname)), ".example") &&
+      !strcontains(lower(trimspace(var.web_hostname)), ".test") &&
+      !strcontains(lower(trimspace(var.web_hostname)), ".invalid")
+    )
+    error_message = "web_hostname must be a real DNS hostname; localhost, example, test, and invalid hosts are not allowed for staging/production."
+  }
+}
+
+variable "ingress_certificate_arn" {
+  description = "ACM certificate ARN used by the ALB ingresses for api_hostname and web_hostname."
+  type        = string
+
+  validation {
+    condition     = can(regex("^arn:aws:acm:[a-z0-9-]+:[0-9]{12}:certificate/[0-9a-fA-F-]+$", var.ingress_certificate_arn))
+    error_message = "ingress_certificate_arn must be an ACM certificate ARN."
+  }
+}
+
+variable "ingress_ssl_policy" {
+  description = "AWS ALB SSL negotiation policy for public HTTPS ingresses."
+  type        = string
+  default     = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+
+  validation {
+    condition     = startswith(var.ingress_ssl_policy, "ELBSecurityPolicy-")
+    error_message = "ingress_ssl_policy must be an AWS ELB security policy name."
+  }
+}

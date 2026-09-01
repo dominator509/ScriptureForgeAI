@@ -4,11 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tonic = "0.10"
+tonic = { version = "0.10", features = ["tls"] }
+tonic-health = "0.10"
 prost = "0.12"
 tokio = { version = "1.32", features = ["macros", "rt-multi-thread"] }
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "uuid"] }
-pgvector = { version = "0.3", features = ["sqlx"] }
+sqlx = { version = "0.9", features = ["runtime-tokio", "tls-rustls", "postgres", "uuid"] }
+pgvector = { version = "0.4", features = ["sqlx"] }
 
 [build-dependencies]
+protoc-bin-vendored = "3"
 tonic-build = "0.10"

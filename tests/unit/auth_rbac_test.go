@@ -39,7 +39,7 @@ func TestArgon2idHashing(t *testing.T) {
 
 // TestJWTValidation validates the JWT creation and parsing components
 func TestJWTValidation(t *testing.T) {
-	os.Setenv("JWT_SECRET_KEY", "test-secret")
+	os.Setenv("JWT_SECRET_KEY", "test-secret-012345678901234567890123")
 	defer os.Unsetenv("JWT_SECRET_KEY")
 
 	userID := "user-123"

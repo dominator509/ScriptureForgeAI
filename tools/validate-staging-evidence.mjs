@@ -1,0 +1,3598 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { ciReleaseEvidenceProofMarkers } from './write-ci-release-evidence.mjs';
+
+export const requiredIds = [
+  'SRC-CI-001',
+  'DEPLOY-TF-001',
+  'DEPLOY-TLS-001',
+  'DEPLOY-K8S-001',
+  'SEC-SECRETS-001',
+  'SEC-DBUSER-001',
+  'ABUSE-LIMIT-001',
+  'DATA-RLS-001',
+  'DATA-REDIS-001',
+  'RUST-GRPC-001',
+  'OBS-OTEL-001',
+  'OBS-ALERT-001',
+  'CLIENT-WEB-001',
+  'CLIENT-MOBILE-001',
+  'EXT-ZOOM-001',
+  'EXT-AI-001',
+  'PERF-HTTP-001',
+  'PERF-WS-001',
+  'DR-ROLLBACK-001',
+  'DR-BACKUP-001',
+  'SEC-SIGNOFF-001',
+];
+
+export const stagingEvidenceProofMarkers = [
+  'required_evidence_ids_checked=true',
+  'status_values_checked=true',
+  'evidence_chronology_checked=true',
+  'accepted_risk_metadata_checked=true',
+  'strict_release_environment_checked=true',
+  'strict_probe_artifact_hosts_checked=true',
+  'reserved_placeholder_hosts_rejected=true',
+  'strict_release_candidate_markers_checked=true',
+  'strict_service_version_release_binding_checked=true',
+  'strict_segment_markers_checked=true',
+  'strict_numeric_thresholds_checked=true',
+  'local_mock_placeholder_markers_rejected=true',
+];
+
+const allowedStatuses = new Set([
+  'pending_external',
+  'passed',
+  'failed',
+  'blocked',
+  'accepted_risk',
+]);
+
+const strictAcceptedRiskRefs = {
+  'SEC-SIGNOFF-001': 'security/dependency_risk_register.md#DRR-001',
+};
+
+const strictReleaseEnvironments = new Set(['staging', 'production', 'prod']);
+const terraformApprovalChangeTicketPattern = /\bchange_ticket=[a-z][a-z0-9]+-\d+\b/i;
+const terraformStateKMSKeyPattern = /\bkms_key_id=(arn:aws:kms:[a-z0-9-]+:[0-9]{12}:(?:key\/[a-f0-9-]{36}|alias\/[A-Za-z0-9/_+=,.@-]+)|alias\/[A-Za-z0-9/_+=,.@-]+)\b/i;
+const terraformDatabaseKMSKeyARNPattern = /\bdatabase_kms_key_arn=arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key\/[a-f0-9-]{36}\b/i;
+const terraformRedisKMSKeyARNPattern = /\bredis_kms_key_arn=arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key\/[a-f0-9-]{36}\b/i;
+const kubernetesWorkloadImageDigestPatterns = new Map([
+  ['scriptureforge-api', /(?:scriptureforge-api|scriptureforge\/api)[^\s,;]*@sha256:[a-f0-9]{64}\b/i],
+  ['scriptureforge-web', /(?:scriptureforge-web|scriptureforge\/web)[^\s,;]*@sha256:[a-f0-9]{64}\b/i],
+  ['scriptureforge-rust-engine', /(?:scriptureforge-rust-engine|scriptureforge\/rust-engine)[^\s,;]*@sha256:[a-f0-9]{64}\b/i],
+]);
+const zoomMeetingJoinURLPattern = /zoom-meeting-create-or-fallback(?=[^;]*staging artifact)(?=[^;]*meeting)(?=[^;]*join_url)(?=[^;]*zoom\.us)/i;
+const zoomMeetingOfflineFallbackPattern = /zoom-meeting-create-or-fallback(?=[^;]*staging artifact)(?=[^;]*offline:\/\/in-person)(?=[^;]*fallback)(?=[^;]*zoom)/i;
+const zoomSegmentMarkerRequirements = new Map([
+  ['zoom-oauth-readiness', ['staging artifact', 'oauth', 'account_credentials', 'status', 'ok', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['zoom-meeting-create-or-fallback', ['staging artifact', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['zoom-timeout-circuit-fallback', ['staging artifact', 'timeout', 'provider timeout', 'circuit', 'open', 'circuit_open_fallback', 'fallback', 'offline://in-person', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['zoom-webhook-signature-delivery', ['staging artifact', 'webhook', 'signature', 'x-zm-signature=', 'x-zm-request-timestamp=', 'stale', 'replay', '401', 'invalid', 'signed', '200', 'stale_rejected=true', 'replay_rejected=true', 'invalid_signature_rejected=true', 'signed_delivery_accepted=true', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['zoom-webhook-url-validation', ['staging artifact', 'endpoint.url_validation', 'plain_token=', 'encrypted_token=', 'validation_response=200', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['zoom-duplicate-webhook-idempotency', ['staging artifact', 'duplicate', 'x-zm-trackingid=', 'delivery_id=', 'delivery id', 'same Zoom event', 'idempotent', '200', 'single state mutation', 'no duplicate side effects', 'single_state_mutation=true', 'no_duplicate_side_effects=true', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['zoom-meeting-room-mapping', ['staging artifact', 'meeting_external_id=', 'live_rooms', 'internal_room_id=', 'redis room state', 'mapped', 'unknown meeting ignored', 'no external meeting id fallback', 'distinct_zoom_artifacts=true', 'release_candidate=', 'service_version=', 'load_run_id=']],
+]);
+const aiCitationVerificationPattern = /ai-citation-verification(?=[^;]*staging artifact)(?=[^;]*no-citation rejected)(?=[^;]*hallucinated citation rejected)(?=[^;]*verified citation accepted)(?=[^;]*citation_trails)(?=[^;]*citation_id=)/i;
+const aiAuditPersistencePattern = /ai-audit-persistence(?=[^;]*staging artifact)(?=[^;]*ai_request_logs)(?=[^;]*citation_trails)(?=[^;]*organization_id=)(?=[^;]*user_id=)(?=[^;]*request_id=)(?=[^;]*citation_id=)(?=[^;]*tenant rls)(?=[^;]*cross-tenant hidden)/i;
+const aiRequestIDPattern = /\brequest_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const aiCitationIDPattern = /\bcitation_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const aiOrganizationIDPattern = /\borganization_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const aiUserIDPattern = /\buser_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const aiProviderValuePattern = /\bAI_PROVIDER=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/;
+const aiModelValuePattern = /\bAI_CHAT_MODEL=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b/;
+const aiEndpointValuePattern = /\bAI_CHAT_ENDPOINT=(https:\/\/\S+)\b/;
+const aiHTTPTimeoutMSValuePattern = /\bAI_HTTP_TIMEOUT_MS=([1-9][0-9]*)\b/;
+const aiMaxRetriesValuePattern = /\bAI_MAX_RETRIES=([0-9]+)\b/;
+const aiProviderTimeoutPattern = /\bprovider_timeout=true\b/i;
+const aiRetryExhaustedPattern = /\bretry_exhausted=true\b/i;
+const aiFailClosedPattern = /\bfail_closed=true\b/i;
+const zoomWebhookSignaturePattern = /\bx-zm-signature=(v0[:=][0-9a-f]{64})\b/i;
+const zoomWebhookTimestampPattern = /\bx-zm-request-timestamp=([0-9]{10,})\b/i;
+const zoomStaleRejectedPattern = /\bstale_rejected=true\b/i;
+const zoomReplayRejectedPattern = /\breplay_rejected=true\b/i;
+const zoomInvalidSignatureRejectedPattern = /\binvalid_signature_rejected=true\b/i;
+const zoomSignedDeliveryAcceptedPattern = /\bsigned_delivery_accepted=true\b/i;
+const zoomPlainTokenPattern = /\bplain_token=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const zoomEncryptedTokenPattern = /\bencrypted_token=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const zoomValidationResponsePattern = /\bvalidation_response=200\b/i;
+const zoomMeetingExternalIDPattern = /\bmeeting_external_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const zoomInternalRoomIDPattern = /\binternal_room_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const zoomTrackingIDPattern = /\bx-zm-trackingid=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const zoomDeliveryIDPattern = /\bdelivery_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const zoomSingleStateMutationPattern = /\bsingle_state_mutation=true\b/i;
+const zoomNoDuplicateSideEffectsPattern = /\bno_duplicate_side_effects=true\b/i;
+const zoomProviderTimeoutPattern = /\bprovider_timeout=true\b/i;
+const zoomCircuitOpenPattern = /\bcircuit_open=true\b/i;
+const zoomOfflineFallbackPattern = /\boffline_fallback=true\b/i;
+const mobilePlatformsPattern = /\bplatforms=([A-Za-z0-9_,.-]*android[A-Za-z0-9_,.-]*ios[A-Za-z0-9_,.-]*|[A-Za-z0-9_,.-]*ios[A-Za-z0-9_,.-]*android[A-Za-z0-9_,.-]*)\b/i;
+const mobileReleaseChannelPattern = /\brelease_channel=staging\b/i;
+const mobileExpoProfilePattern = /\bexpo_profile=staging\b/i;
+const mobileAPIBaseURLPattern = /\bEXPO_PUBLIC_API_BASE_URL=(https:\/\/\S+)\b/i;
+const mobileWSBaseURLPattern = /\bEXPO_PUBLIC_WS_BASE_URL=(wss:\/\/\S+)\b/i;
+const mobileRequireNativeCryptoPattern = /\bEXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true\b/i;
+const mobileDeploymentEnvironmentPattern = /\bEXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging\b/i;
+const mobileNativeProviderPattern = /\bprovider=([A-Za-z0-9_.:-]+)\b/i;
+const mobileNativeRequiredPattern = /\bnative_required=(true|false)\b/i;
+const mobileAESGCMRoundTripPattern = /\baes_gcm_roundtrip=true\b/i;
+const mobileTamperRejectedPattern = /\btamper_rejected=true\b/i;
+const mobileAssociatedDataRejectedPattern = /\bassociated_data_rejected=true\b/i;
+const mobileKeyDisposedPattern = /\bkey_disposed=true\b/i;
+const mobileDisposedHandleRejectedPattern = /\bdisposed_handle_rejected=true\b/i;
+const mobileRevokedKeyRejectedPattern = /\brevoked_key_rejected=true\b/i;
+const mobilePassphraseZeroizedPattern = /\bpassphrase_buffer_zeroized=true\b/i;
+const mobileSaltZeroizedPattern = /\bsalt_buffer_zeroized=true\b/i;
+const mobilePlaintextZeroizedPattern = /\bplaintext_buffer_zeroized=true\b/i;
+const mobileBuildIDPattern = /\bmobile_build_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const mobileAssociatedDataSaltIDPattern = /\bassociated_data_salt_id=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b/i;
+const mobileAssociatedDataVersionPattern = /\bassociated_data_salt_version=([1-9][0-9]*)\b/i;
+const mobileDeviceOSPattern = /\bdevice_os=(android|ios)\b/i;
+const mobileDeviceModelPattern = /\bdevice_model=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const mobileAppRuntimePattern = /\bapp_runtime=installed-staging-app\b/i;
+const tlsCertHostnamePattern = /\bcert_hostname=([A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z0-9.-]+)\b/i;
+const tlsCertIssuerPattern = /\bcert_issuer=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const webSmokeUserIDPattern = /\buser_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const webSmokeOrganizationIDPattern = /\borganization_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const webSmokeJournalIDPattern = /\bjournal_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const webSmokeRoomIDPattern = /\broom_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const tenantOwnerOrgIDPattern = /\bapp\.current_org_id=([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\b/i;
+const tenantBlockedOrgIDPattern = /\bblocked_org_id=([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\b/i;
+const tenantOrgIDValuePattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const tenantJournalIDPattern = /\bjournal_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const tenantRoomIDPattern = /\broom_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const aiSegmentMarkerRequirements = new Map([
+  ['ai-provider-config', ['staging artifact', 'AI_PROVIDER', 'AI_CHAT_MODEL', 'AI_CHAT_ENDPOINT', 'AI_HTTP_TIMEOUT_MS', 'AI_MAX_RETRIES', 'OPENAI_API_KEY redacted', 'configured', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['ai-generation-route', ['staging artifact', '/api/v1/ai/generate/study', 'authenticated', 'JWT claims', 'organization_id=', 'user_id=', 'request_id=', '200', 'generated_curriculum', '[Genesis 1:1]', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['ai-timeout-degradation', ['staging artifact', 'provider timeout', 'degradation', 'retry exhausted', '503', 'fail closed', 'AI_ORCHESTRATION_ENGINE_FAULT', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['ai-citation-verification', ['staging artifact', 'no-citation rejected', 'hallucinated citation rejected', 'verified citation accepted', 'citation_trails', 'citation_id=', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['ai-audit-persistence', ['staging artifact', 'ai_request_logs', 'citation_trails', 'organization_id=', 'user_id=', 'request_id=', 'citation_id=', 'succeeded', 'failed', 'verified', 'tenant rls', 'cross-tenant hidden', 'distinct_ai_artifacts=true', 'release_candidate=', 'service_version=', 'load_run_id=']],
+]);
+const obsCollectorConfigPattern = /collector-otlp-config(?=[^;]*staging artifact)(?=[^;]*receivers)(?=[^;]*otlp)(?=[^;]*4317)(?=[^;]*4318)(?=[^;]*exporters)(?=[^;]*service)(?=[^;]*release_candidate=)(?=[^;]*load_run_id=)/i;
+const obsAPIMetricsPattern = /api-prometheus-metrics(?=[^;]*staging artifact)(?=[^;]*scriptureforge_http_requests_total)(?=[^;]*scriptureforge_http_request_duration_seconds_sum)(?=[^;]*scriptureforge_http_requests_total\{)(?=[^;]*status=)(?=[^;]*websocket_active_connections_count)(?=[^;]*scriptureforge_dependency_operations_total\{dependency="websocket",operation="room_broadcast",status="dropped")(?=[^;]*ai_inference_duration_seconds_sum)(?=[^;]*ai_inference_duration_seconds_count)(?=[^;]*scriptureforge_dependency_operations_total\{dependency="rust_engine",operation="vector_search",status="success")(?=[^;]*scriptureforge_dependency_operation_duration_seconds_sum\{dependency="rust_engine",operation="vector_search",status="success")(?=[^;]*api_metrics_samples_positive=true)(?=[^;]*release_candidate=)(?=[^;]*load_run_id=)/i;
+const obsRustMetricsPattern = /rust-prometheus-metrics(?=[^;]*staging artifact)(?=[^;]*scriptureforge_rust_engine_embedding_requests_total)(?=[^;]*scriptureforge_rust_engine_embedding_failures_total)(?=[^;]*scriptureforge_rust_engine_vector_search_requests_total)(?=[^;]*scriptureforge_rust_engine_vector_search_failures_total)(?=[^;]*rust_metrics_samples_positive=true)(?=[^;]*release_candidate=)(?=[^;]*load_run_id=)/i;
+const rustEmbeddingRequestsPattern = /\bembedding_requests=([1-9][0-9]*(?:\.[0-9]+)?)\b/i;
+const rustVectorSearchRequestsPattern = /\bvector_search_requests=([1-9][0-9]*(?:\.[0-9]+)?)\b/i;
+const apiRustVectorSearchOpsPattern = /\bapi_rust_vector_search_ops=([1-9][0-9]*(?:\.[0-9]+)?)\b/i;
+const apiRustVectorSearchSecondsPattern = /\bapi_rust_vector_search_seconds=(0\.[0-9]*[1-9][0-9]*|[1-9][0-9]*(?:\.[0-9]+)?)\b/i;
+const obsTraceSearchPattern = /trace-backend-search(?=[^;]*staging artifact)(?=[^;]*scriptureforge-api)(?=[^;]*scriptureforge-rust-engine)(?=[^;]*route=\/)(?=[^;]*method=[A-Z]+)(?=[^;]*release_candidate=)(?=[^;]*load_run_id=)/i;
+const obsLogCorrelationPattern = /log-backend-trace-correlation(?=[^;]*staging artifact)(?=[^;]*trace_id)(?=[^;]*scriptureforge-api)(?=[^;]*scriptureforge-rust-engine)(?=[^;]*route=\/)(?=[^;]*method=[A-Z]+)(?=[^;]*timestamp=[^\s,;]+)(?=[^;]*severity=[A-Za-z0-9_.:-]+)(?=[^;]*service_version)(?=[^;]*deployment_environment)(?=[^;]*tenant_id=[A-Za-z0-9_.:-]+)(?=[^;]*user_id=[A-Za-z0-9_.:-]+)(?=[^;]*role=[A-Za-z0-9_.:-]+)(?=[^;]*distinct_otel_artifacts=true)(?=[^;]*release_candidate=)(?=[^;]*load_run_id=)/i;
+const obsDashboardImportPattern = /dashboard-import(?=[^;]*staging artifact)(?=[^;]*ScriptureForge)(?=[^;]*scriptureforge_http_requests_total)(?=[^;]*scriptureforge_http_request_duration_seconds_sum)(?=[^;]*websocket_active_connections_count)(?=[^;]*room_broadcast)(?=[^;]*ai_inference_duration_seconds)(?=[^;]*scriptureforge_rust_engine_)(?=[^;]*trace_id)(?=[^;]*release_candidate=)(?=[^;]*load_run_id=)/i;
+const obsAlertRulesPattern = /alert-rules-loaded(?=[^;]*staging artifact)(?=[^;]*ScriptureForgeHighErrorRate)(?=[^;]*ScriptureForgeTrafficAbsent)(?=[^;]*ScriptureForgeAuthFailureSpike)(?=[^;]*ScriptureForgeAbuseLimitSpike)(?=[^;]*ScriptureForgeRouteLatencyElevated)(?=[^;]*ScriptureForgeDependencyFailures)(?=[^;]*ScriptureForgeAIInferenceLatencyElevated)(?=[^;]*ScriptureForgeJournalWriteFailures)(?=[^;]*ScriptureForgeRoomStreamFailures)(?=[^;]*ScriptureForgeRoomBroadcastDrops)(?=[^;]*ScriptureForgeRustEngineFailures)(?=[^;]*scriptureforge_http_requests_total)(?=[^;]*scriptureforge_dependency_operations_total)(?=[^;]*ai_inference_duration_seconds)(?=[^;]*release_candidate=)(?=[^;]*load_run_id=)/i;
+const obsAlertDeliveryPattern = /alert-delivery-status(?=[^;]*staging artifact)(?=[^;]*success)(?=[^;]*delivered)(?=[^;]*test alert)(?=[^;]*alertmanager)(?=[^;]*alertname=[A-Za-z0-9_.:-]+)(?=[^;]*receiver=[A-Za-z0-9_.:-]+)(?=[^;]*delivery_id=[A-Za-z0-9_.:-]+)(?=[^;]*release_candidate=)(?=[^;]*load_run_id=)/i;
+const obsRetentionPolicyPattern = /telemetry-retention-policy(?=[^;]*staging artifact)(?=[^;]*retention)(?=[^;]*30 days)(?=[^;]*trace)(?=[^;]*logs)(?=[^;]*metrics)(?=[^;]*distinct_alert_artifacts=true)(?=[^;]*release_candidate=)(?=[^;]*load_run_id=)/i;
+const resilienceSnapshotIDPattern = /\bsnapshot_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const resilienceKMSKeyIDPattern = /\bkms_key_id=([A-Za-z0-9][A-Za-z0-9._:/=-]*)\b/i;
+const resilienceSourceSnapshotIDPattern = /\bsource snapshot_id=([A-Za-z0-9][A-Za-z0-9._:-]*)\b/i;
+const resiliencePreRollbackVersionPattern = /\bpre_rollback_version=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b/i;
+const resiliencePostRollbackVersionPattern = /\bpost_rollback_version=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b/i;
+const resilienceRolledBackFromPattern = /\brolled_back_from=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b/i;
+const resilienceRolledBackToPattern = /\brolled_back_to=([A-Za-z0-9][A-Za-z0-9._:/-]*)\b/i;
+const resilienceRTOMinutesPattern = /\brto_minutes=([0-9]+)\b/i;
+const resilienceRestoreDurationMinutesPattern = /\brestore_duration_minutes=([0-9]+)\b/i;
+const tenantSegmentMarkerRequirements = new Map([
+  ['owner-create-encrypted-journal', ['same-tenant journal write accepted', 'encrypted journal created', 'plaintext not returned', 'plaintext-shaped journal payload denied', 'malformed encrypted envelope rejected', 'journal_id=', 'release_candidate=', 'service_version=']],
+  ['blocked-journal-tenant-override-write-denied', ['cross-tenant journal write denied', 'tenant override rejected', 'release_candidate=', 'service_version=']],
+  ['owner-read-created-journal', ['same-tenant journal read visible', 'created journal returned', 'journal_id=', 'release_candidate=', 'service_version=']],
+  ['owner-list-contains-created-journal', ['same-tenant journal list visible', 'created journal present', 'journal_id=', 'release_candidate=', 'service_version=']],
+  ['blocked-read-created-journal', ['cross-tenant journal read denied', 'created journal hidden', 'journal_id=', 'release_candidate=', 'service_version=']],
+  ['blocked-list-excludes-created-journal', ['cross-tenant journal list hidden', 'created journal absent', 'journal_id=', 'release_candidate=', 'service_version=']],
+  ['owner-create-room', ['same-tenant room write accepted', 'room created', 'room_id=', 'release_candidate=', 'service_version=']],
+  ['blocked-room-tenant-override-write-denied', ['cross-tenant room write denied', 'tenant override rejected', 'release_candidate=', 'service_version=']],
+  ['owner-active-rooms-contains-created-room', ['same-tenant room list visible', 'created room present', 'room_id=', 'release_candidate=', 'service_version=']],
+  ['blocked-active-rooms-excludes-created-room', ['cross-tenant room list hidden', 'created room absent', 'room_id=', 'release_candidate=', 'service_version=']],
+  ['owner-room-state', ['same-tenant room state visible', 'created room state returned', 'room_id=', 'release_candidate=', 'service_version=']],
+  ['blocked-room-state-denied', ['cross-tenant room state denied', 'created room state hidden', 'room_id=', 'release_candidate=', 'service_version=']],
+  ['database-rls-context-proof', [
+    'staging artifact',
+    'current_user=scriptureforge_app',
+    'non-superuser',
+    'superuser=false',
+    'bypassrls=false',
+    'app.current_org_id',
+    'app.current_org_id=',
+    "current_setting('app.current_org_id')",
+    'blocked_org_id=',
+    'row_security=on',
+    'FORCE ROW LEVEL SECURITY',
+    'rls_tables_verified=9',
+    'rls_forced_tables=9',
+    'rls_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails',
+    'rls_policy_scope=app.current_org_id',
+    'organizations',
+    'users',
+    'scripture_texts',
+    'refresh_tokens',
+    'journal_entries',
+    'live_rooms',
+    'room_participants',
+    'ai_request_logs',
+    'citation_trails',
+    ...tenantTableOutcomeMarkers(),
+    'same-tenant read visible',
+    'cross-tenant read hidden',
+    'cross-tenant write denied',
+    'distinct_db_rls_artifact=true',
+    'release_candidate=',
+    'service_version=',
+  ]],
+]);
+
+function tenantTableOutcomeMarkers() {
+  return tenantTableNames().flatMap((table) => [
+    `rls_table_${table}_same_visible=true`,
+    `rls_table_${table}_cross_hidden=true`,
+    `rls_table_${table}_write_denied=true`,
+  ]);
+}
+
+function tenantTableNames() {
+  return [
+    'organizations',
+    'users',
+    'scripture_texts',
+    'refresh_tokens',
+    'journal_entries',
+    'live_rooms',
+    'room_participants',
+    'ai_request_logs',
+    'citation_trails',
+  ];
+}
+
+const tlsSegmentMarkerRequirements = new Map([
+  ['api-live', ['/live', 'HTTP 200', 'release_candidate=', 'service_version=']],
+  ['api-ready', ['/ready', 'HTTP 200', 'release_candidate=', 'service_version=']],
+  ['api-tls', ['TLS', 'certificate', 'cert_not_after', 'cert_hostname=', 'cert_issuer=', 'release_candidate=', 'service_version=']],
+  ['api-http-redirect', ['HTTP', 'HTTPS', 'redirect', 'release_candidate=', 'service_version=']],
+  ['web-root', ['web root', 'HTTP 200', 'release_candidate=', 'service_version=']],
+  ['web-tls', ['TLS', 'certificate', 'cert_not_after', 'cert_hostname=', 'cert_issuer=', 'release_candidate=', 'service_version=']],
+  ['web-http-redirect', ['HTTP', 'HTTPS', 'redirect', 'release_candidate=', 'service_version=']],
+  ['ssl-labs-a-plus', ['staging artifact', 'SSL Labs', 'grade=A+', 'ssl_labs_grade=A+', 'release_candidate=', 'service_version=']],
+]);
+const webClientSegmentMarkerRequirements = new Map([
+  ['web-root', ['web root', 'HTTP 200']],
+  ['web-tls', ['TLS', 'certificate', 'cert_not_after', 'cert_hostname=', 'cert_issuer=']],
+  ['web-http-redirect', ['HTTP', 'HTTPS', 'redirect']],
+  ['web-auth-browser-smoke', ['staging artifact', 'login', 'register', 'authenticated', 'https://', 'user_id=', 'organization_id=', 'distinct_web_artifacts=true', 'release_candidate=', 'service_version=']],
+  ['web-journal-browser-smoke', ['staging artifact', 'journal', 'encrypted', 'save', 'load', 'plaintext absent', 'associated data', 'wrong associated data rejected', 'user_id=', 'organization_id=', 'journal_id=', 'distinct_web_artifacts=true', 'release_candidate=', 'service_version=']],
+  ['web-room-browser-smoke', ['staging artifact', 'room', 'create', 'select', 'WebSocket', 'connected', 'user_id=', 'organization_id=', 'room_id=', 'distinct_web_artifacts=true', 'release_candidate=', 'service_version=']],
+]);
+const httpPerformanceSegmentMarkerRequirements = new Map([
+  ['PERF-HTTP-001', ['profile=staging_http', 'min_rps=5000', 'max_p99_ms=200', 'production_target_rps=5000', 'production_target_p99_ms=200', 'production_min_duration_ms=60000', 'duration_ms=', 'duration_ms>=60000', 'observed_rps=', 'observed_p99_ms=', 'threshold_pass=true', 'http_replica_count=', 'dependency_postgres_p99_ms=', 'dependency_redis_p99_ms=', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['verified markers', ['http_replica_artifact_verified', 'dependency_telemetry_artifact_verified', 'dependency_latency_artifact_verified=true', 'http_distinct_artifacts=true']],
+]);
+const websocketPerformanceSegmentMarkerRequirements = new Map([
+  ['PERF-WS-001', ['staging artifact', 'profile=staging_websocket', 'min_rps=500', 'max_p99_ms=200', 'production_target_rps=500', 'production_target_p99_ms=200', 'production_min_duration_ms=60000', 'duration_ms>=60000', 'production_min_ws_events=30000', 'observed_rps=', 'observed_p99_ms=', 'threshold_pass=true', 'release_candidate=', 'service_version=', 'load_run_id=', 'ws_origin=https://', 'ws_room_id=', 'ws_user_id=', 'ws_organization_id=', 'ws_reconnect_room_id=', 'ws_polling_room_id=', 'redis_telemetry_room_id=', 'ws_reconnect_sequence_continues=true', 'ws_authenticated=true', 'ws_expected_events=', 'ws_unique_sequences=', 'ws_min_sequence=1', 'ws_max_sequence=', 'ws_polling_latest_sequence=', 'ws_polling_artifact_latest_sequence=', 'ws_sequence_contiguous=true', 'ws_replica_count=']],
+  ['verified markers', ['ws_replica_artifact_url=https://', 'ws_replica_artifact_verified', 'ws_reconnect_artifact_url=https://', 'ws_reconnect_artifact_verified', 'ws_reconnect_sequence_continues=true', 'ws_polling_artifact_url=https://', 'ws_polling_artifact_verified', 'ws_polling_artifact_latest_sequence_validated=true', 'ws_polling_artifact_latest_sequence_matches_run=true', 'redis_telemetry_artifact_url=https://', 'redis_telemetry_artifact_verified', 'ws_distinct_artifacts=true', 'room_broadcast_drops=0']],
+]);
+const redisPerformanceSegmentMarkerRequirements = new Map([
+  ['DATA-REDIS-001', ['staging artifact', 'profile=staging_websocket', 'release_candidate=', 'service_version=', 'load_run_id=', 'ws_room_id=', 'ws_user_id=', 'ws_organization_id=', 'ws_reconnect_room_id=', 'ws_polling_room_id=', 'redis_telemetry_room_id=', 'ws_reconnect_sequence_continues=true', 'ws_sequence_contiguous=true', 'production_min_ws_events=30000', 'ws_expected_events=', 'ws_unique_sequences=', 'ws_min_sequence=1', 'ws_max_sequence=', 'ws_polling_latest_sequence=', 'ws_polling_artifact_latest_sequence=', 'redis_telemetry_artifact_url=https://']],
+  ['verified markers', ['ws_polling_artifact_url=https://', 'redis_telemetry_artifact_verified', 'ws_polling_artifact_latest_sequence_validated=true', 'ws_polling_artifact_latest_sequence_matches_run=true', 'ws_distinct_artifacts=true', 'room_broadcast_drops=0']],
+]);
+const abuseRateLimitSegmentMarkerRequirements = new Map([
+  ['auth-rate-limit', ['staging artifact', '429', 'after', 'attempts', 'repeated_attempts_verified=true', 'Retry-After', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'release_candidate=', 'service_version=']],
+  ['auth-account-rate-limit', ['staging artifact', '429', 'after', 'attempts', 'repeated_attempts_verified=true', 'Retry-After', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'account-scoped login', 'account_scoped=true', 'rotating forwarded client IP', 'forwarded_client_ip_rotated=true', 'release_candidate=', 'service_version=']],
+  ['auth-refresh-rate-limit', ['staging artifact', '429', 'after', 'attempts', 'repeated_attempts_verified=true', 'Retry-After', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'refresh token', 'refresh_token_scoped=true', 'release_candidate=', 'service_version=']],
+  ['ai-rate-limit', ['staging artifact', '429', 'after', 'attempts', 'repeated_attempts_verified=true', 'Retry-After', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'release_candidate=', 'service_version=']],
+  ['journal-rate-limit', ['staging artifact', '429', 'after', 'attempts', 'repeated_attempts_verified=true', 'Retry-After', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'release_candidate=', 'service_version=']],
+  ['rooms-rate-limit', ['staging artifact', '429', 'after', 'attempts', 'repeated_attempts_verified=true', 'Retry-After', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'release_candidate=', 'service_version=']],
+  ['websocket-rate-limit', ['staging artifact', '429', 'after', 'attempts', 'repeated_attempts_verified=true', 'Retry-After', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'websocket upgrade', 'websocket_upgrade=true', 'release_candidate=', 'service_version=']],
+  ['zoom-webhook-rate-limit', ['staging artifact', '429', 'after', 'attempts', 'repeated_attempts_verified=true', 'Retry-After', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'public Zoom webhook', 'zoom_webhook=true', 'release_candidate=', 'service_version=']],
+  ['config_artifact_summary', ['ABUSE_LIMIT_AUTH_REQUESTS=', 'ABUSE_LIMIT_AUTH_WINDOW_SECONDS=', 'ABUSE_LIMIT_AUTH_ACCOUNT_REQUESTS=', 'ABUSE_LIMIT_AUTH_ACCOUNT_WINDOW_SECONDS=', 'ABUSE_LIMIT_AI_REQUESTS=', 'ABUSE_LIMIT_JOURNAL_REQUESTS=', 'ABUSE_LIMIT_ROOMS_REQUESTS=', 'ABUSE_LIMIT_WEBSOCKET_REQUESTS=', 'ABUSE_LIMIT_ZOOM_WEBHOOK_REQUESTS=', 'ABUSE_LIMIT_ZOOM_WEBHOOK_WINDOW_SECONDS=', 'ABUSE_LIMIT_MAX_BUCKETS=', 'TRUST_PROXY_HEADERS=true', 'X-Forwarded-For', 'X-Real-IP', 'redacted', 'distinct_abuse_artifacts=true', 'release_candidate=', 'service_version=']],
+]);
+const abuseConfigAssignmentKeys = [
+  'ABUSE_LIMIT_AUTH_REQUESTS',
+  'ABUSE_LIMIT_AUTH_WINDOW_SECONDS',
+  'ABUSE_LIMIT_AUTH_ACCOUNT_REQUESTS',
+  'ABUSE_LIMIT_AUTH_ACCOUNT_WINDOW_SECONDS',
+  'ABUSE_LIMIT_AI_REQUESTS',
+  'ABUSE_LIMIT_JOURNAL_REQUESTS',
+  'ABUSE_LIMIT_ROOMS_REQUESTS',
+  'ABUSE_LIMIT_WEBSOCKET_REQUESTS',
+  'ABUSE_LIMIT_ZOOM_WEBHOOK_REQUESTS',
+  'ABUSE_LIMIT_ZOOM_WEBHOOK_WINDOW_SECONDS',
+  'ABUSE_LIMIT_MAX_BUCKETS',
+];
+const abuseRateLimitProfileSegments = [
+  'auth-rate-limit',
+  'auth-account-rate-limit',
+  'auth-refresh-rate-limit',
+  'ai-rate-limit',
+  'journal-rate-limit',
+  'rooms-rate-limit',
+  'websocket-rate-limit',
+  'zoom-webhook-rate-limit',
+];
+const concreteIAMRoleARNPattern = /\brole_arn=arn:aws:iam::[0-9]{12}:role\/[A-Za-z0-9+=,.@_/-]+\b/i;
+const securitySegmentMarkerRequirements = new Map([
+  ['irsa-service-account', ['staging artifact', 'namespace=staging', 'service_account=scriptureforge-api', 'role_arn=arn:aws:iam::', 'eks.amazonaws.com/role-arn', 'scriptureforge', 'trust policy', 'sts:AssumeRoleWithWebIdentity', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['secret-provider-class', ['staging artifact', 'namespace=staging', 'service_account=scriptureforge-api', 'role_arn=arn:aws:iam::', 'SecretProviderClass', 'secrets-store.csi.k8s.io', 'provider', 'aws', 'objects', 'objectName', 'objectType', 'secretsmanager', 'objectAlias', 'jmesPath', 'secretObjects', 'type', 'Opaque', 'DATABASE_URL', 'JWT_SECRET_KEY', 'OPENAI_API_KEY', 'JOURNAL_SALT_SECRET', 'MFA_ENCRYPTION_KEY', 'ZOOM_WEBHOOK_SECRET_TOKEN', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['synced-secret-metadata-redacted', ['staging artifact', 'namespace=staging', 'scriptureforge-runtime-secrets', 'type', 'Opaque', 'DATABASE_URL', 'JWT_SECRET_KEY', 'OPENAI_API_KEY', 'JOURNAL_SALT_SECRET', 'MFA_ENCRYPTION_KEY', 'ZOOM_WEBHOOK_SECRET_TOKEN', 'redacted', 'stringData absent', 'managed by secrets-store.csi.k8s.io', 'ownerReferences', 'secrets-store.csi.k8s.io/managed=true', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['iam-secrets-policy', ['staging artifact', 'role_arn=arn:aws:iam::', 'secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret', 'arn:aws:secretsmanager:', 'scoped resource', 'no wildcard resources', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['scoped-secrets-access-test', ['staging artifact', 'namespace=staging', 'service_account=scriptureforge-api', 'role_arn=arn:aws:iam::', 'allowed', 'configured secret', 'denied', 'unscoped secret', 'AccessDenied', 'distinct_secret_artifacts=true', 'release_candidate=', 'service_version=', 'load_run_id=']],
+]);
+const securityRoleARNSegments = new Set([
+  'irsa-service-account',
+  'secret-provider-class',
+  'iam-secrets-policy',
+  'scoped-secrets-access-test',
+]);
+const strictSecretLeakMarkers = [
+  'postgres://',
+  'postgresql://',
+  'cg9zdgdyzxm6ly8',
+  'cg9zdgdyzxnxbcdovlw',
+  'sk-',
+  'c2st',
+  'client_secret=',
+  'client_secret:',
+  'webhook_secret=',
+  'webhook_secret:',
+  'password:',
+  'stringdata:',
+  '-----begin',
+];
+const dbUserSegmentMarkerRequirements = new Map([
+  ['database-scoped-user', ['staging artifact', 'connected as', 'scriptureforge_app', 'current_user=scriptureforge_app', 'superuser=false', 'bypassrls=false', 'createrole=false', 'createdb=false', 'privileged_operation_denied=true', 'app_grants_verified=true', 'app_grant_tables=9', 'app_grant_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails', 'app_grants=SELECT,INSERT,UPDATE,DELETE', 'release_candidate=', 'service_version=', 'load_run_id=']],
+]);
+const dbUserPrincipalBindingPattern = /database-scoped-user(?=[^;]*connected as "?scriptureforge_app"?)(?=[^;]*current_user=scriptureforge_app)/i;
+const resilienceSegmentMarkerRequirements = new Map([
+  ['api-ready-before-rollback', ['staging artifact', 'ready', 'service_version', 'deployment_environment', 'pre_rollback_version', 'release_candidate=', 'load_run_id=']],
+  ['rollback-rollout-artifact', ['staging artifact', 'rollout', 'undo', 'revision', 'previous_revision', 'target_revision', 'scriptureforge-api', 'successfully rolled out', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['api-ready-after-rollback', ['staging artifact', 'ready', 'service_version', 'deployment_environment', 'post_rollback_version', 'rolled_back_from', 'rolled_back_to', 'release_candidate=', 'load_run_id=']],
+  ['degradation-drill-artifact', ['staging artifact', 'AI', 'Zoom', 'degradation', 'fallback', 'AI_ORCHESTRATION_ENGINE_FAULT', 'offline://in-person', 'non-AI routes healthy', 'zoom circuit open', 'ai_fault=true', 'zoom_offline_fallback=true', 'non_ai_routes_healthy=true', 'zoom_circuit_open=true', 'distinct_rollback_artifacts=true', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['backup-snapshot-artifact', ['staging artifact', 'snapshot', 'snapshot_id', 'available', 'encrypted', 'kms_key_id=', 'retention', 'automated backup', 'source cluster', 'rpo_minutes', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['restore-drill-artifact', ['staging artifact', 'restore', 'restore_job_id', 'available', 'staging', 'restored endpoint', 'source snapshot_id', 'checksum', 'isolated restore', 'rto_minutes', 'restore_duration_minutes', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['restored-database-smoke', ['staging artifact', 'smoke passed', 'restored database', 'tenant', 'journal', 'auth', 'RLS', 'migration version', 'no plaintext journal', 'distinct_backup_artifacts=true', 'release_candidate=', 'service_version=', 'load_run_id=']],
+]);
+const terraformSegmentMarkerRequirements = new Map([
+  ['terraform-remote-backend-init', ['staging artifact', 'terraform', 's3', 'backend', 'bucket', 'key', 'encrypt=true', 'kms_key_id=', 'versioning=enabled', 'dynamodb_table', 'successfully initialized', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['terraform-staging-plan', ['staging artifact', 'Terraform', 'Plan:', 'aws_eks_cluster', 'aws_eks_node_group', 'aws_rds_cluster', 'aws_elasticache_replication_group', 'aws_ecr_repository', 'kubernetes_deployment', 'kubernetes_ingress_v1', 'kubernetes_horizontal_pod_autoscaler_v2', 'kubernetes_pod_disruption_budget_v1', 'kubernetes_manifest', 'aws_iam_role', 'kms_key_id', 'database_kms_key_arn', 'redis_kms_key_arn', 'release_candidate=', 'service_version=', 'load_run_id=']],
+]);
+const terraformApplyOrApprovalSegmentMarkerSets = [
+  ['staging artifact', 'Apply complete', 'Resources:', '0 destroyed', 'terraform_apply_added=', 'terraform_apply_changed=', 'terraform_apply_destroyed=0', 'release_candidate=', 'service_version=', 'load_run_id=', 'distinct_terraform_artifacts=true'],
+  ['staging artifact', 'deployment approval', 'approved', 'DEPLOY-TF-001', 'change_ticket=', 'release_candidate=', 'service_version=', 'load_run_id=', 'distinct_terraform_artifacts=true'],
+];
+const kubernetesSegmentMarkerRequirements = new Map([
+  ['kubernetes-rollout-status', ['staging artifact', 'namespace', 'staging', 'deployment', 'scriptureforge-api', 'scriptureforge-web', 'scriptureforge-rust-engine', 'successfully rolled out', 'ready', 'available', 'release_candidate=', 'service_version=', 'load_run_id=']],
+  ['kubernetes-workload-resources', ['staging artifact', 'namespace', 'staging', 'deployment', 'service', 'ingress', 'hpa', 'pdb', 'ready', 'available', 'targets', 'minavailable', 'readinessProbe', 'livenessProbe', 'rollingUpdate', 'maxUnavailable=0', 'minReplicas', 'maxReplicas', 'tls', 'SecretProviderClass', 'image', 'sha256:', 'release_candidate=', 'service_version=', 'load_run_id=', 'scriptureforge-api', 'scriptureforge-web', 'scriptureforge-rust-engine', 'concrete_image_digests=3', 'workload_image_digests=3', 'distinct_kubernetes_artifacts=true']],
+]);
+const rustSegmentMarkerRequirements = new Map([
+  ['rust-grpc-health', ['staging artifact', 'grpc health', 'scriptureforge.engine.ScriptureEngine', 'SERVING', 'grpc_transport_security=mTLS', 'release_candidate=', 'service_version=', 'deployment_environment=', 'load_run_id=']],
+  ['rust-metrics', ['staging artifact', 'scriptureforge_rust_engine_embedding_requests_total', 'scriptureforge_rust_engine_embedding_failures_total', 'scriptureforge_rust_engine_vector_search_requests_total', 'scriptureforge_rust_engine_vector_search_failures_total', 'Prometheus metrics', 'rust_metrics_samples_verified=true', 'rust_embedding_requests_positive=true', 'rust_vector_search_requests_positive=true', 'release_candidate=', 'service_version=', 'deployment_environment=', 'load_run_id=']],
+  ['api-rust-integration-metrics', ['staging artifact', 'Go API rust_engine vector_search success', 'scriptureforge_dependency_operations_total', 'scriptureforge_dependency_operation_duration_seconds_sum', 'api_rust_metrics_samples_verified=true', 'distinct_metrics_targets=true', 'release_candidate=', 'service_version=', 'deployment_environment=', 'load_run_id=']],
+]);
+const mobileSegmentMarkerRequirements = new Map([
+  ['mobile-eas-or-device-run', ['staging artifact', 'eas', 'build', 'finished', 'android', 'ios', 'native device', 'installed app', 'release channel staging', 'expo profile staging', 'mobile_build_id=', 'distinct_mobile_artifacts=true', 'release_candidate=', 'service_version=']],
+  ['mobile-native-crypto-smoke', ['staging artifact', 'runJournalCryptoSelfTest', 'react-native-quick-crypto', 'native provider', 'native module loaded', 'provider status react-native-quick-crypto', 'provider=react-native-quick-crypto', 'native-required true', 'native_required=true', 'mobile_build_id=', 'device_os=', 'device_model=', 'app_runtime=installed-staging-app', 'installed staging app runtime', 'AES-GCM', 'round-trip', 'aes_gcm_roundtrip=true', 'unique_iv=true', 'unique IV', 'tamper rejected', 'tamper_rejected=true', 'associated data', 'wrong associated data rejected', 'associated_data_rejected=true', 'associated_data_salt_id=', 'associated_data_salt_version=', 'non-extractable', 'provider-bound key', 'fallback-derived key rejected', 'key disposed', 'key_disposed=true', 'disposed handle rejected', 'disposed_handle_rejected=true', 'revoked_key_rejected=true', 'stale raw key rejected', 'passphrase wiped', 'passphrase buffer zeroized', 'passphrase_buffer_zeroized=true', 'salt wiped', 'salt buffer zeroized', 'salt_buffer_zeroized=true', 'plaintext cleared', 'plaintext buffer zeroized', 'plaintext_buffer_zeroized=true', 'distinct_mobile_artifacts=true', 'release_candidate=', 'service_version=']],
+  ['mobile-staging-config', ['staging artifact', 'EXPO_PUBLIC_API_BASE_URL', 'EXPO_PUBLIC_WS_BASE_URL', 'EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true', 'EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging', 'mobile_build_id=', 'https://', 'wss://', 'staging', 'distinct_mobile_artifacts=true', 'release_candidate=', 'service_version=']],
+]);
+
+const disallowedStrictEvidenceMarkers = [
+  'dry-run',
+  'dry run',
+  'localhost',
+  'local-only',
+  'local only',
+  'loopback',
+  'private-network',
+  'private network',
+  'private ipv6',
+  'ipv4-mapped',
+  'link-local',
+  'link local',
+  'unspecified',
+  'mock',
+  'placeholder',
+  'stubbed',
+  'synthetic',
+  'test-only',
+  'test only',
+  'expo_public_require_native_crypto=false',
+  'expo_public_require_native_crypto = false',
+  'provider=webcrypto-fallback',
+  'provider status webcrypto-fallback',
+  'webcrypto-fallback',
+  'native_required=false',
+  'native-required false',
+  'expo_public_deployment_environment=development',
+  'expo_public_deployment_environment=local',
+  'https://api.scriptureforge.com',
+  'http://api.scriptureforge.com',
+  'wss://api.scriptureforge.com',
+  'ws://api.scriptureforge.com',
+  'signature verification disabled',
+  'webhook signature disabled',
+  'signature verification bypassed',
+  'skip signature verification',
+  'alert silenced',
+  'alert muted',
+  'alert inhibited',
+  'notification suppressed',
+  'delivery suppressed',
+  'not delivered',
+  'delivery failed',
+  'delivery failure',
+  'send failed',
+  'citation verification disabled',
+  'citations disabled',
+  'skip citation verification',
+  'audit logging disabled',
+  'audit persistence disabled',
+  'ai_request_logs disabled',
+  'citation_trails disabled',
+  'threshold failed',
+  'threshold failure',
+  'threshold_failures',
+  'rps below threshold',
+  'p99 above threshold',
+  'terraform init failed',
+  'terraform plan failed',
+  'terraform apply failed',
+  'apply failed',
+  'plan failed',
+  'rollout failed',
+  'rollout status failed',
+  'not rolled out',
+  'availablereplicas: 0',
+  'available replicas: 0',
+  'readyreplicas: 0',
+  'ready replicas: 0',
+  'crashloopbackoff',
+  'imagepullbackoff',
+  'rollback failed',
+  'rollback failure',
+  'rollout undo failed',
+  'undo failed',
+  'degradation drill failed',
+  'degradation failed',
+  'backup failed',
+  'backup failure',
+  'snapshot failed',
+  'snapshot unavailable',
+  'restore failed',
+  'restore failure',
+  'restore unavailable',
+  'smoke failed',
+  'rpo exceeded',
+  'rto exceeded',
+];
+
+export const strictProbeFamilies = {
+  'SRC-CI-001': {
+    commandIncludes: 'ciprobe',
+    artifactIncludes: 'ciprobe',
+    summaryIncludes: ['github-actions-release-run', 'release_candidate=', 'proof markers:', ...ciReleaseEvidenceProofMarkers],
+    extraSummaryOrArtifactIncludes: 'ci-release-evidence',
+  },
+  'DEPLOY-TF-001': {
+    commandIncludes: 'deploymentprobe',
+    artifactIncludes: 'deploymentprobe',
+    summaryIncludes: [
+      'terraform-remote-backend-init',
+      'staging artifact',
+      's3',
+      'bucket',
+      'key',
+      'encrypt=true',
+      'kms_key_id=',
+      'versioning=enabled',
+      'dynamodb_table',
+      'terraform-staging-plan',
+      'Plan:',
+      'aws_eks_cluster',
+      'aws_eks_node_group',
+      'aws_rds_cluster',
+      'aws_elasticache_replication_group',
+      'aws_ecr_repository',
+      'kubernetes_deployment',
+      'kubernetes_ingress_v1',
+      'kubernetes_horizontal_pod_autoscaler_v2',
+      'kubernetes_pod_disruption_budget_v1',
+      'kubernetes_manifest',
+      'aws_iam_role',
+      'kms_key_id',
+      'database_kms_key_arn',
+      'redis_kms_key_arn',
+      'terraform-staging-apply-or-approval',
+      'release_candidate',
+      'service_version',
+      'distinct_terraform_artifacts=true',
+    ],
+  },
+  'DEPLOY-TLS-001': {
+    commandIncludes: 'stagingprobe',
+    artifactIncludes: 'stagingprobe',
+    summaryIncludes: [
+      'api-live',
+      '/live',
+      'HTTP 200',
+      'api-ready',
+      '/ready',
+      'api-tls',
+      'TLS',
+      'certificate',
+      'cert_not_after',
+      'cert_hostname=',
+      'cert_issuer=',
+      'api-http-redirect',
+      'HTTP',
+      'HTTPS',
+      'redirect',
+      'web-root',
+      'web root',
+      'web-tls',
+      'web-http-redirect',
+      'ssl-labs-a-plus',
+      'SSL Labs',
+      'grade=A+',
+      'ssl_labs_grade=A+',
+      'release_candidate',
+      'service_version',
+      'load_run_id=',
+    ],
+  },
+  'DEPLOY-K8S-001': {
+    commandIncludes: 'deploymentprobe',
+    artifactIncludes: 'deploymentprobe',
+    summaryIncludes: [
+      'kubernetes-rollout-status',
+      'staging artifact',
+      'namespace',
+      'staging',
+      'scriptureforge-api',
+      'scriptureforge-web',
+      'scriptureforge-rust-engine',
+      'successfully rolled out',
+      'ready',
+      'available',
+      'kubernetes-workload-resources',
+      'service',
+      'ingress',
+      'hpa',
+      'pdb',
+      'targets',
+      'minavailable',
+      'readinessProbe',
+      'livenessProbe',
+      'rollingUpdate',
+      'maxUnavailable=0',
+      'minReplicas',
+      'maxReplicas',
+      'tls',
+      'SecretProviderClass',
+      'image',
+      'sha256:',
+      'release_candidate',
+      'service_version',
+    ],
+  },
+  'SEC-SECRETS-001': {
+    commandIncludes: 'securityprobe',
+    artifactIncludes: 'securityprobe',
+    summaryIncludes: [
+      'irsa-service-account',
+      'namespace=staging',
+      'service_account=scriptureforge-api',
+      'role_arn=arn:aws:iam::',
+      'eks.amazonaws.com/role-arn',
+      'scriptureforge',
+      'trust policy',
+      'sts:AssumeRoleWithWebIdentity',
+      'secret-provider-class',
+      'SecretProviderClass',
+      'secrets-store.csi.k8s.io',
+      'provider',
+      'aws',
+      'objects',
+      'objectName',
+      'objectType',
+      'secretsmanager',
+      'objectAlias',
+      'jmesPath',
+      'secretObjects',
+      'type',
+      'Opaque',
+      'DATABASE_URL',
+      'JWT_SECRET_KEY',
+      'OPENAI_API_KEY',
+      'JOURNAL_SALT_SECRET',
+      'MFA_ENCRYPTION_KEY',
+      'ZOOM_WEBHOOK_SECRET_TOKEN',
+      'synced-secret-metadata-redacted',
+      'scriptureforge-runtime-secrets',
+      'redacted',
+      'stringData absent',
+      'managed by secrets-store.csi.k8s.io',
+      'ownerReferences',
+      'secrets-store.csi.k8s.io/managed=true',
+      'iam-secrets-policy',
+      'secretsmanager:GetSecretValue',
+      'secretsmanager:DescribeSecret',
+      'arn:aws:secretsmanager:',
+      'scoped resource',
+      'no wildcard resources',
+      'scoped-secrets-access-test',
+      'allowed',
+      'configured secret',
+      'denied',
+      'unscoped secret',
+      'AccessDenied',
+      'distinct_secret_artifacts=true',
+      'release_candidate',
+      'service_version',
+    ],
+  },
+  'SEC-DBUSER-001': {
+    commandIncludes: 'securityprobe',
+    artifactIncludes: 'securityprobe',
+    summaryIncludes: [
+      'database-scoped-user',
+      'connected as',
+      'current_user=scriptureforge_app',
+      'superuser=false',
+      'bypassrls=false',
+      'createrole=false',
+      'createdb=false',
+      'privileged_operation_denied=true',
+      'app_grants_verified=true',
+      'app_grant_tables=9',
+      'app_grant_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails',
+      'app_grants=SELECT,INSERT,UPDATE,DELETE',
+      'release_candidate',
+      'service_version',
+    ],
+  },
+  'ABUSE-LIMIT-001': {
+    commandIncludes: 'abuseprobe',
+    artifactIncludes: 'abuseprobe',
+    summaryIncludes: [
+      'account-scoped login',
+      'refresh token',
+      'after',
+      'attempts',
+      'config_artifact_verified=true',
+      'config_artifact_summary',
+      'ABUSE_LIMIT_AUTH_REQUESTS',
+      'ABUSE_LIMIT_AUTH_ACCOUNT_REQUESTS',
+      'ABUSE_LIMIT_MAX_BUCKETS',
+      'TRUST_PROXY_HEADERS',
+      'X-Forwarded-For',
+      'X-Real-IP',
+      'redacted',
+      'distinct_abuse_artifacts=true',
+      'release_candidate',
+      'service_version',
+      'load_run_id',
+    ],
+    extraSummaryOrArtifactIncludes: 'websocket upgrade',
+  },
+  'DATA-RLS-001': {
+    commandIncludes: 'tenantprobe',
+    artifactIncludes: 'tenantprobe',
+    summaryIncludes: [
+      'owner-create-encrypted-journal',
+      'same-tenant journal write accepted',
+      'encrypted journal created',
+      'plaintext not returned',
+      'plaintext-shaped journal payload denied',
+      'malformed encrypted envelope rejected',
+      'journal_id=',
+      'blocked-journal-tenant-override-write-denied',
+      'cross-tenant journal write denied',
+      'tenant override rejected',
+      'owner-read-created-journal',
+      'same-tenant journal read visible',
+      'created journal returned',
+      'journal_id=',
+      'owner-list-contains-created-journal',
+      'same-tenant journal list visible',
+      'created journal present',
+      'journal_id=',
+      'blocked-read-created-journal',
+      'cross-tenant journal read denied',
+      'created journal hidden',
+      'journal_id=',
+      'blocked-list-excludes-created-journal',
+      'cross-tenant journal list hidden',
+      'created journal absent',
+      'journal_id=',
+      'owner-create-room',
+      'same-tenant room write accepted',
+      'room created',
+      'room_id=',
+      'blocked-room-tenant-override-write-denied',
+      'cross-tenant room write denied',
+      'owner-active-rooms-contains-created-room',
+      'same-tenant room list visible',
+      'created room present',
+      'room_id=',
+      'blocked-active-rooms-excludes-created-room',
+      'cross-tenant room list hidden',
+      'created room absent',
+      'room_id=',
+      'owner-room-state',
+      'same-tenant room state visible',
+      'created room state returned',
+      'room_id=',
+      'blocked-room-state-denied',
+      'cross-tenant room state denied',
+      'created room state hidden',
+      'room_id=',
+      'database-rls-context-proof',
+      'staging artifact',
+      'current_user=scriptureforge_app',
+      'non-superuser',
+      'app.current_org_id',
+      'row_security',
+      'FORCE ROW LEVEL SECURITY',
+      'organizations',
+      'users',
+      'scripture_texts',
+      'refresh_tokens',
+      'journal_entries',
+      'live_rooms',
+      'room_participants',
+      'ai_request_logs',
+      'citation_trails',
+      'same-tenant read visible',
+      'cross-tenant read hidden',
+      'cross-tenant write denied',
+      'distinct_db_rls_artifact=true',
+      'release_candidate=',
+      'service_version=',
+      'load_run_id=',
+    ],
+  },
+  'DATA-REDIS-001': {
+    commandIncludes: 'loadtest',
+    artifactIncludes: 'loadtest',
+    summaryIncludes: [
+      'staging_websocket',
+      'release_candidate',
+      'service_version',
+      'load_run_id',
+      'ws_sequence_contiguous=true',
+      'ws_expected_events',
+      'ws_unique_sequences',
+      'ws_min_sequence',
+      'ws_max_sequence',
+      'ws_polling_latest_sequence',
+      'ws_polling_artifact_latest_sequence',
+      'ws_polling_artifact_url=https://',
+      'ws_polling_artifact_latest_sequence_validated=true',
+      'ws_polling_artifact_latest_sequence_matches_run=true',
+      'redis_telemetry_artifact_url=https://',
+      'redis_telemetry_artifact_verified',
+      'ws_distinct_artifacts=true',
+      'room_broadcast_drops=0',
+    ],
+  },
+  'RUST-GRPC-001': {
+    commandIncludes: 'rustprobe',
+    artifactIncludes: 'rustprobe',
+    summaryIncludes: [
+      'rust-grpc-health',
+      'staging artifact',
+      'grpc health',
+      'scriptureforge.engine.ScriptureEngine',
+      'SERVING',
+      'rust-metrics',
+      'staging artifact',
+      'scriptureforge_rust_engine_embedding_requests_total',
+      'scriptureforge_rust_engine_embedding_failures_total',
+      'scriptureforge_rust_engine_vector_search_requests_total',
+      'scriptureforge_rust_engine_vector_search_failures_total',
+      'Prometheus metrics',
+      'rust_metrics_samples_verified=true',
+      'rust_embedding_requests_positive=true',
+      'rust_vector_search_requests_positive=true',
+      'api-rust-integration-metrics',
+      'staging artifact',
+      'Go API rust_engine vector_search success',
+      'scriptureforge_dependency_operations_total',
+      'scriptureforge_dependency_operation_duration_seconds_sum',
+      'api_rust_metrics_samples_verified=true',
+      'distinct_metrics_targets=true',
+      'release_candidate',
+      'service_version',
+      'load_run_id=',
+    ],
+  },
+  'OBS-OTEL-001': {
+    commandIncludes: 'observabilityprobe',
+    artifactIncludes: 'observabilityprobe',
+    summaryIncludes: [
+      'collector-otlp-config',
+      'staging artifact',
+      'receivers',
+      'otlp',
+      '4317',
+      '4318',
+      'exporters',
+      'api-prometheus-metrics',
+      'scriptureforge_http_requests_total',
+      'scriptureforge_http_request_duration_seconds_sum',
+      'status=',
+      'websocket_active_connections_count',
+      'scriptureforge_dependency_operations_total{dependency="websocket",operation="room_broadcast",status="dropped"',
+      'ai_inference_duration_seconds_sum',
+      'ai_inference_duration_seconds_count',
+      'scriptureforge_dependency_operations_total{dependency="rust_engine",operation="vector_search",status="success"',
+      'scriptureforge_dependency_operation_duration_seconds_sum{dependency="rust_engine",operation="vector_search",status="success"',
+      'rust-prometheus-metrics',
+      'scriptureforge_rust_engine_embedding_requests_total',
+      'scriptureforge_rust_engine_embedding_failures_total',
+      'scriptureforge_rust_engine_vector_search_requests_total',
+      'scriptureforge_rust_engine_vector_search_failures_total',
+      'trace-backend-search',
+      'scriptureforge-api',
+      'scriptureforge-rust-engine',
+      'log-backend-trace-correlation',
+      'trace_id',
+      'release_candidate',
+      'service_version',
+      'load_run_id',
+      'deployment_environment',
+      'timestamp=',
+      'severity=',
+      'tenant_id=',
+      'user_id=',
+      'role=',
+      'distinct_otel_artifacts=true',
+    ],
+  },
+  'OBS-ALERT-001': {
+    commandIncludes: 'observabilityprobe',
+    artifactIncludes: 'observabilityprobe',
+    summaryIncludes: [
+      'dashboard-import',
+      'staging artifact',
+      'ScriptureForge',
+      'scriptureforge_http_requests_total',
+      'scriptureforge_http_request_duration_seconds_sum',
+      'websocket_active_connections_count',
+      'room_broadcast',
+      'ai_inference_duration_seconds',
+      'scriptureforge_rust_engine_',
+      'trace_id',
+      'alert-rules-loaded',
+      'ScriptureForgeHighErrorRate',
+      'ScriptureForgeTrafficAbsent',
+      'ScriptureForgeAuthFailureSpike',
+      'ScriptureForgeAbuseLimitSpike',
+      'ScriptureForgeRouteLatencyElevated',
+      'ScriptureForgeDependencyFailures',
+      'ScriptureForgeAIInferenceLatencyElevated',
+      'ScriptureForgeJournalWriteFailures',
+      'ScriptureForgeRoomStreamFailures',
+      'ScriptureForgeRoomBroadcastDrops',
+      'ScriptureForgeRustEngineFailures',
+      'scriptureforge_dependency_operations_total',
+      'ai_inference_duration_seconds',
+      'alert-delivery-status',
+      'success',
+      'delivered',
+      'test alert',
+      'alertmanager',
+      'alertname=',
+      'receiver=',
+      'delivery_id=',
+      'telemetry-retention-policy',
+      'retention',
+      '30 days',
+      'trace',
+      'logs',
+      'metrics',
+      'distinct_alert_artifacts=true',
+      'release_candidate',
+      'service_version',
+      'load_run_id',
+    ],
+  },
+  'CLIENT-WEB-001': {
+    commandIncludes: 'stagingprobe',
+    artifactIncludes: 'stagingprobe',
+    summaryIncludes: [
+      'web-root',
+      'web root',
+      'HTTP 200',
+      'web-tls',
+      'TLS',
+      'certificate',
+      'cert_not_after',
+      'cert_hostname=',
+      'cert_issuer=',
+      'web-http-redirect',
+      'HTTP',
+      'HTTPS',
+      'redirect',
+      'web-auth-browser-smoke',
+      'staging artifact',
+      'login',
+      'register',
+      'authenticated',
+      'https://',
+      'user_id=',
+      'organization_id=',
+      'release_candidate=',
+      'service_version=',
+      'load_run_id=',
+      'web-journal-browser-smoke',
+      'journal',
+      'encrypted',
+      'save',
+      'load',
+      'plaintext absent',
+      'associated data',
+      'wrong associated data rejected',
+      'journal_id=',
+      'release_candidate=',
+      'service_version=',
+      'web-room-browser-smoke',
+      'room',
+      'create',
+      'select',
+      'WebSocket',
+      'connected',
+      'room_id=',
+      'release_candidate=',
+      'service_version=',
+    ],
+  },
+      'CLIENT-MOBILE-001': {
+    commandIncludes: 'mobileprobe',
+    artifactIncludes: 'mobileprobe',
+    summaryIncludes: [
+      'mobile-eas-or-device-run',
+      'staging artifact',
+      'eas',
+      'build',
+      'finished',
+      'android',
+      'ios',
+      'native device',
+      'installed app',
+      'release channel staging',
+      'expo profile staging',
+      'mobile-native-crypto-smoke',
+      'react-native-quick-crypto',
+      'native provider',
+      'native module loaded',
+      'provider status react-native-quick-crypto',
+      'native-required true',
+      'AES-GCM',
+      'round-trip',
+      'unique_iv=true',
+      'unique IV',
+      'tamper rejected',
+      'associated data',
+      'wrong associated data rejected',
+      'associated_data_salt_id=',
+      'associated_data_salt_version=',
+      'non-extractable',
+      'provider-bound key',
+      'fallback-derived key rejected',
+      'key disposed',
+      'disposed handle rejected',
+      'revoked_key_rejected=true',
+      'stale raw key rejected',
+      'passphrase wiped',
+      'passphrase buffer zeroized',
+      'salt wiped',
+      'salt buffer zeroized',
+      'plaintext cleared',
+      'plaintext buffer zeroized',
+      'mobile-staging-config',
+      'EXPO_PUBLIC_API_BASE_URL',
+      'EXPO_PUBLIC_WS_BASE_URL',
+      'EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true',
+      'EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging',
+      'https://',
+      'wss://',
+      'staging',
+      'distinct_mobile_artifacts=true',
+      'load_run_id=',
+    ],
+  },
+  'EXT-ZOOM-001': {
+    commandIncludes: 'zoomprobe',
+    artifactIncludes: 'zoomprobe',
+    summaryIncludes: [
+      'zoom-oauth-readiness',
+      'staging artifact',
+      'oauth',
+      'account_credentials',
+      'status',
+      'ok',
+      'zoom-meeting-create-or-fallback',
+      'zoom-timeout-circuit-fallback',
+      'provider timeout',
+      'circuit_open_fallback',
+      'offline://in-person',
+      'zoom-webhook-signature-delivery',
+      'x-zm-signature=',
+      'x-zm-request-timestamp=',
+      'stale',
+      'replay',
+      'invalid',
+      'signed',
+      'zoom-webhook-url-validation',
+      'endpoint.url_validation',
+      'plain_token=',
+      'encrypted_token=',
+      'validation_response=200',
+      'zoom-duplicate-webhook-idempotency',
+      'x-zm-trackingid=',
+      'delivery_id=',
+      'delivery id',
+      'same Zoom event',
+      'idempotent',
+      'single state mutation',
+      'no duplicate side effects',
+      'zoom-meeting-room-mapping',
+      'meeting_external_id=',
+      'live_rooms',
+      'internal_room_id=',
+      'redis room state',
+      'unknown meeting ignored',
+      'no external meeting id fallback',
+      'distinct_zoom_artifacts=true',
+      'release_candidate',
+      'service_version',
+    ],
+  },
+  'EXT-AI-001': {
+    commandIncludes: 'aiprobe',
+    artifactIncludes: 'aiprobe',
+    summaryIncludes: [
+      'ai-provider-config',
+      'staging artifact',
+      'AI_PROVIDER',
+      'AI_CHAT_MODEL',
+      'AI_CHAT_ENDPOINT',
+      'AI_HTTP_TIMEOUT_MS',
+      'AI_MAX_RETRIES',
+      'OPENAI_API_KEY redacted',
+      'ai-generation-route',
+      '/api/v1/ai/generate/study',
+      'authenticated',
+      'JWT claims',
+      'organization_id',
+      'user_id',
+      'generated_curriculum',
+      '[Genesis 1:1]',
+      'ai-timeout-degradation',
+      'provider timeout',
+      'retry exhausted',
+      'fail closed',
+      'AI_ORCHESTRATION_ENGINE_FAULT',
+      'ai-citation-verification',
+      'no-citation rejected',
+      'hallucinated citation rejected',
+      'verified citation accepted',
+      'citation_trails',
+      'citation_id=',
+      'ai-audit-persistence',
+      'ai_request_logs',
+      'request_id=',
+      'citation_id=',
+      'succeeded',
+      'failed',
+      'verified',
+      'tenant rls',
+      'cross-tenant hidden',
+      'distinct_ai_artifacts=true',
+      'release_candidate',
+      'service_version',
+    ],
+  },
+  'PERF-HTTP-001': {
+    commandIncludes: 'loadtest',
+    artifactIncludes: 'loadtest',
+    summaryIncludes: [
+      'staging_http',
+      'min_rps',
+      '5000',
+      'max_p99_ms',
+      '200',
+      'observed_rps',
+      'observed_p99_ms',
+      'threshold_pass=true',
+      'release_candidate',
+      'service_version',
+      'load_run_id',
+      'http_replica_artifact_verified',
+      'dependency_telemetry_artifact_verified',
+      'dependency_latency_artifact_verified=true',
+    ],
+  },
+  'PERF-WS-001': {
+    commandIncludes: 'loadtest',
+    artifactIncludes: 'loadtest',
+    summaryIncludes: [
+      'staging_websocket',
+      'min_rps',
+      '500',
+      'max_p99_ms',
+      '200',
+      'observed_rps',
+      'observed_p99_ms',
+      'threshold_pass=true',
+      'release_candidate',
+      'service_version',
+      'load_run_id',
+      'ws_origin=https://',
+      'ws_authenticated=true',
+      'ws_sequence_contiguous=true',
+      'ws_polling_latest_sequence',
+      'ws_polling_artifact_latest_sequence',
+      'ws_replica_artifact_url=https://',
+      'ws_replica_artifact_verified',
+      'ws_reconnect_artifact_url=https://',
+      'ws_reconnect_artifact_verified',
+      'ws_reconnect_sequence_continues=true',
+      'ws_polling_artifact_url=https://',
+      'ws_polling_artifact_verified',
+      'ws_polling_artifact_latest_sequence_validated=true',
+      'ws_polling_artifact_latest_sequence_matches_run=true',
+      'redis_telemetry_artifact_url=https://',
+      'redis_telemetry_artifact_verified',
+      'ws_distinct_artifacts=true',
+      'room_broadcast_drops=0',
+    ],
+  },
+  'DR-ROLLBACK-001': {
+    commandIncludes: 'resilienceprobe',
+    artifactIncludes: 'resilienceprobe',
+    summaryIncludes: [
+      'api-ready-before-rollback',
+      'staging artifact',
+      'ready',
+      'service_version',
+      'deployment_environment',
+      'pre_rollback_version',
+      'release_candidate',
+      'rollback-rollout-artifact',
+      'rollout',
+      'undo',
+      'revision',
+      'previous_revision',
+      'target_revision',
+      'scriptureforge-api',
+      'successfully rolled out',
+      'api-ready-after-rollback',
+      'post_rollback_version',
+      'rolled_back_from',
+      'rolled_back_to',
+      'degradation-drill-artifact',
+      'AI',
+      'Zoom',
+      'degradation',
+      'fallback',
+      'AI_ORCHESTRATION_ENGINE_FAULT',
+      'offline://in-person',
+      'non-AI routes healthy',
+      'zoom circuit open',
+      'ai_fault=true',
+      'zoom_offline_fallback=true',
+      'non_ai_routes_healthy=true',
+      'zoom_circuit_open=true',
+      'distinct_rollback_artifacts=true',
+      'service_version',
+    ],
+  },
+  'DR-BACKUP-001': {
+    commandIncludes: 'resilienceprobe',
+    artifactIncludes: 'resilienceprobe',
+    summaryIncludes: [
+      'backup-snapshot-artifact',
+      'staging artifact',
+      'snapshot',
+      'snapshot_id',
+      'available',
+      'encrypted',
+      'kms_key_id=',
+      'retention',
+      'automated backup',
+      'source cluster',
+      'rpo_minutes',
+      'release_candidate',
+      'service_version',
+      'restore-drill-artifact',
+      'restore',
+      'restore_job_id',
+      'staging',
+      'restored endpoint',
+      'source snapshot_id',
+      'checksum',
+      'isolated restore',
+      'rto_minutes',
+      'restore_duration_minutes',
+      'release_candidate',
+      'service_version',
+      'restored-database-smoke',
+      'smoke passed',
+      'restored database',
+      'tenant',
+      'journal',
+      'auth',
+      'RLS',
+      'migration version',
+      'no plaintext journal',
+      'distinct_backup_artifacts=true',
+      'release_candidate',
+      'service_version',
+    ],
+  },
+};
+
+const requiredSignoffSummaryMarkers = [
+  'threat model approval',
+  'security/dependency_risk_register.md#DRR-001',
+  'dependency risk decision',
+  'residual risk review',
+  'owner/security approval',
+  'release risk signoff',
+  'signoff_artifact_verified=true',
+  'release_candidate=',
+];
+
+export function parseArgs(argv) {
+  const args = {
+    evidenceFile: process.env.STAGING_EVIDENCE_FILE ?? 'production-readiness/staging-evidence.example.json',
+    strictRelease: process.env.STAGING_EVIDENCE_STRICT_RELEASE === 'true',
+  };
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] === '--manifest') {
+      args.evidenceFile = argv[i + 1];
+      i += 1;
+    } else if (argv[i] === '--strict-release') {
+      args.strictRelease = true;
+    } else {
+      throw new Error(`unknown argument ${argv[i]}`);
+    }
+  }
+  return args;
+}
+
+export function validateManifest(manifest, { strictRelease = false, today = new Date().toISOString().slice(0, 10) } = {}) {
+  assert.equal(manifest.schema_version, 1, 'staging evidence schema_version must be 1');
+  assert.equal(typeof manifest.environment, 'string', 'environment is required');
+  assert.ok(manifest.environment.length > 0, 'environment must not be empty');
+  assert.equal(typeof manifest.release_candidate, 'string', 'release_candidate is required');
+  assert.ok(manifest.release_candidate.length > 0, 'release_candidate must not be empty');
+  assert.match(manifest.generated_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, 'generated_at must be an ISO UTC timestamp without milliseconds');
+  assert.match(today, /^\d{4}-\d{2}-\d{2}$/, 'today must be YYYY-MM-DD');
+  assert.ok(
+    manifest.generated_at.slice(0, 10) <= today,
+    'staging evidence generated_at must not be after validation date',
+  );
+  assert.ok(Array.isArray(manifest.items), 'items must be an array');
+
+  const itemsById = new Map();
+  for (const item of manifest.items) {
+    assert.equal(typeof item.id, 'string', 'item id is required');
+    assert.ok(!itemsById.has(item.id), `duplicate evidence item ${item.id}`);
+    itemsById.set(item.id, item);
+  }
+
+  for (const id of requiredIds) {
+    assert.ok(itemsById.has(id), `staging evidence manifest missing ${id}`);
+  }
+
+  for (const item of manifest.items) {
+    validateItem(item, manifest.generated_at, today);
+  }
+
+  if (strictRelease) {
+    validateStrictRelease(manifest);
+  }
+
+  return {
+    items: manifest.items.length,
+    strictRelease,
+  };
+}
+
+function validateItem(item, manifestGeneratedAt, today) {
+  assert.equal(typeof item.category, 'string', `${item.id} category is required`);
+  assert.ok(item.category.length > 0, `${item.id} category must not be empty`);
+  assert.ok(allowedStatuses.has(item.status), `${item.id} has invalid status ${item.status}`);
+  assert.equal(typeof item.description, 'string', `${item.id} description is required`);
+  assert.ok(item.description.length > 0, `${item.id} description must not be empty`);
+
+  if (item.status === 'pending_external') {
+    assert.ok(Array.isArray(item.required_evidence), `${item.id} pending item must list required_evidence`);
+    assert.ok(item.required_evidence.length > 0, `${item.id} pending item must have at least one required evidence entry`);
+    if (item.id === 'SEC-SIGNOFF-001') {
+      const requiredText = item.required_evidence.join('\n');
+      assert.match(
+        requiredText,
+        /content-verified repo security\/\*\.md signoff\/approval document or HTTPS non-local approval artifact/,
+        'SEC-SIGNOFF-001 pending required_evidence must require a content-verified signoff artifact',
+      );
+      assert.ok(
+        requiredText.includes('signoff_artifact_verified=true'),
+        'SEC-SIGNOFF-001 pending required_evidence must include signoff_artifact_verified=true',
+      );
+    }
+  }
+
+  if (item.status === 'passed') {
+    assert.ok(Array.isArray(item.evidence), `${item.id} passed item must include evidence artifacts`);
+    assert.ok(item.evidence.length > 0, `${item.id} passed item must have at least one evidence artifact`);
+    for (const artifact of item.evidence) {
+      assert.equal(typeof artifact.observed_at, 'string', `${item.id} evidence observed_at is required`);
+      assert.match(artifact.observed_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, `${item.id} evidence observed_at must be ISO UTC without milliseconds`);
+      assert.ok(
+        artifact.observed_at <= manifestGeneratedAt,
+        `${item.id} evidence observed_at must not be after manifest generated_at`,
+      );
+      assert.equal(typeof artifact.command_or_probe, 'string', `${item.id} evidence command_or_probe is required`);
+      assert.equal(typeof artifact.artifact, 'string', `${item.id} evidence artifact path or URL is required`);
+      assert.equal(typeof artifact.result_summary, 'string', `${item.id} evidence result_summary is required`);
+    }
+  }
+
+  if (item.status === 'failed' || item.status === 'blocked') {
+    assert.equal(typeof item.blocker, 'string', `${item.id} ${item.status} item must explain blocker`);
+    assert.ok(item.blocker.length > 0, `${item.id} blocker must not be empty`);
+    assert.equal(typeof item.owner, 'string', `${item.id} ${item.status} item must name an owner`);
+    assert.ok(item.owner.length > 0, `${item.id} owner must not be empty`);
+  }
+
+  if (item.status === 'accepted_risk') {
+    assert.equal(typeof item.decision_ref, 'string', `${item.id} accepted risk must reference a decision record`);
+    assert.ok(item.decision_ref.length > 0, `${item.id} decision_ref must not be empty`);
+    assert.equal(typeof item.owner, 'string', `${item.id} accepted risk must name an owner`);
+    assert.ok(item.owner.length > 0, `${item.id} accepted risk owner must not be empty`);
+    assert.equal(typeof item.accepted_by, 'string', `${item.id} accepted risk must name who accepted it`);
+    assert.ok(item.accepted_by.length > 0, `${item.id} accepted_by must not be empty`);
+    assert.match(item.review_due_at, /^\d{4}-\d{2}-\d{2}$/, `${item.id} accepted risk review_due_at must be YYYY-MM-DD`);
+    assert.match(item.expires_at, /^\d{4}-\d{2}-\d{2}$/, `${item.id} accepted risk expires_at must be YYYY-MM-DD`);
+    assert.match(today, /^\d{4}-\d{2}-\d{2}$/, 'today must be YYYY-MM-DD');
+    assert.ok(
+      item.review_due_at <= item.expires_at,
+      `${item.id} accepted risk review_due_at must be on or before expires_at`,
+    );
+    assert.ok(
+      item.expires_at >= manifestGeneratedAt.slice(0, 10),
+      `${item.id} accepted risk expires_at must not be before manifest generated_at`,
+    );
+    assert.ok(
+      item.expires_at >= today,
+      `${item.id} accepted risk expires_at must not be before validation date`,
+    );
+    assert.ok(
+      item.review_due_at >= today,
+      `${item.id} accepted risk review_due_at must not be before validation date`,
+    );
+  }
+}
+
+function validateStrictRelease(manifest) {
+  assert.ok(!manifest.release_candidate.toLowerCase().includes('replace-with'), 'strict release manifest must use a real release_candidate');
+  assert.match(
+    manifest.release_candidate,
+    /^[0-9a-f]{40}$/i,
+    'strict release manifest release_candidate must be a 40-character git commit SHA',
+  );
+  assert.ok(
+    strictReleaseEnvironments.has(manifest.environment.toLowerCase()),
+    `strict release manifest environment must be staging, production, or prod; got ${manifest.environment}`,
+  );
+  for (const item of manifest.items) {
+    if (item.id === 'SEC-SIGNOFF-001' && item.status === 'accepted_risk') {
+      validateStrictAcceptedRisk(item);
+      continue;
+    }
+    assert.equal(item.status, 'passed', `${item.id} must be passed for strict release validation`);
+    validateStrictReleaseItemEvidence(item, manifest);
+  }
+  assertStrictPerformanceLoadRunLinkage(manifest);
+  assertStrictReleaseLoadRunLinkage(manifest);
+}
+
+function assertStrictPerformanceLoadRunLinkage(manifest) {
+  const loadRunIDs = new Set();
+  for (const itemID of ['PERF-HTTP-001', 'PERF-WS-001', 'DATA-REDIS-001']) {
+    const item = manifest.items.find((candidate) => candidate.id === itemID);
+    assert.ok(item, `strict release manifest missing ${itemID}`);
+    const evidence = Array.isArray(item.evidence) ? item.evidence : [];
+    const itemLoadRunIDs = new Set();
+    for (const artifact of evidence) {
+      const match = String(artifact.result_summary ?? '').match(/\bload_run_id=([^\s,;]+)/i);
+      if (match) {
+        itemLoadRunIDs.add(match[1]);
+        loadRunIDs.add(match[1]);
+      }
+    }
+    assert.equal(itemLoadRunIDs.size, 1, `${itemID} strict release evidence must include exactly one load_run_id`);
+  }
+  assert.equal(
+    loadRunIDs.size,
+    1,
+    'strict release performance evidence load_run_id values must match across PERF-HTTP-001, PERF-WS-001, and DATA-REDIS-001',
+  );
+}
+
+function assertStrictReleaseLoadRunLinkage(manifest) {
+  const loadRunIDs = new Set();
+  for (const item of manifest.items) {
+    if (item.id === 'SRC-CI-001' || item.id === 'SEC-SIGNOFF-001') {
+      continue;
+    }
+    const evidence = Array.isArray(item.evidence) ? item.evidence : [];
+    for (const artifact of evidence) {
+      const match = String(artifact.result_summary ?? '').match(/\bload_run_id=([^\s,;]+)/i);
+      if (match) {
+        loadRunIDs.add(match[1]);
+      }
+    }
+  }
+  assert.equal(
+    loadRunIDs.size,
+    1,
+    'strict release evidence load_run_id values must match across all staging evidence items',
+  );
+}
+
+function validateStrictAcceptedRisk(item) {
+  assert.equal(
+    item.decision_ref,
+    strictAcceptedRiskRefs[item.id],
+    `${item.id} accepted risk must reference ${strictAcceptedRiskRefs[item.id]}`,
+  );
+}
+
+function validateStrictReleaseItemEvidence(item, manifest) {
+  if (item.id === 'SEC-SIGNOFF-001') {
+    validateStrictSignoffEvidence(item, manifest);
+    return;
+  }
+  const requirement = strictProbeFamilies[item.id];
+  if (!requirement) {
+    return;
+  }
+  const evidence = Array.isArray(item.evidence) ? item.evidence : [];
+  if (item.id === 'OBS-ALERT-001') {
+    for (const artifact of evidence) {
+      const combined = [
+        artifact.command_or_probe,
+        artifact.artifact,
+        artifact.result_summary,
+      ].map((value) => String(value ?? '').toLowerCase()).join(' ');
+      assert.ok(
+        !hasDisallowedStrictEvidenceMarker(combined),
+        `${item.id} evidence contains forbidden non-production marker`,
+      );
+    }
+  }
+  const hasRequiredProbeReport = evidence.some((artifact) => {
+    const command = String(artifact.command_or_probe ?? '').toLowerCase();
+    const target = String(artifact.artifact ?? '').toLowerCase();
+    const summary = String(artifact.result_summary ?? '').toLowerCase();
+    const combined = `${command} ${summary} ${target}`;
+    return command.includes(requirement.commandIncludes)
+      && target.includes(requirement.artifactIncludes)
+      && isHTTPSNonLocalArtifact(target)
+      && target.endsWith('.json')
+      && !hasDisallowedStrictEvidenceMarker(combined)
+      && includesAll(summary, requirement.summaryIncludes)
+      && (
+        !['SRC-CI-001', 'DEPLOY-TF-001', 'DEPLOY-TLS-001', 'DEPLOY-K8S-001', 'SEC-SECRETS-001', 'SEC-DBUSER-001', 'ABUSE-LIMIT-001', 'DATA-RLS-001', 'RUST-GRPC-001', 'OBS-OTEL-001', 'OBS-ALERT-001', 'CLIENT-WEB-001', 'CLIENT-MOBILE-001', 'EXT-ZOOM-001', 'EXT-AI-001', 'PERF-HTTP-001', 'PERF-WS-001', 'DATA-REDIS-001', 'DR-ROLLBACK-001', 'DR-BACKUP-001'].includes(item.id)
+        || summary.includes(`release_candidate=${String(manifest.release_candidate).toLowerCase()}`)
+      )
+      && (item.id === 'SRC-CI-001' || summaryHasExactServiceVersion(summary, manifest.release_candidate))
+      && (
+        item.id !== 'SRC-CI-001'
+        || (
+          command.includes('-run-artifact-url')
+          && command.includes('https://')
+          && command.includes('ci-release-evidence')
+          && !command.includes('-run-artifact-file')
+          && !combined.includes('artifacts/ci-release-evidence.txt')
+        )
+      )
+      && (!requirement.extraSummaryOrArtifactIncludes || combined.includes(requirement.extraSummaryOrArtifactIncludes));
+  });
+  assert.ok(
+    hasRequiredProbeReport,
+    `${item.id} strict release evidence must include a tools/${requirement.commandIncludes} JSON report`,
+  );
+  if (item.id === 'DATA-RLS-001') {
+    const tenantLoadRunIDs = new Set();
+    for (const [segment, markers] of tenantSegmentMarkerRequirements) {
+      const missingSegmentMarkers = evidence.some((artifact) => {
+        const summary = String(artifact.result_summary ?? '');
+        return summaryHasSegmentLabel(summary, segment)
+          && !summarySegmentIncludesAll(summary, segment, markers);
+      });
+      assert.equal(
+        missingSegmentMarkers,
+        false,
+        `DATA-RLS-001 strict release evidence must include tenant markers on ${segment}`,
+      );
+      const loadRunID = summarySegmentCapture(findEvidenceSegment(evidence, segment), segment, /\bload_run_id=([^\s,;]+)/i);
+      assert.ok(loadRunID, `DATA-RLS-001 strict release evidence must include load_run_id on ${segment}`);
+      tenantLoadRunIDs.add(loadRunID);
+    }
+    assert.equal(tenantLoadRunIDs.size, 1, 'DATA-RLS-001 strict release evidence load_run_id values must all match');
+    assertStrictTenantOrgIDBinding(evidence);
+    assertStrictTenantResourceIDBinding(evidence);
+    assertStrictTenantStructuredRLSReport(evidence);
+  }
+  if (item.id === 'DEPLOY-TLS-001') {
+    const tlsLoadRunIDs = new Set();
+    for (const [segment, markers] of tlsSegmentMarkerRequirements) {
+      const missingSegmentMarkers = evidence.some((artifact) => {
+        const summary = String(artifact.result_summary ?? '');
+        return summary.toLowerCase().includes(segment.toLowerCase())
+          && !summarySegmentIncludesAll(summary, segment, markers);
+      });
+      assert.equal(
+        missingSegmentMarkers,
+        false,
+        `DEPLOY-TLS-001 strict release evidence must include TLS/web markers on ${segment}`,
+      );
+      const loadRunID = summarySegmentCapture(findEvidenceSegment(evidence, segment), segment, /\bload_run_id=([^\s,;]+)/i);
+      assert.ok(loadRunID, `DEPLOY-TLS-001 strict release evidence must include load_run_id on ${segment}`);
+      tlsLoadRunIDs.add(loadRunID);
+    }
+    assert.equal(tlsLoadRunIDs.size, 1, 'DEPLOY-TLS-001 strict release evidence load_run_id values must all match');
+    assertStrictTLSCertificateIdentity(evidence, 'DEPLOY-TLS-001', ['api-tls', 'web-tls']);
+    assertStrictSSLLabsHostnameBinding(evidence);
+  }
+  if (item.id === 'CLIENT-WEB-001') {
+    const webLoadRunIDs = new Set();
+    for (const [segment, markers] of webClientSegmentMarkerRequirements) {
+      const missingSegmentMarkers = evidence.some((artifact) => {
+        const summary = String(artifact.result_summary ?? '');
+        return summary.toLowerCase().includes(segment.toLowerCase())
+          && !summarySegmentIncludesAll(summary, segment, markers);
+      });
+      assert.equal(
+        missingSegmentMarkers,
+        false,
+        `CLIENT-WEB-001 strict release evidence must include web client markers on ${segment}`,
+      );
+      const loadRunID = summarySegmentCapture(findEvidenceSegment(evidence, segment), segment, /\bload_run_id=([^\s,;]+)/i);
+      assert.ok(loadRunID, `CLIENT-WEB-001 strict release evidence must include load_run_id on ${segment}`);
+      webLoadRunIDs.add(loadRunID);
+    }
+    assert.equal(webLoadRunIDs.size, 1, 'CLIENT-WEB-001 strict release evidence load_run_id values must all match');
+    assertStrictTLSCertificateIdentity(evidence, 'CLIENT-WEB-001', ['web-tls']);
+    assertStrictWebSmokeIdentityLinkage(evidence);
+  }
+  if (item.id === 'SEC-SECRETS-001') {
+    const securityRoleARNs = new Map();
+    const securityLoadRunIDs = new Set();
+    for (const [segment, markers] of securitySegmentMarkerRequirements) {
+      const segmentSatisfied = evidence.some((artifact) => {
+        const summary = String(artifact.result_summary ?? '');
+        return summaryHasSegmentLabel(summary, segment)
+          && summarySegmentIncludesAll(summary, segment, markers);
+      });
+      assert.equal(
+        segmentSatisfied,
+        true,
+        `SEC-SECRETS-001 strict release evidence must include security markers on ${segment}`,
+      );
+      if (securityRoleARNSegments.has(segment)) {
+        let roleARN = '';
+        const hasConcreteRoleARN = evidence.some((artifact) => {
+          const summary = String(artifact.result_summary ?? '');
+          roleARN = summarySegmentCapture(summary, segment, concreteIAMRoleARNPattern);
+          return roleARN !== '';
+        });
+        assert.equal(
+          hasConcreteRoleARN,
+          true,
+          `SEC-SECRETS-001 strict release evidence must include concrete IAM role ARN on ${segment}`,
+        );
+        securityRoleARNs.set(segment, roleARN);
+      }
+      const loadRunID = summarySegmentCapture(findEvidenceSegment(evidence, segment), segment, /\bload_run_id=([^\s,;]+)/i);
+      assert.ok(loadRunID, `SEC-SECRETS-001 strict release evidence must include load_run_id on ${segment}`);
+      securityLoadRunIDs.add(loadRunID);
+    }
+    assertEqualStrictSecurityRoleARNs(securityRoleARNs);
+    assert.equal(securityLoadRunIDs.size, 1, 'SEC-SECRETS-001 strict release evidence load_run_id values must all match');
+    assertNoStrictSecretLeaks(evidence);
+  }
+  if (item.id === 'SEC-DBUSER-001') {
+    for (const [segment, markers] of dbUserSegmentMarkerRequirements) {
+      const segmentSatisfied = evidence.some((artifact) => {
+        const summary = String(artifact.result_summary ?? '');
+        return summaryHasSegmentLabel(summary, segment)
+          && summarySegmentIncludesAll(summary, segment, markers);
+      });
+      assert.equal(
+        segmentSatisfied,
+        true,
+        `SEC-DBUSER-001 strict release evidence must include database user markers on ${segment}`,
+      );
+    }
+    const dbUserSegment = findEvidenceSegment(evidence, 'database-scoped-user');
+    assert.match(
+      dbUserSegment,
+      dbUserPrincipalBindingPattern,
+      'SEC-DBUSER-001 database-scoped-user must bind connected user and current_user to scriptureforge_app',
+    );
+  }
+  if (item.id === 'DR-ROLLBACK-001' || item.id === 'DR-BACKUP-001') {
+    const requiredSegments = item.id === 'DR-ROLLBACK-001'
+      ? ['api-ready-before-rollback', 'rollback-rollout-artifact', 'api-ready-after-rollback', 'degradation-drill-artifact']
+      : ['backup-snapshot-artifact', 'restore-drill-artifact', 'restored-database-smoke'];
+    for (const segment of requiredSegments) {
+      const markers = resilienceSegmentMarkerRequirements.get(segment) ?? [];
+      const missingSegmentMarkers = evidence.some((artifact) => {
+        const summary = String(artifact.result_summary ?? '');
+        return summary.toLowerCase().includes(segment.toLowerCase())
+          && !summarySegmentIncludesAll(summary, segment, markers);
+      });
+      assert.equal(
+        missingSegmentMarkers,
+        false,
+        `${item.id} strict release evidence must include resilience markers on ${segment}`,
+      );
+    }
+    if (item.id === 'DR-ROLLBACK-001') {
+      const segments = assertStrictRollbackVersionLinkage(evidence);
+      assertStrictRollbackStructuredReport(evidence, segments);
+    }
+    if (item.id === 'DR-BACKUP-001') {
+      const segments = assertStrictBackupRestoreSnapshotLinkage(evidence);
+      assertStrictBackupRestoreStructuredReport(evidence, segments);
+    }
+  }
+  if (item.id === 'DEPLOY-TF-001') {
+    for (const [segment, markers] of terraformSegmentMarkerRequirements) {
+      const missingSegmentMarkers = evidence.some((artifact) => {
+        const summary = String(artifact.result_summary ?? '');
+        return summary.toLowerCase().includes(segment.toLowerCase())
+          && !summarySegmentIncludesAll(summary, segment, markers);
+      });
+      assert.equal(
+        missingSegmentMarkers,
+        false,
+        `DEPLOY-TF-001 strict release evidence must include Terraform markers on ${segment}`,
+      );
+    }
+    const missingApplyOrApprovalMarkers = evidence.some((artifact) => {
+      const summary = String(artifact.result_summary ?? '');
+      return summary.toLowerCase().includes('terraform-staging-apply-or-approval')
+        && !terraformApplyOrApprovalSegmentMarkerSets.some((markers) => summarySegmentIncludesAll(summary, 'terraform-staging-apply-or-approval', markers));
+    });
+    assert.equal(
+      missingApplyOrApprovalMarkers,
+      false,
+      'DEPLOY-TF-001 strict release evidence must include apply or approval markers on terraform-staging-apply-or-approval',
+    );
+    const backendSegment = findEvidenceSegment(evidence, 'terraform-remote-backend-init');
+    assert.match(
+      backendSegment,
+      terraformStateKMSKeyPattern,
+      'DEPLOY-TF-001 terraform-remote-backend-init must include concrete kms_key_id',
+    );
+    const planSegment = findEvidenceSegment(evidence, 'terraform-staging-plan');
+    assert.match(
+      planSegment,
+      terraformStateKMSKeyPattern,
+      'DEPLOY-TF-001 terraform-staging-plan must include concrete kms_key_id',
+    );
+    assert.match(
+      planSegment,
+      terraformDatabaseKMSKeyARNPattern,
+      'DEPLOY-TF-001 terraform-staging-plan must include concrete database_kms_key_arn',
+    );
+    assert.match(
+      planSegment,
+      terraformRedisKMSKeyARNPattern,
+      'DEPLOY-TF-001 terraform-staging-plan must include concrete redis_kms_key_arn',
+    );
+  }
+  if (item.id === 'DEPLOY-K8S-001') {
+    for (const [segment, markers] of kubernetesSegmentMarkerRequirements) {
+      const missingSegmentMarkers = evidence.some((artifact) => {
+        const summary = String(artifact.result_summary ?? '');
+        return summary.toLowerCase().includes(segment.toLowerCase())
+          && !summarySegmentIncludesAll(summary, segment, markers);
+      });
+      assert.equal(
+        missingSegmentMarkers,
+        false,
+        `DEPLOY-K8S-001 strict release evidence must include Kubernetes markers on ${segment}`,
+      );
+    }
+    assertStrictKubernetesImageDigests(evidence);
+  }
+  if (item.id === 'RUST-GRPC-001') {
+    for (const [segment, markers] of rustSegmentMarkerRequirements) {
+      const missingSegmentMarkers = evidence.some((artifact) => {
+        const summary = String(artifact.result_summary ?? '');
+        return summary.toLowerCase().includes(segment.toLowerCase())
+          && !summarySegmentIncludesAll(summary, segment, markers);
+      });
+      assert.equal(
+        missingSegmentMarkers,
+        false,
+        `RUST-GRPC-001 strict release evidence must include Rust markers on ${segment}`,
+      );
+    }
+    const rustMetricsSegment = findEvidenceSegment(evidence, 'rust-metrics');
+    assert.match(
+      rustMetricsSegment,
+      rustEmbeddingRequestsPattern,
+      'RUST-GRPC-001 rust-metrics must include positive embedding_requests=<count>',
+    );
+    assert.match(
+      rustMetricsSegment,
+      rustVectorSearchRequestsPattern,
+      'RUST-GRPC-001 rust-metrics must include positive vector_search_requests=<count>',
+    );
+    const apiRustMetricsSegment = findEvidenceSegment(evidence, 'api-rust-integration-metrics');
+    assert.match(
+      apiRustMetricsSegment,
+      apiRustVectorSearchOpsPattern,
+      'RUST-GRPC-001 api-rust-integration-metrics must include positive api_rust_vector_search_ops=<count>',
+    );
+    assert.match(
+      apiRustMetricsSegment,
+      apiRustVectorSearchSecondsPattern,
+      'RUST-GRPC-001 api-rust-integration-metrics must include positive api_rust_vector_search_seconds=<seconds>',
+    );
+    const rustLoadRunIDs = [
+      'rust-grpc-health',
+      'rust-metrics',
+      'api-rust-integration-metrics',
+    ].map((segment) => summarySegmentCapture(
+      findEvidenceSegment(evidence, segment),
+      segment,
+      /\bload_run_id=([^\s,;]+)/i,
+    ));
+    assert.ok(rustLoadRunIDs.every(Boolean), 'RUST-GRPC-001 strict release evidence must include load_run_id on every Rust segment');
+    assert.equal(new Set(rustLoadRunIDs).size, 1, 'RUST-GRPC-001 strict release evidence load_run_id values must all match');
+    assertStrictRustStructuredReport(evidence, {
+      healthSegment: findEvidenceSegment(evidence, 'rust-grpc-health'),
+      metricsSegment: rustMetricsSegment,
+      apiMetricsSegment: apiRustMetricsSegment,
+    });
+  }
+  if (item.id === 'CLIENT-MOBILE-001') {
+    const mobileLoadRunIDs = new Set();
+    const mobileBuildIDs = new Set();
+    for (const [segment, markers] of mobileSegmentMarkerRequirements) {
+      const missingSegmentMarkers = evidence.some((artifact) => {
+        const summary = String(artifact.result_summary ?? '');
+        return summary.toLowerCase().includes(segment.toLowerCase())
+          && !summarySegmentIncludesAll(summary, segment, markers);
+      });
+      assert.equal(
+        missingSegmentMarkers,
+        false,
+        `CLIENT-MOBILE-001 strict release evidence must include mobile markers on ${segment}`,
+      );
+      const loadRunID = summarySegmentCapture(findEvidenceSegment(evidence, segment), segment, /\bload_run_id=([^\s,;]+)/i);
+      assert.ok(loadRunID, `CLIENT-MOBILE-001 strict release evidence must include load_run_id on ${segment}`);
+      mobileLoadRunIDs.add(loadRunID);
+      const mobileBuildID = summarySegmentCapture(findEvidenceSegment(evidence, segment), segment, mobileBuildIDPattern);
+      assert.ok(mobileBuildID, `CLIENT-MOBILE-001 strict release evidence must include mobile_build_id on ${segment}`);
+      mobileBuildIDs.add(mobileBuildID);
+    }
+    assert.equal(mobileLoadRunIDs.size, 1, 'CLIENT-MOBILE-001 strict release evidence load_run_id values must all match');
+    assert.equal(mobileBuildIDs.size, 1, 'CLIENT-MOBILE-001 strict release evidence mobile_build_id values must all match');
+    const easSegment = findEvidenceSegment(evidence, 'mobile-eas-or-device-run');
+    assert.match(
+      easSegment,
+      mobilePlatformsPattern,
+      'CLIENT-MOBILE-001 mobile-eas-or-device-run must include platforms with android and ios',
+    );
+    assert.match(
+      easSegment,
+      mobileReleaseChannelPattern,
+      'CLIENT-MOBILE-001 mobile-eas-or-device-run must include release_channel=staging',
+    );
+    assert.match(
+      easSegment,
+      mobileExpoProfilePattern,
+      'CLIENT-MOBILE-001 mobile-eas-or-device-run must include expo_profile=staging',
+    );
+    const cryptoSegment = findEvidenceSegment(evidence, 'mobile-native-crypto-smoke');
+    const nativeProvider = cryptoSegment.match(mobileNativeProviderPattern)?.[1] ?? '';
+    const nativeRequired = cryptoSegment.match(mobileNativeRequiredPattern)?.[1] ?? '';
+    assert.equal(nativeProvider, 'react-native-quick-crypto', 'CLIENT-MOBILE-001 mobile-native-crypto-smoke must bind first provider marker to react-native-quick-crypto');
+    assert.equal(nativeRequired, 'true', 'CLIENT-MOBILE-001 mobile-native-crypto-smoke must bind first native_required marker to true');
+    assert.match(
+      cryptoSegment,
+      mobileAESGCMRoundTripPattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include aes_gcm_roundtrip=true',
+    );
+    assert.match(
+      cryptoSegment,
+      mobileTamperRejectedPattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include tamper_rejected=true',
+    );
+    assert.match(
+      cryptoSegment,
+      mobileAssociatedDataRejectedPattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include associated_data_rejected=true',
+    );
+    assert.match(
+      cryptoSegment,
+      mobileKeyDisposedPattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include key_disposed=true',
+    );
+    assert.match(
+      cryptoSegment,
+      mobileDisposedHandleRejectedPattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include disposed_handle_rejected=true',
+    );
+    assert.match(
+      cryptoSegment,
+      mobileRevokedKeyRejectedPattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include revoked_key_rejected=true',
+    );
+    assert.match(
+      cryptoSegment,
+      mobilePassphraseZeroizedPattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include passphrase_buffer_zeroized=true',
+    );
+    assert.match(
+      cryptoSegment,
+      mobileSaltZeroizedPattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include salt_buffer_zeroized=true',
+    );
+    assert.match(
+      cryptoSegment,
+      mobilePlaintextZeroizedPattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include plaintext_buffer_zeroized=true',
+    );
+    assert.match(
+      cryptoSegment,
+      mobileAssociatedDataSaltIDPattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include concrete associated_data_salt_id',
+    );
+    assert.match(
+      cryptoSegment,
+      mobileAssociatedDataVersionPattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include positive associated_data_salt_version',
+    );
+    assert.match(
+      cryptoSegment,
+      mobileDeviceOSPattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include device_os=android|ios',
+    );
+    assert.match(
+      cryptoSegment,
+      mobileDeviceModelPattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include concrete device_model',
+    );
+    assert.match(
+      cryptoSegment,
+      mobileAppRuntimePattern,
+      'CLIENT-MOBILE-001 mobile-native-crypto-smoke must include app_runtime=installed-staging-app',
+    );
+    const configSegment = findEvidenceSegment(evidence, 'mobile-staging-config');
+    const apiBaseURL = configSegment.match(mobileAPIBaseURLPattern)?.[1] ?? '';
+    const wsBaseURL = configSegment.match(mobileWSBaseURLPattern)?.[1] ?? '';
+    assert.match(
+      configSegment,
+      mobileAPIBaseURLPattern,
+      'CLIENT-MOBILE-001 mobile-staging-config must include HTTPS EXPO_PUBLIC_API_BASE_URL=<url>',
+    );
+    assertNonLocalStagingEndpoint(apiBaseURL, 'CLIENT-MOBILE-001 mobile-staging-config EXPO_PUBLIC_API_BASE_URL must be a public non-placeholder staging endpoint');
+    assert.match(
+      configSegment,
+      mobileWSBaseURLPattern,
+      'CLIENT-MOBILE-001 mobile-staging-config must include WSS EXPO_PUBLIC_WS_BASE_URL=<url>',
+    );
+    assertNonLocalStagingEndpoint(wsBaseURL, 'CLIENT-MOBILE-001 mobile-staging-config EXPO_PUBLIC_WS_BASE_URL must be a public non-placeholder staging endpoint');
+    assert.match(
+      configSegment,
+      mobileRequireNativeCryptoPattern,
+      'CLIENT-MOBILE-001 mobile-staging-config must include EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true',
+    );
+    assert.match(
+      configSegment,
+      mobileDeploymentEnvironmentPattern,
+      'CLIENT-MOBILE-001 mobile-staging-config must include EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging',
+    );
+    assertStrictMobileStructuredReport(evidence, {
+      easSegment,
+      cryptoSegment,
+      configSegment,
+    });
+  }
+  if (item.id === 'PERF-HTTP-001') {
+    for (const [segment, markers] of httpPerformanceSegmentMarkerRequirements) {
+      const missingSegmentMarkers = evidence.some((artifact) => {
+        const summary = String(artifact.result_summary ?? '');
+        return summary.toLowerCase().includes(segment.toLowerCase())
+          && !summarySegmentIncludesAll(summary, segment, markers);
+      });
+      assert.equal(
+        missingSegmentMarkers,
+        false,
+        `PERF-HTTP-001 strict release evidence must include HTTP load markers on ${segment}`,
+      );
+    }
+    assertStrictPerformanceNumbers('PERF-HTTP-001', evidence, 'PERF-HTTP-001', {
+      minRPS: 5000,
+      maxP99MS: 200,
+      minDurationMS: 60000,
+    });
+    assertStrictHTTPLoadStructuredReport(evidence);
+  }
+  if (item.id === 'PERF-WS-001') {
+    for (const [segment, markers] of websocketPerformanceSegmentMarkerRequirements) {
+      assertEvidenceHasSegmentMarkers(evidence, segment, markers, `PERF-WS-001 strict release evidence must include WebSocket load markers on ${segment}`);
+    }
+    assertStrictWebSocketArtifactRoomBinding(evidence, 'PERF-WS-001');
+    assertStrictWebSocketPrincipalBinding(evidence, 'PERF-WS-001');
+    assertStrictPerformanceNumbers('PERF-WS-001', evidence, 'PERF-WS-001', {
+      minRPS: 500,
+      maxP99MS: 200,
+      minDurationMS: 60000,
+      minWSEvents: 30000,
+    });
+    assertStrictWebSocketSequenceNumbers(evidence, 'PERF-WS-001', 'PERF-WS-001', 30000);
+    assertStrictWebSocketRedisStructuredReport(evidence, 'PERF-WS-001');
+  }
+  if (item.id === 'DATA-REDIS-001') {
+    for (const [segment, markers] of redisPerformanceSegmentMarkerRequirements) {
+      assertEvidenceHasSegmentMarkers(evidence, segment, markers, `DATA-REDIS-001 strict release evidence must include Redis load markers on ${segment}`);
+    }
+    assertStrictWebSocketArtifactRoomBinding(evidence, 'DATA-REDIS-001');
+    assertStrictWebSocketPrincipalBinding(evidence, 'DATA-REDIS-001');
+    assertStrictRedisSequenceNumbers(evidence);
+    assertStrictWebSocketRedisStructuredReport(evidence, 'DATA-REDIS-001');
+  }
+  if (item.id === 'ABUSE-LIMIT-001') {
+    const abuseLoadRunIDs = new Set();
+    for (const [segment, markers] of abuseRateLimitSegmentMarkerRequirements) {
+      const missingSegmentMarkers = evidence.some((artifact) => {
+        const summary = String(artifact.result_summary ?? '');
+        return summary.toLowerCase().includes(segment.toLowerCase())
+          && !summarySegmentIncludesAll(summary, segment, markers);
+      });
+      assert.equal(
+        missingSegmentMarkers,
+        false,
+        `ABUSE-LIMIT-001 strict release evidence must include abuse markers on ${segment}`,
+      );
+      const loadRunID = summarySegmentCapture(findEvidenceSegment(evidence, segment), segment, /\bload_run_id=([^\s,;]+)/i);
+      assert.ok(loadRunID, `ABUSE-LIMIT-001 strict release evidence must include load_run_id on ${segment}`);
+      abuseLoadRunIDs.add(loadRunID);
+    }
+    assert.equal(abuseLoadRunIDs.size, 1, 'ABUSE-LIMIT-001 strict release evidence load_run_id values must all match');
+    assertStrictAbuseAttempts(evidence);
+    assertStrictAbuseRateLimitHeaders(evidence);
+    assertStrictAbuseConfigAssignments(evidence);
+    assertStrictAbuseStructuredReport(evidence);
+  }
+  if (item.id === 'DEPLOY-TF-001') {
+    const approvalEvidenceWithoutTicket = evidence.some((artifact) => {
+      const summary = String(artifact.result_summary ?? '').toLowerCase();
+      return summary.includes('terraform-staging-apply-or-approval')
+        && summary.includes('deployment approval')
+        && summary.includes('approved')
+        && summary.includes('deploy-tf-001')
+        && !terraformApprovalChangeTicketPattern.test(summary);
+    });
+    assert.equal(
+      approvalEvidenceWithoutTicket,
+      false,
+      'DEPLOY-TF-001 strict release approval evidence must include change_ticket=<ticket-id>',
+    );
+  }
+  if (item.id === 'EXT-ZOOM-001') {
+    const missingMeetingCreateOrFallbackProof = evidence.some((artifact) => {
+      const summary = String(artifact.result_summary ?? '');
+      return summary.toLowerCase().includes('zoom-meeting-create-or-fallback')
+        && !zoomMeetingJoinURLPattern.test(summary)
+        && !zoomMeetingOfflineFallbackPattern.test(summary);
+    });
+    assert.equal(
+      missingMeetingCreateOrFallbackProof,
+      false,
+      'EXT-ZOOM-001 strict release evidence must include meeting-create or offline-fallback markers on zoom-meeting-create-or-fallback',
+    );
+    for (const [segment, markers] of zoomSegmentMarkerRequirements) {
+      const missingSegmentMarkers = evidence.some((artifact) => {
+        const summary = String(artifact.result_summary ?? '');
+        return summary.toLowerCase().includes(segment.toLowerCase())
+          && !summarySegmentIncludesAll(summary, segment, markers);
+      });
+      assert.equal(
+        missingSegmentMarkers,
+        false,
+        `EXT-ZOOM-001 strict release evidence must include Zoom markers on ${segment}`,
+      );
+    }
+    const webhookSignatureSegment = findEvidenceSegment(evidence, 'zoom-webhook-signature-delivery');
+    assert.match(
+      webhookSignatureSegment,
+      zoomWebhookSignaturePattern,
+      'EXT-ZOOM-001 zoom-webhook-signature-delivery must include concrete x-zm-signature=<v0 signature>',
+    );
+    assert.match(
+      webhookSignatureSegment,
+      zoomWebhookTimestampPattern,
+      'EXT-ZOOM-001 zoom-webhook-signature-delivery must include concrete x-zm-request-timestamp=<epoch>',
+    );
+    assert.match(
+      webhookSignatureSegment,
+      zoomStaleRejectedPattern,
+      'EXT-ZOOM-001 zoom-webhook-signature-delivery must include stale_rejected=true',
+    );
+    assert.match(
+      webhookSignatureSegment,
+      zoomReplayRejectedPattern,
+      'EXT-ZOOM-001 zoom-webhook-signature-delivery must include replay_rejected=true',
+    );
+    assert.match(
+      webhookSignatureSegment,
+      zoomInvalidSignatureRejectedPattern,
+      'EXT-ZOOM-001 zoom-webhook-signature-delivery must include invalid_signature_rejected=true',
+    );
+    assert.match(
+      webhookSignatureSegment,
+      zoomSignedDeliveryAcceptedPattern,
+      'EXT-ZOOM-001 zoom-webhook-signature-delivery must include signed_delivery_accepted=true',
+    );
+    const timeoutCircuitSegment = findEvidenceSegment(evidence, 'zoom-timeout-circuit-fallback');
+    assert.match(
+      timeoutCircuitSegment,
+      zoomProviderTimeoutPattern,
+      'EXT-ZOOM-001 zoom-timeout-circuit-fallback must include provider_timeout=true',
+    );
+    assert.match(
+      timeoutCircuitSegment,
+      zoomCircuitOpenPattern,
+      'EXT-ZOOM-001 zoom-timeout-circuit-fallback must include circuit_open=true',
+    );
+    assert.match(
+      timeoutCircuitSegment,
+      zoomOfflineFallbackPattern,
+      'EXT-ZOOM-001 zoom-timeout-circuit-fallback must include offline_fallback=true',
+    );
+    const webhookValidationSegment = findEvidenceSegment(evidence, 'zoom-webhook-url-validation');
+    assert.match(
+      webhookValidationSegment,
+      zoomPlainTokenPattern,
+      'EXT-ZOOM-001 zoom-webhook-url-validation must include concrete plain_token=<token>',
+    );
+    assert.match(
+      webhookValidationSegment,
+      zoomEncryptedTokenPattern,
+      'EXT-ZOOM-001 zoom-webhook-url-validation must include concrete encrypted_token=<token>',
+    );
+    assert.match(
+      webhookValidationSegment,
+      zoomValidationResponsePattern,
+      'EXT-ZOOM-001 zoom-webhook-url-validation must include validation_response=200',
+    );
+    const duplicateSegment = findEvidenceSegment(evidence, 'zoom-duplicate-webhook-idempotency');
+    assert.match(
+      duplicateSegment,
+      zoomTrackingIDPattern,
+      'EXT-ZOOM-001 zoom-duplicate-webhook-idempotency must include concrete x-zm-trackingid=<id>',
+    );
+    assert.match(
+      duplicateSegment,
+      zoomDeliveryIDPattern,
+      'EXT-ZOOM-001 zoom-duplicate-webhook-idempotency must include concrete delivery_id=<id>',
+    );
+    assert.match(
+      duplicateSegment,
+      zoomSingleStateMutationPattern,
+      'EXT-ZOOM-001 zoom-duplicate-webhook-idempotency must include single_state_mutation=true',
+    );
+    assert.match(
+      duplicateSegment,
+      zoomNoDuplicateSideEffectsPattern,
+      'EXT-ZOOM-001 zoom-duplicate-webhook-idempotency must include no_duplicate_side_effects=true',
+    );
+    const roomMappingSegment = findEvidenceSegment(evidence, 'zoom-meeting-room-mapping');
+    assert.match(
+      roomMappingSegment,
+      zoomMeetingExternalIDPattern,
+      'EXT-ZOOM-001 zoom-meeting-room-mapping must include concrete meeting_external_id=<id>',
+    );
+    assert.match(
+      roomMappingSegment,
+      zoomInternalRoomIDPattern,
+      'EXT-ZOOM-001 zoom-meeting-room-mapping must include concrete internal_room_id=<id>',
+    );
+    assertStrictZoomStructuredReport(evidence, {
+      timeoutCircuitSegment,
+      webhookSignatureSegment,
+      webhookValidationSegment,
+      duplicateSegment,
+      roomMappingSegment,
+    });
+  }
+  if (item.id === 'EXT-AI-001') {
+    const missingCitationVerificationProof = evidence.some((artifact) => {
+      const summary = String(artifact.result_summary ?? '');
+      return summary.toLowerCase().includes('ai-citation-verification')
+        && !aiCitationVerificationPattern.test(summary);
+    });
+    assert.equal(
+      missingCitationVerificationProof,
+      false,
+      'EXT-AI-001 strict release evidence must include citation rejection/acceptance markers on ai-citation-verification',
+    );
+    const missingAuditPersistenceProof = evidence.some((artifact) => {
+      const summary = String(artifact.result_summary ?? '');
+      return summary.toLowerCase().includes('ai-audit-persistence')
+        && !aiAuditPersistencePattern.test(summary);
+    });
+    assert.equal(
+      missingAuditPersistenceProof,
+      false,
+      'EXT-AI-001 strict release evidence must include tenant-RLS audit markers on ai-audit-persistence',
+    );
+    const providerSegment = findEvidenceSegment(evidence, 'ai-provider-config');
+    const degradationSegment = findEvidenceSegment(evidence, 'ai-timeout-degradation');
+    const generationSegment = evidence
+      .map((artifact) => String(artifact.result_summary ?? ''))
+      .map((summary) => findEvidenceSegment([{ result_summary: summary }], 'ai-generation-route'))
+      .find(Boolean);
+    const citationSegment = evidence
+      .map((artifact) => String(artifact.result_summary ?? ''))
+      .map((summary) => findEvidenceSegment([{ result_summary: summary }], 'ai-citation-verification'))
+      .find(Boolean);
+    const auditSegment = evidence
+      .map((artifact) => String(artifact.result_summary ?? ''))
+      .map((summary) => findEvidenceSegment([{ result_summary: summary }], 'ai-audit-persistence'))
+      .find(Boolean);
+    assert.ok(providerSegment, 'EXT-AI-001 strict release evidence must include ai-provider-config segment');
+    assert.ok(degradationSegment, 'EXT-AI-001 strict release evidence must include ai-timeout-degradation segment');
+    assert.ok(generationSegment, 'EXT-AI-001 strict release evidence must include ai-generation-route segment');
+    assert.ok(citationSegment, 'EXT-AI-001 strict release evidence must include ai-citation-verification segment');
+    assert.ok(auditSegment, 'EXT-AI-001 strict release evidence must include ai-audit-persistence segment');
+    assert.match(providerSegment, aiProviderValuePattern, 'EXT-AI-001 strict release ai-provider-config segment must include AI_PROVIDER=<provider>');
+    assert.match(providerSegment, aiModelValuePattern, 'EXT-AI-001 strict release ai-provider-config segment must include AI_CHAT_MODEL=<model>');
+    assert.match(providerSegment, aiEndpointValuePattern, 'EXT-AI-001 strict release ai-provider-config segment must include HTTPS AI_CHAT_ENDPOINT=<url>');
+    assert.match(providerSegment, aiHTTPTimeoutMSValuePattern, 'EXT-AI-001 strict release ai-provider-config segment must include positive AI_HTTP_TIMEOUT_MS=<ms>');
+    assert.match(providerSegment, aiMaxRetriesValuePattern, 'EXT-AI-001 strict release ai-provider-config segment must include AI_MAX_RETRIES=<count>');
+    assert.match(degradationSegment, aiProviderTimeoutPattern, 'EXT-AI-001 strict release ai-timeout-degradation segment must include provider_timeout=true');
+    assert.match(degradationSegment, aiRetryExhaustedPattern, 'EXT-AI-001 strict release ai-timeout-degradation segment must include retry_exhausted=true');
+    assert.match(degradationSegment, aiFailClosedPattern, 'EXT-AI-001 strict release ai-timeout-degradation segment must include fail_closed=true');
+    const generationRequestID = generationSegment.match(aiRequestIDPattern)?.[1] ?? '';
+    const generationOrganizationID = generationSegment.match(aiOrganizationIDPattern)?.[1] ?? '';
+    const generationUserID = generationSegment.match(aiUserIDPattern)?.[1] ?? '';
+    const auditRequestID = auditSegment.match(aiRequestIDPattern)?.[1] ?? '';
+    const auditOrganizationID = auditSegment.match(aiOrganizationIDPattern)?.[1] ?? '';
+    const auditUserID = auditSegment.match(aiUserIDPattern)?.[1] ?? '';
+    const citationID = citationSegment.match(aiCitationIDPattern)?.[1] ?? '';
+    const auditCitationID = auditSegment.match(aiCitationIDPattern)?.[1] ?? '';
+    assert.ok(generationRequestID, 'EXT-AI-001 strict release ai-generation-route segment must include request_id=<id>');
+    assert.ok(generationOrganizationID, 'EXT-AI-001 strict release ai-generation-route segment must include organization_id=<id>');
+    assert.ok(generationUserID, 'EXT-AI-001 strict release ai-generation-route segment must include user_id=<id>');
+    assert.ok(auditRequestID, 'EXT-AI-001 strict release ai-audit-persistence segment must include request_id=<id>');
+    assert.ok(auditOrganizationID, 'EXT-AI-001 strict release ai-audit-persistence segment must include organization_id=<id>');
+    assert.ok(auditUserID, 'EXT-AI-001 strict release ai-audit-persistence segment must include user_id=<id>');
+    assert.ok(citationID, 'EXT-AI-001 strict release ai-citation-verification segment must include citation_id=<id>');
+    assert.ok(auditCitationID, 'EXT-AI-001 strict release ai-audit-persistence segment must include citation_id=<id>');
+    assert.equal(
+      auditOrganizationID,
+      generationOrganizationID,
+      'EXT-AI-001 strict release ai-audit-persistence organization_id must match ai-generation-route organization_id',
+    );
+    assert.equal(
+      auditUserID,
+      generationUserID,
+      'EXT-AI-001 strict release ai-audit-persistence user_id must match ai-generation-route user_id',
+    );
+    assert.equal(
+      auditRequestID,
+      generationRequestID,
+      'EXT-AI-001 strict release ai-audit-persistence request_id must match ai-generation-route request_id',
+    );
+    assert.equal(
+      auditCitationID,
+      citationID,
+      'EXT-AI-001 strict release ai-audit-persistence citation_id must match ai-citation-verification citation_id',
+    );
+    assertStrictAIStructuredReport(evidence, {
+      providerSegment,
+      generationSegment,
+      degradationSegment,
+      citationSegment,
+      auditSegment,
+    });
+    for (const [segment, markers] of aiSegmentMarkerRequirements) {
+      const missingSegmentMarkers = evidence.some((artifact) => {
+        const summary = String(artifact.result_summary ?? '');
+        return summary.toLowerCase().includes(segment.toLowerCase())
+          && !summarySegmentIncludesAll(summary, segment, markers);
+      });
+      assert.equal(
+        missingSegmentMarkers,
+        false,
+        `EXT-AI-001 strict release evidence must include AI markers on ${segment}`,
+      );
+    }
+  }
+  if (item.id === 'OBS-OTEL-001') {
+    const missingCollectorConfigProof = evidence.some((artifact) => {
+      const summary = String(artifact.result_summary ?? '');
+      return summary.toLowerCase().includes('collector-otlp-config')
+        && !obsCollectorConfigPattern.test(summary);
+    });
+    assert.equal(
+      missingCollectorConfigProof,
+      false,
+      'OBS-OTEL-001 strict release evidence must include staging OTLP markers on collector-otlp-config',
+    );
+    const missingAPIMetricsProof = evidence.some((artifact) => {
+      const summary = String(artifact.result_summary ?? '');
+      return summary.toLowerCase().includes('api-prometheus-metrics')
+        && !obsAPIMetricsPattern.test(summary);
+    });
+    assert.equal(
+      missingAPIMetricsProof,
+      false,
+      'OBS-OTEL-001 strict release evidence must include API metric markers on api-prometheus-metrics',
+    );
+    const missingRustMetricsProof = evidence.some((artifact) => {
+      const summary = String(artifact.result_summary ?? '');
+      return summary.toLowerCase().includes('rust-prometheus-metrics')
+        && !obsRustMetricsPattern.test(summary);
+    });
+    assert.equal(
+      missingRustMetricsProof,
+      false,
+      'OBS-OTEL-001 strict release evidence must include Rust metric markers on rust-prometheus-metrics',
+    );
+    const missingTraceSearchProof = evidence.some((artifact) => {
+      const summary = String(artifact.result_summary ?? '');
+      return summary.toLowerCase().includes('trace-backend-search')
+        && !obsTraceSearchPattern.test(summary);
+    });
+    assert.equal(
+      missingTraceSearchProof,
+      false,
+      'OBS-OTEL-001 strict release evidence must include API/Rust trace markers on trace-backend-search',
+    );
+    const missingLogCorrelationProof = evidence.some((artifact) => {
+      const summary = String(artifact.result_summary ?? '');
+      return summary.toLowerCase().includes('log-backend-trace-correlation')
+        && !obsLogCorrelationPattern.test(summary);
+    });
+    assert.equal(
+      missingLogCorrelationProof,
+      false,
+      'OBS-OTEL-001 strict release evidence must include tenant-aware log markers on log-backend-trace-correlation',
+    );
+    const traceSegment = findEvidenceSegment(evidence, 'trace-backend-search');
+    const logSegment = findEvidenceSegment(evidence, 'log-backend-trace-correlation');
+    const traceSegmentTraceID = extractStandaloneTraceID(traceSegment, 'trace-backend-search');
+    const logSegmentTraceID = extractStandaloneTraceID(logSegment, 'log-backend-trace-correlation');
+    assert.equal(
+      logSegmentTraceID,
+      traceSegmentTraceID,
+      'OBS-OTEL-001 strict release trace/log segments must reference the same concrete trace ID',
+    );
+    const traceSegmentRoute = extractTextMarker(traceSegment, 'route', 'OBS-OTEL-001 trace-backend-search');
+    const logSegmentRoute = extractTextMarker(logSegment, 'route', 'OBS-OTEL-001 log-backend-trace-correlation');
+    const traceSegmentMethod = extractTextMarker(traceSegment, 'method', 'OBS-OTEL-001 trace-backend-search').toUpperCase();
+    const logSegmentMethod = extractTextMarker(logSegment, 'method', 'OBS-OTEL-001 log-backend-trace-correlation').toUpperCase();
+    assert.equal(
+      logSegmentRoute,
+      traceSegmentRoute,
+      'OBS-OTEL-001 strict release trace/log segments must reference the same observed route',
+    );
+    assert.equal(
+      logSegmentMethod,
+      traceSegmentMethod,
+      'OBS-OTEL-001 strict release trace/log segments must reference the same HTTP method',
+    );
+    assertStrictObservabilityOTELStructuredReport(evidence, {
+      traceSegment,
+      logSegment,
+    });
+  }
+  if (item.id === 'OBS-ALERT-001') {
+    const missingDashboardImportProof = evidence.some((artifact) => {
+      const summary = String(artifact.result_summary ?? '');
+      return summary.toLowerCase().includes('dashboard-import')
+        && !obsDashboardImportPattern.test(summary);
+    });
+    assert.equal(
+      missingDashboardImportProof,
+      false,
+      'OBS-ALERT-001 strict release evidence must include dashboard metric markers on dashboard-import',
+    );
+    const missingAlertRulesProof = evidence.some((artifact) => {
+      const summary = String(artifact.result_summary ?? '');
+      return summary.toLowerCase().includes('alert-rules-loaded')
+        && !obsAlertRulesPattern.test(summary);
+    });
+    assert.equal(
+      missingAlertRulesProof,
+      false,
+      'OBS-ALERT-001 strict release evidence must include rule and metric markers on alert-rules-loaded',
+    );
+    const missingAlertDeliveryProof = evidence.some((artifact) => {
+      const summary = String(artifact.result_summary ?? '');
+      return summary.toLowerCase().includes('alert-delivery-status')
+        && !obsAlertDeliveryPattern.test(summary);
+    });
+    assert.equal(
+      missingAlertDeliveryProof,
+      false,
+      'OBS-ALERT-001 strict release evidence must include delivery markers on alert-delivery-status',
+    );
+    const missingRetentionPolicyProof = evidence.some((artifact) => {
+      const summary = String(artifact.result_summary ?? '');
+      return summary.toLowerCase().includes('telemetry-retention-policy')
+        && !obsRetentionPolicyPattern.test(summary);
+    });
+    assert.equal(
+      missingRetentionPolicyProof,
+      false,
+      'OBS-ALERT-001 strict release evidence must include retention markers on telemetry-retention-policy',
+    );
+    const deliverySegment = findEvidenceSegment(evidence, 'alert-delivery-status');
+    assertStrictObservabilityAlertStructuredReport(evidence, { deliverySegment });
+  }
+}
+
+function includesAll(text, required) {
+  if (!required) {
+    return true;
+  }
+  const markers = Array.isArray(required) ? required : [required];
+  return markers.every((marker) => text.includes(String(marker).toLowerCase()));
+}
+
+function summarySegmentIncludesAll(summary, segment, markers) {
+  const pattern = new RegExp(
+    `${escapeRegExp(segment)}${markers.map((marker) => `(?=[^;]*${escapeRegExp(marker)})`).join('')}`,
+    'i',
+  );
+  return pattern.test(summary);
+}
+
+function summarySegmentMatches(summary, segment, pattern) {
+  return String(summary ?? '').split(';').some((candidate) => (
+    summaryHasSegmentLabel(candidate, segment) && pattern.test(candidate)
+  ));
+}
+
+function summarySegmentCapture(summary, segment, pattern) {
+  for (const candidate of String(summary ?? '').split(';')) {
+    if (!summaryHasSegmentLabel(candidate, segment)) {
+      continue;
+    }
+    const match = candidate.match(pattern);
+    if (match) {
+      return match[1] ?? match[0];
+    }
+  }
+  return '';
+}
+
+function summaryHasSegmentLabel(summary, segment) {
+  const pattern = new RegExp(`(?:^|;)\\s*(?:[^;:]+:\\s*)?${escapeRegExp(segment)}(?:\\s|$|[:=])`, 'i');
+  return pattern.test(summary);
+}
+
+function summaryHasExactServiceVersion(summary, releaseCandidate) {
+  const release = String(releaseCandidate ?? '').trim();
+  if (!release) {
+    return false;
+  }
+  const pattern = new RegExp(`(?:^|[\\s,;])service_version=[^\\s,;]*${escapeRegExp(release)}(?:[\\s,;]|$)`, 'i');
+  return pattern.test(String(summary ?? ''));
+}
+
+function assertEvidenceHasSegmentMarkers(evidence, segment, markers, message) {
+  const hasSegmentWithMarkers = evidence.some((artifact) => {
+    const summary = String(artifact.result_summary ?? '');
+    return summarySegmentIncludesAll(summary, segment, markers);
+  });
+  assert.equal(hasSegmentWithMarkers, true, message);
+}
+
+function findEvidenceSegment(evidence, segment) {
+  const segmentLower = String(segment).toLowerCase();
+  for (const artifact of evidence) {
+    const summary = String(artifact.result_summary ?? '');
+    const parts = summary.split(';');
+    for (const part of parts) {
+      if (part.toLowerCase().includes(segmentLower)) {
+        return part;
+      }
+    }
+  }
+  return '';
+}
+
+function extractNumericMarker(segmentText, marker, itemID) {
+  const pattern = new RegExp(`(?:^|[\\s,])${escapeRegExp(marker)}=(-?\\d+(?:\\.\\d+)?)\\b`, 'i');
+  const match = pattern.exec(segmentText);
+  assert.ok(match, `${itemID} strict release evidence must include numeric ${marker}`);
+  const value = Number.parseFloat(match[1]);
+  assert.ok(Number.isFinite(value), `${itemID} strict release evidence ${marker} must be numeric`);
+  return value;
+}
+
+function extractTextMarker(segmentText, marker, itemID) {
+  const pattern = new RegExp(`(?:^|[\\s,])${escapeRegExp(marker)}=([^\\s,;]+)`, 'i');
+  const match = pattern.exec(segmentText);
+  assert.ok(match, `${itemID} strict release evidence must include ${marker}`);
+  return String(match[1] ?? '').trim();
+}
+
+function assertStrictRustStructuredReport(evidence, segments) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.rust_grpc_runtime_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    'RUST-GRPC-001 strict release evidence must include exactly one structured rust_grpc_runtime_proof report',
+  );
+  const report = structuredReports[0];
+  const deploymentEnvironment = extractTextMarker(segments.healthSegment, 'deployment_environment', 'RUST-GRPC-001 structured report health binding');
+  const loadRunID = extractTextMarker(segments.healthSegment, 'load_run_id', 'RUST-GRPC-001 structured report health binding');
+  const embeddingRequests = segments.metricsSegment.match(rustEmbeddingRequestsPattern)?.[1] ?? '';
+  const vectorSearchRequests = segments.metricsSegment.match(rustVectorSearchRequestsPattern)?.[1] ?? '';
+  const apiRustVectorSearchOps = segments.apiMetricsSegment.match(apiRustVectorSearchOpsPattern)?.[1] ?? '';
+  const apiRustVectorSearchSeconds = segments.apiMetricsSegment.match(apiRustVectorSearchSecondsPattern)?.[1] ?? '';
+
+  assert.equal(String(report.deployment_environment ?? ''), deploymentEnvironment, 'RUST-GRPC-001 structured report deployment_environment must match rust-grpc-health marker');
+  assert.equal(String(report.load_run_id ?? ''), loadRunID, 'RUST-GRPC-001 structured report load_run_id must match rust-grpc-health marker');
+  assert.ok(String(report.grpc_target ?? '').trim(), 'RUST-GRPC-001 structured report grpc_target must not be empty');
+  assert.ok(String(report.metrics_target ?? '').trim(), 'RUST-GRPC-001 structured report metrics_target must not be empty');
+  assert.ok(String(report.api_metrics_target ?? '').trim(), 'RUST-GRPC-001 structured report api_metrics_target must not be empty');
+  assertStrictRustStructuredTargets(report);
+  assert.equal(String(report.health_status ?? ''), 'SERVING', 'RUST-GRPC-001 structured report health_status must be SERVING');
+  assert.equal(String(report.grpc_transport_security ?? ''), 'mTLS', 'RUST-GRPC-001 structured report must retain grpc_transport_security=mTLS');
+  assert.equal(String(report.service_name ?? ''), 'scriptureforge.engine.ScriptureEngine', 'RUST-GRPC-001 structured report service_name must identify ScriptureEngine');
+  assert.equal(Number(report.embedding_requests), Number(embeddingRequests), 'RUST-GRPC-001 structured report embedding_requests must match rust-metrics marker');
+  assert.equal(Number(report.vector_search_requests), Number(vectorSearchRequests), 'RUST-GRPC-001 structured report vector_search_requests must match rust-metrics marker');
+  assert.equal(Number(report.api_rust_vector_search_ops), Number(apiRustVectorSearchOps), 'RUST-GRPC-001 structured report api_rust_vector_search_ops must match api-rust-integration-metrics marker');
+  assert.equal(Number(report.api_rust_vector_search_seconds), Number(apiRustVectorSearchSeconds), 'RUST-GRPC-001 structured report api_rust_vector_search_seconds must match api-rust-integration-metrics marker');
+}
+
+function assertStrictRustStructuredTargets(report) {
+  const grpcTarget = String(report.grpc_target ?? '').trim();
+  assert.ok(isNonLocalHostPortTarget(grpcTarget), 'RUST-GRPC-001 structured report grpc_target must be a non-local host:port target');
+  const metricsTarget = String(report.metrics_target ?? '').trim();
+  assert.ok(isHTTPNonLocalArtifact(metricsTarget), 'RUST-GRPC-001 structured report metrics_target must be an HTTP(S) non-local artifact URL');
+  const apiMetricsTarget = String(report.api_metrics_target ?? '').trim();
+  assert.ok(isHTTPSNonLocalArtifact(apiMetricsTarget), 'RUST-GRPC-001 structured report api_metrics_target must be an HTTPS non-local artifact URL');
+  const metricsCanonical = canonicalStrictArtifactURL(metricsTarget);
+  const apiMetricsCanonical = canonicalStrictArtifactURL(apiMetricsTarget);
+  assert.notEqual(
+    metricsCanonical,
+    apiMetricsCanonical,
+    'RUST-GRPC-001 structured report metrics_target and api_metrics_target must be distinct',
+  );
+}
+
+function isHTTPNonLocalArtifact(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  return (url.protocol === 'https:' || url.protocol === 'http:')
+    && !isLocalOrPrivateHost(hostname);
+}
+
+function isNonLocalHostPortTarget(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw || /^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) {
+    return false;
+  }
+  let parsed;
+  try {
+    parsed = new URL(`grpc://${raw}`);
+  } catch {
+    return false;
+  }
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  return Boolean(hostname)
+    && Boolean(parsed.port)
+    && !isLocalOrPrivateAddressHost(hostname)
+    && !isReservedPlaceholderHost(hostname);
+}
+
+function isLocalOrPrivateAddressHost(hostname) {
+  const normalized = String(hostname ?? '').replace(/^\[|\]$/g, '').toLowerCase();
+  if (
+    normalized === 'localhost'
+    || normalized === '::'
+    || normalized === '::1'
+    || normalized === '0.0.0.0'
+    || normalized.startsWith('0.')
+    || normalized.startsWith('127.')
+    || normalized.startsWith('10.')
+    || normalized.startsWith('192.168.')
+    || /^169\.254\./.test(normalized)
+  ) {
+    return true;
+  }
+  const mappedIPv4 = ipv4MappedHost(normalized);
+  if (mappedIPv4) {
+    return isLocalOrPrivateAddressHost(mappedIPv4);
+  }
+  if (/^f[cd][0-9a-f]*:/i.test(normalized) || /^fe[89ab][0-9a-f]*:/i.test(normalized)) {
+    return true;
+  }
+  const private172 = normalized.match(/^172\.(\d+)\./);
+  return Boolean(private172 && Number(private172[1]) >= 16 && Number(private172[1]) <= 31);
+}
+
+function assertStrictMobileStructuredReport(evidence, segments) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.mobile_native_crypto_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    'CLIENT-MOBILE-001 strict release evidence must include exactly one structured mobile_native_crypto_proof report',
+  );
+  const report = structuredReports[0];
+  assert.equal(String(report.load_run_id ?? ''), summarySegmentCapture(segments.cryptoSegment, 'mobile-native-crypto-smoke', /\bload_run_id=([^\s,;]+)/i), 'CLIENT-MOBILE-001 structured report load_run_id must match crypto summary marker');
+  assert.equal(String(report.mobile_build_id ?? ''), summarySegmentCapture(segments.cryptoSegment, 'mobile-native-crypto-smoke', mobileBuildIDPattern), 'CLIENT-MOBILE-001 structured report mobile_build_id must match crypto summary marker');
+  assert.equal(String(report.mobile_build_id ?? ''), summarySegmentCapture(segments.easSegment, 'mobile-eas-or-device-run', mobileBuildIDPattern), 'CLIENT-MOBILE-001 structured report mobile_build_id must match EAS summary marker');
+  assert.equal(String(report.mobile_build_id ?? ''), summarySegmentCapture(segments.configSegment, 'mobile-staging-config', mobileBuildIDPattern), 'CLIENT-MOBILE-001 structured report mobile_build_id must match config summary marker');
+  assert.equal(String(report.platforms ?? ''), summarySegmentCapture(segments.easSegment, 'mobile-eas-or-device-run', /\bplatforms=([A-Za-z0-9_,.-]+)\b/i), 'CLIENT-MOBILE-001 structured report platforms must match EAS summary marker');
+  assert.equal(String(report.release_channel ?? ''), 'staging', 'CLIENT-MOBILE-001 structured report release_channel must be staging');
+  assert.equal(String(report.expo_profile ?? ''), 'staging', 'CLIENT-MOBILE-001 structured report expo_profile must be staging');
+  assert.equal(String(report.provider ?? ''), 'react-native-quick-crypto', 'CLIENT-MOBILE-001 structured report provider must be react-native-quick-crypto');
+  assert.equal(report.native_required, true, 'CLIENT-MOBILE-001 structured report native_required must be true');
+  assert.equal(report.aes_gcm_roundtrip, true, 'CLIENT-MOBILE-001 structured report aes_gcm_roundtrip must be true');
+  assert.equal(report.tamper_rejected, true, 'CLIENT-MOBILE-001 structured report tamper_rejected must be true');
+  assert.equal(report.associated_data_rejected, true, 'CLIENT-MOBILE-001 structured report associated_data_rejected must be true');
+  assert.equal(report.unique_iv, true, 'CLIENT-MOBILE-001 structured report unique_iv must be true');
+  assert.equal(report.key_disposed, true, 'CLIENT-MOBILE-001 structured report key_disposed must be true');
+  assert.equal(report.disposed_handle_rejected, true, 'CLIENT-MOBILE-001 structured report disposed_handle_rejected must be true');
+  assert.equal(report.revoked_key_rejected, true, 'CLIENT-MOBILE-001 structured report revoked_key_rejected must be true');
+  assert.equal(report.passphrase_buffer_zeroized, true, 'CLIENT-MOBILE-001 structured report passphrase_buffer_zeroized must be true');
+  assert.equal(report.salt_buffer_zeroized, true, 'CLIENT-MOBILE-001 structured report salt_buffer_zeroized must be true');
+  assert.equal(report.plaintext_buffer_zeroized, true, 'CLIENT-MOBILE-001 structured report plaintext_buffer_zeroized must be true');
+  assert.equal(String(report.associated_data_salt_id ?? ''), summarySegmentCapture(segments.cryptoSegment, 'mobile-native-crypto-smoke', mobileAssociatedDataSaltIDPattern), 'CLIENT-MOBILE-001 structured report associated_data_salt_id must match crypto summary marker');
+  assert.equal(Number(report.associated_data_salt_version), Number(summarySegmentCapture(segments.cryptoSegment, 'mobile-native-crypto-smoke', mobileAssociatedDataVersionPattern)), 'CLIENT-MOBILE-001 structured report associated_data_salt_version must match crypto summary marker');
+  assert.equal(String(report.device_os ?? ''), summarySegmentCapture(segments.cryptoSegment, 'mobile-native-crypto-smoke', mobileDeviceOSPattern), 'CLIENT-MOBILE-001 structured report device_os must match crypto summary marker');
+  assert.equal(String(report.device_model ?? ''), summarySegmentCapture(segments.cryptoSegment, 'mobile-native-crypto-smoke', mobileDeviceModelPattern), 'CLIENT-MOBILE-001 structured report device_model must match crypto summary marker');
+  assert.equal(String(report.app_runtime ?? ''), 'installed-staging-app', 'CLIENT-MOBILE-001 structured report app_runtime must be installed-staging-app');
+  assert.equal(String(report.api_base_url ?? ''), segments.configSegment.match(mobileAPIBaseURLPattern)?.[1] ?? '', 'CLIENT-MOBILE-001 structured report api_base_url must match config summary marker');
+  assert.equal(String(report.ws_base_url ?? ''), segments.configSegment.match(mobileWSBaseURLPattern)?.[1] ?? '', 'CLIENT-MOBILE-001 structured report ws_base_url must match config summary marker');
+  assert.equal(report.require_native_crypto, true, 'CLIENT-MOBILE-001 structured report require_native_crypto must be true');
+  assert.equal(String(report.deployment_environment ?? ''), 'staging', 'CLIENT-MOBILE-001 structured report deployment_environment must be staging');
+}
+
+function assertStrictObservabilityOTELStructuredReport(evidence, segments) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.observability_otel_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    'OBS-OTEL-001 strict release evidence must include exactly one structured observability_otel_proof report',
+  );
+  const report = structuredReports[0];
+  const traceID = extractStandaloneTraceID(segments.traceSegment, 'trace-backend-search');
+  const logTraceID = extractStandaloneTraceID(segments.logSegment, 'log-backend-trace-correlation');
+  const traceRoute = extractTextMarker(segments.traceSegment, 'route', 'OBS-OTEL-001 structured report trace binding');
+  const logRoute = extractTextMarker(segments.logSegment, 'route', 'OBS-OTEL-001 structured report log binding');
+  const traceMethod = extractTextMarker(segments.traceSegment, 'method', 'OBS-OTEL-001 structured report trace binding').toUpperCase();
+  const logMethod = extractTextMarker(segments.logSegment, 'method', 'OBS-OTEL-001 structured report log binding').toUpperCase();
+  const tenantID = extractTextMarker(segments.logSegment, 'tenant_id', 'OBS-OTEL-001 structured report log binding');
+  const userID = extractTextMarker(segments.logSegment, 'user_id', 'OBS-OTEL-001 structured report log binding');
+  const role = extractTextMarker(segments.logSegment, 'role', 'OBS-OTEL-001 structured report log binding');
+  const loadRunID = extractTextMarker(segments.traceSegment, 'load_run_id', 'OBS-OTEL-001 structured report trace binding');
+  const releaseCandidate = extractTextMarker(segments.traceSegment, 'release_candidate', 'OBS-OTEL-001 structured report trace binding');
+  const serviceVersion = extractTextMarker(segments.traceSegment, 'service_version', 'OBS-OTEL-001 structured report trace binding');
+
+  assert.equal(String(report.release_candidate ?? ''), releaseCandidate, 'OBS-OTEL-001 structured report release_candidate must match trace marker');
+  assert.equal(String(report.service_version ?? ''), serviceVersion, 'OBS-OTEL-001 structured report service_version must match trace marker');
+  assert.equal(String(report.load_run_id ?? ''), loadRunID, 'OBS-OTEL-001 structured report load_run_id must match trace marker');
+  assert.equal(String(report.trace_id ?? ''), traceID, 'OBS-OTEL-001 structured report trace_id must match trace marker');
+  assert.equal(String(report.observed_route ?? ''), traceRoute, 'OBS-OTEL-001 structured report observed_route must match trace route marker');
+  assert.equal(String(report.http_method ?? '').toUpperCase(), traceMethod, 'OBS-OTEL-001 structured report http_method must match trace method marker');
+  assert.equal(String(report.tenant_id ?? ''), tenantID, 'OBS-OTEL-001 structured report tenant_id must match log marker');
+  assert.equal(String(report.user_id ?? ''), userID, 'OBS-OTEL-001 structured report user_id must match log marker');
+  assert.equal(String(report.role ?? ''), role, 'OBS-OTEL-001 structured report role must match log marker');
+  assert.ok(String(report.collector_target ?? '').trim(), 'OBS-OTEL-001 structured report collector_target must not be empty');
+  assert.ok(String(report.api_metrics_target ?? '').trim(), 'OBS-OTEL-001 structured report api_metrics_target must not be empty');
+  assert.ok(String(report.rust_metrics_target ?? '').trim(), 'OBS-OTEL-001 structured report rust_metrics_target must not be empty');
+  assert.ok(String(report.trace_query_target ?? '').trim(), 'OBS-OTEL-001 structured report trace_query_target must not be empty');
+  assert.ok(String(report.log_query_target ?? '').trim(), 'OBS-OTEL-001 structured report log_query_target must not be empty');
+  assertStrictStructuredTargets('OBS-OTEL-001', [
+    ['collector_target', report.collector_target],
+    ['api_metrics_target', report.api_metrics_target],
+    ['rust_metrics_target', report.rust_metrics_target],
+    ['trace_query_target', report.trace_query_target],
+    ['log_query_target', report.log_query_target],
+  ]);
+  assertStructuredTargetIncludesTraceID('OBS-OTEL-001 trace_query_target', report.trace_query_target, traceID);
+  assertStructuredTargetIncludesTraceID('OBS-OTEL-001 log_query_target', report.log_query_target, logTraceID);
+  assert.equal(String(report.trace_query_trace_id ?? ''), traceID, 'OBS-OTEL-001 structured report trace_query_trace_id must match trace marker');
+  assert.equal(String(report.log_query_trace_id ?? ''), logTraceID, 'OBS-OTEL-001 structured report log_query_trace_id must match log marker');
+  assert.equal(String(report.trace_query_route ?? ''), traceRoute, 'OBS-OTEL-001 structured report trace_query_route must match trace route marker');
+  assert.equal(String(report.log_query_route ?? ''), logRoute, 'OBS-OTEL-001 structured report log_query_route must match log route marker');
+  assert.equal(String(report.trace_query_http_method ?? '').toUpperCase(), traceMethod, 'OBS-OTEL-001 structured report trace_query_http_method must match trace method marker');
+  assert.equal(String(report.log_query_http_method ?? '').toUpperCase(), logMethod, 'OBS-OTEL-001 structured report log_query_http_method must match log method marker');
+  assert.equal(String(report.log_tenant_id ?? ''), tenantID, 'OBS-OTEL-001 structured report log_tenant_id must match log marker');
+  assert.equal(String(report.log_user_id ?? ''), userID, 'OBS-OTEL-001 structured report log_user_id must match log marker');
+  assert.equal(String(report.log_role ?? ''), role, 'OBS-OTEL-001 structured report log_role must match log marker');
+}
+
+function assertStrictObservabilityAlertStructuredReport(evidence, segments) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.observability_alert_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    'OBS-ALERT-001 strict release evidence must include exactly one structured observability_alert_proof report',
+  );
+  const report = structuredReports[0];
+  const alertName = extractTextMarker(segments.deliverySegment, 'alertname', 'OBS-ALERT-001 structured report delivery binding');
+  const alertReceiver = extractTextMarker(segments.deliverySegment, 'receiver', 'OBS-ALERT-001 structured report delivery binding');
+  const deliveryID = extractTextMarker(segments.deliverySegment, 'delivery_id', 'OBS-ALERT-001 structured report delivery binding');
+  const loadRunID = extractTextMarker(segments.deliverySegment, 'load_run_id', 'OBS-ALERT-001 structured report delivery binding');
+  const releaseCandidate = extractTextMarker(segments.deliverySegment, 'release_candidate', 'OBS-ALERT-001 structured report delivery binding');
+  const serviceVersion = extractTextMarker(segments.deliverySegment, 'service_version', 'OBS-ALERT-001 structured report delivery binding');
+
+  assert.equal(String(report.release_candidate ?? ''), releaseCandidate, 'OBS-ALERT-001 structured report release_candidate must match delivery marker');
+  assert.equal(String(report.service_version ?? ''), serviceVersion, 'OBS-ALERT-001 structured report service_version must match delivery marker');
+  assert.equal(String(report.load_run_id ?? ''), loadRunID, 'OBS-ALERT-001 structured report load_run_id must match delivery marker');
+  assert.equal(String(report.alert_name ?? ''), alertName, 'OBS-ALERT-001 structured report alert_name must match delivery marker');
+  assert.equal(String(report.alert_receiver ?? ''), alertReceiver, 'OBS-ALERT-001 structured report alert_receiver must match delivery marker');
+  assert.ok(String(report.dashboard_target ?? '').trim(), 'OBS-ALERT-001 structured report dashboard_target must not be empty');
+  assert.ok(String(report.alert_rules_target ?? '').trim(), 'OBS-ALERT-001 structured report alert_rules_target must not be empty');
+  assert.ok(String(report.alert_delivery_target ?? '').trim(), 'OBS-ALERT-001 structured report alert_delivery_target must not be empty');
+  assert.ok(String(report.retention_target ?? '').trim(), 'OBS-ALERT-001 structured report retention_target must not be empty');
+  assertStrictStructuredTargets('OBS-ALERT-001', [
+    ['dashboard_target', report.dashboard_target],
+    ['alert_rules_target', report.alert_rules_target],
+    ['alert_delivery_target', report.alert_delivery_target],
+    ['retention_target', report.retention_target],
+  ]);
+  assert.equal(String(report.delivery_alert_name ?? ''), alertName, 'OBS-ALERT-001 structured report delivery_alert_name must match delivery marker');
+  assert.equal(String(report.delivery_alert_receiver ?? ''), alertReceiver, 'OBS-ALERT-001 structured report delivery_alert_receiver must match delivery marker');
+  assert.equal(String(report.delivery_id ?? ''), deliveryID, 'OBS-ALERT-001 structured report delivery_id must match delivery marker');
+}
+
+function assertStrictStructuredTargets(scope, entries) {
+  const seen = new Map();
+  for (const [label, rawTarget] of entries) {
+    const target = String(rawTarget ?? '').trim();
+    assert.ok(isHTTPSNonLocalArtifact(target), `${scope} structured report ${label} must be an HTTPS non-local artifact URL`);
+    const normalized = canonicalStrictArtifactURL(target);
+    const previous = seen.get(normalized);
+    assert.ok(!previous, `${scope} structured report ${label} must be distinct from ${previous}`);
+    seen.set(normalized, label);
+  }
+}
+
+function assertStructuredTargetIncludesTraceID(label, rawTarget, traceID) {
+  const target = String(rawTarget ?? '');
+  const expectedTraceID = String(traceID ?? '').trim().toLowerCase();
+  assert.ok(expectedTraceID, `${label} trace ID binding requires a concrete trace ID`);
+  let parsed;
+  try {
+    parsed = new URL(target);
+  } catch {
+    assert.fail(`${label} must be a valid URL`);
+  }
+  const targetText = `${parsed.pathname} ${parsed.search}`.toLowerCase();
+  assert.ok(targetText.includes(expectedTraceID), `${label} must include the matching trace ID`);
+}
+
+function canonicalStrictArtifactURL(rawTarget) {
+  const parsed = new URL(String(rawTarget ?? '').trim());
+  parsed.protocol = parsed.protocol.toLowerCase();
+  const hostname = parsed.hostname.toLowerCase();
+  const port = parsed.port === '443' ? '' : parsed.port;
+  parsed.host = port ? `${hostname}:${port}` : hostname;
+  parsed.hash = '';
+  parsed.search = parsed.searchParams.toString() ? `?${parsed.searchParams.toString()}` : '';
+  return parsed.toString();
+}
+
+function assertStrictAIStructuredReport(evidence, segments) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.ai_generation_audit_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    'EXT-AI-001 strict release evidence must include exactly one structured ai_generation_audit_proof report',
+  );
+  const report = structuredReports[0];
+  const provider = extractTextMarker(segments.providerSegment, 'AI_PROVIDER', 'EXT-AI-001 structured report provider binding');
+  const model = extractTextMarker(segments.providerSegment, 'AI_CHAT_MODEL', 'EXT-AI-001 structured report provider binding');
+  const endpoint = extractTextMarker(segments.providerSegment, 'AI_CHAT_ENDPOINT', 'EXT-AI-001 structured report provider binding');
+  const timeoutMS = extractTextMarker(segments.providerSegment, 'AI_HTTP_TIMEOUT_MS', 'EXT-AI-001 structured report provider binding');
+  const maxRetries = extractTextMarker(segments.providerSegment, 'AI_MAX_RETRIES', 'EXT-AI-001 structured report provider binding');
+  assert.equal(String(report.ai_provider ?? ''), provider, 'EXT-AI-001 structured report ai_provider must match ai-provider-config marker');
+  assert.equal(String(report.ai_chat_model ?? ''), model, 'EXT-AI-001 structured report ai_chat_model must match ai-provider-config marker');
+  assert.equal(String(report.ai_chat_endpoint ?? ''), endpoint, 'EXT-AI-001 structured report ai_chat_endpoint must match ai-provider-config marker');
+  assert.equal(Number(report.ai_http_timeout_ms), Number(timeoutMS), 'EXT-AI-001 structured report ai_http_timeout_ms must match ai-provider-config marker');
+  assert.equal(Number(report.ai_max_retries), Number(maxRetries), 'EXT-AI-001 structured report ai_max_retries must match ai-provider-config marker');
+
+  const generationRequestID = segments.generationSegment.match(aiRequestIDPattern)?.[1] ?? '';
+  const generationOrganizationID = segments.generationSegment.match(aiOrganizationIDPattern)?.[1] ?? '';
+  const generationUserID = segments.generationSegment.match(aiUserIDPattern)?.[1] ?? '';
+  const citationID = segments.citationSegment.match(aiCitationIDPattern)?.[1] ?? '';
+  const auditRequestID = segments.auditSegment.match(aiRequestIDPattern)?.[1] ?? '';
+  const auditOrganizationID = segments.auditSegment.match(aiOrganizationIDPattern)?.[1] ?? '';
+  const auditUserID = segments.auditSegment.match(aiUserIDPattern)?.[1] ?? '';
+  const auditCitationID = segments.auditSegment.match(aiCitationIDPattern)?.[1] ?? '';
+  assert.equal(String(report.generation_request_id ?? ''), generationRequestID, 'EXT-AI-001 structured report generation_request_id must match ai-generation-route request_id marker');
+  assert.equal(String(report.generation_organization_id ?? ''), generationOrganizationID, 'EXT-AI-001 structured report generation_organization_id must match ai-generation-route organization_id marker');
+  assert.equal(String(report.generation_user_id ?? ''), generationUserID, 'EXT-AI-001 structured report generation_user_id must match ai-generation-route user_id marker');
+  assert.equal(String(report.citation_id ?? ''), citationID, 'EXT-AI-001 structured report citation_id must match ai-citation-verification citation_id marker');
+  assert.equal(String(report.audit_request_id ?? ''), auditRequestID, 'EXT-AI-001 structured report audit_request_id must match ai-audit-persistence request_id marker');
+  assert.equal(String(report.audit_organization_id ?? ''), auditOrganizationID, 'EXT-AI-001 structured report audit_organization_id must match ai-audit-persistence organization_id marker');
+  assert.equal(String(report.audit_user_id ?? ''), auditUserID, 'EXT-AI-001 structured report audit_user_id must match ai-audit-persistence user_id marker');
+  assert.equal(String(report.audit_citation_id ?? ''), auditCitationID, 'EXT-AI-001 structured report audit_citation_id must match ai-audit-persistence citation_id marker');
+  assert.equal(report.provider_timeout, true, 'EXT-AI-001 structured report provider_timeout must be true');
+  assert.equal(report.retry_exhausted, true, 'EXT-AI-001 structured report retry_exhausted must be true');
+  assert.equal(report.fail_closed, true, 'EXT-AI-001 structured report fail_closed must be true');
+}
+
+function assertStrictZoomStructuredReport(evidence, segments) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.zoom_resilience_webhook_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    'EXT-ZOOM-001 strict release evidence must include exactly one structured zoom_resilience_webhook_proof report',
+  );
+  const report = structuredReports[0];
+  const webhookSignature = segments.webhookSignatureSegment.match(zoomWebhookSignaturePattern)?.[1] ?? '';
+  const webhookTimestamp = segments.webhookSignatureSegment.match(zoomWebhookTimestampPattern)?.[1] ?? '';
+  const plainToken = segments.webhookValidationSegment.match(zoomPlainTokenPattern)?.[1] ?? '';
+  const encryptedToken = segments.webhookValidationSegment.match(zoomEncryptedTokenPattern)?.[1] ?? '';
+  const duplicateTrackingID = segments.duplicateSegment.match(zoomTrackingIDPattern)?.[1] ?? '';
+  const duplicateDeliveryID = segments.duplicateSegment.match(zoomDeliveryIDPattern)?.[1] ?? '';
+  const meetingExternalID = segments.roomMappingSegment.match(zoomMeetingExternalIDPattern)?.[1] ?? '';
+  const internalRoomID = segments.roomMappingSegment.match(zoomInternalRoomIDPattern)?.[1] ?? '';
+
+  assert.equal(report.provider_timeout, true, 'EXT-ZOOM-001 structured report provider_timeout must be true');
+  assert.equal(report.circuit_open, true, 'EXT-ZOOM-001 structured report circuit_open must be true');
+  assert.equal(report.offline_fallback, true, 'EXT-ZOOM-001 structured report offline_fallback must be true');
+  assert.equal(String(report.webhook_signature ?? ''), webhookSignature, 'EXT-ZOOM-001 structured report webhook_signature must match zoom-webhook-signature-delivery marker');
+  assert.equal(String(report.webhook_timestamp ?? ''), webhookTimestamp, 'EXT-ZOOM-001 structured report webhook_timestamp must match zoom-webhook-signature-delivery marker');
+  assert.equal(report.stale_rejected, true, 'EXT-ZOOM-001 structured report stale_rejected must be true');
+  assert.equal(report.replay_rejected, true, 'EXT-ZOOM-001 structured report replay_rejected must be true');
+  assert.equal(report.invalid_signature_rejected, true, 'EXT-ZOOM-001 structured report invalid_signature_rejected must be true');
+  assert.equal(report.signed_delivery_accepted, true, 'EXT-ZOOM-001 structured report signed_delivery_accepted must be true');
+  assert.equal(String(report.plain_token ?? ''), plainToken, 'EXT-ZOOM-001 structured report plain_token must match zoom-webhook-url-validation marker');
+  assert.equal(String(report.encrypted_token ?? ''), encryptedToken, 'EXT-ZOOM-001 structured report encrypted_token must match zoom-webhook-url-validation marker');
+  assert.equal(String(report.validation_response ?? ''), '200', 'EXT-ZOOM-001 structured report validation_response must be 200');
+  assert.equal(String(report.duplicate_delivery_id ?? ''), duplicateDeliveryID, 'EXT-ZOOM-001 structured report duplicate_delivery_id must match zoom-duplicate-webhook-idempotency delivery_id marker');
+  assert.equal(String(report.duplicate_tracking_id ?? ''), duplicateTrackingID, 'EXT-ZOOM-001 structured report duplicate_tracking_id must match zoom-duplicate-webhook-idempotency x-zm-trackingid marker');
+  assert.equal(report.single_state_mutation, true, 'EXT-ZOOM-001 structured report single_state_mutation must be true');
+  assert.equal(report.no_duplicate_side_effects, true, 'EXT-ZOOM-001 structured report no_duplicate_side_effects must be true');
+  assert.equal(String(report.meeting_external_id ?? ''), meetingExternalID, 'EXT-ZOOM-001 structured report meeting_external_id must match zoom-meeting-room-mapping marker');
+  assert.equal(String(report.internal_room_id ?? ''), internalRoomID, 'EXT-ZOOM-001 structured report internal_room_id must match zoom-meeting-room-mapping marker');
+}
+
+function assertStrictWebSocketArtifactRoomBinding(evidence, itemID) {
+  const segmentText = findEvidenceSegment(evidence, itemID);
+  assert.ok(segmentText, `${itemID} strict release evidence must include WebSocket room binding segment`);
+  const wsRoomID = extractTextMarker(segmentText, 'ws_room_id', itemID);
+  assert.ok(wsRoomID, `${itemID} strict release ws_room_id must not be empty`);
+  for (const marker of ['ws_reconnect_room_id', 'ws_polling_room_id', 'redis_telemetry_room_id']) {
+    const roomID = extractTextMarker(segmentText, marker, itemID);
+    assert.equal(roomID, wsRoomID, `${itemID} strict release ${marker} must match ws_room_id`);
+  }
+}
+
+function assertStrictWebSocketPrincipalBinding(evidence, itemID) {
+  const segmentText = findEvidenceSegment(evidence, itemID);
+  assert.ok(segmentText, `${itemID} strict release evidence must include WebSocket principal binding segment`);
+  const wsUserID = extractTextMarker(segmentText, 'ws_user_id', itemID);
+  const wsOrganizationID = extractTextMarker(segmentText, 'ws_organization_id', itemID);
+  assert.ok(wsUserID, `${itemID} strict release ws_user_id must not be empty`);
+  assert.ok(wsOrganizationID, `${itemID} strict release ws_organization_id must not be empty`);
+  assert.notEqual(wsUserID, wsOrganizationID, `${itemID} strict release ws_user_id and ws_organization_id must be distinct`);
+}
+
+function extractStandaloneTraceID(segmentText, segmentName) {
+  assert.ok(segmentText, `OBS-OTEL-001 strict release evidence must include ${segmentName} segment`);
+  const match = /(?<![0-9a-f])[0-9a-f]{32}(?![0-9a-f])/i.exec(segmentText);
+  assert.ok(match, `OBS-OTEL-001 strict release ${segmentName} segment must include a concrete 32-character trace ID`);
+  const traceID = match[0];
+  assert.notEqual(
+    traceID,
+    '00000000000000000000000000000000',
+    `OBS-OTEL-001 strict release ${segmentName} trace ID must not be all zeroes`,
+  );
+  return traceID.toLowerCase();
+}
+
+function assertStrictRollbackVersionLinkage(evidence) {
+  const beforeSegment = findEvidenceSegment(evidence, 'api-ready-before-rollback');
+  const afterSegment = findEvidenceSegment(evidence, 'api-ready-after-rollback');
+  const rolloutSegment = findEvidenceSegment(evidence, 'rollback-rollout-artifact');
+  const degradationSegment = findEvidenceSegment(evidence, 'degradation-drill-artifact');
+  assert.ok(beforeSegment, 'DR-ROLLBACK-001 strict release evidence must include api-ready-before-rollback segment');
+  assert.ok(rolloutSegment, 'DR-ROLLBACK-001 strict release evidence must include rollback-rollout-artifact segment');
+  assert.ok(afterSegment, 'DR-ROLLBACK-001 strict release evidence must include api-ready-after-rollback segment');
+  assert.ok(degradationSegment, 'DR-ROLLBACK-001 strict release evidence must include degradation-drill-artifact segment');
+  const preRollbackVersion = beforeSegment.match(resiliencePreRollbackVersionPattern)?.[1] ?? '';
+  const postRollbackVersion = afterSegment.match(resiliencePostRollbackVersionPattern)?.[1] ?? '';
+  const rolledBackFrom = afterSegment.match(resilienceRolledBackFromPattern)?.[1] ?? '';
+  const rolledBackTo = afterSegment.match(resilienceRolledBackToPattern)?.[1] ?? '';
+  assert.ok(preRollbackVersion, 'DR-ROLLBACK-001 strict release api-ready-before-rollback segment must include pre_rollback_version=<version>');
+  assert.ok(postRollbackVersion, 'DR-ROLLBACK-001 strict release api-ready-after-rollback segment must include post_rollback_version=<version>');
+  assert.ok(rolledBackFrom, 'DR-ROLLBACK-001 strict release api-ready-after-rollback segment must include rolled_back_from=<version>');
+  assert.ok(rolledBackTo, 'DR-ROLLBACK-001 strict release api-ready-after-rollback segment must include rolled_back_to=<version>');
+  assert.equal(
+    rolledBackFrom,
+    preRollbackVersion,
+    'DR-ROLLBACK-001 strict release rolled_back_from must match pre_rollback_version',
+  );
+  assert.equal(
+    rolledBackTo,
+    postRollbackVersion,
+    'DR-ROLLBACK-001 strict release rolled_back_to must match post_rollback_version',
+  );
+  assert.notEqual(
+    postRollbackVersion,
+    preRollbackVersion,
+    'DR-ROLLBACK-001 strict release post_rollback_version must differ from pre_rollback_version',
+  );
+  return {
+    beforeSegment,
+    rolloutSegment,
+    afterSegment,
+    degradationSegment,
+  };
+}
+
+function assertStrictBackupRestoreSnapshotLinkage(evidence) {
+  const backupSegment = findEvidenceSegment(evidence, 'backup-snapshot-artifact');
+  const restoreSegment = findEvidenceSegment(evidence, 'restore-drill-artifact');
+  const smokeSegment = findEvidenceSegment(evidence, 'restored-database-smoke');
+  assert.ok(backupSegment, 'DR-BACKUP-001 strict release evidence must include backup-snapshot-artifact segment');
+  assert.ok(restoreSegment, 'DR-BACKUP-001 strict release evidence must include restore-drill-artifact segment');
+  assert.ok(smokeSegment, 'DR-BACKUP-001 strict release evidence must include restored-database-smoke segment');
+  const backupSnapshotID = backupSegment.match(resilienceSnapshotIDPattern)?.[1] ?? '';
+  const backupKMSKeyID = backupSegment.match(resilienceKMSKeyIDPattern)?.[1] ?? '';
+  const restoreSourceSnapshotID = restoreSegment.match(resilienceSourceSnapshotIDPattern)?.[1] ?? '';
+  const rtoMinutes = Number.parseInt(restoreSegment.match(resilienceRTOMinutesPattern)?.[1] ?? '', 10);
+  const restoreDurationMinutes = Number.parseInt(restoreSegment.match(resilienceRestoreDurationMinutesPattern)?.[1] ?? '', 10);
+  assert.ok(backupSnapshotID, 'DR-BACKUP-001 strict release backup-snapshot-artifact segment must include snapshot_id=<id>');
+  assert.ok(backupKMSKeyID, 'DR-BACKUP-001 strict release backup-snapshot-artifact segment must include kms_key_id=<id>');
+  assert.ok(restoreSourceSnapshotID, 'DR-BACKUP-001 strict release restore-drill-artifact segment must include source snapshot_id=<id>');
+  assert.equal(
+    restoreSourceSnapshotID,
+    backupSnapshotID,
+    'DR-BACKUP-001 strict release restore source snapshot_id must match backup snapshot_id',
+  );
+  assert.ok(Number.isInteger(rtoMinutes) && rtoMinutes > 0, 'DR-BACKUP-001 strict release restore-drill-artifact segment must include positive rto_minutes=<minutes>');
+  assert.ok(Number.isInteger(restoreDurationMinutes) && restoreDurationMinutes > 0, 'DR-BACKUP-001 strict release restore-drill-artifact segment must include positive restore_duration_minutes=<minutes>');
+  assert.ok(
+    restoreDurationMinutes <= rtoMinutes,
+    `DR-BACKUP-001 strict release restore_duration_minutes ${restoreDurationMinutes} must be <= rto_minutes ${rtoMinutes}`,
+  );
+  return {
+    backupSegment,
+    restoreSegment,
+    smokeSegment,
+  };
+}
+
+function assertStrictRollbackStructuredReport(evidence, segments) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.rollback_degradation_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    'DR-ROLLBACK-001 strict release evidence must include exactly one structured rollback_degradation_proof report',
+  );
+  const report = structuredReports[0];
+  const releaseCandidate = extractTextMarker(segments.beforeSegment, 'release_candidate', 'DR-ROLLBACK-001 structured report before binding');
+  const serviceVersion = extractTextMarker(segments.beforeSegment, 'service_version', 'DR-ROLLBACK-001 structured report before binding');
+  const loadRunID = extractTextMarker(segments.beforeSegment, 'load_run_id', 'DR-ROLLBACK-001 structured report before binding');
+  const preRollbackVersion = extractTextMarker(segments.beforeSegment, 'pre_rollback_version', 'DR-ROLLBACK-001 structured report before binding');
+  const postRollbackVersion = extractTextMarker(segments.afterSegment, 'post_rollback_version', 'DR-ROLLBACK-001 structured report after binding');
+  const rolledBackFrom = extractTextMarker(segments.afterSegment, 'rolled_back_from', 'DR-ROLLBACK-001 structured report after binding');
+  const rolledBackTo = extractTextMarker(segments.afterSegment, 'rolled_back_to', 'DR-ROLLBACK-001 structured report after binding');
+
+  assert.equal(String(report.release_candidate ?? ''), releaseCandidate, 'DR-ROLLBACK-001 structured report release_candidate must match readiness marker');
+  assert.equal(String(report.service_version ?? ''), serviceVersion, 'DR-ROLLBACK-001 structured report service_version must match readiness marker');
+  assert.equal(String(report.load_run_id ?? ''), loadRunID, 'DR-ROLLBACK-001 structured report load_run_id must match readiness marker');
+  assert.ok(String(report.before_ready_target ?? '').trim(), 'DR-ROLLBACK-001 structured report before_ready_target must not be empty');
+  assert.ok(String(report.rollout_target ?? '').trim(), 'DR-ROLLBACK-001 structured report rollout_target must not be empty');
+  assert.ok(String(report.after_ready_target ?? '').trim(), 'DR-ROLLBACK-001 structured report after_ready_target must not be empty');
+  assert.ok(String(report.degradation_target ?? '').trim(), 'DR-ROLLBACK-001 structured report degradation_target must not be empty');
+  assertStrictStructuredTargets('DR-ROLLBACK-001', [
+    ['before_ready_target', report.before_ready_target],
+    ['rollout_target', report.rollout_target],
+    ['after_ready_target', report.after_ready_target],
+    ['degradation_target', report.degradation_target],
+  ]);
+  assert.equal(String(report.pre_rollback_version ?? ''), preRollbackVersion, 'DR-ROLLBACK-001 structured report pre_rollback_version must match readiness marker');
+  assert.equal(String(report.post_rollback_version ?? ''), postRollbackVersion, 'DR-ROLLBACK-001 structured report post_rollback_version must match readiness marker');
+  assert.equal(String(report.rolled_back_from ?? ''), rolledBackFrom, 'DR-ROLLBACK-001 structured report rolled_back_from must match readiness marker');
+  assert.equal(String(report.rolled_back_to ?? ''), rolledBackTo, 'DR-ROLLBACK-001 structured report rolled_back_to must match readiness marker');
+  assert.equal(report.ai_fault, true, 'DR-ROLLBACK-001 structured report ai_fault must be true');
+  assert.equal(report.zoom_offline_fallback, true, 'DR-ROLLBACK-001 structured report zoom_offline_fallback must be true');
+  assert.equal(report.non_ai_routes_healthy, true, 'DR-ROLLBACK-001 structured report non_ai_routes_healthy must be true');
+  assert.equal(report.zoom_circuit_open, true, 'DR-ROLLBACK-001 structured report zoom_circuit_open must be true');
+}
+
+function assertStrictBackupRestoreStructuredReport(evidence, segments) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.backup_restore_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    'DR-BACKUP-001 strict release evidence must include exactly one structured backup_restore_proof report',
+  );
+  const report = structuredReports[0];
+  const releaseCandidate = extractTextMarker(segments.backupSegment, 'release_candidate', 'DR-BACKUP-001 structured report backup binding');
+  const serviceVersion = extractTextMarker(segments.backupSegment, 'service_version', 'DR-BACKUP-001 structured report backup binding');
+  const loadRunID = extractTextMarker(segments.backupSegment, 'load_run_id', 'DR-BACKUP-001 structured report backup binding');
+  const snapshotID = extractTextMarker(segments.backupSegment, 'snapshot_id', 'DR-BACKUP-001 structured report backup binding');
+  const kmsKeyID = extractTextMarker(segments.backupSegment, 'kms_key_id', 'DR-BACKUP-001 structured report backup binding');
+  const rpoMinutes = extractNumericMarker(segments.backupSegment, 'rpo_minutes', 'DR-BACKUP-001 structured report backup binding');
+  const restoreJobID = extractTextMarker(segments.restoreSegment, 'restore_job_id', 'DR-BACKUP-001 structured report restore binding');
+  const sourceSnapshotID = segments.restoreSegment.match(resilienceSourceSnapshotIDPattern)?.[1] ?? '';
+  const rtoMinutes = extractNumericMarker(segments.restoreSegment, 'rto_minutes', 'DR-BACKUP-001 structured report restore binding');
+  const restoreDurationMinutes = extractNumericMarker(segments.restoreSegment, 'restore_duration_minutes', 'DR-BACKUP-001 structured report restore binding');
+
+  assert.equal(String(report.release_candidate ?? ''), releaseCandidate, 'DR-BACKUP-001 structured report release_candidate must match backup marker');
+  assert.equal(String(report.service_version ?? ''), serviceVersion, 'DR-BACKUP-001 structured report service_version must match backup marker');
+  assert.equal(String(report.load_run_id ?? ''), loadRunID, 'DR-BACKUP-001 structured report load_run_id must match backup marker');
+  assert.ok(String(report.backup_snapshot_target ?? '').trim(), 'DR-BACKUP-001 structured report backup_snapshot_target must not be empty');
+  assert.ok(String(report.restore_drill_target ?? '').trim(), 'DR-BACKUP-001 structured report restore_drill_target must not be empty');
+  assert.ok(String(report.restored_database_smoke_target ?? '').trim(), 'DR-BACKUP-001 structured report restored_database_smoke_target must not be empty');
+  assertStrictStructuredTargets('DR-BACKUP-001', [
+    ['backup_snapshot_target', report.backup_snapshot_target],
+    ['restore_drill_target', report.restore_drill_target],
+    ['restored_database_smoke_target', report.restored_database_smoke_target],
+  ]);
+  assert.equal(String(report.snapshot_id ?? ''), snapshotID, 'DR-BACKUP-001 structured report snapshot_id must match backup marker');
+  assert.equal(String(report.kms_key_id ?? ''), kmsKeyID, 'DR-BACKUP-001 structured report kms_key_id must match backup marker');
+  assert.equal(Number(report.rpo_minutes), Number(rpoMinutes), 'DR-BACKUP-001 structured report rpo_minutes must match backup marker');
+  assert.equal(String(report.restore_job_id ?? ''), restoreJobID, 'DR-BACKUP-001 structured report restore_job_id must match restore marker');
+  assert.equal(String(report.source_snapshot_id ?? ''), sourceSnapshotID, 'DR-BACKUP-001 structured report source_snapshot_id must match restore marker');
+  assert.equal(Number(report.rto_minutes), Number(rtoMinutes), 'DR-BACKUP-001 structured report rto_minutes must match restore marker');
+  assert.equal(Number(report.restore_duration_minutes), Number(restoreDurationMinutes), 'DR-BACKUP-001 structured report restore_duration_minutes must match restore marker');
+}
+
+function assertStrictTLSCertificateIdentity(evidence, itemID, segments) {
+  for (const segment of segments) {
+    const segmentText = findEvidenceSegment(evidence, segment);
+    assert.ok(segmentText, `${itemID} strict release evidence must include ${segment} segment`);
+    assert.match(
+      segmentText,
+      tlsCertHostnamePattern,
+      `${itemID} ${segment} must include concrete cert_hostname=<hostname>`,
+    );
+    assert.match(
+      segmentText,
+      tlsCertIssuerPattern,
+      `${itemID} ${segment} must include concrete cert_issuer=<issuer>`,
+    );
+  }
+}
+
+function assertStrictSSLLabsHostnameBinding(evidence) {
+  const sslLabsSegment = findEvidenceSegment(evidence, 'ssl-labs-a-plus');
+  assert.ok(sslLabsSegment, 'DEPLOY-TLS-001 strict release evidence must include ssl-labs-a-plus segment');
+  for (const [tlsSegment, marker] of [
+    ['api-tls', 'api_hostname'],
+    ['web-tls', 'web_hostname'],
+  ]) {
+    const tlsSegmentText = findEvidenceSegment(evidence, tlsSegment);
+    assert.ok(tlsSegmentText, `DEPLOY-TLS-001 strict release evidence must include ${tlsSegment} segment`);
+    const certHostname = tlsSegmentText.match(tlsCertHostnamePattern)?.[1]?.toLowerCase() ?? '';
+    assert.ok(certHostname, `DEPLOY-TLS-001 ${tlsSegment} must include concrete cert_hostname=<hostname>`);
+    const sslLabsHostname = extractTextMarker(sslLabsSegment, marker, 'DEPLOY-TLS-001 ssl-labs-a-plus').toLowerCase();
+    assert.equal(
+      sslLabsHostname,
+      certHostname,
+      `DEPLOY-TLS-001 ssl-labs-a-plus ${marker} must match ${tlsSegment} cert_hostname`,
+    );
+  }
+}
+
+function assertStrictWebSmokeIdentityLinkage(evidence) {
+  const authSegment = findEvidenceSegment(evidence, 'web-auth-browser-smoke');
+  const journalSegment = findEvidenceSegment(evidence, 'web-journal-browser-smoke');
+  const roomSegment = findEvidenceSegment(evidence, 'web-room-browser-smoke');
+  assert.ok(authSegment, 'CLIENT-WEB-001 strict release evidence must include web-auth-browser-smoke segment');
+  assert.ok(journalSegment, 'CLIENT-WEB-001 strict release evidence must include web-journal-browser-smoke segment');
+  assert.ok(roomSegment, 'CLIENT-WEB-001 strict release evidence must include web-room-browser-smoke segment');
+
+  const authUserID = authSegment.match(webSmokeUserIDPattern)?.[1] ?? '';
+  const authOrgID = authSegment.match(webSmokeOrganizationIDPattern)?.[1] ?? '';
+  const journalUserID = journalSegment.match(webSmokeUserIDPattern)?.[1] ?? '';
+  const journalOrgID = journalSegment.match(webSmokeOrganizationIDPattern)?.[1] ?? '';
+  const journalID = journalSegment.match(webSmokeJournalIDPattern)?.[1] ?? '';
+  const roomUserID = roomSegment.match(webSmokeUserIDPattern)?.[1] ?? '';
+  const roomOrgID = roomSegment.match(webSmokeOrganizationIDPattern)?.[1] ?? '';
+  const roomID = roomSegment.match(webSmokeRoomIDPattern)?.[1] ?? '';
+
+  assert.ok(authUserID && authOrgID, 'CLIENT-WEB-001 strict release auth smoke must include concrete user_id and organization_id');
+  assert.ok(journalID, 'CLIENT-WEB-001 strict release journal smoke must include concrete journal_id');
+  assert.ok(roomID, 'CLIENT-WEB-001 strict release room smoke must include concrete room_id');
+  assert.equal(journalUserID, authUserID, 'CLIENT-WEB-001 strict release journal smoke user_id must match auth smoke');
+  assert.equal(journalOrgID, authOrgID, 'CLIENT-WEB-001 strict release journal smoke organization_id must match auth smoke');
+  assert.equal(roomUserID, authUserID, 'CLIENT-WEB-001 strict release room smoke user_id must match auth smoke');
+  assert.equal(roomOrgID, authOrgID, 'CLIENT-WEB-001 strict release room smoke organization_id must match auth smoke');
+}
+
+function assertStrictPerformanceNumbers(itemID, evidence, segment, { minRPS, maxP99MS, minDurationMS = 0, minWSEvents = 0 }) {
+  const segmentText = findEvidenceSegment(evidence, segment);
+  assert.ok(segmentText, `${itemID} strict release evidence must include a numeric load measurement segment`);
+  const minObservedRPS = extractNumericMarker(segmentText, 'min_rps', itemID);
+  const maxAllowedP99 = extractNumericMarker(segmentText, 'max_p99_ms', itemID);
+  const productionMinDurationMS = extractNumericMarker(segmentText, 'production_min_duration_ms', itemID);
+  const observedRPS = extractNumericMarker(segmentText, 'observed_rps', itemID);
+  const observedP99 = extractNumericMarker(segmentText, 'observed_p99_ms', itemID);
+  assert.ok(minObservedRPS >= minRPS, `${itemID} strict release min_rps ${minObservedRPS} is below required ${minRPS}`);
+  assert.ok(maxAllowedP99 > 0 && maxAllowedP99 <= maxP99MS, `${itemID} strict release max_p99_ms ${maxAllowedP99} must be <= ${maxP99MS}`);
+  assert.ok(productionMinDurationMS >= minDurationMS, `${itemID} strict release production_min_duration_ms ${productionMinDurationMS} is below required ${minDurationMS}`);
+  if (minDurationMS > 0) {
+    const observedDurationMS = extractNumericMarker(segmentText, 'duration_ms', itemID);
+    assert.ok(observedDurationMS >= minDurationMS, `${itemID} strict release duration_ms ${observedDurationMS} is below required ${minDurationMS}`);
+  }
+  if (minWSEvents > 0) {
+    const productionMinWSEvents = extractNumericMarker(segmentText, 'production_min_ws_events', itemID);
+    const expectedWSEvents = extractNumericMarker(segmentText, 'ws_expected_events', itemID);
+    assert.ok(productionMinWSEvents >= minWSEvents, `${itemID} strict release production_min_ws_events ${productionMinWSEvents} is below required ${minWSEvents}`);
+    assert.ok(expectedWSEvents >= minWSEvents, `${itemID} strict release ws_expected_events ${expectedWSEvents} is below required ${minWSEvents}`);
+  }
+  if (itemID === 'PERF-HTTP-001') {
+    const httpReplicaCount = extractNumericMarker(segmentText, 'http_replica_count', itemID);
+    const postgresP99MS = extractNumericMarker(segmentText, 'dependency_postgres_p99_ms', itemID);
+    const redisP99MS = extractNumericMarker(segmentText, 'dependency_redis_p99_ms', itemID);
+    assert.ok(httpReplicaCount >= 2, `${itemID} strict release http_replica_count ${httpReplicaCount} must prove at least 2 replicas`);
+    assert.ok(postgresP99MS > 0 && postgresP99MS <= maxP99MS, `${itemID} strict release dependency_postgres_p99_ms ${postgresP99MS} must be <= ${maxP99MS}`);
+    assert.ok(redisP99MS > 0 && redisP99MS <= maxP99MS, `${itemID} strict release dependency_redis_p99_ms ${redisP99MS} must be <= ${maxP99MS}`);
+  }
+  if (itemID === 'PERF-WS-001') {
+    const wsReplicaCount = extractNumericMarker(segmentText, 'ws_replica_count', itemID);
+    assert.ok(wsReplicaCount >= 2, `${itemID} strict release ws_replica_count ${wsReplicaCount} must prove at least 2 replicas`);
+  }
+  assert.ok(observedRPS >= minRPS, `${itemID} strict release observed_rps ${observedRPS} is below required ${minRPS}`);
+  assert.ok(observedP99 > 0 && observedP99 <= maxP99MS, `${itemID} strict release observed_p99_ms ${observedP99} must be <= ${maxP99MS}`);
+}
+
+function assertStrictRedisSequenceNumbers(evidence) {
+  assertStrictWebSocketSequenceNumbers(evidence, 'DATA-REDIS-001', 'DATA-REDIS-001', 30000);
+}
+
+function assertStrictHTTPLoadStructuredReport(evidence) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.http_load_threshold_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    'PERF-HTTP-001 strict release evidence must include exactly one structured http_load_threshold_proof report',
+  );
+  const report = structuredReports[0];
+  const segmentText = findEvidenceSegment(evidence, 'PERF-HTTP-001');
+  assert.equal(String(report.load_run_id ?? ''), extractTextMarker(segmentText, 'load_run_id', 'PERF-HTTP-001 structured report'), 'PERF-HTTP-001 structured report load_run_id must match summary marker');
+  assert.equal(Number(report.observed_rps), extractNumericMarker(segmentText, 'observed_rps', 'PERF-HTTP-001 structured report'), 'PERF-HTTP-001 structured report observed_rps must match summary marker');
+  assert.equal(Number(report.observed_p99_ms), extractNumericMarker(segmentText, 'observed_p99_ms', 'PERF-HTTP-001 structured report'), 'PERF-HTTP-001 structured report observed_p99_ms must match summary marker');
+  assert.equal(Number(report.duration_ms), extractNumericMarker(segmentText, 'duration_ms', 'PERF-HTTP-001 structured report'), 'PERF-HTTP-001 structured report duration_ms must match summary marker');
+  assert.equal(Number(report.production_target_rps), extractNumericMarker(segmentText, 'production_target_rps', 'PERF-HTTP-001 structured report'), 'PERF-HTTP-001 structured report production_target_rps must match summary marker');
+  assert.equal(Number(report.production_target_p99_ms), extractNumericMarker(segmentText, 'production_target_p99_ms', 'PERF-HTTP-001 structured report'), 'PERF-HTTP-001 structured report production_target_p99_ms must match summary marker');
+  assert.equal(Number(report.production_min_duration_ms), extractNumericMarker(segmentText, 'production_min_duration_ms', 'PERF-HTTP-001 structured report'), 'PERF-HTTP-001 structured report production_min_duration_ms must match summary marker');
+  assert.equal(Number(report.http_replica_count), extractNumericMarker(segmentText, 'http_replica_count', 'PERF-HTTP-001 structured report'), 'PERF-HTTP-001 structured report http_replica_count must match summary marker');
+  assert.equal(Number(report.dependency_postgres_p99_ms), extractNumericMarker(segmentText, 'dependency_postgres_p99_ms', 'PERF-HTTP-001 structured report'), 'PERF-HTTP-001 structured report dependency_postgres_p99_ms must match summary marker');
+  assert.equal(Number(report.dependency_redis_p99_ms), extractNumericMarker(segmentText, 'dependency_redis_p99_ms', 'PERF-HTTP-001 structured report'), 'PERF-HTTP-001 structured report dependency_redis_p99_ms must match summary marker');
+  assert.equal(report.threshold_pass, true, 'PERF-HTTP-001 structured report threshold_pass must be true');
+}
+
+function assertStrictWebSocketRedisStructuredReport(evidence, itemID) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.websocket_redis_sequence_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    `${itemID} strict release evidence must include exactly one structured websocket_redis_sequence_proof report`,
+  );
+  const report = structuredReports[0];
+  const segmentText = findEvidenceSegment(evidence, itemID);
+  assert.equal(String(report.load_run_id ?? ''), extractTextMarker(segmentText, 'load_run_id', `${itemID} structured report`), `${itemID} structured report load_run_id must match summary marker`);
+  for (const marker of ['ws_room_id', 'ws_user_id', 'ws_organization_id', 'ws_reconnect_room_id', 'ws_polling_room_id', 'redis_telemetry_room_id']) {
+    assert.equal(String(report[marker] ?? ''), extractTextMarker(segmentText, marker, `${itemID} structured report`), `${itemID} structured report ${marker} must match summary marker`);
+  }
+  const requiredNumericMarkers =
+    itemID === 'DATA-REDIS-001'
+      ? [
+          'production_min_ws_events',
+          'ws_expected_events',
+          'ws_unique_sequences',
+          'ws_min_sequence',
+          'ws_max_sequence',
+          'ws_polling_latest_sequence',
+          'ws_polling_artifact_latest_sequence',
+        ]
+      : [
+          'observed_rps',
+          'observed_p99_ms',
+          'duration_ms',
+          'production_target_rps',
+          'production_target_p99_ms',
+          'production_min_duration_ms',
+          'production_min_ws_events',
+          'ws_expected_events',
+          'ws_unique_sequences',
+          'ws_min_sequence',
+          'ws_max_sequence',
+          'ws_polling_latest_sequence',
+          'ws_polling_artifact_latest_sequence',
+          'ws_replica_count',
+          'room_broadcast_drops',
+        ];
+  for (const marker of requiredNumericMarkers) {
+    assert.equal(Number(report[marker]), extractNumericMarker(segmentText, marker, `${itemID} structured report`), `${itemID} structured report ${marker} must match summary marker`);
+  }
+  assert.equal(report.threshold_pass, true, `${itemID} structured report threshold_pass must be true`);
+  assert.equal(report.ws_authenticated, true, `${itemID} structured report ws_authenticated must be true`);
+  assert.equal(report.ws_sequence_contiguous, true, `${itemID} structured report ws_sequence_contiguous must be true`);
+  assert.equal(report.ws_reconnect_sequence_continues, true, `${itemID} structured report ws_reconnect_sequence_continues must be true`);
+  if (itemID === 'DATA-REDIS-001') {
+    assert.equal(Number(report.room_broadcast_drops), 0, `${itemID} structured report room_broadcast_drops must be 0`);
+  }
+}
+
+function assertStrictWebSocketSequenceNumbers(evidence, itemID, segment, minExpectedEvents) {
+  const segmentText = findEvidenceSegment(evidence, segment);
+  assert.ok(segmentText, `${itemID} strict release evidence must include a numeric WebSocket sequence segment`);
+  const productionMinWSEvents = extractNumericMarker(segmentText, 'production_min_ws_events', itemID);
+  const expectedEvents = extractNumericMarker(segmentText, 'ws_expected_events', itemID);
+  const uniqueSequences = extractNumericMarker(segmentText, 'ws_unique_sequences', itemID);
+  const minSequence = extractNumericMarker(segmentText, 'ws_min_sequence', itemID);
+  const maxSequence = extractNumericMarker(segmentText, 'ws_max_sequence', itemID);
+  const pollingLatestSequence = extractNumericMarker(segmentText, 'ws_polling_latest_sequence', itemID);
+  const pollingArtifactLatestSequence = extractNumericMarker(segmentText, 'ws_polling_artifact_latest_sequence', itemID);
+  assert.ok(productionMinWSEvents >= minExpectedEvents, `${itemID} strict release production_min_ws_events ${productionMinWSEvents} is below required ${minExpectedEvents}`);
+  assert.ok(expectedEvents >= minExpectedEvents, `${itemID} strict release ws_expected_events ${expectedEvents} is below required ${minExpectedEvents}`);
+  assert.equal(uniqueSequences, expectedEvents, `${itemID} strict release unique sequence count must equal expected events`);
+  assert.equal(minSequence, 1, `${itemID} strict release minimum sequence must be 1`);
+  assert.equal(maxSequence, expectedEvents, `${itemID} strict release maximum sequence must equal expected events`);
+  assert.equal(pollingLatestSequence, maxSequence, `${itemID} strict release polling latest sequence must match maximum sequence`);
+  assert.equal(pollingArtifactLatestSequence, maxSequence, `${itemID} strict release polling artifact latest sequence must match maximum sequence`);
+}
+
+function assertStrictKubernetesImageDigests(evidence) {
+  const segmentText = findEvidenceSegment(evidence, 'kubernetes-workload-resources');
+  assert.ok(segmentText, 'DEPLOY-K8S-001 strict release evidence must include Kubernetes workload resources segment');
+  const digestMatches = segmentText.match(/sha256:[0-9a-f]{64}\b/gi) ?? [];
+  const uniqueDigests = new Set(digestMatches.map((digest) => digest.toLowerCase()));
+  assert.ok(
+    uniqueDigests.size >= 3,
+    `DEPLOY-K8S-001 strict release Kubernetes workload resources must include at least 3 immutable image digests, found ${uniqueDigests.size}`,
+  );
+  assert.equal(
+    extractNumericMarker(segmentText, 'concrete_image_digests', 'DEPLOY-K8S-001'),
+    uniqueDigests.size,
+    'DEPLOY-K8S-001 strict release Kubernetes workload resources concrete_image_digests must match unique image digest count',
+  );
+  assert.equal(
+    extractNumericMarker(segmentText, 'workload_image_digests', 'DEPLOY-K8S-001'),
+    kubernetesWorkloadImageDigestPatterns.size,
+    'DEPLOY-K8S-001 strict release Kubernetes workload resources must include workload_image_digests=3',
+  );
+  for (const [workload, pattern] of kubernetesWorkloadImageDigestPatterns) {
+    assert.match(
+      segmentText,
+      pattern,
+      `DEPLOY-K8S-001 strict release Kubernetes workload resources must include immutable image digest bound to ${workload}`,
+    );
+  }
+}
+
+function assertStrictAbuseAttempts(evidence) {
+  for (const segment of abuseRateLimitProfileSegments) {
+    const segmentText = findEvidenceSegment(evidence, segment);
+    assert.ok(segmentText, `ABUSE-LIMIT-001 strict release evidence must include ${segment} segment`);
+    const match = /(?:after\s+(\d+)\s+attempts\b|(?:^|[\s,])attempts=(\d+)\b)/i.exec(segmentText);
+    assert.ok(match, `ABUSE-LIMIT-001 strict release ${segment} segment must include a concrete attempts count`);
+    const attempts = Number.parseInt(match[1] ?? match[2], 10);
+    assert.ok(attempts >= 2, `ABUSE-LIMIT-001 strict release ${segment} attempts ${attempts} must be >= 2`);
+  }
+}
+
+function assertStrictAbuseRateLimitHeaders(evidence) {
+  for (const segment of abuseRateLimitProfileSegments) {
+    const segmentText = findEvidenceSegment(evidence, segment);
+    assert.ok(segmentText, `ABUSE-LIMIT-001 strict release evidence must include ${segment} segment`);
+    const retryAfter = extractAbuseHeader(segmentText, 'Retry-After', segment);
+    const limit = extractAbuseHeader(segmentText, 'X-RateLimit-Limit', segment);
+    const remaining = extractAbuseHeader(segmentText, 'X-RateLimit-Remaining', segment);
+    const reset = extractAbuseHeader(segmentText, 'X-RateLimit-Reset', segment);
+    assert.ok(retryAfter > 0, `ABUSE-LIMIT-001 strict release ${segment} Retry-After must be a positive integer`);
+    assert.ok(limit > 0, `ABUSE-LIMIT-001 strict release ${segment} X-RateLimit-Limit must be a positive integer`);
+    assert.equal(remaining, 0, `ABUSE-LIMIT-001 strict release ${segment} X-RateLimit-Remaining must equal 0`);
+    assert.ok(reset > 0, `ABUSE-LIMIT-001 strict release ${segment} X-RateLimit-Reset must be a positive integer`);
+  }
+}
+
+function assertStrictAbuseConfigAssignments(evidence) {
+  const segmentText = findEvidenceSegment(evidence, 'config_artifact_summary');
+  assert.ok(segmentText, 'ABUSE-LIMIT-001 strict release evidence must include config_artifact_summary segment');
+  for (const key of abuseConfigAssignmentKeys) {
+    const pattern = new RegExp(`\\b${escapeRegExp(key)}=([0-9]+)\\b`);
+    const match = pattern.exec(segmentText);
+    assert.ok(match, `ABUSE-LIMIT-001 strict release config_artifact_summary must include concrete ${key}=<positive integer>`);
+    const value = Number.parseInt(match[1], 10);
+    assert.ok(value > 0, `ABUSE-LIMIT-001 strict release config_artifact_summary ${key} must be a positive integer`);
+  }
+}
+
+function assertStrictAbuseStructuredReport(evidence) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.abuse_rate_limit_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    'ABUSE-LIMIT-001 strict release evidence must include exactly one structured abuse_rate_limit_proof report',
+  );
+  const report = structuredReports[0];
+  assert.equal(report.config_artifact_verified, true, 'ABUSE-LIMIT-001 structured report config_artifact_verified must be true');
+  for (const key of abuseConfigAssignmentKeys) {
+    const segmentText = findEvidenceSegment(evidence, 'config_artifact_summary');
+    const expected = extractNumericMarker(segmentText, key, 'ABUSE-LIMIT-001');
+    assert.equal(
+      Number(report.config_assignments?.[key]),
+      expected,
+      `ABUSE-LIMIT-001 structured report config_assignments.${key} must match config_artifact_summary marker`,
+    );
+  }
+  for (const segment of abuseRateLimitProfileSegments) {
+    const segmentText = findEvidenceSegment(evidence, segment);
+    const profile = (Array.isArray(report.profiles) ? report.profiles : []).find((candidate) => candidate?.name === segment);
+    assert.ok(profile, `ABUSE-LIMIT-001 structured report profiles must include ${segment}`);
+    const attemptsMatch = /(?:after\s+(\d+)\s+attempts\b|(?:^|[\s,])attempts=(\d+)\b)/i.exec(segmentText);
+    const attempts = Number.parseInt(attemptsMatch?.[1] ?? attemptsMatch?.[2] ?? '0', 10);
+    assert.equal(Number(profile.attempts), attempts, `ABUSE-LIMIT-001 structured report ${segment} attempts must match summary marker`);
+    assert.equal(Number(profile.retry_after), extractAbuseHeader(segmentText, 'Retry-After', segment), `ABUSE-LIMIT-001 structured report ${segment} retry_after must match summary marker`);
+    assert.equal(Number(profile.rate_limit), extractAbuseHeader(segmentText, 'X-RateLimit-Limit', segment), `ABUSE-LIMIT-001 structured report ${segment} rate_limit must match summary marker`);
+    assert.equal(Number(profile.rate_limit_remaining), extractAbuseHeader(segmentText, 'X-RateLimit-Remaining', segment), `ABUSE-LIMIT-001 structured report ${segment} rate_limit_remaining must match summary marker`);
+    assert.equal(Number(profile.rate_limit_reset), extractAbuseHeader(segmentText, 'X-RateLimit-Reset', segment), `ABUSE-LIMIT-001 structured report ${segment} rate_limit_reset must match summary marker`);
+    if (segment === 'auth-account-rate-limit') {
+      assert.equal(profile.account_scoped, true, 'ABUSE-LIMIT-001 structured report auth-account-rate-limit account_scoped must be true');
+      assert.equal(profile.forwarded_client_ip_rotated, true, 'ABUSE-LIMIT-001 structured report auth-account-rate-limit forwarded_client_ip_rotated must be true');
+    }
+    if (segment === 'auth-refresh-rate-limit') {
+      assert.equal(profile.refresh_token_scoped, true, 'ABUSE-LIMIT-001 structured report auth-refresh-rate-limit refresh_token_scoped must be true');
+    }
+    if (segment === 'websocket-rate-limit') {
+      assert.equal(profile.websocket_upgrade, true, 'ABUSE-LIMIT-001 structured report websocket-rate-limit websocket_upgrade must be true');
+    }
+    if (segment === 'zoom-webhook-rate-limit') {
+      assert.equal(profile.zoom_webhook, true, 'ABUSE-LIMIT-001 structured report zoom-webhook-rate-limit zoom_webhook must be true');
+    }
+  }
+}
+
+function extractAbuseHeader(segmentText, headerName, segment) {
+  const pattern = new RegExp(`${escapeRegExp(headerName)}="?([0-9]+)"?`, 'i');
+  const match = pattern.exec(segmentText);
+  assert.ok(match, `ABUSE-LIMIT-001 strict release ${segment} must include concrete ${headerName}=<integer>`);
+  return Number.parseInt(match[1], 10);
+}
+
+function assertEqualStrictSecurityRoleARNs(roleARNs) {
+  for (const segment of securityRoleARNSegments) {
+    assert.ok(roleARNs.has(segment), `SEC-SECRETS-001 strict release evidence missing concrete IAM role ARN on ${segment}`);
+  }
+  assert.equal(
+    new Set(roleARNs.values()).size,
+    1,
+    'SEC-SECRETS-001 strict release evidence role_arn values must match across IRSA, SecretProviderClass, IAM policy, and access-test segments',
+  );
+}
+
+function assertStrictTenantOrgIDBinding(evidence) {
+  const segment = findEvidenceSegment(evidence, 'database-rls-context-proof');
+  assert.ok(segment, 'DATA-RLS-001 strict release evidence must include database-rls-context-proof segment');
+  const ownerMatch = segment.match(tenantOwnerOrgIDPattern);
+  const blockedMatch = segment.match(tenantBlockedOrgIDPattern);
+  assert.ok(ownerMatch, 'DATA-RLS-001 database-rls-context-proof must include UUID app.current_org_id=<id>');
+  assert.ok(blockedMatch, 'DATA-RLS-001 database-rls-context-proof must include UUID blocked_org_id=<id>');
+  assert.notEqual(
+    ownerMatch[1].toLowerCase(),
+    blockedMatch[1].toLowerCase(),
+    'DATA-RLS-001 database-rls-context-proof owner and blocked organization IDs must differ',
+  );
+}
+
+function assertStrictTenantResourceIDBinding(evidence) {
+  const journalSegments = [
+    'owner-create-encrypted-journal',
+    'owner-read-created-journal',
+    'owner-list-contains-created-journal',
+    'blocked-read-created-journal',
+    'blocked-list-excludes-created-journal',
+  ];
+  const roomSegments = [
+    'owner-create-room',
+    'owner-active-rooms-contains-created-room',
+    'blocked-active-rooms-excludes-created-room',
+    'owner-room-state',
+    'blocked-room-state-denied',
+  ];
+  const journalIDs = journalSegments.map((segment) => {
+    const value = summarySegmentCapture(evidence.map((artifact) => String(artifact.result_summary ?? '')).join('; '), segment, tenantJournalIDPattern);
+    assert.ok(value, `DATA-RLS-001 ${segment} must include concrete journal_id=<id>`);
+    return value;
+  });
+  const roomIDs = roomSegments.map((segment) => {
+    const value = summarySegmentCapture(evidence.map((artifact) => String(artifact.result_summary ?? '')).join('; '), segment, tenantRoomIDPattern);
+    assert.ok(value, `DATA-RLS-001 ${segment} must include concrete room_id=<id>`);
+    return value;
+  });
+  assert.equal(
+    new Set(journalIDs).size,
+    1,
+    'DATA-RLS-001 strict release journal_id values must match across created journal read/list/blocked segments',
+  );
+  assert.equal(
+    new Set(roomIDs).size,
+    1,
+    'DATA-RLS-001 strict release room_id values must match across created room list/state/blocked segments',
+  );
+}
+
+function assertStrictTenantStructuredRLSReport(evidence) {
+  const structuredReports = evidence
+    .map((artifact) => artifact?.structured_report?.database_rls_context_proof)
+    .filter(Boolean);
+  assert.equal(
+    structuredReports.length,
+    1,
+    'DATA-RLS-001 strict release evidence must include exactly one structured database_rls_context_proof report',
+  );
+  const report = structuredReports[0];
+  const summary = evidence.map((artifact) => String(artifact.result_summary ?? '')).join('; ');
+  assert.match(String(report.owner_org_id ?? ''), tenantOrgIDValuePattern, 'DATA-RLS-001 structured report must include UUID owner_org_id');
+  assert.match(String(report.blocked_org_id ?? ''), tenantOrgIDValuePattern, 'DATA-RLS-001 structured report must include UUID blocked_org_id');
+  assert.notEqual(
+    String(report.owner_org_id).toLowerCase(),
+    String(report.blocked_org_id).toLowerCase(),
+    'DATA-RLS-001 structured report owner_org_id and blocked_org_id must differ',
+  );
+  assert.ok(String(report.created_journal_id ?? '').trim(), 'DATA-RLS-001 structured report must include created_journal_id');
+  assert.ok(String(report.created_room_id ?? '').trim(), 'DATA-RLS-001 structured report must include created_room_id');
+  assertStrictTenantStructuredIdentityBinding(report, summary);
+  assert.equal(String(report.application_role ?? ''), 'scriptureforge_app', 'DATA-RLS-001 structured report application_role must be scriptureforge_app');
+  assert.equal(String(report.row_security ?? ''), 'on', 'DATA-RLS-001 structured report row_security must be on');
+  assert.equal(Number(report.rls_tables_verified), 9, 'DATA-RLS-001 structured report rls_tables_verified must be 9');
+  assert.equal(Number(report.rls_forced_tables), 9, 'DATA-RLS-001 structured report rls_forced_tables must be 9');
+  assert.equal(String(report.rls_policy_scope ?? ''), 'app.current_org_id', 'DATA-RLS-001 structured report rls_policy_scope must be app.current_org_id');
+  assert.deepEqual(
+    report.rls_table_names,
+    tenantTableNames(),
+    'DATA-RLS-001 structured report rls_table_names must match every tenant-scoped table',
+  );
+  assertStrictTenantStructuredTableOutcomes(report.rls_table_outcomes);
+}
+
+function assertStrictTenantStructuredIdentityBinding(report, summary) {
+  const dbSegment = findEvidenceSegment([{ result_summary: summary }], 'database-rls-context-proof');
+  assert.ok(dbSegment, 'DATA-RLS-001 structured report identity binding requires database-rls-context-proof segment');
+  const ownerMatch = dbSegment.match(tenantOwnerOrgIDPattern);
+  const blockedMatch = dbSegment.match(tenantBlockedOrgIDPattern);
+  assert.ok(ownerMatch, 'DATA-RLS-001 structured report identity binding requires summary app.current_org_id=<id>');
+  assert.ok(blockedMatch, 'DATA-RLS-001 structured report identity binding requires summary blocked_org_id=<id>');
+  assert.equal(
+    String(report.owner_org_id).toLowerCase(),
+    ownerMatch[1].toLowerCase(),
+    'DATA-RLS-001 structured report owner_org_id must match database-rls-context-proof app.current_org_id marker',
+  );
+  assert.equal(
+    String(report.blocked_org_id).toLowerCase(),
+    blockedMatch[1].toLowerCase(),
+    'DATA-RLS-001 structured report blocked_org_id must match database-rls-context-proof blocked_org_id marker',
+  );
+  const journalID = summarySegmentCapture(summary, 'owner-create-encrypted-journal', tenantJournalIDPattern);
+  const roomID = summarySegmentCapture(summary, 'owner-create-room', tenantRoomIDPattern);
+  assert.ok(journalID, 'DATA-RLS-001 structured report identity binding requires summary journal_id=<id>');
+  assert.ok(roomID, 'DATA-RLS-001 structured report identity binding requires summary room_id=<id>');
+  assert.equal(
+    String(report.created_journal_id),
+    journalID,
+    'DATA-RLS-001 structured report created_journal_id must match owner-create-encrypted-journal journal_id marker',
+  );
+  assert.equal(
+    String(report.created_room_id),
+    roomID,
+    'DATA-RLS-001 structured report created_room_id must match owner-create-room room_id marker',
+  );
+}
+
+function assertStrictTenantStructuredTableOutcomes(outcomes) {
+  assert.ok(Array.isArray(outcomes), 'DATA-RLS-001 structured report must include rls_table_outcomes array');
+  assert.equal(
+    outcomes.length,
+    tenantTableNames().length,
+    'DATA-RLS-001 structured report must include rls_table_outcomes for every tenant-scoped table',
+  );
+  for (const table of tenantTableNames()) {
+    const outcome = outcomes.find((candidate) => String(candidate?.table ?? '') === table);
+    assert.ok(outcome, `DATA-RLS-001 structured report missing rls_table_outcomes entry for ${table}`);
+    assert.equal(outcome.same_visible, true, `DATA-RLS-001 structured report ${table} must include same_visible=true`);
+    assert.equal(outcome.cross_hidden, true, `DATA-RLS-001 structured report ${table} must include cross_hidden=true`);
+    assert.equal(outcome.write_denied, true, `DATA-RLS-001 structured report ${table} must include write_denied=true`);
+  }
+}
+
+function assertNoStrictSecretLeaks(evidence) {
+  for (const artifact of evidence) {
+    const summary = String(artifact.result_summary ?? '').toLowerCase();
+    for (const marker of strictSecretLeakMarkers) {
+      assert.equal(
+        summary.includes(marker),
+        false,
+        `SEC-SECRETS-001 strict release evidence must not include secret value marker ${marker}`,
+      );
+    }
+  }
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function validateStrictSignoffEvidence(item, manifest) {
+  const releaseMarker = `release_candidate=${String(manifest.release_candidate).toLowerCase()}`;
+  const evidence = Array.isArray(item.evidence) ? item.evidence : [];
+  const hasSignoffEvidence = evidence.some((artifact) => {
+    const summary = String(artifact.result_summary ?? '').toLowerCase();
+    const artifactText = String(artifact.artifact ?? '').toLowerCase();
+    const command = String(artifact.command_or_probe ?? '').toLowerCase();
+    return !hasDisallowedStrictEvidenceMarker(`${command} ${artifactText} ${summary}`)
+      && isDurableSignoffArtifact(artifact.artifact)
+      && requiredSignoffSummaryMarkers.every((marker) => summary.includes(marker.toLowerCase()))
+      && summary.includes(releaseMarker);
+  });
+  assert.ok(
+    hasSignoffEvidence,
+    `${item.id} strict release evidence must include durable security signoff artifact, threat-model, dependency-risk, residual-risk, owner/security approval, release signoff, and exact release_candidate markers`,
+  );
+}
+
+function isDurableSignoffArtifact(artifact) {
+  const value = String(artifact ?? '').trim();
+  if (/^https:\/\//i.test(value)) {
+    return isHTTPSNonLocalArtifact(value);
+  }
+  const normalized = value.replaceAll('\\', '/').toLowerCase();
+  return normalized.startsWith('security/')
+    && normalized.endsWith('.md')
+    && /signoff|approval|release-risk|risk-signoff/.test(normalized);
+}
+
+function isHTTPSNonLocalArtifact(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  return url.protocol === 'https:'
+    && !isLocalOrPrivateHost(hostname);
+}
+
+function assertNonLocalStagingEndpoint(value, message) {
+  let url;
+  try {
+    url = new URL(String(value ?? '').trim());
+  } catch {
+    assert.fail(message);
+  }
+  const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  assert.ok(!isLocalOrPrivateHost(hostname), message);
+}
+
+function isLocalOrPrivateHost(hostname) {
+  if (isReservedPlaceholderHost(hostname)) {
+    return true;
+  }
+  if (
+    hostname === 'localhost'
+    || hostname === '::'
+    || hostname === '::1'
+    || hostname.endsWith('.local')
+    || hostname === '0.0.0.0'
+    || hostname.startsWith('0.')
+    || hostname.startsWith('127.')
+    || hostname.startsWith('10.')
+    || hostname.startsWith('192.168.')
+    || /^169\.254\./.test(hostname)
+  ) {
+    return true;
+  }
+  const mappedIPv4 = ipv4MappedHost(hostname);
+  if (mappedIPv4) {
+    return isLocalOrPrivateHost(mappedIPv4);
+  }
+  if (/^f[cd][0-9a-f]*:/i.test(hostname) || /^fe[89ab][0-9a-f]*:/i.test(hostname)) {
+    return true;
+  }
+  const private172 = hostname.match(/^172\.(\d+)\./);
+  return Boolean(private172 && Number(private172[1]) >= 16 && Number(private172[1]) <= 31);
+}
+
+function isReservedPlaceholderHost(hostname) {
+  const normalized = String(hostname ?? '').replace(/\.$/, '').toLowerCase();
+  return normalized === 'example'
+    || normalized.endsWith('.example')
+    || normalized === 'example.com'
+    || normalized.endsWith('.example.com')
+    || normalized === 'example.org'
+    || normalized.endsWith('.example.org')
+    || normalized === 'example.net'
+    || normalized.endsWith('.example.net')
+    || normalized === 'invalid'
+    || normalized.endsWith('.invalid')
+    || normalized === 'test'
+    || normalized.endsWith('.test');
+}
+
+function ipv4MappedHost(hostname) {
+  if (!hostname.startsWith('::ffff:')) {
+    return null;
+  }
+  const mapped = hostname.slice('::ffff:'.length);
+  if (mapped.includes('.')) {
+    return mapped;
+  }
+  const hextets = mapped.split(':').filter(Boolean).map((part) => Number.parseInt(part, 16));
+  if (hextets.length === 0 || hextets.length > 2 || hextets.some((part) => !Number.isInteger(part) || part < 0 || part > 0xffff)) {
+    return null;
+  }
+  const value = hextets.length === 1 ? hextets[0] : (hextets[0] << 16) + hextets[1];
+  return [
+    (value >>> 24) & 255,
+    (value >>> 16) & 255,
+    (value >>> 8) & 255,
+    value & 255,
+  ].join('.');
+}
+
+function hasDisallowedStrictEvidenceMarker(value) {
+  return disallowedStrictEvidenceMarkers.some((marker) => value.includes(marker));
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const manifest = JSON.parse(await readFile(args.evidenceFile, 'utf8'));
+  const result = validateManifest(manifest, { strictRelease: args.strictRelease });
+  const strictSuffix = args.strictRelease ? ' in strict release mode' : '';
+  console.log(`staging evidence manifest validated${strictSuffix}: ${args.evidenceFile} (${result.items} items): ${stagingEvidenceProofMarkers.join(', ')}`);
+}
+
+if (import.meta.url === `file://${process.argv[1]?.replaceAll('\\', '/')}` || process.argv[1]?.endsWith('validate-staging-evidence.mjs')) {
+  main().catch((error) => {
+    console.error(error.message);
+    process.exit(1);
+  });
+}

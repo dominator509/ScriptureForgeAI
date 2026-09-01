@@ -3,17 +3,19 @@ package integration
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func getTestDBURL() string {
+func getTestDBURL(t *testing.T) string {
+	t.Helper()
 	url := os.Getenv("DATABASE_URL")
-	if url == "" {
-		// Fallback for local testing if not explicitly set
-		return "postgres://${DB_USER}:${DB_PASS}@${DB_HOST}/${DB_NAME}"
+	if url == "" || strings.Contains(url, "${") {
+		t.Skip("DATABASE_URL is required for active database integration tests")
 	}
 	return url
 }
@@ -28,7 +30,7 @@ func TestDatabasePoolConnectivity(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	dbpool, err := pgxpool.New(ctx, getTestDBURL())
+	dbpool, err := pgxpool.New(ctx, getTestDBURL(t))
 	if err != nil {
 		t.Logf("Database pool creation failed: %v (expected if DB is not running locally)", err)
 		return
@@ -53,31 +55,24 @@ func TestRowLevelSecurityIsolation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	dbpool, err := pgxpool.New(ctx, getTestDBURL())
-	if err != nil {
-		return
-	}
-	defer dbpool.Close()
-
-	// Implement proper transaction block for RLS validation
-	tx, err := dbpool.Begin(ctx)
-	if err != nil {
-		t.Fatalf("Failed to begin transaction: %v", err)
-	}
-	defer tx.Rollback(ctx)
-
-	_, err = tx.Exec(ctx, "SET LOCAL app.current_org_id = '00000000-0000-0000-0000-000000000000'")
-	if err == nil {
-		rows, _ := tx.Query(ctx, "SELECT id FROM users")
+	dbpool := openTenantIsolationDB(t)
+	setTenantForTest(ctx, t, dbpool, "00000000-0000-0000-0000-000000000000", func(ctx context.Context, tx pgx.Tx) {
+		rows, err := tx.Query(ctx, "SELECT id FROM users")
+		if err != nil {
+			t.Fatalf("query users under RLS: %v", err)
+		}
 		defer rows.Close()
 		count := 0
 		for rows.Next() {
 			count++
 		}
+		if err := rows.Err(); err != nil {
+			t.Fatalf("iterate users under RLS: %v", err)
+		}
 		if count > 0 {
 			t.Errorf("RLS isolation failed: Expected 0 rows, got %d", count)
 		}
-	}
+	})
 
 	t.Log("RowLevelSecurityIsolation passed.")
 }
@@ -92,7 +87,7 @@ func TestConstraintRollbackBehavior(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	dbpool, err := pgxpool.New(ctx, getTestDBURL())
+	dbpool, err := pgxpool.New(ctx, getTestDBURL(t))
 	if err != nil {
 		return
 	}
@@ -126,7 +121,7 @@ func TestVectorIndexUsage(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	dbpool, err := pgxpool.New(ctx, getTestDBURL())
+	dbpool, err := pgxpool.New(ctx, getTestDBURL(t))
 	if err != nil {
 		return
 	}

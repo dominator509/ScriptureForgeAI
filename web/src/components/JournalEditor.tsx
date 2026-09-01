@@ -1,29 +1,48 @@
 import React, { useState, useEffect } from 'react';
-import { deriveIsolationKey, encryptJournalData, decryptJournalData, EncryptedPayload } from '../lib/crypto';
-import { apiRequest } from '../lib/api';
+import {
+  createJournalCryptoKeyHandle,
+  decryptJournalData,
+  deriveIsolationKey,
+  disposeJournalCryptoKey,
+  encryptJournalData,
+  EncryptedPayload,
+  getJournalCryptoKey,
+  JournalCryptoKeyHandle,
+  journalAssociatedData,
+} from '../lib/crypto';
+import { EncryptedJournalEntry, getJournalBootstrap, JournalBootstrap, listJournalEntries, saveJournalEntry } from '../lib/api';
 import { useAppStore } from '../lib/store';
 
-// A fully functional component demonstrating Zero-Knowledge containment integrations
+// Client-side zero-knowledge journal editor. Plaintext never leaves this component.
 export const JournalEditor: React.FC = () => {
-  const { currentRole, token, userId } = useAppStore();
+  const { currentRole, token, userId, organizationId } = useAppStore();
   const [plaintext, setPlaintext] = useState<string>('');
   const [passphrase, setPassphrase] = useState<string>('');
   const [encryptedData, setEncryptedData] = useState<EncryptedPayload | null>(null);
-  const [entries, setEntries] = useState<Array<EncryptedPayload & { id: string; salt_id: string; salt_version: number }>>([]);
-  const [cryptoKey, setCryptoKey] = useState<CryptoKey | null>(null);
+  const [entries, setEntries] = useState<EncryptedJournalEntry[]>([]);
+  const [keyHandle, setKeyHandle] = useState<JournalCryptoKeyHandle | null>(null);
+  const [journalBootstrap, setJournalBootstrap] = useState<JournalBootstrap | null>(null);
   const [status, setStatus] = useState<string>('');
-
-  const userSalt = userId ? `journal:${userId}:v1` : '';
 
   // Derive the key automatically when passphrase is provided
   useEffect(() => {
     let isMounted = true;
-    if (passphrase.length >= 8 && userSalt) {
-      deriveIsolationKey(passphrase, userSalt)
+    setKeyHandle((previous) => {
+      disposeJournalCryptoKey(previous);
+      return null;
+    });
+    if (passphrase.length >= 8 && journalBootstrap?.salt_id) {
+      deriveIsolationKey(passphrase, journalBootstrap.salt_id)
         .then((key) => {
+          const derivedHandle = createJournalCryptoKeyHandle(key);
           if (isMounted) {
-            setCryptoKey(key);
+            setKeyHandle((previous) => {
+              disposeJournalCryptoKey(previous);
+              return derivedHandle;
+            });
             setStatus("Isolation Key Derived Successfully");
+          } else {
+            disposeJournalCryptoKey(derivedHandle);
           }
         })
         .catch((err) => {
@@ -31,48 +50,123 @@ export const JournalEditor: React.FC = () => {
           if (isMounted) setStatus("Failed to derive isolation key");
         });
     } else {
-      setCryptoKey(null);
+      setKeyHandle((previous) => {
+        disposeJournalCryptoKey(previous);
+        return null;
+      });
       setStatus("Awaiting valid passphrase (min 8 chars)");
     }
-    return () => { isMounted = false; };
-  }, [passphrase, userSalt]);
+    return () => {
+      isMounted = false;
+      setKeyHandle((previous) => {
+        disposeJournalCryptoKey(previous);
+        return null;
+      });
+    };
+  }, [passphrase, journalBootstrap?.salt_id]);
+
+  const principalRef = React.useRef<string | null>(null);
 
   useEffect(() => {
-    if (!token) return;
-    apiRequest<Array<EncryptedPayload & { id: string; salt_id: string; salt_version: number }>>('/api/v1/journal_entries', token)
-      .then(setEntries)
-      .catch((err) => {
-        console.error('Failed to fetch journal entries:', err);
+    let isMounted = true;
+    const principal = userId && organizationId ? `${userId}:${organizationId}` : null;
+    const principalChanged = principalRef.current !== principal;
+    principalRef.current = principal;
+    const isCurrentPrincipal = () => {
+      const current = useAppStore.getState();
+      return isMounted && current.userId === userId && current.organizationId === organizationId;
+    };
+
+    if (!token || !userId || !organizationId) {
+      if (principalChanged || !token) {
+        setJournalBootstrap(null);
         setEntries([]);
+        setPlaintext('');
+        setPassphrase('');
+        setEncryptedData(null);
+        setStatus('Sign in before using the journal.');
+        setKeyHandle((previous) => {
+          disposeJournalCryptoKey(previous);
+          return null;
+        });
+      }
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    if (principalChanged) {
+      setJournalBootstrap(null);
+      setEntries([]);
+      setPlaintext('');
+      setPassphrase('');
+      setEncryptedData(null);
+      setKeyHandle((previous) => {
+        disposeJournalCryptoKey(previous);
+        return null;
       });
-  }, [token]);
+    }
+
+    getJournalBootstrap(token)
+      .then((bootstrap) => {
+        if (isCurrentPrincipal()) setJournalBootstrap(bootstrap);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch journal bootstrap:", err);
+        if (isCurrentPrincipal()) setJournalBootstrap(null);
+      });
+    listJournalEntries(token)
+      .then((nextEntries) => {
+        if (isCurrentPrincipal()) setEntries(nextEntries);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch journal entries:", err);
+        if (isCurrentPrincipal()) setEntries([]);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token, userId, organizationId]);
 
   // Ensure key is cleared upon dismount (Zero-Knowledge rule)
   useEffect(() => {
     return () => {
-      setCryptoKey(null);
+      setKeyHandle((previous) => {
+        disposeJournalCryptoKey(previous);
+        return null;
+      });
       setPassphrase('');
     };
   }, []);
 
   const handleSaveToNetwork = async (): Promise<void> => {
-    if (!cryptoKey || plaintext.trim() === '') return;
+    if (!keyHandle || plaintext.trim() === '') return;
 
     try {
-      const payload = await encryptJournalData(plaintext, cryptoKey);
+      if (!journalBootstrap) {
+        setStatus("Journal bootstrap unavailable.");
+        return;
+      }
+      const payload = await encryptJournalData(
+        plaintext,
+        getJournalCryptoKey(keyHandle),
+        journalAssociatedData(journalBootstrap.salt_id, journalBootstrap.salt_version),
+      );
       setEncryptedData(payload);
+      setPlaintext('');
+      setKeyHandle((previous) => {
+        disposeJournalCryptoKey(previous);
+        return null;
+      });
       setStatus("Successfully encrypted to opaque payload. Ready for network.");
 
-      if (token) {
-        const saved = await apiRequest<EncryptedPayload & { id: string; salt_id: string; salt_version: number }>(
-          '/api/v1/journal_entries',
-          token,
-          {
-            method: 'POST',
-            body: JSON.stringify({ ...payload, salt_id: userSalt, salt_version: 1 }),
-          },
-        );
-        setEntries((current) => [saved, ...current]);
+      if (token && userId && organizationId) {
+        const saved = await saveJournalEntry(token, { ...payload, salt_id: journalBootstrap.salt_id, salt_version: journalBootstrap.salt_version });
+        const current = useAppStore.getState();
+        if (current.userId === userId && current.organizationId === organizationId) {
+          setEntries((currentEntries) => [saved, ...currentEntries]);
+        }
       }
 
     } catch (err) {
@@ -83,12 +177,25 @@ export const JournalEditor: React.FC = () => {
 
   const handleReadFromNetwork = async (entry?: EncryptedPayload): Promise<void> => {
     const payload = entry ?? encryptedData;
-    if (!cryptoKey || !payload) return;
+    if (!keyHandle || !payload) return;
+    const entrySalt = payload as Partial<EncryptedJournalEntry>;
+    const associatedData = entrySalt.salt_id && typeof entrySalt.salt_version === 'number'
+      ? journalAssociatedData(entrySalt.salt_id, entrySalt.salt_version)
+      : journalBootstrap
+        ? journalAssociatedData(journalBootstrap.salt_id, journalBootstrap.salt_version)
+        : undefined;
+    if (!associatedData) {
+      setStatus("Journal bootstrap unavailable.");
+      return;
+    }
 
     try {
-      const decodedText = await decryptJournalData(payload, cryptoKey);
-      setPlaintext(decodedText);
-      setStatus("Successfully decrypted from network payload.");
+      const decodedText = await decryptJournalData(payload, getJournalCryptoKey(keyHandle), associatedData);
+      const current = useAppStore.getState();
+      if (current.userId === userId && current.organizationId === organizationId) {
+        setPlaintext(decodedText);
+        setStatus("Successfully decrypted from network payload.");
+      }
     } catch (err) {
       console.error("Decryption failed:", err);
       setStatus("Decryption failed. Invalid key or corrupted data.");
@@ -127,14 +234,14 @@ export const JournalEditor: React.FC = () => {
       <div className="flex space-x-4">
         <button
           onClick={() => void handleSaveToNetwork()}
-          disabled={!token || !cryptoKey || plaintext === ''}
+          disabled={!token || !keyHandle || plaintext === ''}
           className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
         >
           Encrypt & Save
         </button>
         <button
           onClick={() => void handleReadFromNetwork()}
-          disabled={!cryptoKey || !encryptedData}
+          disabled={!keyHandle || !encryptedData}
           className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
         >
           Read & Decrypt

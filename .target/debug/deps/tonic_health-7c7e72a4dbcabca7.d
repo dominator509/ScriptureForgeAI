@@ -1,0 +1,10 @@
+C:\dev\ScriptureForgeAI\.target\debug\deps\tonic_health-7c7e72a4dbcabca7.d: C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tonic-health-0.10.2\src\lib.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tonic-health-0.10.2\src\server.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tonic-health-0.10.2\src\generated\grpc_health_v1.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tonic-health-0.10.2\src\generated/grpc_health_v1.bin
+
+C:\dev\ScriptureForgeAI\.target\debug\deps\libtonic_health-7c7e72a4dbcabca7.rlib: C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tonic-health-0.10.2\src\lib.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tonic-health-0.10.2\src\server.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tonic-health-0.10.2\src\generated\grpc_health_v1.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tonic-health-0.10.2\src\generated/grpc_health_v1.bin
+
+C:\dev\ScriptureForgeAI\.target\debug\deps\libtonic_health-7c7e72a4dbcabca7.rmeta: C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tonic-health-0.10.2\src\lib.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tonic-health-0.10.2\src\server.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tonic-health-0.10.2\src\generated\grpc_health_v1.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tonic-health-0.10.2\src\generated/grpc_health_v1.bin
+
+C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tonic-health-0.10.2\src\lib.rs:
+C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tonic-health-0.10.2\src\server.rs:
+C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tonic-health-0.10.2\src\generated\grpc_health_v1.rs:
+C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tonic-health-0.10.2\src\generated/grpc_health_v1.bin:

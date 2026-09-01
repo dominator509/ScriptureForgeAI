@@ -1,0 +1,12 @@
+C:\dev\ScriptureForgeAI\.target\debug\deps\md5-72f43914e904c1f1.d: C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\lib.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\block_api.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\compress.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\consts.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\../README.md C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\compress\soft.rs
+
+C:\dev\ScriptureForgeAI\.target\debug\deps\libmd5-72f43914e904c1f1.rlib: C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\lib.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\block_api.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\compress.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\consts.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\../README.md C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\compress\soft.rs
+
+C:\dev\ScriptureForgeAI\.target\debug\deps\libmd5-72f43914e904c1f1.rmeta: C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\lib.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\block_api.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\compress.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\consts.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\../README.md C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\compress\soft.rs
+
+C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\lib.rs:
+C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\block_api.rs:
+C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\compress.rs:
+C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\consts.rs:
+C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\../README.md:
+C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\md-5-0.11.0\src\compress\soft.rs:

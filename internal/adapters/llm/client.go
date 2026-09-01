@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -13,21 +12,25 @@ import (
 	"time"
 
 	"scriptureforge/internal/domain/ai"
+	"scriptureforge/internal/domain/observability"
 )
 
 // LLMClient represents a network-isolated execution engine connector.
 type LLMClient struct {
-	APIKey     string
-	Endpoint   string
-	Model      string
-	HTTPClient *http.Client
-	MaxRetries int
+	APIKey               string
+	Endpoint             string
+	Model                string
+	HTTPClient           *http.Client
+	MaxRetries           int
+	MaxOutputTokens      int
+	AllowedProviderHosts []string
 }
 
-type CompletionRequest struct {
-	Model    string          `json:"model"`
-	Messages []openaiMessage `json:"messages"`
-	Temp     float32         `json:"temperature"`
+type openaiRequest struct {
+	Model     string          `json:"model"`
+	Messages  []openaiMessage `json:"messages"`
+	Temp      float32         `json:"temperature"`
+	MaxTokens int             `json:"max_tokens"`
 }
 
 type openaiMessage struct {
@@ -35,7 +38,7 @@ type openaiMessage struct {
 	Content string `json:"content"`
 }
 
-type CompletionResponse struct {
+type openaiResponse struct {
 	Choices []struct {
 		Message openaiMessage `json:"message"`
 	} `json:"choices"`
@@ -43,33 +46,24 @@ type CompletionResponse struct {
 
 // NewLLMClient initializes the explicit boundary client.
 func NewLLMClient() *LLMClient {
-	key := os.Getenv("OPENAI_API_KEY")
-	endpoint := os.Getenv("AI_CHAT_ENDPOINT")
+	key := strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
+	endpoint := strings.TrimSpace(os.Getenv("AI_CHAT_ENDPOINT"))
 	if endpoint == "" {
 		endpoint = "https://api.openai.com/v1/chat/completions"
 	}
-	model := os.Getenv("AI_CHAT_MODEL")
+	model := strings.TrimSpace(os.Getenv("AI_CHAT_MODEL"))
 	if model == "" {
 		model = "gpt-4"
 	}
-	timeout := 3500 * time.Millisecond
-	if configured := os.Getenv("AI_HTTP_TIMEOUT_MS"); configured != "" {
-		if millis, err := strconv.Atoi(configured); err == nil && millis > 0 {
-			timeout = time.Duration(millis) * time.Millisecond
-		}
-	}
-	maxRetries := 1
-	if configured := os.Getenv("AI_MAX_RETRIES"); configured != "" {
-		if retries, err := strconv.Atoi(configured); err == nil && retries >= 0 {
-			maxRetries = retries
-		}
-	}
+	providerConfig := ai.LoadProviderHTTPConfig()
 	return &LLMClient{
-		APIKey:     key,
-		Endpoint:   endpoint,
-		Model:      model,
-		HTTPClient: &http.Client{Timeout: timeout},
-		MaxRetries: maxRetries,
+		APIKey:               key,
+		Endpoint:             endpoint,
+		Model:                model,
+		HTTPClient:           ai.NewProviderHTTPClient(providerConfig),
+		MaxRetries:           providerConfig.MaxRetries,
+		MaxOutputTokens:      providerConfig.MaxOutputTokens,
+		AllowedProviderHosts: ai.LoadAllowedProviderHosts(),
 	}
 }
 
@@ -92,84 +86,153 @@ func (c *LLMClient) BuildRigorousPrompt(safePrompt string, compiledContext strin
 
 // CreateCompletion triggers the network call, processes the boundaries, and runs verification.
 func (c *LLMClient) CreateCompletion(ctx context.Context, safePrompt string, compiledContext string, verifier *ai.ResponseVerificationSubsystem) (string, error) {
-	if c.APIKey == "" {
-		if os.Getenv("GO_ENV") == "testing" {
-			return "As stated, [Genesis 1:1] In the beginning God created the heaven and the earth.", nil
+	if c == nil {
+		return "", &ai.PlatformException{
+			Category: "AI_CONFIGURATION_FAULT",
+			Message:  "LLM client is not configured",
+			Code:     503,
 		}
+	}
+	start := time.Now()
+	status := "error"
+	defer func() {
+		duration := time.Since(start)
+		observability.ObserveDependencyFromContext(ctx, "ai_provider", "chat_completion", status, duration)
+		observability.ObserveAIInferenceFromContext(ctx, c.Model, status, duration)
+	}()
+	if strings.TrimSpace(c.APIKey) == "" {
+		status = "configuration_error"
 		return "", &ai.PlatformException{
 			Category: "AI_CONFIGURATION_FAULT",
 			Message:  "OPENAI_API_KEY is not configured",
 			Code:     503,
 		}
 	}
+	if strings.TrimSpace(c.Endpoint) == "" || strings.TrimSpace(c.Model) == "" || c.HTTPClient == nil {
+		status = "configuration_error"
+		return "", &ai.PlatformException{
+			Category: "AI_CONFIGURATION_FAULT",
+			Message:  "LLM client is not fully configured",
+			Code:     503,
+		}
+	}
+	if err := ai.ValidateProviderEndpoint(c.Endpoint, c.AllowedProviderHosts); err != nil {
+		status = "configuration_error"
+		return "", &ai.PlatformException{
+			Category: "AI_CONFIGURATION_FAULT",
+			Message:  "AI provider endpoint is not allowed",
+			Code:     503,
+		}
+	}
+	if verifier == nil {
+		status = "configuration_error"
+		return "", &ai.PlatformException{
+			Category: "AI_CONFIGURATION_FAULT",
+			Message:  "AI response verifier is not configured",
+			Code:     503,
+		}
+	}
 
 	messages := c.BuildRigorousPrompt(safePrompt, compiledContext)
 
-	reqBody := CompletionRequest{
-		Model:    c.Model,
-		Messages: messages,
-		Temp:     0.0,
+	reqBody := openaiRequest{
+		Model:     c.Model,
+		Messages:  messages,
+		Temp:      0.0, // Zero temperature for deterministic output bounding
+		MaxTokens: boundedMaxOutputTokens(c.MaxOutputTokens),
 	}
 
-	generatedResponse, err := c.performRequest(ctx, reqBody)
-	if err != nil {
-		return "", err
-	}
-
-	// Explicit Response Verification Subsystem Integration
-	if err := verifier.Verify(generatedResponse, compiledContext); err != nil {
-		return "", err // Output score dropped, fault returned immediately
-	}
-
-	return generatedResponse, nil
-}
-
-func (c *LLMClient) performRequest(ctx context.Context, reqBody CompletionRequest) (string, error) {
 	jsonBody, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Endpoint, bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return "", err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.APIKey)
-
-	var resp *http.Response
-	for attempt := 0; attempt <= c.MaxRetries; attempt++ {
-		resp, err = c.HTTPClient.Do(req)
-		if err == nil {
-			break
-		}
-		if attempt < c.MaxRetries {
-			time.Sleep(time.Duration(attempt+1) * 100 * time.Millisecond)
-		}
-	}
-	if err != nil {
+		status = "request_encode_error"
 		return "", &ai.PlatformException{
 			Category: "AI_ORCHESTRATION_ENGINE_FAULT",
-			Message:  fmt.Sprintf("LLM request failed: %v", err),
+			Message:  "LLM request could not be encoded",
+			Code:     http.StatusServiceUnavailable,
+		}
+	}
+
+	resp, err := ai.DoProviderRequest(ctx, c.HTTPClient, c.MaxRetries, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.Endpoint, bytes.NewReader(jsonBody))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+		return req, nil
+	})
+	if err != nil {
+		status = "timeout_or_network_error"
+		return "", &ai.PlatformException{
+			Category: "AI_ORCHESTRATION_ENGINE_FAULT",
+			Message:  "LLM request failed",
 			Code:     503,
 		}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("LLM API returned status %d: %s", resp.StatusCode, string(bodyBytes))
+		status = strconv.Itoa(resp.StatusCode)
+		_, _ = ai.ReadProviderResponseBody(resp)
+		return "", &ai.PlatformException{
+			Category: "AI_ORCHESTRATION_ENGINE_FAULT",
+			Message:  fmt.Sprintf("LLM provider returned status %d", resp.StatusCode),
+			Code:     http.StatusServiceUnavailable,
+		}
 	}
 
-	var aiResp CompletionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&aiResp); err != nil {
-		return "", err
+	bodyBytes, err := ai.ReadProviderResponseBody(resp)
+	if err != nil {
+		status = "response_too_large"
+		return "", &ai.PlatformException{
+			Category: "AI_ORCHESTRATION_ENGINE_FAULT",
+			Message:  "LLM provider response exceeded the configured size limit",
+			Code:     http.StatusServiceUnavailable,
+		}
+	}
+	var aiResp openaiResponse
+	if err := json.Unmarshal(bodyBytes, &aiResp); err != nil {
+		status = "response_decode_error"
+		return "", &ai.PlatformException{
+			Category: "AI_ORCHESTRATION_ENGINE_FAULT",
+			Message:  "LLM provider returned a malformed response",
+			Code:     http.StatusServiceUnavailable,
+		}
 	}
 
 	if len(aiResp.Choices) == 0 {
-		return "", fmt.Errorf("no choices returned from LLM")
+		status = "empty_response"
+		return "", &ai.PlatformException{
+			Category: "AI_ORCHESTRATION_ENGINE_FAULT",
+			Message:  "LLM provider returned an empty response",
+			Code:     http.StatusServiceUnavailable,
+		}
 	}
 
-	return aiResp.Choices[0].Message.Content, nil
+	generatedResponse := aiResp.Choices[0].Message.Content
+
+	// Explicit Response Verification Subsystem Integration
+	if err := verifier.Verify(generatedResponse, compiledContext); err != nil {
+		status = "verification_failed"
+		return "", err // Output score dropped, fault returned immediately
+	}
+
+	status = "success"
+	return generatedResponse, nil
+}
+
+func boundedMaxOutputTokens(configured int) int {
+	if configured <= 0 {
+		return ai.DefaultMaxOutputTokens
+	}
+	if configured > ai.MaxOutputTokens {
+		return ai.MaxOutputTokens
+	}
+	return configured
+}
+
+// Execute preserves the original adapter entry point for callers that have not
+// yet migrated to the canonical CreateCompletion name.
+func (c *LLMClient) Execute(ctx context.Context, safePrompt string, compiledContext string, verifier *ai.ResponseVerificationSubsystem) (string, error) {
+	return c.CreateCompletion(ctx, safePrompt, compiledContext, verifier)
 }

@@ -1,0 +1,12 @@
+C:\dev\ScriptureForgeAI\.target\debug\deps\hmac-eb4a40f39482b93a.d: C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\lib.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\block_api.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\simple.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\simple_reset.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\utils.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\../README.md
+
+C:\dev\ScriptureForgeAI\.target\debug\deps\libhmac-eb4a40f39482b93a.rlib: C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\lib.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\block_api.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\simple.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\simple_reset.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\utils.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\../README.md
+
+C:\dev\ScriptureForgeAI\.target\debug\deps\libhmac-eb4a40f39482b93a.rmeta: C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\lib.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\block_api.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\simple.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\simple_reset.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\utils.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\../README.md
+
+C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\lib.rs:
+C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\block_api.rs:
+C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\simple.rs:
+C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\simple_reset.rs:
+C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\utils.rs:
+C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\hmac-0.13.0\src\../README.md:

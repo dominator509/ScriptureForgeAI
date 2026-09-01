@@ -1,0 +1,218 @@
+import assert from 'node:assert/strict';
+import { readdir, readFile } from 'node:fs/promises';
+import path from 'node:path';
+
+export const dependencyRiskProofMarkers = [
+  'mobile_lockfile_uuid_detected=true',
+  'mobile_lockfile_expo_detected=true',
+  'drr001_lifecycle_current=true',
+  'drr001_mobile_runtime_not_imported=true',
+  'drr002_metro_parser_formats_blocked=true',
+  'drr002_mobile_asset_formats_blocked=true',
+  'drr002_local_safe_image_size=true',
+  'drr002_local_package_dependencies_empty=true',
+  'high_or_worse_audit_gate_documented=true',
+  'remediation_closure_documented=true',
+];
+
+export function validateDependencyRisk({
+  lockfile,
+  register,
+  runtimeSources = [],
+  mobileMetroConfig = null,
+  mobileSafeImageSizePackage = null,
+  today = new Date().toISOString().slice(0, 10),
+}) {
+  const uuidVersion = packageVersion(lockfile, 'node_modules/uuid');
+  const expoVersion = packageVersion(lockfile, 'node_modules/expo');
+  assert.ok(uuidVersion, 'mobile package lock must include node_modules/uuid while DRR-001 is tracked');
+  assert.ok(expoVersion, 'mobile package lock must include node_modules/expo while DRR-001 is tracked');
+
+  const uuidIsStillRisk = compareSemver(uuidVersion, '11.1.1') < 0;
+  if (uuidIsStillRisk) {
+    for (const snippet of requiredDRR001Snippets(uuidVersion, expoVersion)) {
+      assert.ok(register.includes(snippet), `dependency risk register missing ${snippet}`);
+    }
+    validateDRR001Dates(register, today);
+  } else {
+    for (const snippet of closedDRR001Snippets(uuidVersion, expoVersion)) {
+      assert.ok(register.includes(snippet), `dependency risk closure missing ${snippet}`);
+    }
+  }
+  validateNoRuntimeUUIDImports(runtimeSources);
+  if (mobileMetroConfig !== null) {
+    validateMobileMetroMitigation(mobileMetroConfig);
+  }
+  if (mobileSafeImageSizePackage !== null) {
+    validateMobileSafeImageSizePackage(mobileSafeImageSizePackage);
+  }
+
+  return {
+    uuidVersion,
+    expoVersion,
+    drr001Required: uuidIsStillRisk,
+    drr001Status: uuidIsStillRisk ? 'accepted' : 'closed',
+    drr002MitigationEnforced: mobileMetroConfig !== null,
+    drr002LocalPackageEnforced: mobileSafeImageSizePackage !== null,
+  };
+}
+
+export function validateNoRuntimeUUIDImports(runtimeSources = []) {
+  const uuidRuntimeImportPattern = /\b(?:from\s+['"]uuid['"]|require\(\s*['"]uuid['"]\s*\)|import\(\s*['"]uuid['"]\s*\))/;
+  for (const source of runtimeSources) {
+    assert.ok(
+      !uuidRuntimeImportPattern.test(source.content),
+      `DRR-001 accepted risk must remain tooling-only; mobile runtime source imports uuid: ${source.path}`,
+    );
+  }
+}
+
+export function validateMobileMetroMitigation(source) {
+  assert.match(source, /disableTypes\s*\(/, 'mobile Metro config must disable vulnerable image-size parsers');
+  for (const imageType of ['heif', 'icns', 'jxl', 'jxl-stream']) {
+    assert.match(source, new RegExp(`['"]${imageType}['"]`), `mobile Metro config must block image-size ${imageType}`);
+  }
+  assert.match(source, /config\.resolver\.assetExts\s*=\s*config\.resolver\.assetExts\.filter/, 'mobile Metro config must filter risky asset extensions');
+  for (const assetExtension of ['avif', 'heic']) {
+    assert.match(source, new RegExp(`['"]${assetExtension}['"]`), `mobile Metro config must block ${assetExtension} assets`);
+  }
+}
+
+export function validateMobileSafeImageSizePackage({ packageJson, source }) {
+  assert.equal(packageJson?.name, 'image-size', 'local image-size package must preserve Metro package resolution');
+  assert.ok(compareSemver(packageJson.version ?? '', '2.0.2') > 0, 'local image-size package must be newer than the affected upstream range');
+  assert.deepEqual(packageJson.dependencies ?? {}, {}, 'local image-size package must not add runtime dependencies');
+  for (const requiredSnippet of ['MAX_INPUT_BYTES', 'SAFE_TYPES', 'requireLength', 'requireRange']) {
+    assert.match(source, new RegExp(requiredSnippet), `local image-size package missing bounded parser control: ${requiredSnippet}`);
+  }
+  for (const vulnerableType of ['heif', 'icns', 'jxl', 'jxl-stream']) {
+    assert.doesNotMatch(source, new RegExp(`['"]${vulnerableType}['"]`), `local image-size package must not register ${vulnerableType}`);
+  }
+}
+
+function validateDRR001Dates(register, today) {
+  assert.match(today, /^\d{4}-\d{2}-\d{2}$/, 'today must be YYYY-MM-DD');
+  const reviewDue = extractDate(register, 'Review due');
+  const expires = extractDate(register, 'Expires');
+  assert.ok(reviewDue <= expires, 'DRR-001 Review due must be on or before Expires');
+  assert.ok(expires >= today, `DRR-001 accepted risk expired on ${expires}`);
+  assert.ok(reviewDue >= today, `DRR-001 accepted risk review is overdue as of ${reviewDue}`);
+}
+
+function extractDate(register, label) {
+  const match = register.match(new RegExp(`^- ${label}: (\\d{4}-\\d{2}-\\d{2})$`, 'm'));
+  assert.ok(match, `dependency risk register missing ${label}: YYYY-MM-DD`);
+  return match[1];
+}
+
+function packageVersion(lockfile, packagePath) {
+  return lockfile.packages?.[packagePath]?.version ?? '';
+}
+
+function requiredDRR001Snippets(uuidVersion, expoVersion) {
+  return [
+    '## DRR-001',
+    'uuid <11.1.1',
+    `expo@${expoVersion}`,
+    `uuid@${uuidVersion}`,
+    'GHSA-w5hq-g745-h8pq',
+    'Severity: Moderate',
+    'Current result: `npm audit --audit-level=high` passes, but reports 10 moderate findings.',
+    'Current moderate audit recheck:',
+    'reports 10 moderate findings, 0 high, and 0 critical',
+    'Dry-run remediation recheck:',
+    'reports `changed: 0`',
+    'expo@46.0.21',
+    'Risk decision: Accepted temporarily',
+    'Risk owner: Security/release owner',
+    'Accepted by: Release owner and security reviewer',
+    'Review due:',
+    'Expires:',
+    'high-or-worse audit gating is enforced in CI',
+    'Required closure',
+    'uuid >=11.1.1',
+    'Final production-readiness validation must fail if this accepted risk is expired or if the review due date has passed without a refreshed decision.',
+  ];
+}
+
+function closedDRR001Snippets(uuidVersion, expoVersion) {
+  return [
+    '## DRR-001',
+    'Status: Closed',
+    `expo@${expoVersion}`,
+    `uuid@${uuidVersion}`,
+    'Closure evidence:',
+    'uuid >=11.1.1',
+  ];
+}
+
+export function compareSemver(left, right) {
+  const a = parseVersion(left);
+  const b = parseVersion(right);
+  for (let i = 0; i < 3; i += 1) {
+    if (a[i] !== b[i]) return a[i] - b[i];
+  }
+  return 0;
+}
+
+function parseVersion(value) {
+  const match = value.match(/^(\d+)\.(\d+)\.(\d+)/);
+  assert.ok(match, `unsupported semver value ${value}`);
+  return match.slice(1).map(Number);
+}
+
+async function main() {
+  const [lockfilePath = 'mobile/package-lock.json', registerPath = 'security/dependency_risk_register.md'] = process.argv.slice(2);
+  const lockfile = JSON.parse(await readFile(lockfilePath, 'utf8'));
+  const register = await readFile(registerPath, 'utf8');
+  const runtimeSources = await collectRuntimeSources();
+  const mobileMetroConfig = await readFile('mobile/metro.config.js', 'utf8');
+  const mobileSafeImageSizePackage = {
+    packageJson: JSON.parse(await readFile('mobile/vendor/image-size/package.json', 'utf8')),
+    source: await readFile('mobile/vendor/image-size/index.js', 'utf8'),
+  };
+  const result = validateDependencyRisk({ lockfile, register, runtimeSources, mobileMetroConfig, mobileSafeImageSizePackage });
+  console.log(`dependency risk validated: uuid ${result.uuidVersion}, expo ${result.expoVersion}, DRR-001 status=${result.drr001Status}, DRR-002 mitigation enforced=${result.drr002MitigationEnforced}, local safe image-size enforced=${result.drr002LocalPackageEnforced}, ${dependencyRiskProofMarkers.join(', ')}`);
+}
+
+async function collectRuntimeSources() {
+  const roots = ['mobile/App.tsx', 'mobile/src'];
+  const sources = [];
+  for (const root of roots) {
+    sources.push(...await collectRuntimeSourcesFromPath(root));
+  }
+  return sources;
+}
+
+async function collectRuntimeSourcesFromPath(root) {
+  const statsEntries = await readdir(root, { withFileTypes: true }).catch(async () => {
+    return null;
+  });
+  if (!statsEntries) {
+    return [{
+      path: root,
+      content: await readFile(root, 'utf8'),
+    }];
+  }
+
+  const sources = [];
+  for (const entry of statsEntries) {
+    const childPath = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      sources.push(...await collectRuntimeSourcesFromPath(childPath));
+    } else if (/\.(?:ts|tsx|mts|js|jsx)$/.test(entry.name)) {
+      sources.push({
+        path: childPath,
+        content: await readFile(childPath, 'utf8'),
+      });
+    }
+  }
+  return sources;
+}
+
+if (import.meta.url === `file://${process.argv[1]?.replaceAll('\\', '/')}` || process.argv[1]?.endsWith('validate-dependency-risk.mjs')) {
+  main().catch((error) => {
+    console.error(error.message);
+    process.exit(1);
+  });
+}

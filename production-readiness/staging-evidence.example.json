@@ -1,0 +1,311 @@
+{
+  "schema_version": 1,
+  "environment": "staging",
+  "release_candidate": "replace-with-git-sha-or-tag",
+  "generated_at": "2026-06-25T00:00:00Z",
+  "items": [
+    {
+      "id": "SRC-CI-001",
+      "category": "source-control-ci",
+      "status": "pending_external",
+      "description": "Clean pushed GitHub Actions run for the exact release branch.",
+      "required_evidence": [
+        "tools/ciprobe JSON report with SRC-CI-001 evidence item from the uploaded HTTPS ci-release-evidence artifact URL, commit_sha exactly matching release_candidate=<manifest release_candidate>, artifact_commit_sha structurally matching commit_sha, and run_id/run_attempt/run_number provenance bound to ci_run_url; local artifact-file mode is debug-only and not accepted for recorded production readiness evidence; reserved example/test/invalid hosts are not accepted",
+        "Uploaded GitHub Actions ci-release-evidence artifact from the exact release SHA with release_candidate=<manifest release_candidate>, artifact_commit_sha_structural_binding_required=true, and github_run_id_url_binding_required=true markers in the recorded summary",
+        "GitHub Actions run URL",
+        "Full 40-character commit SHA matching the manifest release_candidate",
+        "GitHub repository/ref/event/run-attempt provenance plus clean source-control marker from the release workflow",
+        "All required workflow jobs passing"
+      ]
+    },
+    {
+      "id": "DEPLOY-TF-001",
+      "category": "deployment",
+      "status": "pending_external",
+      "description": "Terraform remote state is initialized and the staging plan/apply completes against real inputs.",
+      "required_evidence": [
+        "tools/deploymentprobe -probe-terraform JSON report with DEPLOY-TF-001 evidence item and report-level load_run_id=<same load run>",
+        "terraform init output with remote S3 backend bucket/key, KMS encryption marker, state bucket versioning enabled, DynamoDB locking markers, exact release_candidate=<manifest release_candidate>, service_version linkage, and load_run_id=<same load run>",
+        "terraform plan artifact proving EKS, node group, RDS, Redis, customer-managed RDS/Redis KMS key bindings, ECR, workload deployments, ingresses, HPA, PDB, SecretProviderClass, IAM role resources, non-placeholder service_version, real API/web hostnames, HTTPS-only WebSocket origins, exact release_candidate=<manifest release_candidate>, service_version linkage, and load_run_id=<same load run>",
+        "terraform apply output proving Apply complete, Resources, structured terraform_apply_added=<n>, terraform_apply_changed=<n>, terraform_apply_destroyed=0, exact release_candidate=<manifest release_candidate>, service_version linkage, and load_run_id=<same load run>, or a DEPLOY-TF-001 deployment approval record proving change_ticket=<ticket-id> plus exact release_candidate=<manifest release_candidate>, service_version linkage, and load_run_id=<same load run>",
+        "Terraform backend, plan, and apply-or-approval artifacts must be canonical-distinct HTTPS URLs, not one combined proof artifact or URL alias",
+        "deploymentprobe result_summary marker list for Terraform backend, plan, and apply-or-approval probes with staging artifact provenance, remote-state locking/KMS encryption/state-bucket-versioning markers, concrete Terraform state KMS marker kms_key_id=<arn-or-alias>, concrete customer-managed storage KMS markers database_kms_key_arn=<arn:aws:kms:...:key/...> and redis_kms_key_arn=<arn:aws:kms:...:key/...>, workload resource markers, exact release_candidate=<manifest release_candidate>, matching load_run_id=<same load run>, and distinct_terraform_artifacts=true; non-HTTPS, reserved example/test/invalid hosts, local, loopback, private-network, unspecified, link-local, mock, placeholder, synthetic, stubbed, test-only, dry-run, local-only, Terraform init/plan/apply failure, rollout failure, zero ready/available replica, CrashLoopBackOff, or ImagePullBackOff artifact URLs, content, or result summaries are not accepted"
+      ]
+    },
+    {
+      "id": "DEPLOY-TLS-001",
+      "category": "deployment",
+      "status": "pending_external",
+      "description": "DNS, ACM, ALB ingress, HTTPS redirect, and TLS policy are proven against deployed API and web hostnames.",
+      "required_evidence": [
+        "tools/stagingprobe JSON report with DEPLOY-TLS-001 evidence item, report-level ssl_labs_artifact_url=<https artifact>, load_run_id=<same load run>, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers",
+        "HTTPS DNS lookup artifact for deployed API and web hostnames tied to exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run>",
+        "HTTPS ACM certificate status and TLS policy artifact tied to exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run>",
+        "HTTPS SSL Labs scan artifact proving A+ grade for deployed API and web hostnames with ssl_labs_grade=A+, grade=A+, api_hostname=<api host>, web_hostname=<web host>, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run>",
+        "DNS, ACM/TLS, and SSL Labs artifacts must be canonical-distinct HTTPS URLs, not one combined proof artifact or URL alias",
+        "HTTPS probe output for API live/readiness, API TLS, web root, and web TLS with exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers",
+        "HTTP to HTTPS redirect probe output with exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers",
+        "stagingprobe result_summary marker list for API live/readiness, TLS, redirect, and ssl-labs-a-plus probes with exact release_candidate=<manifest release_candidate>, service_version, matching load_run_id=<same load run>, SSL Labs A+ markers, and SSL Labs hostnames matching the deployed certificate hostnames; mixed-run summaries, non-HTTPS, reserved example/test/invalid hosts, local, loopback, private-network, unspecified, link-local API/web targets, TLS artifact URLs, or non-A+ SSL Labs grades are not accepted"
+      ]
+    },
+    {
+      "id": "DEPLOY-K8S-001",
+      "category": "deployment",
+      "status": "pending_external",
+      "description": "Kubernetes API, web, and Rust engine workloads are running with readiness/liveness probes, PDBs, HPAs, and rolling update settings.",
+      "required_evidence": [
+        "tools/deploymentprobe -probe-kubernetes JSON report with DEPLOY-K8S-001 evidence item and report-level load_run_id=<same load run>",
+        "kubectl rollout status output proving the staging namespace and API, web, and Rust workloads are rolled out, ready, and available with exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers",
+        "kubectl get deploy,svc,ingress,hpa,pdb,secretproviderclass -o yaml output proving staging namespace, services, TLS ingress, readiness/liveness probes, HPA min/max replicas and targets, PDB min availability, rolling update maxUnavailable=0, SecretProviderClass wiring, immutable workload-bound API/web/Rust image digests, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run>",
+        "Kubernetes rollout and workload-resource artifacts must be canonical-distinct HTTPS URLs so one broad kubectl artifact cannot satisfy both proof roles",
+        "deploymentprobe result_summary marker list for rollout and workload resource probes with staging artifact provenance, namespace, health-probe, rollout-safety, autoscaling, disruption-budget, TLS ingress, SecretProviderClass, exact release_candidate=<manifest release_candidate> plus service_version and load_run_id=<same load run> markers on the rollout segment, at least three concrete sha256:<64 hex> image digests bound to the API/web/Rust workload names, concrete_image_digests=3, workload_image_digests=3, exact release_candidate=<manifest release_candidate>, service_version, release-linkage markers, matching load_run_id=<same load run>, and distinct_kubernetes_artifacts=true; non-HTTPS, reused, canonical-equivalent, reserved example/test/invalid hosts, local, loopback, private-network, unspecified, link-local, mock, placeholder, synthetic, stubbed, test-only, dry-run, local-only, Terraform init/plan/apply failure, rollout failure, zero ready/available replica, CrashLoopBackOff, or ImagePullBackOff artifact URLs, content, or result summaries are not accepted"
+      ]
+    },
+    {
+      "id": "SEC-SECRETS-001",
+      "category": "security",
+      "status": "pending_external",
+      "description": "Secrets Store CSI and IRSA sync runtime secrets from the cloud secret manager without committed plaintext.",
+      "required_evidence": [
+        "tools/securityprobe -probe-secrets JSON report with SEC-SECRETS-001 evidence item, report-level load_run_id=<same run>, staging artifact provenance on every probe segment, explicit workload identity markers `namespace=staging`, `service_account=scriptureforge-api`, and the same concrete `role_arn=arn:aws:iam::<12-digit-account>:role/<role>` marker across IRSA, SecretProviderClass, IAM policy, and scoped access-test probes, plus exact release_candidate=<manifest release_candidate>, service_version, and matching load_run_id=<same run> markers",
+        "Secrets Store CSI driver status with staging artifact provenance, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
+        "IRSA role annotation and trust policy with staging artifact provenance, namespace=staging, service_account=scriptureforge-api, concrete role_arn=arn:aws:iam::<12-digit-account>:role/<role>, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
+        "SecretProviderClass sync output proving AWS provider, Secrets Manager objects, object aliases, jmesPath, secretObjects, Opaque runtime-secret mapping, staging artifact provenance, namespace=staging, service_account=scriptureforge-api linkage, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run>",
+        "Redacted synced-secret metadata proving Opaque DATABASE_URL, JWT_SECRET_KEY, JOURNAL_SALT_SECRET, MFA_ENCRYPTION_KEY, OPENAI_API_KEY, and ZOOM_WEBHOOK_SECRET_TOKEN keys with stringData absent, no base64-encoded secret data values, Secrets Store CSI management markers `managed by secrets-store.csi.k8s.io`, `ownerReferences`, and `secrets-store.csi.k8s.io/managed=true`, staging artifact provenance, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run>",
+        "Scoped Secrets Manager access test proving configured-secret allow, unscoped-secret AccessDenied, staging artifact provenance, namespace=staging, service_account=scriptureforge-api, concrete role_arn=arn:aws:iam::<12-digit-account>:role/<role>, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run>",
+        "IRSA, SecretProviderClass, synced-secret metadata, IAM policy, and scoped access-test artifacts must be canonical-distinct HTTPS URLs, not one combined proof artifact or URL alias",
+        "securityprobe result_summary marker list for each secret/IRSA artifact probe, including staging artifact provenance, workload identity markers with one matching concrete IAM role ARN, AWS object-sync, synced-secret redaction and owner/managed markers, exact release_candidate=<manifest release_candidate>, service_version, matching load_run_id=<same run> markers, and distinct_secret_artifacts=true; non-HTTPS, reserved example/test/invalid hosts, local, loopback, private-network, unspecified, link-local, mismatched workload role ARNs, mixed-run security artifact summaries, postgres://, postgresql://, plaintext DSN, base64-encoded DSN/API-key data, sk-, client_secret:, webhook_secret:, password:, stringData, -----BEGIN, API key, private key, and secret-value artifacts or result summaries are not accepted"
+      ]
+    },
+    {
+      "id": "SEC-DBUSER-001",
+      "category": "security",
+      "status": "pending_external",
+      "description": "DATABASE_URL uses a scoped application database user rather than the RDS root user.",
+      "required_evidence": [
+        "tools/securityprobe -probe-db-user JSON report with SEC-DBUSER-001 evidence item, report-level load_run_id=<same run>, staging artifact provenance on database-scoped-user, and exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
+        "Redacted DATABASE_URL principal proof with staging artifact provenance, connected as scriptureforge_app, superuser=false, bypassrls=false, createrole=false, createdb=false, app_grants_verified=true, app_grant_tables=9, app_grant_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails, app_grants=SELECT,INSERT,UPDATE,DELETE, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
+        "Database grants for app role across organizations, users, scripture_texts, refresh_tokens, journal_entries, live_rooms, room_participants, ai_request_logs, and citation_trails",
+        "Denied privileged operation probe with privileged_operation_denied=true"
+      ]
+    },
+    {
+      "id": "ABUSE-LIMIT-001",
+      "category": "security",
+      "status": "pending_external",
+      "description": "Auth login, auth refresh, account-scoped login, AI, journal, room, and WebSocket abuse limits are observed through real staging ingress behavior.",
+      "required_evidence": [
+        "tools/abuseprobe JSON report with ABUSE-LIMIT-001 evidence item, report-level load_run_id=<same run>, exact release_candidate=<manifest release_candidate>, service_version, load_run_id markers from the same staging load run, and persisted staging-manifest structured_report.abuse_rate_limit_proof matching config verification, positive ABUSE_LIMIT_* assignments, per-profile attempts, concrete rate-limit headers, account/refresh/WebSocket scoped booleans",
+        "429 responses for auth login, auth refresh, auth-account, AI, journal, rooms, and real WebSocket upgrade profiles after at least 2 attempts with concrete attempt counts, repeated_attempts_verified=true, structured account_scoped=true, forwarded_client_ip_rotated=true, refresh_token_scoped=true, websocket_upgrade=true where applicable, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id markers",
+        "Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, and X-RateLimit-Reset header proof with positive retry/limit/reset values, X-RateLimit-Remaining=0, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id",
+        "HTTPS redacted artifact proving positive-integer staging ABUSE_LIMIT_* request/window assignments, positive-integer ABUSE_LIMIT_AUTH_ACCOUNT_* request/window assignments, positive-integer ABUSE_LIMIT_MAX_BUCKETS assignment, TRUST_PROXY_HEADERS=true, X-Forwarded-For, X-Real-IP, redacted configuration, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id used for the probe",
+        "abuseprobe config_artifact_verified=true with config_artifact_summary markers proving the redacted configuration artifact was fetched and verified with concrete positive-integer ABUSE_LIMIT_* assignment markers for exact release_candidate=<manifest release_candidate> plus service_version plus load_run_id",
+        "Abuse report must include HTTPS web_origin used for WebSocket probes; config artifact host must be distinct from staging API target and web_origin, with distinct_abuse_artifacts=true in the verified config summary",
+        "abuseprobe result_summary marker list for auth login, auth refresh, account-scoped login, AI, journal, rooms, and WebSocket profiles including staging artifact provenance on every route-profile segment, concrete attempt counts >= 2, repeated_attempts_verified=true, refresh token, refresh_token_scoped=true, rotating forwarded client IP, account_scoped=true, forwarded_client_ip_rotated=true, websocket upgrade, websocket_upgrade=true, exact release_candidate=<manifest release_candidate>, service_version proof, load_run_id proof with all profile/config summaries matching the same value, and distinct_abuse_artifacts=true"
+      ]
+    },
+    {
+      "id": "DATA-RLS-001",
+      "category": "data-security",
+      "status": "pending_external",
+      "description": "Tenant RLS behavior is proven through the deployed API and staging database connection pool.",
+      "required_evidence": [
+        "tools/tenantprobe JSON report with DATA-RLS-001 evidence item, report-level load_run_id=<same load run>, and report-level created_journal_id/created_room_id fields matching the resources created during the run",
+        "Same-tenant journal and room create/read/list/state probe output, including owner journal list visibility for the created entry",
+        "Cross-tenant journal read/list denial, room list/state denial, and API tenant/user override write-denial output for journal and room create routes",
+        "Database/RLS proof artifact must use a canonical-distinct evidence host from the staging API target, not one combined API proof artifact or host alias",
+        "Redacted database role with current_user=scriptureforge_app, superuser=false, bypassrls=false, app.current_org_id, app.current_org_id=<tenantprobe owner_org_id>, current_setting('app.current_org_id'), blocked_org_id=<tenantprobe blocked_org_id>, row_security=on, forced row_security across all tenant-scoped tables, rls_tables_verified=9, rls_forced_tables=9, rls_table_names=organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails, rls_policy_scope=app.current_org_id, same-tenant read-visible proof, cross-tenant read-hidden proof, cross-tenant write-denial proof, auth_refresh_session_rls=true, auth_mfa_rls=true, workspace_switch_tenant_match=true, privileged_mfa_enrollment_rls=true, ai_audit_rls=true, generated_curriculum_audit_rls=true, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id markers, tenantprobe structured UUID-shaped owner_org_id and blocked_org_id fields for different organizations, tenantprobe report-level created_journal_id and created_room_id fields matching owner-create-encrypted-journal journal_id=<id> and owner-create-room room_id=<id> summary markers, tenantprobe structured journal_id and room_id fields matching journal_id=<id> and room_id=<id> summary markers for the created resources, tenantprobe structured database proof fields application_role=scriptureforge_app, row_security=on, rls_tables_verified=9, rls_forced_tables=9, rls_table_names exactly matching organizations,users,scripture_texts,refresh_tokens,journal_entries,live_rooms,room_participants,ai_request_logs,citation_trails, rls_table_outcomes entries for each table with same_visible=true, cross_hidden=true, and write_denied=true plus matching rls_table_<table>_same_visible=true, rls_table_<table>_cross_hidden=true, and rls_table_<table>_write_denied=true summary markers, persisted staging-manifest structured_report.database_rls_context_proof with the same table names/outcomes, and rls_policy_scope=app.current_org_id, and tenantprobe result_summary marker list with staging artifact marker, distinct_db_rls_artifact=true, same-tenant journal list-visible, API tenant-override write-denial markers, auth/session/MFA/workspace tenant isolation markers, AI audit/citation tenant isolation markers, exact UUID tenant-pair DB/RLS binding markers, and matching load_run_id across every API/DB proof segment; non-HTTPS, reserved example/test/invalid hosts, local, loopback, private-network, unspecified, link-local, mock, placeholder, synthetic, stubbed, test-only, dry-run, and local-only API targets or artifacts are not accepted"
+      ]
+    },
+    {
+      "id": "DATA-REDIS-001",
+      "category": "realtime-data",
+      "status": "pending_external",
+      "description": "Redis-backed room sequencing is contiguous under deployed multi-client concurrency.",
+      "required_evidence": [
+        "External WebSocket load report with DATA-REDIS-001 evidence item, report-level load_run_id=<same load run>, and persisted staging-manifest structured_report.websocket_redis_sequence_proof matching room/principal IDs, reconnect/polling/Redis room bindings, production event minimum, expected/unique/min/max/polling sequence counts, zero room_broadcast_drops, and reconnect/auth/contiguous sequence booleans",
+        "HTTPS Redis telemetry artifact from the same run",
+        "Redis sequence ordering assertion output with no duplicate, skipped sequence, room-id mismatch, or room broadcast drop proof",
+        "loadtest JSON ws_room_id matching exact ws_room_id=<id> result_summary marker, structured ws_user_id/ws_organization_id fields and markers proving the authenticated tenant principal, structured ws_reconnect_room_id/ws_polling_room_id/redis_telemetry_room_id fields and markers equal to ws_room_id, structured ws_reconnect_sequence_continues=true field/marker, production_min_ws_events=30000, at least 30000 expected/unique/max/polled events, ws_polling_latest_sequence and ws_polling_artifact_latest_sequence equal to ws_max_sequence, structured room_broadcast_drops=0 field/marker, plus result_summary marker list for WebSocket profile, authenticated HTTPS origin proof, staging artifact provenance, contiguous sequence fields, reconnect proof with ws_reconnect_sequence_continues=true, HTTP polling fallback proof, Redis telemetry artifact, redis_telemetry_artifact_verified marker, ws_polling_artifact_latest_sequence_validated=true marker, ws_polling_artifact_latest_sequence_matches_run=true marker, ws_distinct_artifacts=true marker, and room_broadcast_drops=0 marker"
+      ]
+    },
+    {
+      "id": "RUST-GRPC-001",
+      "category": "rust-engine",
+      "status": "pending_external",
+      "description": "Deployed Rust gRPC service is reachable from the Go API and exposes health and metrics.",
+      "required_evidence": [
+        "tools/rustprobe JSON report with RUST-GRPC-001 evidence item, report-level load_run_id=<same run>, and persisted staging-manifest structured_report.rust_grpc_runtime_proof matching deployment_environment, non-local host:port grpc_target, HTTP(S) non-local metrics_target, HTTPS non-local api_metrics_target, distinct metrics/API metrics targets, load_run_id, health_status=SERVING, service_name=scriptureforge.engine.ScriptureEngine, positive Rust embedding/vector-search sample counts, and positive Go API Rust-integration metric samples",
+        "gRPC health probe output with exact release_candidate=<manifest release_candidate>, service_version, deployment_environment, and load_run_id=<same run> markers",
+        "HTTPS Go API metrics integration probe with exact release_candidate=<manifest release_candidate>, service_version, deployment_environment, and load_run_id=<same run> markers",
+        "Rust metrics scrape output with concrete Prometheus samples for embedding/vector-search request and failure counters, positive embedding/vector-search request counters, exact release_candidate=<manifest release_candidate>, service_version, deployment_environment, and load_run_id=<same run> markers",
+        "Canonical-distinct Rust service metrics and HTTPS Go API metrics targets proving distinct_metrics_targets=true",
+        "The Rust/API integration probe supplies STAGING_METRICS_AUTH_TOKEN or -metrics-auth-token when scraping the protected Go API metrics endpoint",
+        "rustprobe result_summary marker list for gRPC health, service name, SERVING status over grpc_transport_security=mTLS, Rust embedding/vector-search request and failure counter samples, positive Rust request counters with rust_embedding_requests_positive=true and rust_vector_search_requests_positive=true, Go API integration metric samples, positive structured embedding_requests, vector_search_requests, api_rust_vector_search_ops, and api_rust_vector_search_seconds fields, staging artifact provenance on every Rust health/metrics/API-integration proof segment, rust_metrics_samples_verified=true, api_rust_metrics_samples_verified=true, distinct_metrics_targets=true, Prometheus metrics, exact release_candidate=<manifest release_candidate>, service_version, deployment_environment, and matching load_run_id=<same run> markers; reserved example/test/invalid hosts, local, loopback, private-network, unspecified, link-local, malformed, non-HTTPS API metrics, duplicate metrics/API metrics aliases, idle all-zero Rust request counters, mixed-run Rust health/metrics/API-integration summaries, or metrics-free Rust targets are not accepted"
+      ]
+    },
+    {
+      "id": "OBS-OTEL-001",
+      "category": "observability",
+      "status": "pending_external",
+      "description": "OpenTelemetry collector/backend receives traces and preserves trace IDs across API and Rust logs.",
+      "required_evidence": [
+        "tools/observabilityprobe -probe-otel JSON report with OBS-OTEL-001 evidence item, report-level load_run_id=<same run>, persisted 32-character non-zero lowercase hex OpenTelemetry trace_id, observed_route, http_method, trace/log result_summary segments containing the same concrete trace_id plus exact route=<observed_route> and method=<http_method> markers, distinct collector/API metrics/Rust metrics/trace/log artifact URLs, trace/log backend query URLs scoped to that trace_id, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id markers from the same staging load run, and persisted staging-manifest structured_report.observability_otel_proof matching release/run identity, trace/log route/method/trace IDs, tenant/user/role principals, and HTTPS non-local distinct collector/API/Rust/trace/log targets with trace/log targets scoped to the same trace_id",
+        "Collector endpoint configuration with OTLP receivers/exporters/service pipeline and exact release_candidate=<manifest release_candidate> plus service_version plus load_run_id markers",
+        "API metrics scrape output with positive Prometheus samples for scriptureforge_http_requests_total, scriptureforge_http_request_duration_seconds_sum, ai_inference_duration_seconds_count, and scriptureforge_dependency_operations_total; status labels, websocket_active_connections_count, dependency=\"websocket\",operation=\"room_broadcast\",status=\"dropped\", ai_inference_duration_seconds profile series, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id markers; the probe authenticates with STAGING_METRICS_AUTH_TOKEN or -metrics-auth-token",
+        "Rust metrics scrape output with scriptureforge_rust_engine_embedding_requests_total, scriptureforge_rust_engine_embedding_failures_total, scriptureforge_rust_engine_vector_search_requests_total, scriptureforge_rust_engine_vector_search_failures_total, positive embedding/vector-search request samples, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id markers",
+        "Trace search output proving the same trace crosses scriptureforge-api and scriptureforge-rust-engine with exact release_candidate=<manifest release_candidate>, service_version, and load_run_id markers",
+        "Log query output with trace_id, scriptureforge-api, scriptureforge-rust-engine, timestamp=<event timestamp>, severity=<level>, service_version, deployment_environment, concrete tenant_id=<id>, user_id=<id>, role=<role>, exact release_candidate=<manifest release_candidate>, and load_run_id markers",
+        "observabilityprobe result_summary marker list for collector, API metrics with api_metrics_samples_positive=true, Rust embedding/vector-search request and failure counters with rust_metrics_samples_positive=true, trace search bound to route=<observed_route> and method=<http_method>, log correlation bound to the same route and method, staging artifact provenance on each collector/API metrics/Rust metrics/trace/log proof segment, distinct_otel_artifacts=true, and trace/log query probes from HTTP(S) staging telemetry surfaces with exact release_candidate=<manifest release_candidate> plus service_version plus matching load_run_id markers; mixed-run summaries, idle all-zero API/Rust metric samples, reserved example/test/invalid hosts, local, loopback, private-network, unspecified, link-local, mock, placeholder, synthetic, stubbed, test-only, dry-run, and local-only URLs or content are not accepted"
+      ]
+    },
+    {
+      "id": "OBS-ALERT-001",
+      "category": "observability",
+      "status": "pending_external",
+      "description": "Dashboard import, alert delivery, and telemetry retention are proven in staging.",
+      "required_evidence": [
+        "tools/observabilityprobe -probe-alerts JSON report with OBS-ALERT-001 evidence item, report-level load_run_id=<same run>, concrete alert_name and alert_receiver fields, alert-delivery-status marker list containing alertname=<alert_name>, receiver=<alert_receiver>, delivery_id=<id>, distinct dashboard/rules/delivery/retention artifact URLs, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id markers from the same staging load run, and persisted staging-manifest structured_report.observability_alert_proof matching release/run identity, alert identity, delivery ID, and HTTPS non-local distinct dashboard/rules/delivery/retention targets",
+        "Grafana dashboard import screenshot or export with API, latency, architecture metric profile, Rust, trace_id panels, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id markers",
+        "Alert rules loaded for high error rate, traffic absence, auth failure spikes, abuse-limit spikes, route latency, dependency failures, AI inference latency, journal write failures, room stream failures, room broadcast drops, and Rust engine failures with exact release_candidate=<manifest release_candidate> plus service_version plus load_run_id markers",
+        "Delivered Alertmanager test alert output with concrete alertname=<alert_name>, receiver=<alert_receiver>, delivery_id=<id>, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id markers",
+        "30-day trace/log/metric retention policy proof with exact release_candidate=<manifest release_candidate>, service_version, and load_run_id markers",
+        "observabilityprobe result_summary marker list for dashboard, full production alert-rule suite, alert delivery with alertname=<alert_name>, receiver=<alert_receiver>, and delivery_id=<id>, retention, staging artifact provenance on each dashboard/rules/delivery/retention proof segment, and distinct_alert_artifacts=true probes from HTTP(S) staging telemetry surfaces with exact release_candidate=<manifest release_candidate> plus service_version plus matching load_run_id markers; mixed-run summaries, reserved example/test/invalid hosts, local, loopback, private-network, unspecified, link-local, mock, placeholder, synthetic, stubbed, test-only, dry-run, local-only, silenced, muted, inhibited, suppressed, not-delivered, or failed-delivery URLs, content, or result summaries are not accepted"
+      ]
+    },
+    {
+      "id": "CLIENT-WEB-001",
+      "category": "client",
+      "status": "pending_external",
+      "description": "Deployed web app completes browser smoke flows against staging API and WebSocket endpoints.",
+      "required_evidence": [
+        "tools/stagingprobe JSON report with CLIENT-WEB-001 evidence item, report-level load_run_id=<same load run>, report-level web_user_id=<id> and web_organization_id=<id> matching all browser smoke segments, report-level web_journal_id=<id> and web_room_id=<id> matching journal/room browser smoke segments, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers",
+        "HTTPS browser smoke artifact for login/register flow with concrete user_id and organization_id markers, distinct_web_artifacts=true, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers",
+        "HTTPS browser smoke artifact for journal save/load flow proving encrypted payloads, plaintext absence, associated-data binding, wrong associated data rejection, concrete user_id, organization_id, and journal_id markers, distinct_web_artifacts=true, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers",
+        "HTTPS browser smoke artifact for room create/select/WebSocket flow with concrete user_id, organization_id, and room_id markers, distinct_web_artifacts=true, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers",
+        "Auth, journal, and room browser-smoke artifacts must be canonical-distinct HTTPS URLs, not one combined proof artifact or URL alias",
+        "stagingprobe result_summary marker list for web root, web TLS, web redirect, browser auth, encrypted journal, and room/WebSocket probes with exact release_candidate=<manifest release_candidate>, service_version, and matching load_run_id=<same load run> markers; mixed-run summaries, auth, journal, and room browser-smoke artifact URLs must be distinct; non-HTTPS, reserved example/test/invalid hosts, local, loopback, private-network, unspecified, link-local, or hardcoded production API/WS endpoint web targets and browser-smoke artifacts are not accepted"
+      ]
+    },
+    {
+      "id": "CLIENT-MOBILE-001",
+      "category": "client",
+      "status": "pending_external",
+      "description": "Mobile native-device or EAS validation proves the AES-GCM binding and staging endpoint config outside Node/WebCrypto shims.",
+      "required_evidence": [
+          "tools/mobileprobe JSON report with CLIENT-MOBILE-001 evidence item, report-level load_run_id=<same load run>, report-level mobile_build_id=<id> matching all mobile proof segments, persisted staging-manifest structured_report.mobile_native_crypto_proof matching the native provider, native-required flag, AES-GCM round-trip/tamper/associated-data rejection booleans, unique IV proof, key lifecycle/zeroization booleans, associated-data salt ID/version, device/runtime, staging API/WS config, mobile_build_id, and load_run_id markers, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers",
+        "EAS or native-device run output proving installed Android/iOS staging app execution, release channel staging, expo profile staging, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run>",
+        "Native crypto smoke output proving exact provider=react-native-quick-crypto, react-native-quick-crypto native provider status, native-required mode with exact native_required=true and native-required true markers, installed staging app runtime binding with device_os=<android|ios>, device_model=<model>, and app_runtime=installed-staging-app markers, provider-bound key use, fallback-derived key rejection, AES-GCM round-trip with aes_gcm_roundtrip=true, unique_iv=true nonce freshness, tamper rejection with tamper_rejected=true, associated-data binding with wrong associated data rejected and associated_data_rejected=true, concrete associated_data_salt_id=<id> and positive associated_data_salt_version=<n>, non-extractable key behavior, key disposal, disposed-handle rejection, passphrase wipe plus passphrase buffer zeroization, salt wipe plus salt buffer zeroization, plaintext clearing plus plaintext buffer zeroization, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> without provider=webcrypto-fallback, native_required=false, browser/global WebCrypto, Node crypto, Expo crypto, or JavaScript fallback shims",
+        "Staging API/WS config proof with EXPO_PUBLIC_REQUIRE_NATIVE_CRYPTO=true, EXPO_PUBLIC_DEPLOYMENT_ENVIRONMENT=staging, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run>",
+        "EAS/native-device, native crypto smoke, and staging config artifacts must be canonical-distinct HTTPS URLs, not one combined proof artifact or URL alias",
+        "mobileprobe result_summary marker list for installed staging app runtime binding with device_os=<android|ios>, device_model=<model>, app_runtime=installed-staging-app, native AES-GCM provider binding, key lifecycle, fallback-derived key rejection, concrete associated_data_salt_id=<id> and positive associated_data_salt_version=<n>, strict staging config probes, staging artifact provenance on each EAS/native-device, native crypto, and staging config proof segment, and distinct_mobile_artifacts=true on each segment with exact release_candidate=<manifest release_candidate>, service_version, and matching load_run_id=<same load run> markers; mixed-run summaries, non-HTTPS, reserved example/test/invalid hosts, local, loopback, private-network, unspecified, link-local, dry-run, Expo Go, dev-client, debug-client, simulator, simulator-only, simulator-validation, emulator, remote-debug, Node/WebCrypto shim, browser/global WebCrypto, JavaScript fallback, Expo crypto, placeholder, mock, fallback, and reserved example/test/invalid, local/private/link-local/unspecified, or hardcoded production API/WS endpoint values inside staging config artifacts are not accepted"
+      ]
+    },
+    {
+      "id": "EXT-ZOOM-001",
+      "category": "external-service",
+      "status": "pending_external",
+      "description": "Zoom OAuth, meeting creation fallback, webhook signature validation, endpoint URL validation, duplicate webhook idempotency, and room mapping are proven with staging credentials.",
+      "required_evidence": [
+        "tools/zoomprobe JSON report with EXT-ZOOM-001 evidence item, report-level load_run_id=<same run>, and persisted staging-manifest structured_report.zoom_resilience_webhook_proof matching timeout/circuit/fallback booleans, webhook signature and timestamp, webhook outcome booleans, URL validation tokens, duplicate delivery/tracking IDs and side-effect booleans, and meeting-to-room mapping IDs",
+        "tools/stagingprobe -probe-zoom JSON report",
+        "Zoom OAuth probe output with exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
+        "Meeting create or fallback output with exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
+        "Zoom provider-timeout/circuit_open_fallback output with exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
+        "Webhook delivery/signature proof with concrete x-zm-signature=<v0 signature> and x-zm-request-timestamp=<epoch> markers, stale replay 401 denial, invalid-signature 401, signed-event 200 validation, structured stale_rejected=true, replay_rejected=true, invalid_signature_rejected=true, signed_delivery_accepted=true markers, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
+        "Zoom endpoint.url_validation challenge proof with exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
+        "Duplicate webhook idempotency proof with x-zm-trackingid, structured JSON delivery_id matching delivery_id=<id>, delivery ID, same Zoom event, single state mutation, no duplicate side effects, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
+        "Meeting-to-room mapping proof with concrete meeting_external_id=<id> and internal_room_id=<id>, Redis room state, unknown meeting ignore behavior, no external meeting ID fallback, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
+        "Zoom OAuth, meeting/fallback, provider-timeout circuit fallback, signature headers, URL validation, duplicate, and meeting-to-room mapping artifacts must be canonical-distinct HTTPS URLs, not one combined proof artifact or URL alias",
+        "zoomprobe result_summary marker list with staging artifact provenance and exact release_candidate=<manifest release_candidate> plus service_version plus matching load_run_id=<same run> markers on every OAuth, meeting/fallback, provider-timeout circuit fallback, concrete signature/timestamp headers, URL validation, duplicate, and mapping proof segment, with distinct_zoom_artifacts=true on the mapping segment; non-HTTPS, reserved example/test/invalid hosts, local, loopback, private-network, unspecified, link-local, mock, placeholder, synthetic, stubbed, test-only, dry-run, local-only, signature verification disabled, webhook signature disabled, signature verification bypassed, or skip signature verification artifact URLs, content, or result summaries are not accepted"
+      ]
+    },
+    {
+      "id": "EXT-AI-001",
+      "category": "external-service",
+      "status": "pending_external",
+      "description": "AI provider configuration, timeout/degradation behavior, citation verification, and audit persistence are proven in staging.",
+      "required_evidence": [
+        "tools/aiprobe JSON report with EXT-AI-001 evidence item, report-level load_run_id=<same run>, and persisted staging-manifest structured_report.ai_generation_audit_proof matching provider config, generation principal/request, fail-closed timeout booleans, citation ID, and audit principal/request/citation markers",
+        "tools/stagingprobe -probe-ai JSON report",
+        "Provider readiness probe with staging artifact provenance, AI_PROVIDER, AI_CHAT_MODEL, AI_CHAT_ENDPOINT, AI_HTTP_TIMEOUT_MS, AI_MAX_RETRIES, OPENAI_API_KEY redacted proof, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
+        "Authenticated tenant generation probe with staging artifact provenance, JWT claims, organization_id=org-staging, user_id=user-staging, canonical route, generated_curriculum, citation proof, structured request_id=<id>, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
+        "Provider-timeout/retry-exhausted degradation probe proving staging artifact provenance and fail-closed 503 AI_ORCHESTRATION_ENGINE_FAULT behavior with exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
+        "Citation verification output proving staging artifact provenance, no-citation rejection, hallucinated-citation rejection, verified-citation acceptance, citation_trails, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
+        "ai_request_logs and citation_trails query output with staging artifact provenance, structured JSON request_id matching generation request_id=<id>, organization_id=org-staging, user_id=user-staging, succeeded/failed, verified, tenant RLS, cross-tenant hidden proof, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same run> markers",
+        "AI provider, generation, timeout/degradation, citation verification, and audit persistence artifacts must be canonical-distinct HTTPS URLs, not one combined proof artifact or URL alias",
+        "aiprobe result_summary marker list with staging artifact provenance and exact release_candidate=<manifest release_candidate> plus service_version plus matching load_run_id=<same run> markers on every redacted provider config, JWT-claim generation, fail-closed degradation, citation, and tenant-RLS audit proof segment, with distinct_ai_artifacts=true on the audit segment; non-HTTPS, reserved example/test/invalid hosts, local, loopback, private-network, unspecified, link-local, mock, placeholder, synthetic, stubbed, test-only, dry-run, local-only, citation verification disabled, citations disabled, skip citation verification, audit logging disabled, audit persistence disabled, ai_request_logs disabled, or citation_trails disabled artifact URLs, content, or result summaries are not accepted"
+      ]
+    },
+    {
+      "id": "PERF-HTTP-001",
+      "category": "performance",
+      "status": "pending_external",
+      "description": "Staging HTTP load test proves or revises the architecture target of 5000 requests per second with P99 under 200ms.",
+      "required_evidence": [
+        "tools/loadtest JSON report with PERF-HTTP-001 evidence item, report-level load_run_id=<same load run>, and persisted staging-manifest structured_report.http_load_threshold_proof matching target, observed RPS/P99/duration, production targets, threshold_pass=true, HTTP replica count, and Postgres/Redis dependency P99 latency",
+        "HTTPS non-local, non-private, non-link-local, non-reserved ingress/API replica distribution artifact from the same run with replica_count>=2, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers; reserved example/test/invalid hosts are not accepted",
+        "HTTPS non-local, non-private, non-link-local, non-reserved database and Redis telemetry artifact from the same run with concrete postgres_p99_ms=<n> and redis_p99_ms=<n> values greater than zero and <=200, dependency_threshold_pass=true, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers; reserved example/test/invalid hosts are not accepted",
+        "HTTP replica and dependency telemetry artifacts must be canonical-distinct HTTPS URLs, not one combined proof artifact or URL alias",
+        "loadtest result_summary marker list for staging_http profile, 5000 RPS threshold, 200ms P99 threshold, production_target_rps=5000, production_target_p99_ms=200, production_min_duration_ms=60000, observed RPS/P99, duration_ms>=60000, threshold_pass=true, exact release_candidate=<manifest release_candidate>, service_version, load_run_id=<same load run>, structured http_replica_count>=2, dependency_postgres_p99_ms<=200, dependency_redis_p99_ms<=200, replica artifact, dependency telemetry artifact, http_replica/dependency_telemetry artifact verification markers, dependency_latency_artifact_verified=true, and http_distinct_artifacts=true; threshold failed, threshold failure, threshold_failures, RPS below threshold, or P99 above threshold artifact URLs, content, or result summaries are not accepted"
+      ]
+    },
+    {
+      "id": "PERF-WS-001",
+      "category": "performance",
+      "status": "pending_external",
+      "description": "Staging WebSocket load test proves multi-instance fan-out and Redis sequencing with real API replicas.",
+      "required_evidence": [
+        "tools/loadtest -websocket JSON report with PERF-WS-001 and DATA-REDIS-001 evidence items, report-level load_run_id=<same load run>, and persisted staging-manifest structured_report.websocket_redis_sequence_proof matching room/principal IDs, reconnect/polling/Redis room bindings, positive WebSocket throughput/P99/duration, expected/unique/min/max/polling sequence counts, replica count, zero room_broadcast_drops, and reconnect/auth/contiguous sequence booleans",
+        "HTTPS non-local, non-private, non-link-local, non-reserved API replica distribution artifact from the same run with replica_count>=2, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers; reserved example/test/invalid hosts are not accepted",
+        "HTTPS non-local, non-private, non-link-local, non-reserved reconnect behavior artifact from the same run with exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers; reserved example/test/invalid hosts are not accepted",
+        "HTTPS non-local, non-private, non-link-local, non-reserved HTTP polling fallback artifact against the same staged room state with room_id=<same ws_room_id>, latest_sequence>=30000, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run> markers; reserved example/test/invalid hosts are not accepted",
+        "HTTPS non-local, non-private, non-link-local, non-reserved Redis telemetry artifact from the same run with exact release_candidate=<manifest release_candidate>, service_version, load_run_id=<same load run>, and room_broadcast_drops=0 markers; reserved example/test/invalid hosts are not accepted",
+        "WebSocket replica, reconnect, polling fallback, and Redis telemetry artifacts must be canonical-distinct HTTPS URLs, not one combined proof artifact or URL alias, with ws_distinct_artifacts=true in the result_summary",
+        "loadtest result_summary marker list for staging_websocket profile, authenticated non-local, non-private, non-link-local HTTPS origin proof, structured ws_user_id/ws_organization_id tenant principal proof, staging artifact provenance, 500 event/sec threshold, 200ms P99 threshold, production_target_rps=500, production_target_p99_ms=200, production_min_duration_ms=60000, duration_ms>=60000, production_min_ws_events=30000, observed RPS/P99, ws_expected_events>=30000, threshold_pass=true, exact release_candidate=<manifest release_candidate>, service_version, load_run_id=<same load run>, structured ws_replica_count>=2, structured ws_reconnect_room_id/ws_polling_room_id/redis_telemetry_room_id fields and markers equal to ws_room_id, structured ws_reconnect_sequence_continues=true field/marker, WebSocket sequence proof, reconnect proof with ws_reconnect_sequence_continues=true, polling fallback proof, replica artifact, Redis telemetry artifact, ws_polling_artifact_latest_sequence_validated=true, ws_polling_artifact_latest_sequence_matches_run=true, ws_distinct_artifacts=true, room_broadcast_drops=0, and ws_replica/ws_reconnect/ws_polling/redis artifact verification markers; threshold failed, threshold failure, threshold_failures, RPS below threshold, or P99 above threshold artifact URLs, content, or result summaries are not accepted"
+      ]
+    },
+    {
+      "id": "DR-ROLLBACK-001",
+      "category": "resilience",
+      "status": "pending_external",
+      "description": "Rollback and degradation paths are exercised in staging.",
+      "required_evidence": [
+        "tools/resilienceprobe -probe-rollback JSON report with DR-ROLLBACK-001 evidence item, report-level load_run_id=<same load run>, and persisted staging-manifest structured_report.rollback_degradation_proof matching release/run identity, HTTPS non-local distinct readiness/rollout/degradation targets, pre/post rollback versions, rolled_back_from/rolled_back_to linkage, and degradation booleans",
+        "kubectl rollout undo or equivalent rollback output naming previous_revision, target_revision, scriptureforge-api, and load_run_id=<same load run>",
+        "API readiness before and after rollback with service_version, deployment_environment, pre_rollback_version, exact release_candidate=<manifest release_candidate>, post_rollback_version, rolled_back_from, rolled_back_to, and load_run_id=<same load run>",
+        "AI/Zoom degradation drill output proving AI_ORCHESTRATION_ENGINE_FAULT, Zoom offline://in-person fallback, zoom circuit open, non-AI routes healthy, structured ai_fault=true, zoom_offline_fallback=true, non_ai_routes_healthy=true, zoom_circuit_open=true, distinct_rollback_artifacts=true, and load_run_id=<same load run>",
+        "Rollback readiness-before, rollout, readiness-after, and degradation artifacts must be canonical-distinct HTTPS URLs, not one combined proof artifact or URL alias",
+        "resilienceprobe result_summary marker list with staging artifact marker for readiness, rollout, degradation, rollback version-linkage probes, structured degradation fallback markers, distinct_rollback_artifacts=true, exact release_candidate=<manifest release_candidate>, service_version, and matching load_run_id=<same load run> markers; non-HTTPS, reserved example/test/invalid hosts, local, loopback, private-network, unspecified, link-local, mock, placeholder, synthetic, stubbed, test-only, dry-run, local-only, rollback failed, rollout undo failed, degradation drill failed, backup failed, restore failed, smoke failed, RPO exceeded, or RTO exceeded URLs, artifacts, or result summaries are not accepted"
+      ]
+    },
+    {
+      "id": "DR-BACKUP-001",
+      "category": "resilience",
+      "status": "pending_external",
+      "description": "RDS backup creation and restore drill are proven in staging.",
+      "required_evidence": [
+        "tools/resilienceprobe -probe-backup JSON report with DR-BACKUP-001 evidence item, report-level load_run_id=<same load run>, and persisted staging-manifest structured_report.backup_restore_proof matching release/run identity, HTTPS non-local distinct backup/restore/smoke targets, snapshot/KMS IDs, RPO/RTO, restore job/source snapshot, and restore duration",
+        "Backup/snapshot creation output proving structured JSON snapshot_id matching snapshot_id=<id>, available encrypted customer-managed KMS snapshot with structured kms_key_id matching kms_key_id=<id>, retention, automated backup, source cluster, structured positive rpo_minutes matching rpo_minutes=<minutes>, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run>",
+        "Restore drill output proving structured JSON restore_job_id matching restore_job_id=<id>, restored endpoint, structured source_snapshot_id matching source snapshot_id=<id> and the backup snapshot_id=<id>, checksum, isolated restore, structured positive rto_minutes and restore_duration_minutes matching rto_minutes=<minutes> and restore_duration_minutes=<minutes>, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run>",
+        "Application smoke against restored database covering auth, tenant/RLS, migration version, journal behavior, no plaintext journal persistence, distinct_backup_artifacts=true, exact release_candidate=<manifest release_candidate>, service_version, and load_run_id=<same load run>",
+        "Backup snapshot, restore drill, and restored-database smoke artifacts must be canonical-distinct HTTPS URLs, not one combined proof artifact or URL alias",
+        "resilienceprobe result_summary marker list with staging artifact marker for backup, restore, recovery objective, restored-database RLS, no-plaintext smoke probes, distinct_backup_artifacts=true, exact release_candidate=<manifest release_candidate>, service_version, and matching load_run_id=<same load run> markers; non-HTTPS, reserved example/test/invalid hosts, local, loopback, private-network, unspecified, link-local, mock, placeholder, synthetic, stubbed, test-only, dry-run, local-only, rollback failed, rollout undo failed, degradation drill failed, backup failed, restore failed, smoke failed, RPO exceeded, or RTO exceeded URLs, artifacts, or result summaries are not accepted"
+      ]
+    },
+    {
+      "id": "SEC-SIGNOFF-001",
+      "category": "security",
+      "status": "pending_external",
+      "description": "Threat model, dependency risk register, and residual production risks receive owner/security signoff.",
+      "required_evidence": [
+        "Threat model review approval",
+        "security/dependency_risk_register.md#DRR-001 dependency risk decision",
+        "Residual risk review covering pending staging evidence, deployment, secrets, RLS, observability, load, rollback, and external-service blockers",
+        "Owner/security approval record captured as a content-verified repo security/*.md signoff/approval document or HTTPS non-local approval artifact",
+        "Release risk signoff record captured as a content-verified repo security/*.md signoff/approval document or HTTPS non-local approval artifact",
+        "record-staging-evidence SEC-SIGNOFF-001 summary markers: threat model approval, security/dependency_risk_register.md#DRR-001, dependency risk decision, residual risk review, owner/security approval, release risk signoff, signoff_artifact_verified=true, and exact release_candidate=<manifest release_candidate>"
+      ]
+    }
+  ]
+}

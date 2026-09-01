@@ -1,0 +1,69 @@
+project_name: "ScriptureForgeAI"
+languages:
+  - go
+  - typescript
+  - rust
+  - terraform
+  - yaml
+backend: lsp
+headless: true
+quiet: true
+encoding: "utf-8"
+line_ending:
+language_backend: LSP
+ignore_all_files_in_gitignore: true
+ls_specific_settings: {}
+additional_workspace_folders:
+  - web
+  - mobile
+  - services/scripture-engine
+  - production-readiness
+  - tools
+ignored_paths:
+  - _workcopy
+  - _temp_copy
+  - .cache
+  - .gomodcache
+  - node_modules
+  - web/node_modules
+  - mobile/node_modules
+  - .next
+  - web/.next
+  - .serena
+  - .serena/memories
+  - .obsidian
+  - .output
+  - dist
+  - out
+  - artifacts
+  - .gopath
+  - coverage
+  - tmp
+  - target
+  - vendor
+  - services/scripture-engine/target
+  - production-readiness/target
+  - .terraform
+  - build/terraform/.terraform
+  - .terraform.lock.hcl
+  - build/terraform/.terraform.lock.hcl
+  - .tools
+  - .gocache
+  - .npm-cache
+  - .tmp
+  - .serena/cache
+  - .serena/logs
+  - "*.tsbuildinfo"
+  - "*.tfstate"
+  - "*.tfstate.*"
+  - "production-readiness/staging-evidence.staging.json"
+read_only: false
+excluded_tools: []
+included_optional_tools: []
+fixed_tools: []
+default_modes: []
+added_modes: []
+initial_prompt: "Read AGENTS.md and REPO_BRIEF.md before making changes. Keep production-readiness claims evidence-based."
+symbol_info_budget:
+read_only_memory_patterns: []
+ignored_memory_patterns: []

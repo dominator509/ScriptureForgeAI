@@ -1,0 +1,11 @@
+C:\dev\ScriptureForgeAI\.target\debug\deps\either-3cc1382a9afdb9f2.d: C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\either-1.16.0\src\lib.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\either-1.16.0\src\serde_untagged.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\either-1.16.0\src\serde_untagged_optional.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\either-1.16.0\src\iterator.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\either-1.16.0\src\into_either.rs
+
+C:\dev\ScriptureForgeAI\.target\debug\deps\libeither-3cc1382a9afdb9f2.rlib: C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\either-1.16.0\src\lib.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\either-1.16.0\src\serde_untagged.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\either-1.16.0\src\serde_untagged_optional.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\either-1.16.0\src\iterator.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\either-1.16.0\src\into_either.rs
+
+C:\dev\ScriptureForgeAI\.target\debug\deps\libeither-3cc1382a9afdb9f2.rmeta: C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\either-1.16.0\src\lib.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\either-1.16.0\src\serde_untagged.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\either-1.16.0\src\serde_untagged_optional.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\either-1.16.0\src\iterator.rs C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\either-1.16.0\src\into_either.rs
+
+C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\either-1.16.0\src\lib.rs:
+C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\either-1.16.0\src\serde_untagged.rs:
+C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\either-1.16.0\src\serde_untagged_optional.rs:
+C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\either-1.16.0\src\iterator.rs:
+C:\Users\domin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\either-1.16.0\src\into_either.rs:

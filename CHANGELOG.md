@@ -1,0 +1,81 @@
+# Changelog
+
+This file records repository-level implementation history. It is not a substitute for deployed staging evidence.
+
+## Unreleased
+
+### Production-readiness remediation
+
+- Hardened Rust structured log escaping so every JSON control character is encoded before emission, with regression coverage for the full U+0000 through U+001F range.
+- Refreshed the mobile Browserslist dependency chain to close the current high-severity advisory set without changing the Expo/React Native lane; the lockfile-only update is covered by a green mobile audit and build check.
+- Aligned the audit, roadmap, and durable repo brief with the implemented route/schema contract, marking historical mismatches and stale evidence snapshots without expanding product scope.
+- Reconciled the audit briefing, roadmap, and Obsidian readiness tracker with the current ignored staging manifest; older exact-release CI snapshots are explicitly historical while the remaining 20 evidence items stay external.
+- Pinned every repository-controlled API, Rust, and web Dockerfile stage plus local/CI/RLS Postgres and Redis image reference to an exact registry manifest digest; deployment regression tests now reject mutable `FROM` and Compose `image:` references.
+- Added gRPC retrieval input bounds: `topK` is constrained to the Rust engine limit, provider vectors must contain 1536 finite values before dispatch, and partially initialized client shutdown is nil-safe.
+- Bound database-backed room WebSocket membership to active tenant-scoped rooms on handshake and authorization heartbeat, with Postgres/RLS regression coverage for inactive-room rejection.
+- Bound CI release evidence to the intended release candidate on pull-request runs: artifacts now preserve both the workflow commit and `pull_request.head.sha`, while `ciprobe`, staging recording, and workflow validation require the candidate SHA to match.
+- Exposed the server-verified role in register/login/refresh and MFA challenge responses; web/mobile now normalize it in memory, reset it on session loss, and hide moderator-only room controls from member sessions while server RBAC remains authoritative.
+- Refreshed the durable readiness references to the final pushed release `00930d349dbad259ca7685a1906aa4d05f005197`: hosted Security Pipeline Verification run `33479672281` (#745) and artifact `9789557040` passed exact-SHA `ciprobe` validation, with `SRC-CI-001` recorded in the ignored staging manifest and the remaining 20 readiness items explicitly external.
+- Verified that binding for `f0127b2d81297666c7d7cde0035270d0614bafc6` in hosted pull-request run `33334227649` (#739): all 63 workflow steps passed, artifact `9738590747` was produced with digest `sha256:6ffca2068bbcf5624ed82d444c46ab801b4116660424861302c04cf5a3d29794`, and `ciprobe` passed the artifact against the exact release candidate; staging-manifest ingestion remains external.
+- Refreshed the exact branch-tip local gate report for `4915f69cce74aa455f5c69ad1f9e929a2d7679cc`: 35/35 gates ran with 34 passing, a clean worktree, refreshed upstream metadata, and only the fail-closed Docker-backed RLS gate blocked by the unavailable local Docker daemon.
+- Recorded hosted exact-SHA verification for the pinned-image code tip `89d71720552fa6a430558a2f4921bf03d5d8fcbe` in run `33282131872` (#723), documentation tips `4915f69cce74aa455f5c69ad1f9e929a2d7679cc` and `9e0830879ec3fe8f45b5c8b5b3523d88c7f04481` in runs `33282396359` (#725) and `33283115656` (#727), remediation tip `288bff38fadb754be62b55535f39051711a8e976` in run `33283577957` (#729), and current retrieval-boundary hardening tip `127a12f8e82ea0f84fbe4a1d7d43c77b8a8e30d5` in run `33285093062` (#733); staging artifact ingestion and deployment evidence remain external.
+- Added irreversible AI audit prompt redaction: historical `ai_request_logs` bodies are scrubbed, and new rows retain only a fixed redaction marker plus prompt byte length while preserving status, errors, and citation trails.
+- Added Terraform Kubernetes network-policy skeleton: application namespace ingress/egress defaults to deny, with explicit API, Rust, web, DNS, data-tier, Prometheus, OTLP, and HTTPS provider flows plus regression validation against unrestricted pod egress.
+- Enforced typed Go JSON ingress contracts and typed room WebSocket error envelopes.
+- Hardened authentication, refresh rotation, MFA lifecycle, tenant RLS boundaries, encrypted journal persistence, and client token recovery.
+- Hardened room creation and synchronization with authenticated WSS, strict event envelopes, Redis sequencing/fan-out, polling fallback, and shutdown cleanup.
+- Normalized web/mobile API and WebSocket base URLs at the client configuration boundary, rejecting credential-bearing, query-bearing, or fragment-bearing strict-environment endpoints before they can generate malformed requests or socket paths.
+- Made AI provider environment values whitespace-safe: blank API keys fail closed before chat or embedding transport, while configured endpoint and model values are trimmed at construction.
+- Made Zoom account, client, and client-secret configuration whitespace-safe before OAuth requests, including direct client wiring used by tests and operators.
+- Added a shared release-probe HTTP transport that disables ambient proxies and redirects, validates DNS-resolved destinations against restricted networks at dial time, and is used by all production-facing evidence probes.
+- Made Terraform default `TRUST_PROXY_HEADERS=false`; enabling forwarded client identity now requires an explicitly verified ingress overwrite contract in addition to exact trusted proxy CIDRs.
+- Removed the CI same-channel `kubectl` binary/checksum download; CI now requires the hosted runner's existing client and verifies its PATH/version before strict staging checks.
+- Pinned the Rust CI and Scripture Engine build lanes to Rust `1.97.1` and copied the builder CA bundle into the runtime image so runtime image construction does not install an unpinned apt package.
+- Verified exact release tip `fc7e105cb0f979535e78cd63ee56cd49ab3fef8f` in hosted Security Pipeline Verification pull-request run `33280938361` (#717); all workflow gates passed, while staging-manifest ingestion and deployed evidence remain external.
+- Added replica-wide Redis leased semaphores for active room WebSocket caps across global, tenant, and user scopes, with renewal, crash expiry, and fail-closed outage handling.
+- Wired production abuse limiting to an atomic Redis fixed-window backend shared across replicas, with bounded remote identity registration and fail-closed 503 behavior when Redis is unavailable; local nil-client fallback remains explicit for isolated tests.
+- Added a dedicated unauthenticated Redis abuse budget for `/api/webhooks/zoom`, with route coverage and strict staging evidence requiring the `zoom_webhook` profile and its redacted request/window assignments.
+- Added bounded, environment-driven Zoom HTTP timeout/retry budgets with Terraform workload projection and finite nil-client fallback behavior.
+- Wired the configured Zoom `MeetingAdapter` into production room creation, persisted tenant-scoped meeting mappings and safe join metadata, and kept host start URLs out of room responses.
+- Bound login refresh-token persistence to the existing tenant transaction and bound journal writes to the authenticated server-derived salt ID/version.
+- Added typed fail-closed authentication dependency handling for unconfigured database pools across registration, login, refresh, logout, and privileged MFA routes.
+- Closed the privileged MFA enrollment bootstrap deadlock: unenrolled privileged login now returns a no-refresh, short-lived purpose-bound setup token; middleware restricts it to MFA setup routes, handlers re-check the current role and reject the setup token after activation, and web/mobile expose memory-only enrollment and activation helpers.
+- Closed the public registration tenant-selection gap: registration now creates a server-generated workspace in the RLS-scoped transaction, forces the initial member role, and web/mobile callers send only a bounded workspace name.
+- Closed the room token lifetime gap: validated JWTs now require `exp`, and active room WebSockets close when the access token expires instead of retaining an authenticated stream indefinitely.
+- Bound privileged MFA verification attempts to the existing distributed tenant/user abuse limiter, preventing rotating client IPs from bypassing TOTP brute-force protection.
+- Bounded the Rust metrics listener's first-request read with a clamped `RUST_ENGINE_METRICS_READ_TIMEOUT_MS` deadline to prevent idle-connection exhaustion.
+- Protected the Go API `/metrics` endpoint in non-local environments with constant-time bearer-token authentication, fail-closed missing-secret behavior, API-only Terraform secret injection, validator coverage, and authenticated staging probe support.
+- Added the irreversible `000005_mfa_legacy_plaintext_cleanup` migration to clear legacy plaintext TOTP seeds and force safe re-enrollment; CI and Docker-backed RLS setup now apply the complete ordered up-migration set, including `000003`.
+- Corrected local Compose to use the current root-context containers, pgvector migrations, and URL-based runtime configuration.
+- Removed the unreachable nested in-memory API/WAL runtime, replaced mock disaster-recovery scripts with checksummed PostgreSQL archive helpers requiring explicit isolated restores, and marked the old emulation report as historical; CI/local tooling now validates the boundary.
+- Recorded the current exact-SHA verification boundary: hosted push/PR runs for `0c63a86a32795f5692fd85d2bf1280ac8f8b2c43` failed before workflow steps, while the clean local matrix executed 35/35 gates with 34 passing and only the Docker-backed RLS gate blocked by the unavailable Docker backend.
+- Corrected the hosted tenant-isolation integration assertion to match the submitted room title, allowing the real PostgreSQL/RLS suite to verify room-to-Zoom configuration without a stale test expectation.
+- Verified the corrected branch tip `24f6d7d9885ec357a569fc30216832c4d20bf9d5` in hosted push run `33159284084` and pull-request run `33159292139`; both completed successfully with PostgreSQL/RLS integration and CI release evidence upload.
+- Refreshed exact-SHA local evidence for `7e52902ba92032e05bebf27b5293b6cb61c5a7ca`: 35/35 gates ran with 34 passing, clean/synchronized Git metadata, and only the fail-closed Docker-backed RLS gate blocked by the unreachable local Docker server endpoint.
+- Marked the superseded `audit_report.txt` as historical so stale completion claims cannot be mistaken for current readiness evidence.
+- Hardened the disposable Docker/RLS gate with daemon readiness probing and bounded Docker subprocess timeouts; unavailable Docker now reports a deterministic environment blocker instead of hanging local validation.
+- Repaired the RLS production-wiring regression fixture so its negative membership-override test remains stable across Go struct formatting changes.
+- Added refresh-token MFA assurance binding, unknown-environment gRPC fail-closed behavior, and least-privilege API/Rust Terraform workload secret separation.
+- Added API-only AES-GCM TOTP seed envelopes with fail-closed handling for missing, malformed, or legacy plaintext MFA material.
+- Added non-local Redis password enforcement and API-only Terraform secret injection for Redis authentication.
+- Hardened AI and Zoom integrations with bounded transport behavior, fail-closed configuration, sanitized faults, audit persistence, citation verification, offline fallback, and retry-safe webhook mapping.
+- Added Rust scripture-ingestion validation, Terraform validation gates, CI evidence binding, and Serena/Obsidian drift checks.
+- Added strict staging/production PostgreSQL TLS URL validation to the Go API and Rust scripture engine, with local-development compatibility and deployment-validator coverage.
+- Verified the current metrics-auth remediation head `e07f423b519566277bf5f9d72681309c79d8cb00` in hosted Security Pipeline Verification run `33184095128`; all workflow steps passed, including the synchronized Obsidian snapshot and CI release-evidence upload.
+- Enforced the existing session-revocation cutoff across protected HTTP routes and refresh issuance, denied expired-token logout side effects, and added regression coverage for pre-logout access tokens and independent refresh families.
+- Scoped user email uniqueness to `(organization_id, email)` through migration `000008_tenant_scoped_user_email`, made registration conflicts generic, and added dummy Argon2id verification for missing-user login attempts.
+- Added the bounded environment-driven `AI_MAX_OUTPUT_TOKENS` provider request budget and Terraform projection.
+- Scoped API/Rust database-port NetworkPolicy egress to declared `data_tier_cidrs` with validator regression coverage.
+- Made failed room-provisioning cleanup use a bounded context detached from client cancellation and emit sanitized dependency telemetry.
+- Added verified Zoom webhook lifecycle persistence: `meeting.started` and `meeting.ended` update the mapped durable `live_rooms.is_active` row under a dedicated exact-meeting RLS update policy before Redis publication, with tenant integration coverage.
+- Added bounded missed-webhook reconciliation to `GET /api/v1/rooms/active`: terminal external meeting statuses deactivate exact tenant-scoped durable and Redis room state, while provider errors preserve state for retry and offline fallback rooms are skipped.
+- Hardened the Redis room-state adapter to return typed `503`-class room-state faults for nil receivers or unconfigured clients across event, active-state, participant-duration, polling, and webhook-idempotency operations instead of panicking.
+- Added mobile session continuity through exact Expo SecureStore dependency pinning, serialized secure persistence, startup refresh/cleanup, and memory-only MFA enrollment state; mobile smoke coverage proves the record boundary and bootstrap behavior.
+- Bound AI citations to RAG segment labels: verification now accepts only exact source labels at segment starts, and retrieved line breaks are normalized so citation-like source text cannot become metadata.
+- Hardened MapReduce chunk splitting so a limit smaller than the first UTF-8 rune emits that rune intact instead of returning invalid text; regression coverage preserves bounded processing behavior.
+- Refreshed the durable audit, roadmap, threat-model, and Obsidian records with the passing exact-SHA hosted CI evidence and the remaining staging-only release blockers.
+
+### Evidence boundary
+
+- Local gates and exact-SHA hosted CI are the current implementation evidence.
+- Deployment, staging provider credentials, live RLS/KMS/TLS, load, observability, rollback, backup/restore, and native-device proof remain environment-owned release blockers.

@@ -3,10 +3,28 @@ package auth
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
+
+const (
+	MinimumSecretBytes = 32
+	tokenIssuer        = "scriptureforge-platform"
+)
+
+// ValidateSecretStrength keeps runtime-injected signing and derivation secrets
+// out of the weak-key path while preserving the original secret bytes.
+func ValidateSecretStrength(name, secret string) error {
+	if strings.TrimSpace(secret) == "" {
+		return fmt.Errorf("%s environment variable is missing", name)
+	}
+	if len([]byte(secret)) < MinimumSecretBytes {
+		return fmt.Errorf("%s must be at least %d bytes", name, MinimumSecretBytes)
+	}
+	return nil
+}
 
 // Define custom PlatformException types to adhere to structural requirements
 type ErrorCategory string
@@ -29,23 +47,34 @@ func (e *PlatformException) Error() string {
 
 // TokenClaims represents the payload embedded in the JWT
 type TokenClaims struct {
-	UserID         string `json:"user_id"`
-	OrganizationID string `json:"org_id"`
-	Role           string `json:"role"`
+	UserID            string `json:"user_id"`
+	OrganizationID    string `json:"org_id"`
+	Role              string `json:"role"`
+	MFAEnrollmentOnly bool   `json:"mfa_enrollment_only,omitempty"`
 	jwt.RegisteredClaims
 }
 
 // getSecretKey loads the key securely from the environment, defaulting to an error if not set
 func getSecretKey() ([]byte, error) {
 	secret := os.Getenv("JWT_SECRET_KEY")
-	if secret == "" {
-		return nil, fmt.Errorf("JWT_SECRET_KEY environment variable is missing")
+	if err := ValidateSecretStrength("JWT_SECRET_KEY", secret); err != nil {
+		return nil, err
 	}
 	return []byte(secret), nil
 }
 
 // GenerateToken creates a signed JWT for the authenticated user
 func GenerateToken(userID, orgID, role string, duration time.Duration) (string, error) {
+	return generateToken(userID, orgID, role, duration, false)
+}
+
+// GenerateMFAEnrollmentToken creates a short-lived token that can only be used
+// to stage and verify a privileged user's first TOTP factor.
+func GenerateMFAEnrollmentToken(userID, orgID, role string, duration time.Duration) (string, error) {
+	return generateToken(userID, orgID, role, duration, true)
+}
+
+func generateToken(userID, orgID, role string, duration time.Duration, mfaEnrollmentOnly bool) (string, error) {
 	secretKey, err := getSecretKey()
 	if err != nil {
 		return "", &PlatformException{
@@ -56,13 +85,14 @@ func GenerateToken(userID, orgID, role string, duration time.Duration) (string, 
 	}
 
 	claims := TokenClaims{
-		UserID:         userID,
-		OrganizationID: orgID,
-		Role:           role,
+		UserID:            userID,
+		OrganizationID:    orgID,
+		Role:              role,
+		MFAEnrollmentOnly: mfaEnrollmentOnly,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(duration)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			Issuer:    "scriptureforge-platform",
+			Issuer:    tokenIssuer,
 		},
 	}
 
@@ -89,13 +119,16 @@ func ValidateToken(tokenString string) (*TokenClaims, error) {
 		}
 	}
 
+	// golang-jwt v5 requires this legacy interface return at its parser callback boundary.
 	token, err := jwt.ParseWithClaims(tokenString, &TokenClaims{}, func(token *jwt.Token) (interface{}, error) {
-		// Validate the alg is what we expect
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+		// Accept only the algorithm used by our issuer. Accepting any HMAC
+		// variant weakens the protocol contract even when the signing secret is
+		// shared correctly.
+		if token.Method == nil || token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return secretKey, nil
-	})
+	}, jwt.WithIssuer(tokenIssuer))
 
 	if err != nil {
 		return nil, &PlatformException{
@@ -106,6 +139,17 @@ func ValidateToken(tokenString string) (*TokenClaims, error) {
 	}
 
 	if claims, ok := token.Claims.(*TokenClaims); ok && token.Valid {
+		if strings.TrimSpace(claims.UserID) == "" ||
+			strings.TrimSpace(claims.OrganizationID) == "" ||
+			strings.TrimSpace(claims.Role) == "" ||
+			claims.ExpiresAt == nil ||
+			claims.IssuedAt == nil {
+			return nil, &PlatformException{
+				Category: AuthenticationFault,
+				Message:  "invalid token identity or expiration claims",
+				Code:     401,
+			}
+		}
 		return claims, nil
 	}
 

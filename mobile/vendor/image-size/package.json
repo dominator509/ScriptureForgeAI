@@ -1,0 +1,16 @@
+{
+  "name": "image-size",
+  "version": "2.0.3-scriptureforge.0",
+  "description": "Bounded Metro-compatible image dimensions for ScriptureForge mobile builds",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

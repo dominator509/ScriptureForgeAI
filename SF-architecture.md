@@ -1,6 +1,6 @@
-# ARCHITECTURE.md
+# ScriptureForgeAI Architecture
 
-> Implementation note, 2026-06-23: remediation is targeting the repo-current stack (`go.mod` toolchain Go 1.24.3 and `web/package.json` Next 14) while preserving the architecture's `/api/v1/*` public route direction. Older version targets in this document remain aspirational until a dedicated upgrade PR changes the manifests.
+> Implementation note, 2026-06-26: remediation is targeting the repo-current stack (`go.mod` toolchain Go 1.24.3, `web/package.json` Next.js 16.2.12, React 19.2.3) while preserving the architecture's `/api/v1/*` public route direction. Older version targets in this document remain aspirational until a dedicated upgrade PR changes the manifests.
 
 ## 1. Product Summary
 ScriptureForge AI (alternatively known as BibleStudyOS or ScriptureFlow) is a production-grade, multi-tenant, cloud-native Bible Study Operating System and Mobile Ecosystem. It resolves the core market gap between complex, academic desktop applications (e.g., Logos, Accordance) and overly simplistic consumer reading apps (e.g., YouVersion). 
@@ -65,7 +65,7 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
 ### 4.2 Synchronized Live Study Room Execution with Third-Party Video
 *   **Actor:** Small Group Leader (`Host`), Multiple Believers (`Participants`).
 *   **Flow:** Host triggers a scheduled "Live Room" session. 
-*   **Execution:** The system connects via secure WebSockets to a dedicated state coordinator while firing API webhooks to spin up/bind an active Zoom conference. The participant screen realigns dynamically: text changes, focus highlights, and revealed discussion items push out via real-time payloads. At the conclusion of the session, participant presence counters write directly to an immutable ledger, and user prayer boards freeze and archive.
+*   **Execution:** Room creation invokes the configured `MeetingAdapter` to provision a Zoom conference or an explicit offline/in-person fallback, then persists the tenant-scoped provider and external meeting ID plus safe participant join metadata. Host start URLs are excluded from persisted room metadata and participant responses. The system connects via secure WebSockets to a dedicated state coordinator while signed Zoom webhooks update the mapped internal room. The participant screen realigns dynamically: text changes, focus highlights, and revealed discussion items push out via real-time payloads. At the conclusion of the session, participant presence counters write directly to an immutable ledger, and user prayer boards freeze and archive.
 
 ### 4.3 Automated Sermon Discipleship Repurposing
 *   **Actor:** Pastor (`Author`).
@@ -78,15 +78,21 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
 
 ### 5.1 Authentication, Account & Workspace Management
 *   **Purpose:** Multi-tenant credential tracking, organization boundaries, and session token provisioning.
-*   **Core Responsibilities:** Processing security tokens, validating JWT signatures with short lifespans (15 minutes) coupled with database-backed opaque refresh tokens, and enforcing logical isolation using strict Postgres row-level security (RLS).
+*   **Core Responsibilities:** Processing security tokens, validating JWT signatures with short lifespans (15 minutes) coupled with database-backed opaque refresh tokens, and enforcing logical isolation using strict Postgres row-level security (RLS). Public registration accepts only a bounded workspace name, generates the organization UUID server-side, and inserts the organization, forced-member user, and initial refresh token in one tenant-scoped transaction; caller-selected tenant IDs are rejected by strict decoding. Successful login inserts and commits its first refresh token in the same tenant-scoped transaction as credential verification so constrained pools do not pay for nested transaction acquisition. Auth handlers fail closed with typed HTTP 503 dependency faults when the authentication database pool is absent, before transaction work can dereference an unconfigured dependency.
 *   **Main API Routes:**
-    *   `POST /api/v1/auth/register`
+    *   `POST /api/v1/auth/register` (server-generated tenant from `organization_name`)
     *   `POST /api/v1/auth/login`
     *   `POST /api/v1/auth/refresh`
+    *   `POST /api/v1/auth/logout`
+    *   `POST /api/v1/auth/mfa/verify`
+    *   `POST /api/v1/auth/mfa/enroll`
     *   `POST /api/v1/workspaces/switch`
-*   **Data Entities:** `User`, `Organization`, `Workspace`, `Session`.
-*   **Security Considerations:** Cryptographic salt hashing via Argon2id. Multi-factor authentication (MFA) via TOTP protocols is structurally mandatory for `Tenant_Admin` and `Super_Admin` actors.
-*   **Failure Modes & Logic Risks:** Tenant bleeding (cross-tenant visibility via corrupted workspace session swapping). Mitigation involves appending `organization_id` implicitly to all database queries via an authenticated context wrapper, completely isolating it from direct client parameters.
+    *   `POST /api/auth/register` (compatibility alias)
+    *   `POST /api/auth/login` (compatibility alias)
+*   **Data Entities:** `User`, `Organization`, `Workspace`, `Session`, `RefreshToken`.
+*   **Security Considerations:** Cryptographic salt hashing via Argon2id. Multi-factor authentication (MFA) via TOTP protocols is structurally mandatory for `Tenant_Admin` and `Super_Admin` actors. An unenrolled privileged login returns a short-lived purpose-bound `mfa_enrollment_token` after password verification; it has no refresh token and middleware accepts it only on `/api/v1/auth/mfa/enroll` and `/api/v1/auth/mfa/verify`. Enrollment stages a seed with `mfa_enabled=false`, persists only a versioned AES-GCM envelope under an API-only `MFA_ENCRYPTION_KEY`, and returns the raw seed once with `Cache-Control: no-store`; `/api/v1/auth/mfa/verify` activates the factor only after a valid TOTP proof, consumes the setup token once the factor is enabled, and rejects already-enabled factors from enrollment. Verification attempts are bounded by a hashed organization/user abuse bucket shared across client IPs, and enrollment/verification re-check the current database role before changing state. Legacy plaintext or malformed seed material fails closed and requires re-enrollment. Refresh tokens preserve an `mfa_verified_at` assurance timestamp so a member session cannot become a privileged JWT after role elevation without MFA. JWT validation is fail-closed to the issuer's HS256 algorithm and `scriptureforge-platform` issuer, and rejects empty user, organization, role, or expiration claims before downstream authorization.
+*   **Client Session Lifecycle:** Web and mobile clients keep the short-lived JWT in a session bridge and perform one shared refresh-token rotation on `401` responses. Browser access JWTs are memory-only; reload bootstrap exchanges the HttpOnly, SameSite=Strict `/api` refresh cookie with `credentials: include` and never persists either token. Mobile retains the JSON body-token compatibility flow. Both clients surface `requires_mfa` challenges without storing an empty session, call the MFA setup helpers with the in-memory enrollment token when required, and clear the session only when refresh rotation is rejected. Every API request has a configurable 1-120 second deadline (15 seconds by default), propagates caller cancellation, and reports timeout as a typed network fault.
+*   **Failure Modes & Logic Risks:** Tenant bleeding (cross-tenant visibility via corrupted workspace session swapping). Mitigation involves appending `organization_id` implicitly to all database queries via an authenticated context wrapper; public registration creates a new tenant instead of accepting a caller-selected organization ID. The authenticated organization context must be validated as a UUID before setting transaction-local `app.current_org_id` for Postgres RLS. Production RLS evidence must preserve a structured manifest proof of exact tenant table names plus same-tenant-visible, cross-tenant-hidden, and write-denied outcomes for every tenant-scoped table.
 
 ### 5.2 Role-Based Access Control (RBAC) & Permissions
 *   **Purpose:** Granular data verification engine ensuring exact feature execution based on user clearance levels.
@@ -101,11 +107,12 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
 *   **Core Responsibilities:** Pre-processing user prompts, building structural vector index vectors via embedding pipelines, compiling source citation pathways, and verifying downstream data profiles before execution.
 *   **Main API Routes:**
     *   `POST /api/v1/ai/generate/study`
-    *   `POST /api/v1/ai/generate/devotional`
-    *   `POST /api/v1/ai/ask`
+    *   (Planned) `POST /api/v1/ai/generate/devotional`
+    *   (Planned) `POST /api/v1/ai/ask`
 *   **Data Entities:** `AIRequestLog`, `TheologicalProfile`, `CitationTrail`, `GeneratedAsset`.
 *   **Security Considerations:** Malicious prompt injection filtering, strict egress scanning to prevent generation of unauthorized content profiles, and semantic tracing vectors.
-*   **Failure Modes & Logic Risks:** Hallucinated data parameters masking as factual biblical source references. Countermeasures involve enforcing an isolated matching system that maps LLM outputs against a fixed SQL database index of standard biblical metadata (lexicons, verses) via standard regex/deterministic matches. Any citation failing the verification step drops the output confidence level instantly to zero and triggers a system fault block.
+*   **Provider Boundary:** Embedding and Rust vector-search failures are fail-closed typed `503` faults with sanitized client messages. Production constructors always use the configured embedding provider; offline tests inject an explicit local function and never activate a synthetic runtime vector. AI provider hosts are exact-allowlisted, provider HTTP clients use bounded timeouts/retries and do not follow redirects, and bearer credentials are never sent to an unvalidated redirect target. RAG context exposes citation labels only at segment starts, normalizes retrieved line breaks, and the verifier binds generated citations to those exact labels. Rust `ProcessTextEmbedding` accepts only a provider-generated finite 1536-dimensional vector, persists it idempotently under transaction-local `app.current_org_id` RLS, and rejects requests that omit the real vector.
+*   **Failure Modes & Logic Risks:** Hallucinated data parameters masking as factual biblical source references. Countermeasures enforce an isolated matching system that maps LLM outputs against a fixed SQL database index of standard biblical metadata (lexicons, verses) via deterministic citation grammar and exact RAG segment-label matching. Any citation failing the verification step drops the output confidence level instantly to zero and triggers a system fault block. This coordinate binding does not establish claim-to-source semantic entailment; structured source spans and claim validation remain a product/security requirement.
 
 ### 5.4 Live Bible Study Rooms (Real-time Sync & Integration)
 *   **Purpose:** Coordinate high-frequency real-time event distribution and application state tracking for synchronous studies.
@@ -114,16 +121,20 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
     *   `GET /api/v1/rooms/active`
     *   `POST /api/v1/rooms/create`
     *   `WSS /api/v1/rooms/stream/{room_id}`
+    *   `GET /api/v1/rooms/state/{room_id}`
+    *   `POST /api/webhooks/zoom`
 *   **Data Entities:** `LiveRoom`, `RoomParticipant`, `RealtimeStateEvent`, `AttendanceLog`.
-*   **Security Considerations:** Token authorization inside the initial WebSocket upgrade handshake. Socket identifiers must match active database user accounts.
-*   **Failure Modes & Logic Risks:** State race conditions (multiple users updating fields or chat states concurrently). Mitigation relies on processing mutations through single-threaded Redis Lua scripts, achieving lockstep linear event tracking.
+*   **Security Considerations:** Token authorization occurs inside the initial WebSocket upgrade handshake using the `scriptureforge-bearer` subprotocol (`Sec-WebSocket-Protocol: scriptureforge-bearer, <short-lived-access-jwt>`); validated JWTs require an expiration claim and active sockets close when that claim expires, so a stream cannot outlive its access token. Query-string credentials are rejected because intermediaries commonly log URLs. Socket identifiers must match active database user accounts. Room creation is restricted to moderator/admin principals. Auth register/login/refresh and MFA challenge responses expose the server-verified role for client presentation only; web/mobile role state never replaces server RBAC. `ALLOWED_WS_ORIGINS` is required for every non-local `DEPLOYMENT_ENVIRONMENT`; only explicit empty/development/dev/test/local modes retain localhost/no-origin development fallbacks.
+*   **Client Recovery:** Web and mobile room clients reconnect the canonical WSS stream with bounded exponential backoff and poll `GET /api/v1/rooms/state/{room_id}` while disconnected; rotated access tokens trigger a stream replacement through the session bridge.
+*   **Failure Modes & Logic Risks:** State race conditions (multiple users updating fields or chat states concurrently). Mitigation relies on processing mutations through single-threaded Redis Lua scripts, achieving lockstep linear event tracking. The same Lua transaction stores the latest event and publishes an origin-tagged envelope on `room:{room_id}:events`; each API replica subscribes only while it has local room clients, suppresses its own publication, and fans out remote events through the local hub. Local broadcast remains a bounded fallback if the pub/sub path is unavailable. WebSocket ingress strictly decodes the minimal event envelope and rejects unknown fields, missing/null payloads, and client-supplied sequence values before Redis append or broadcast. Active sockets consume a Redis-backed leased semaphore across global, tenant, and user scopes; leases renew every 30 seconds, expire after two minutes without renewal, and close the socket if renewal or the limiter backend fails. Database-backed WSS authorization requires both tenant-scoped membership and `live_rooms.is_active=TRUE` on handshake and on the authorization heartbeat, so Zoom end/reconciliation or Redis-compensation deactivation closes existing streams before further event mutations. HTTP polling may continue to read the last accepted room state for recovery. If room creation commits to PostgreSQL but Redis active-state initialization fails, the API returns a sanitized `503` and applies a tenant-RLS-scoped compensation update marking the durable room inactive, with telemetry for both outcomes. Production evidence for live rooms must prove authenticated WSS load, contiguous Redis sequencing, reconnect behavior, and HTTP polling fallback against the same staged room state, with separate artifacts for replica distribution, reconnect, polling fallback, and Redis telemetry proof; polling fallback evidence must preserve the parsed artifact `latest_sequence` as structured `ws_polling_artifact_latest_sequence` matching the run's maximum accepted sequence.
+*   **Zoom Webhook Mapping:** After HMAC and timestamp verification, the webhook resolves `meeting_external_id` through a transaction-local `live_rooms` lookup. It sets a valid non-tenant sentinel `app.current_org_id` to keep the base RLS policy fail-closed, then sets `app.webhook_lookup_verified=true` and the exact meeting ID; dedicated SELECT and UPDATE policies permit only that bounded mapping and state transition. `meeting.started` and `meeting.ended` update durable `live_rooms.is_active` before publishing Redis state. Mapping/state failures return `503` and leave the delivery unprocessed for retry, while unknown meetings remain acknowledged without state mutation. Active-room reads also perform a bounded two-second provider-status reconciliation for mapped external meetings, deactivating exact tenant/meeting rows and Redis state only for terminal statuses; provider failures leave state unchanged for a later retry and offline fallback rooms are skipped.
 
 ---
 
 ## 6. Recommended Tech Stack
 
 ### 6.1 Backend API Layer & Core Business Services
-*   **Technology:** **Go (Golang 1.26+)**
+*   **Technology:** **Go (Golang 1.24.3 target)**
 *   **Justification:** Go establishes memory-safe data allocation models, guarantees stellar multi-threaded concurrent performance through native lightweight green threads (goroutines), and provides low baseline latency numbers without complex runtime overhead. It ensures predictable performance profile under heavy WebSocket communication flows.
 
 ### 6.2 Scripture Engine & Morphological Processor
@@ -131,7 +142,7 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
 *   **Justification:** Complex lexical calculations, original language morphology mapping, lemma tracking, and text parsing require direct CPU micro-optimization and compile-time memory safety bounds. Rust modules communicate natively with Go business layers over highly optimized gRPC channels using Protocol Buffers.
 
 ### 6.3 Front-End Web Application (Workspace Center)
-*   **Technology:** **Next.js 15+ (App Router Architecture) with TypeScript (Strict Mode)**
+*   **Technology:** **Next.js 16 (App Router with TypeScript)**
 *   **Justification:** Next.js establishes flawless Server-Side Rendering (SSR) engines optimizing initial load pipelines for complex biblical textual frameworks. TypeScript prevents typing corruption within large application state boundaries.
 
 ### 6.4 Mobile Client Companion
@@ -141,7 +152,8 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
 ### 6.5 Persistence & Data Layout Layer
 *   **Database:** **PostgreSQL 17+** with the **pgvector** module extension activated.
 *   **Caching & State Cache Engine:** **Redis 7.4+**
-*   **Justification:** PostgreSQL manages core entity mappings with rigorous transactional safety rules (ACID compliance) and row-level protection filters. `pgvector` drives our internal multi-dimensional semantic search and theological data tracking indexes. Redis stores ephemeral state models for active Live Rooms, orchestrates the pub/sub event distribution lines, and controls global API rate-limiting blocks.
+*   **Database Transport Security:** Go and Rust require `DATABASE_URL` to use PostgreSQL `sslmode=require`, `verify-ca`, or `verify-full` in staging/production; local development may use the existing relaxed connection string behavior.
+*   **Justification:** PostgreSQL manages core entity mappings with rigorous transactional safety rules (ACID compliance) and row-level protection filters. `pgvector` drives our internal multi-dimensional semantic search and theological data tracking indexes. Redis stores ephemeral state models for active Live Rooms, orchestrates the pub/sub event distribution lines, and controls global API rate-limiting blocks. Production route wiring uses an atomic Redis fixed-window limiter shared across replicas, with bounded remote identity registration and a sanitized fail-closed `503` when Redis is unavailable; the process-local implementation is reserved for explicit nil-client local/test wiring. Auth login additionally applies a hashed account-scoped throttle derived from normalized organization ID plus email, so credential spraying cannot bypass controls by rotating client IPs and limiter metrics do not expose account identifiers.
 
 ---
 
@@ -150,7 +162,7 @@ To achieve this, the architecture implements a decoupled, highly concurrent engi
 ```mermaid
 graph TD
     %% Client Tier
-    WebClient[Next.js 15 Web Workspace Client] -->|HTTPS / WSS| Gateway[Envoy API Gateway / Proxy Layer]
+    WebClient[Next.js 16 Web Workspace Client] -->|HTTPS / WSS| Gateway[Envoy API Gateway / Proxy Layer]
     MobileClient[React Native Companion App] -->|HTTPS / WSS| Gateway
 
     %% Gateway Layer
@@ -217,7 +229,8 @@ type MeetingAdapter interface {
 ### Error Normalization and Fail-Safe Rules
 1.  **Circuit Breaking:** All integrations use an internal circuit breaker framework. If calls to Zoom drop below a 90% success rate within a sliding window of 60 seconds, the engine trips the breaker.
 2.  **Graceful Degradation:** When the circuit breaker trips, the system gracefully degrades. Instead of blocking operations, it pivots to an "Offline/In-Person" configuration mode, generating structured fallback links that allow manual conference connection paths.
-3.  **Timeout Enforcement:** Network execution windows are bounded strictly at `3500ms`. Any integration thread hanging past this threshold is explicitly killed via context manipulation.
+3.  **Timeout Enforcement:** Network execution windows default to `3500ms` and may be deployment-tuned through `ZOOM_HTTP_TIMEOUT_MS` only within a validated `100-30000ms` range. `ZOOM_MAX_RETRIES` is also validated to `0-3`, so provider outage work remains finite; request contexts still cancel transport work when the caller exits.
+4.  **Response Boundaries:** Zoom OAuth and JSON API responses are capped at 1 MiB before decoding; malformed or incomplete meeting responses fail closed to the offline fallback, and provider error bodies are never copied into application errors.
 
 ---
 
@@ -225,13 +238,14 @@ type MeetingAdapter interface {
 
 ### 9.1 Threat Model & Boundary Designations
 *   **Trust Boundary Alpha (Client to Gateway):** Untrusted data footprint. Assumes all parameters, tokens, and payloads are explicitly hostile. Sanitization captures incoming streams.
-*   **Trust Boundary Beta (Internal Micro-network Services):** Fully verified service communication using Mutual TLS (mTLS) configurations across cluster namespaces.
+*   **Trust Boundary Beta (Internal Micro-network Services):** The repository implements mTLS server/client configuration, shared-secret authorization, and tenant metadata binding for Go-to-Rust gRPC calls. Insecure fallback is explicit local/development/test behavior; unknown deployment names fail closed. Terraform gives the API and Rust engine separate service accounts, IRSA roles, SecretProviderClasses, least-privilege mounted secret sets, customer-managed KMS envelope encryption for EKS Kubernetes Secrets, and a namespace-wide default-deny `NetworkPolicy` with explicit service, DNS, data-tier, metrics, OTLP, and HTTPS provider rules. Local tests cover the handshake, request guards, and policy shape; cross-namespace certificate issuance, secret injection, rotation, KMS/CNI enforcement, and deployed traffic proof remain staging gates.
 
 ### 9.2 Zero-Knowledge Client Journal Architecture
 To ensure ironclad security for sensitive spiritual reflections, journals utilize client-side cryptographic derivation:
-1.  During system enrollment, a 256-bit passphrase key is derived on-device from user credentials using **PBKDF2** with 600,000 iterations and a dynamic unique salt configuration.
+1.  During system enrollment, a 256-bit passphrase key is derived on-device from user credentials using **PBKDF2** with 600,000 iterations and a dynamic unique salt configuration. The backend salt identifier is derived from tenant/user scope with a dedicated `JOURNAL_SALT_SECRET`, never the JWT signing key; journal creation rejects a salt ID/version that does not match the current authenticated bootstrap result before opening a database transaction.
 2.  Data content segments undergo symmetric encryption inside the client memory sandbox via **AES-256-GCM** prior to network transmit.
 3.  The backend persistence engine processes the ciphertext stream as an opaque binary large object (BLOB). The application servers never hold the primary encryption keys.
+4.  Web and mobile clients list and fetch only encrypted journal records. Decryption is performed locally after the user supplies the passphrase, with associated data bound to the server-provided salt ID/version. Mobile identity changes clear prior journal entries, plaintext, passphrase, and key handles; access-token rotation does not clear the active user's local work.
 
 ### 9.3 Theological Filter Isolation and Prompt Safety
 The RAG pipeline enforces structural prompt isolation to eliminate model poisoning and target manipulation:
@@ -262,7 +276,7 @@ The RAG pipeline enforces structural prompt isolation to eliminate model poisoni
                        +-------------------------+
                        | PK | id (UUID)          |
                        |    | name               |
-                       |    | doctrinal_profile  |
+                       |    | created_at         |
                        +-------------------------+
                                     │
                                     └───┐
@@ -270,13 +284,12 @@ The RAG pipeline enforces structural prompt isolation to eliminate model poisoni
 +-----------------------+      +-------------------------+      +-------------------------+
 |     scripture_texts   |      |          users          |      |       live_rooms        |
 +-----------------------+      +-------------------------+      +-------------------------+
-| PK | id (BIGSERIAL)   |      | PK | id (UUID)          |      | PK | id (UUID)          |
-| UK | translation      |◄────┐| FK | organization_id    |◄────┐| FK | organization_id    |
-|    | book_number      |     │|    | email              |     │| FK | host_user_id       |
-|    | chapter          |     │|    | password_hash      |     │|    | title              |
-|    | verse            |     │|    | system_role        |     │|    | meeting_metadata   |
-|    | text_content     |     │+-------------------------+     │+-------------------------+
-|    | text_vector      |     │             │                  │             │
+| PK | id (UUID)        |      | PK | id (UUID)          |      | PK | id (UUID)          |
+| FK | organization_id  |◄────┐| FK | organization_id    |◄────┐| FK | organization_id    |
+| UK | book/chapter/    |     │|    | email              |     │| FK | host_user_id       |
+|    | verse per org    |     │|    | password_hash      |     │|    | title              |
+|    | content          |     │|    | role               |     │|    | meeting_metadata   |
+|    | embedding        |     │+-------------------------+     │+-------------------------+
 +-----------------------+     │             │                  │             │
            ▲                  │             ▼                  │             ▼
            │                  │+-------------------------+     │+-------------------------+
@@ -284,8 +297,9 @@ The RAG pipeline enforces structural prompt isolation to eliminate model poisoni
            │                  │+-------------------------+     │+-------------------------+
            └────────────────規┼| PK | id (UUID)          |     └| PK | id (BIGSERIAL)     |
                               | FK | user_id             |      | FK | room_id            |
-                              |    | encrypted_payload   |      | FK | user_id            |
-                              +--------------------------+      |    | joined_at          |
+                              |    | ciphertext/iv       |      | FK | user_id            |
+                              |    | salt_id/version     |      |    | joined_at          |
+                              +--------------------------+      |                         |
                                                                 +-------------------------+
 ```
 
@@ -300,33 +314,39 @@ CREATE EXTENSION IF NOT EXISTS "vector";
 CREATE TABLE organizations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(255) NOT NULL,
-    doctrinal_profile VARCHAR(64) NOT NULL DEFAULT 'neutral',
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-    email VARCHAR(255) NOT NULL UNIQUE,
+    email VARCHAR(255) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    system_role VARCHAR(32) NOT NULL DEFAULT 'user',
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+    role VARCHAR(50) NOT NULL,
+    mfa_secret TEXT,
+    mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (id, organization_id)
 );
 
--- Scripture Canonical Performance Optimization
+-- Scripture runtime shape (mirrors migrations/000002_core_schema.up.sql)
 CREATE TABLE scripture_texts (
-    id BIGSERIAL PRIMARY KEY,
-    translation VARCHAR(16) NOT NULL,
-    book_number INT NOT NULL,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    book VARCHAR(100) NOT NULL,
     chapter INT NOT NULL,
     verse INT NOT NULL,
-    text_content TEXT NOT NULL,
-    text_vector vector(1536),
-    CONSTRAINT unique_verse_index UNIQUE (translation, book_number, chapter, verse)
+    content TEXT NOT NULL,
+    embedding vector(1536),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT unique_verse_index UNIQUE (organization_id, book, chapter, verse)
 );
 
-CREATE INDEX idx_scripture_vector ON scripture_texts USING hnsw (text_vector vector_cosine_ops);
-CREATE INDEX idx_scripture_coords ON scripture_texts (book_number, chapter, verse);
+CREATE INDEX idx_scripture_vector ON scripture_texts USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX idx_scripture_coords ON scripture_texts (organization_id, book, chapter, verse);
 
 -- Live Collaborative Space Schema
 CREATE TABLE live_rooms (
@@ -334,23 +354,38 @@ CREATE TABLE live_rooms (
     organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     host_user_id UUID NOT NULL REFERENCES users(id),
     title VARCHAR(255) NOT NULL,
+    meeting_provider VARCHAR(64) NOT NULL DEFAULT 'offline',
+    meeting_external_id VARCHAR(255),
     meeting_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-    is_active BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (id, organization_id),
+    FOREIGN KEY (host_user_id, organization_id) REFERENCES users(id, organization_id) ON DELETE CASCADE
 );
 
 CREATE TABLE room_participants (
     id BIGSERIAL PRIMARY KEY,
-    room_id UUID NOT NULL REFERENCES live_rooms(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    joined_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    room_id UUID NOT NULL,
+    user_id UUID NOT NULL,
+    joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(room_id, user_id),
+    FOREIGN KEY (room_id, organization_id) REFERENCES live_rooms(id, organization_id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id, organization_id) REFERENCES users(id, organization_id) ON DELETE CASCADE
 );
 
 CREATE TABLE journal_entries (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    encrypted_payload BYTEA NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL,
+    ciphertext TEXT NOT NULL,
+    iv TEXT NOT NULL,
+    salt_id VARCHAR(128) NOT NULL,
+    salt_version INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id, organization_id) REFERENCES users(id, organization_id) ON DELETE CASCADE
 );
 
 -- Performance Database Index Layouts
@@ -365,12 +400,36 @@ CREATE INDEX idx_participants_lookup ON room_participants(room_id, user_id);
 
 ### 11.1 Route Strategy and Structure
 
+#### Group 0: Service Health (`/live`, `/ready`)
+*   `GET /live`: Process liveness only; returns `200` while the HTTP server is running.
+*   `GET /ready`: Checks PostgreSQL and Redis, then in staging/production/prod performs a bounded standard gRPC health check for `scriptureforge.engine.ScriptureEngine`; unavailable or non-serving Rust readiness returns `503` without exposing transport details. During graceful shutdown it returns sanitized `503 {"status":"unready","reason":"server_draining"}` before dependency checks. Local development keeps the existing database/Redis readiness behavior so AI can remain explicitly degraded while the service is started without the engine.
+*   **HTTP transport guardrails:** The API server uses validated bounded read-header, read, write, and idle deadlines plus a finite maximum header size. Ordinary `/api/` handlers receive a validated `API_REQUEST_TIMEOUT_MS` context deadline (15 seconds by default, 1-120 seconds allowed) so database/cache/provider work ends with the client request, while WebSocket handlers replace the upgraded connection’s deadlines with their own bounded ping/read/write policy after hijacking the connection. Structured auth, journal, AI, and room-create JSON payloads reject unknown/trailing fields and use bounded bodies; the shared Go decoder accepts only an explicit allowlist of request contracts, trailing checks use `json.RawMessage`, and room WebSocket errors use a typed envelope. Room-create requests are capped at 16 KiB with 256-byte titles. Shutdown uses a validated `SHUTDOWN_TIMEOUT_MS` budget (10 seconds by default, 1-120 seconds allowed), marks readiness draining, rejects new room upgrades, and closes tracked room streams before dependency cleanup.
+*   **Tenant list failure handling:** Active-room and journal list queries keep their transaction-local RLS context and check `pgx.Rows.Err()` after iteration; mid-stream database failures return generic `500` faults with dependency telemetry rather than truncated successful lists.
+*   **Dependency startup/pool guardrails:** PostgreSQL and Redis startup probes share a bounded dependency timeout; pgx and go-redis pool sizes, wait/dial/read/write timeouts, and PostgreSQL connection lifetimes are explicit environment-driven values with Terraform validation. Non-local startup also requires a Redis password sourced from the API-only workload secret provider. Startup fails closed when dependencies do not respond within the configured bound.
+*   **Browser boundary guardrails:** `ALLOWED_WS_ORIGINS` is also the API’s credentialed CORS allowlist. Strict environments reject missing, non-HTTPS, private, or placeholder origins at startup; disallowed origins and unknown preflight headers receive `403`, while API responses apply `nosniff`, frame, referrer, permissions, CSP, HSTS, and no-store controls. Browser unsafe mutations bootstrap `GET /api/v1/auth/csrf` and must submit the readable SameSite=Strict token cookie with a matching `X-CSRF-Token` header; native callers are not subject to the browser double-submit check.
+
 #### Group A: Authentication & Provisioning (`/api/v1/auth`)
-*   `POST /api/v1/auth/login`: Issue verification challenges. Returns short-lived JWT and stores HttpOnly fingerprint validation cookies.
+*   `GET /api/v1/auth/csrf`: Issue or reuse the browser-readable SameSite=Strict CSRF token cookie for credentialed unsafe web requests.
+*   `POST /api/v1/auth/login`: Issue verification challenges. Returns a short-lived JWT and, for web clients, sets an HttpOnly, SameSite=Strict refresh-token cookie scoped to `/api`.
+*   `POST /api/v1/auth/register`: Create a server-generated tenant from `organization_name` and provision its first member account with a forced member role.
+*   `POST /api/v1/auth/refresh`: Exchange an active refresh token from the web cookie or compatibility request body for a rotated access/refresh pair; web responses omit the refresh token body.
+*   `POST /api/v1/auth/logout`: Revoke an issued refresh-token family and persist a user session-revocation cutoff so protected HTTP routes, refresh issuance, and active room streams reject tokens issued at or before logout.
 *   `POST /api/v1/auth/mfa/verify`: Process real-time dynamic authentication codes.
+*   `POST /api/v1/auth/mfa/enroll`: Provision a TOTP seed for privileged roles.
+*   `POST /api/v1/workspaces/switch`: Switch organization context on signed-in sessions.
+*   Compatibility aliases: `POST /api/auth/register`, `POST /api/auth/login` (same handler/validation behavior as canonical routes).
 
 #### Group B: AI Generation Engine Pipeline (`/api/v1/ai`)
 *   `POST /api/v1/ai/generate/study`: Generate curriculum tracks.
+*   Compatibility alias: `POST /api/ai/curriculum` (delegates to the same generation handler).
+    *   Generation fails closed with a typed `503` when required RAG, verification, LLM, MapReduce, database, or AI audit persistence dependencies are unavailable; successful or failed attempts are not served without an audit write.
+    *   Readiness includes the RAG vector database and nonblank LLM API key, endpoint, model, and bounded HTTP client; direct RAG/LLM calls also return typed configuration faults when their dependency graph is incomplete.
+    *   Aggregate curriculum assembly uses amortized buffering with an 8 MiB response envelope across the bounded chunk set; overflow is audit-recorded as a failed attempt and returns a typed `503` without serving partial output.
+    *   AI audit rows retain a fixed `[redacted]` prompt marker and byte length rather than prompt content, alongside status, errors, and citation trails. Migration `000007_ai_prompt_redaction` scrubs historical prompt bodies and deliberately fails closed on rollback.
+    *   LLM chat requests include `AI_MAX_OUTPUT_TOKENS`, defaulting to 2048 and clamped to 8192, so provider output and retry cost remain bounded per completion.
+    *   Chat and MapReduce reducer model selection uses `AI_CHAT_MODEL` or an explicit pipeline model, with the existing reducer default retained only when configuration is unset; provider error details are redacted at the reducer boundary.
+    *   LLM network, malformed-response, and empty-response faults use sanitized typed errors; provider URLs, transport messages, and response bodies are not returned to callers.
+    *   MapReduce uses UTF-8-safe bounded chunks, emits an intact rune when a configured limit is smaller than that rune, and uses a capped worker pool with cancellation-aware scheduling; invalid processors and canceled work fail closed without unbounded goroutine fan-out.
     *   *Payload Structure:*
         ```json
         {
@@ -391,6 +450,19 @@ CREATE INDEX idx_participants_lookup ON room_participants(room_id, user_id);
 #### Group C: Real-Time Synchronization Socket Endpoints (`/api/v1/rooms`)
 *   `POST /api/v1/rooms/create`: Initialize dynamic tracking matrices.
 *   `GET /api/v1/rooms/active`: Query structural context instances running under the client tenant signature.
+*   `GET /api/v1/rooms/state/{room_id}`: Poll latest room event payload for reconnect/fallback clients.
+*   `WSS /api/v1/rooms/stream/{room_id}`: Broadcast real-time room events after membership and tenant validation; the default RLS path re-checks membership and the session-revocation cutoff during the stream heartbeat.
+
+The API and Rust workload NetworkPolicies scope database-port egress to the declared Terraform `data_tier_cidrs`; the deployment validator rejects database-port rules without explicit destinations.
+
+#### Group D: System Webhooks (`/api/webhooks`)
+*   `POST /api/webhooks/zoom`: Apply the unauthenticated Redis-backed `zoom_webhook` abuse budget, then validate signed Zoom webhook callbacks and map meeting lifecycle events to internal room state transitions.
+
+#### Group E: Journal Endpoints (`/api/v1/journal`)
+*   `GET /api/v1/journal/bootstrap`: Resolve tenant/user scoped journal salt material for client-side encryption keys.
+*   `POST /api/v1/journal_entries`: Persist encrypted journal payload fragments.
+*   `GET /api/v1/journal_entries`: List encrypted journal entries for authenticated user.
+*   `GET /api/v1/journal_entries/{id}`: Fetch a single encrypted journal entry.
 
 ---
 
@@ -401,6 +473,7 @@ The web and mobile frameworks partition client-side information states cleanly t
 *   **Server Cached Mirror State:** Driven by `@tanstack/react-query`. Captures, invalidates, and mirrors persistent backend structures (e.g., resource catalog entries, profile parameters).
 *   **Ephemeral Presentation UI State:** Driven by localized `Zustand` instances. Tracks structural client presentation values (e.g., viewport splitting coordinates, translation comparison panels, current accessibility font sizing modifiers).
 *   **Real-time Collaborative Sync Canvas:** Driven by highly reliable WebSocket pipelines hooked directly to React Context layers. Captures remote state adjustments and maps them down to local UI surfaces with zero interference to focus points.
+*   **Session and Recovery Boundary:** Zustand-backed session bridges keep access tokens in memory and update rotated values atomically for client requests; browser refresh custody remains in the HttpOnly cookie while mobile retains body-token compatibility. Room views use the canonical WSS stream and authenticated polling fallback, while native-device and deployed-browser behavior remains a staging validation responsibility.
 
 ### 12.2 User Interface Progressive Disclosure Strategy
 To accommodate both novice users and advanced researchers, structural UI visibility adapts dynamically based on the active display mode configuration:
@@ -454,7 +527,7 @@ func (e *PlatformException) Error() string {
 
 ## 14. Testing Architecture
 
-Google Jules must construct and evaluate code changes against a four-tier automated testing strategy. Every code commit requires testing to ensure functionality before code submission.
+Implementations must construct and evaluate code changes against a four-tier automated testing strategy. Every code commit requires testing to ensure functionality before code submission.
 
 ### 14.1 Test Profile Framework Configurations
 
@@ -508,9 +581,22 @@ REQUIREMENT: Ensure all test cases compile flawlessly without dependencies on ex
 └── mobile/                     # React Native App Client Workspace
 ```
 
+The Phase 02 shared server cryptography boundary is implemented in
+`pkg/crypto_utils/password.go`. It owns Argon2id password hashing, strict
+stored-parameter parsing, bounded verification work, secure salt generation,
+and transient byte cleanup; `internal/domain/auth` exposes compatibility
+aliases so authentication handlers retain their established contract.
+
+The roadmap's phase-local execution artifacts live in `docs/sub_roadmaps/PHASE_01_SUB_ROADMAP.md` through
+`PHASE_06_SUB_ROADMAP.md`. They are derived from the phase specifications in `SF-roadmap.md`, separate local
+implementation evidence from staging evidence, and are checked by `tools/validate-roadmap-artifacts.mjs` before
+the local and CI release gates can pass.
+
 <h3>15.2 Database Version Upgrades Strategy</h3>
 *   No structural changes may occur directly within running database consoles. All data changes are driven exclusively by explicit linear migration files parsed through a file migration tool (`golang-migrate`).
-*   Migration logic scripts must supply balanced down steps for every up operation. Schema mutations must adhere to a backward-compatible format, allowing legacy production clusters to operate smoothly alongside pending software updates during canary release cycles.
+*   Migration logic scripts must supply balanced down steps for reversible schema operations. Security erasure migrations may be intentionally irreversible when their down step fails closed and documents that deleted secrets are never restored; `000005_mfa_legacy_plaintext_cleanup` uses this rule to remove legacy plaintext TOTP seeds and force re-enrollment.
+*   CI and disposable integration environments apply every ordered `*.up.sql` migration, so the tested database shape cannot omit a checked-in upgrade.
+*   **Recovery tooling boundary:** the repository's backup helper creates a validated, checksummed PostgreSQL custom-format archive, while restore requires a distinct explicitly supplied target database, checksum verification, and two deliberate confirmation variables before using `pg_restore --clean --exit-on-error`. The former nested in-memory API/WAL implementation and its recovery report are historical and are not part of the production runtime or readiness evidence. Staging must still prove encrypted backup, isolated restore, measured RPO/RTO, and rollback/degradation behavior through the resilience evidence contract.
 
 ---
 
@@ -537,6 +623,21 @@ REQUIREMENT: Ensure all test cases compile flawlessly without dependencies on ex
   └─ Progressive Routing Shift: 1% -> 10% -> 50% -> 100%
 ```
 
+Release evidence probes use the repository's hardened `tools/probehttp` transport for
+remote artifact and staging requests. It disables ambient proxies and redirects, resolves
+DNS before connecting, rejects restricted destinations, and dials only the validated address;
+CI checks the hosted runner's existing `kubectl` path/version and does not install a mutable
+binary/checksum pair. Deployment execution and artifact authenticity remain staging-owned.
+
+The container supply-chain boundary is repository-controlled through exact registry
+manifest digests: every API, Rust, and web Dockerfile stage, plus local/CI/RLS
+Postgres and Redis workload references, must use `@sha256:<digest>`. Deployment
+validation rejects mutable `FROM` and Compose `image:` references. Parent-image
+signing/provenance, ECR publication, and deployed digest verification remain
+staging/release evidence rather than local source claims.
+
+The staging deployment verification step must attach real Terraform and Kubernetes artifacts through `tools/deploymentprobe`. `DEPLOY-TF-001` and `DEPLOY-K8S-001` evidence is accepted only when probe summaries carry both verified deployment markers and `staging artifact` provenance; Terraform approval fallback evidence must include a structured `change_ticket=<ticket-id>` marker when it substitutes for apply output, and strict-release validation rejects approval summaries that omit that ticket ID. Mock, placeholder, synthetic, stubbed, test-only, dry-run, localhost, or loopback artifacts are treated as non-production evidence.
+
 ### 16.1 Infrastructure Configuration Framework (Terraform Plan Abstract)
 ```hcl
 # Core Persistent Deployment Layout
@@ -557,7 +658,8 @@ resource "aws_rds_cluster" "storage_backend_postgres" {
   engine_version          = "17.2"
   database_name           = "scriptureforge_prod"
   master_username         = "forge_admin_root"
-  master_password         = var.database_root_security_passphrase
+  manage_master_user_password   = true
+  master_user_secret_kms_key_id = var.database_kms_key_arn
   storage_encrypted       = true
   deletion_protection     = true
 }
@@ -568,8 +670,8 @@ resource "aws_rds_cluster" "storage_backend_postgres" {
 ## 17. Observability and Analytics
 
 ### 17.1 Telemetry Implementation Design
-*   **Distributed Trace Integration:** OpenTelemetry instrumentation spans intercept every business method execution path. Trace headers propagate across external service barriers via standard context mappings (`X-Trace-ID`), logging exact database durations, parsing latencies, and third-party call dependencies.
-*   **Metric Instrumentation Profiles:** Core components expose diagnostic metrics to tracking systems at standard `/metrics` ports.
+*   **Distributed Trace Integration:** OpenTelemetry instrumentation spans intercept every business method execution path. Trace headers propagate across external service barriers via standard context mappings (`X-Trace-ID`), logging exact database durations, parsing latencies, and third-party call dependencies. Production observability evidence must use real 32-character non-zero lowercase hex OpenTelemetry trace IDs, not placeholder correlation strings.
+*   **Metric Instrumentation Profiles:** Core components expose diagnostic metrics to tracking systems at standard `/metrics` ports. The Go API `/metrics` endpoint requires `Authorization: Bearer <METRICS_AUTH_TOKEN>` in non-local environments and returns `503` when its token is not configured; explicit local/development/test modes retain local scrape behavior. The Rust metrics listener bounds time to receive the first request bytes with `RUST_ENGINE_METRICS_READ_TIMEOUT_MS` (100ms-30s, 5s default) so idle or slow clients cannot hold connections indefinitely. Staging Prometheus and evidence probes must provide the API bearer token.
     *   `http_requests_total{status, route}`: Monitor active system traffic velocities.
     *   `websocket_active_connections_count`: Monitor synchronized system load levels.
     *   `ai_inference_duration_seconds{profile}`: Monitor real-time generative latency curves.
@@ -585,27 +687,27 @@ resource "aws_rds_cluster" "storage_backend_postgres" {
 
 ### 18.2 WebSocket Connection Overloads During Church Synchronization Windows
 *   **Risk:** Sudden spikes in web traffic (e.g., thousands of group members joining synchronized live rooms at precisely 7:00 PM on a Wednesday) can trigger thread starvation and socket drops.
-*   **Mitigation Strategy:** Offload initial room creation and member authorizations to stateless standard HTTP instances. WebSockets handle only minimal operational events. Live synchronization nodes execute in isolated autoscale groups, running load distribution thresholds managed by specialized load balancers.
+*   **Mitigation Strategy:** Offload initial room creation and member authorizations to stateless standard HTTP instances. WebSockets handle only minimal operational events. A Redis-backed leased semaphore enforces global, tenant, and user socket caps consistently across replicas, renews live leases, and reclaims crashed connections after a bounded expiry. Live synchronization nodes execute in isolated autoscale groups, running load distribution thresholds managed by specialized load balancers.
 
 ---
 
 ## 19. Production Readiness Checklist
 
-- [ ] Row-Level Security (RLS) policies are active and verified across all PostgreSQL tables.
+- [ ] Row-Level Security (RLS) policies are active and verified across all PostgreSQL tables, with structured staging manifest proof for every tenant-scoped table outcome.
 - [ ] Database storage components apply static encryption using AWS KMS keys.
 - [ ] Production API endpoints score an A+ ranking under SSL Labs cryptographic evaluations.
-- [ ] Load testing profiles confirm sustainable performance at 5,000 requests per second while keeping P99 latency figures below 200ms.
+- [ ] Load testing profiles confirm sustainable performance at 5,000 requests per second while keeping P99 latency figures below 200ms, with WebSocket evidence also proving authenticated WSS origin behavior, Redis sequence ordering, reconnect behavior, HTTP polling fallback whose structured artifact latest sequence matches the run maximum sequence, and distinct replica/reconnect/polling/Redis telemetry artifacts.
 - [ ] Zero-Knowledge client encryption tests show clean client memory space teardowns without tracking key fragments in background processes.
 - [ ] Automated rate limit policies reject requests when traffic limits pass design parameters.
 - [ ] OpenTelemetry dashboards successfully trace transactions across all service layers.
 
 ---
 
-## 20. Google Jules Guardrails
+## 20. Implementation Guardrails
 
 *   **RULE 1:** Execute comprehensive security, concurrency, and boundary tests before finalizing any architectural or codebase modules.
 *   **RULE 2:** Maintain strict type safety and memory safety across all domains. The use of unsafe code pointer arrays or implicit empty target definitions (`interface{}` in Go, `any` in TypeScript) is strictly blocked unless explicitly documented.
 *   **RULE 3:** Always inspect existing files, data structures, and service interfaces for context before modifying or generating new code elements to prevent code duplication or design divergence.
 *   **RULE 4:** Never hard-code production secrets, security certificates, encryption keys, or tenant context parameters. Configuration values must resolve from secure environment injection points.
 *   **RULE 5:** Ensure all automated commits represent small atomic blocks of functionality, pass all local integration testing checks, and do not introduce database version regressions.
-*   **RULE 6:** Maintain this `ARCHITECTURE.md` file as the ultimate source of truth for the codebase, updating structural specifications immediately whenever authorized scope shifts occur.
+*   **RULE 6:** Maintain this `SF-architecture.md` file as the ultimate source of truth for the codebase, updating structural specifications immediately whenever authorized scope shifts occur.

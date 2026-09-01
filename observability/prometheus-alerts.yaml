@@ -1,0 +1,150 @@
+groups:
+  - name: scriptureforge-api-readiness
+    rules:
+      - alert: ScriptureForgeHighErrorRate
+        expr: |
+          sum(rate(scriptureforge_http_requests_total{status=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(scriptureforge_http_requests_total[5m])), 1)
+          > 0.02
+        for: 10m
+        labels:
+          severity: page
+          service: scriptureforge-api
+        annotations:
+          summary: ScriptureForge API 5xx rate is above 2 percent.
+          description: Check trace-correlated JSON logs, recent deploys, DB/Redis health, AI provider faults, and Zoom webhook failures.
+
+      - alert: ScriptureForgeTrafficAbsent
+        expr: sum(rate(scriptureforge_http_requests_total[10m])) == 0
+        for: 15m
+        labels:
+          severity: ticket
+          service: scriptureforge-api
+        annotations:
+          summary: ScriptureForge API has no observed HTTP traffic.
+          description: Verify ingress, service discovery, Prometheus scraping, and deployment health before treating this as user demand loss.
+
+      - alert: ScriptureForgeAuthFailureSpike
+        expr: |
+          sum(rate(scriptureforge_http_requests_total{path=~"/api/v1/auth/.*",status=~"4.."}[5m]))
+          > 5
+        for: 10m
+        labels:
+          severity: ticket
+          service: scriptureforge-api
+        annotations:
+          summary: Auth failure rate is elevated.
+          description: Inspect abuse-limit counters, credential stuffing indicators, MFA failures, and tenant-specific login patterns.
+
+      - alert: ScriptureForgeAbuseLimitSpike
+        expr: |
+          sum by (operation) (rate(scriptureforge_dependency_operations_total{dependency="abuse_limiter",status="limited"}[5m]))
+          > 1
+        for: 10m
+        labels:
+          severity: ticket
+          service: scriptureforge-api
+        annotations:
+          summary: Abuse limiter blocks are elevated.
+          description: Inspect the limited profile, ingress client identity extraction, Retry-After headers, and tenant/user scoped route logs.
+
+      - alert: ScriptureForgeRouteLatencyElevated
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (path, le) (rate(scriptureforge_http_request_duration_seconds_bucket[5m]))
+          )
+          > 0.2
+        for: 15m
+        labels:
+          severity: ticket
+          service: scriptureforge-api
+        annotations:
+          summary: Route P99 latency is above 200ms.
+          description: Use route histogram buckets to identify slow paths, then correlate trace_id logs with database, Redis, AI, Zoom, and WebSocket dependency metrics.
+
+      - alert: ScriptureForgeDependencyFailures
+        expr: |
+          (
+            sum by (dependency) (rate(scriptureforge_dependency_operations_total{status=~"error|timeout|4..|5.."}[5m]))
+            > 0
+          )
+          or
+          (
+            sum by (dependency) (rate(scriptureforge_dependency_operation_duration_seconds_sum[5m]))
+            /
+            clamp_min(sum by (dependency) (rate(scriptureforge_dependency_operations_total[5m])), 0.001)
+            > 1
+          )
+        for: 10m
+        labels:
+          severity: ticket
+          service: scriptureforge-api
+        annotations:
+          summary: ScriptureForge dependency failures are elevated.
+          description: Inspect dependency operation metrics by trace_id-correlated route logs, then check Postgres, Redis, AI provider, Zoom, or WebSocket fan-out health.
+
+      - alert: ScriptureForgeAIInferenceLatencyElevated
+        expr: |
+          sum by (profile, status) (rate(ai_inference_duration_seconds_sum[5m]))
+          /
+          clamp_min(sum by (profile, status) (rate(ai_inference_duration_seconds_count[5m])), 0.001)
+          > 3
+        for: 10m
+        labels:
+          severity: ticket
+          service: scriptureforge-api
+        annotations:
+          summary: AI inference latency is elevated.
+          description: Inspect provider readiness, retry/timeout configuration, citation verification outcomes, and ai_request_logs for the affected profile and status.
+
+      - alert: ScriptureForgeJournalWriteFailures
+        expr: |
+          sum(rate(scriptureforge_http_requests_total{path="/api/v1/journal_entries",method="POST",status=~"4..|5.."}[5m]))
+          > 1
+        for: 10m
+        labels:
+          severity: page
+          service: scriptureforge-api
+        annotations:
+          summary: Encrypted journal writes are failing.
+          description: Confirm JWT/RLS context, no-plaintext validation errors, Postgres availability, and client crypto version skew.
+
+      - alert: ScriptureForgeRoomStreamFailures
+        expr: |
+          sum(rate(scriptureforge_http_requests_total{path="/api/v1/rooms/stream/:id",status=~"4..|5.."}[5m]))
+          > 1
+        for: 10m
+        labels:
+          severity: page
+          service: scriptureforge-api
+        annotations:
+          summary: Live room stream handshakes are failing.
+          description: Check allowed origins, JWT claims, room membership, Redis state manager health, and WebSocket load balancer behavior.
+
+      - alert: ScriptureForgeRoomBroadcastDrops
+        expr: |
+          sum(rate(scriptureforge_dependency_operations_total{dependency="websocket",operation="room_broadcast",status="dropped"}[5m]))
+          > 0
+        for: 5m
+        labels:
+          severity: page
+          service: scriptureforge-api
+        annotations:
+          summary: Live room broadcasts are dropping subscribers.
+          description: Check WebSocket fan-out pressure, lagging clients, Redis room event throughput, and load balancer connection health.
+
+      - alert: ScriptureForgeRustEngineFailures
+        expr: |
+          sum(rate(scriptureforge_rust_engine_embedding_failures_total[5m]))
+          +
+          sum(rate(scriptureforge_rust_engine_vector_search_failures_total[5m]))
+          > 0
+        for: 10m
+        labels:
+          severity: ticket
+          service: scriptureforge-rust-engine
+        annotations:
+          summary: Rust scripture engine gRPC failures are elevated.
+          description: Check Rust gRPC logs by trace_id, database connectivity, pgvector query behavior, and gRPC health state.

@@ -1,0 +1,689 @@
+package integration
+
+import (
+	"bytes"
+	"context"
+	"crypto/hmac"
+	"crypto/sha1"
+	"crypto/sha256"
+	"encoding/base32"
+	"encoding/base64"
+	"encoding/binary"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"scriptureforge/internal/domain/auth"
+	"scriptureforge/internal/domain/observability"
+	"scriptureforge/internal/ports"
+)
+
+const (
+	authOrgID            = "55555555-5555-4555-8555-555555555555"
+	authAdminID          = "66666666-6666-4666-8666-666666666666"
+	authUserEmail        = "auth-member@example.test"
+	authAdminEmail       = "auth-admin@example.test"
+	authPassword         = "CorrectHorseBatteryStaple!42"
+	authMFASecret        = "JBSWY3DPEHPK3PXP"
+	authMFAEncryptionKey = "test-mfa-encryption-key-long-enough-0123456789"
+)
+
+func cleanupAuthFixtures(ctx context.Context, t *testing.T, tx pgx.Tx) {
+	t.Helper()
+	if _, err := tx.Exec(ctx, `DELETE FROM organizations WHERE id = $1`, authOrgID); err != nil {
+		t.Fatalf("cleanup auth fixtures: %v", err)
+	}
+}
+
+func seedAuthOrganization(ctx context.Context, t *testing.T, tx pgx.Tx) {
+	t.Helper()
+	cleanupAuthFixtures(ctx, t, tx)
+	if _, err := tx.Exec(ctx, `INSERT INTO organizations (id, name) VALUES ($1, 'Auth Test Org')`, authOrgID); err != nil {
+		t.Fatalf("seed auth org: %v", err)
+	}
+}
+
+func authJSONRequest(method, target string, payload any) *http.Request {
+	body, _ := json.Marshal(payload)
+	return httptest.NewRequest(method, target, bytes.NewReader(body))
+}
+
+func authObservedJSONRequest(method, target string, payload any, observer *observability.Observer) *http.Request {
+	req := authJSONRequest(method, target, payload)
+	return req.WithContext(observability.WithObserver(req.Context(), observer))
+}
+
+func decodeAuthResponse(t *testing.T, recorder *httptest.ResponseRecorder) ports.AuthResponse {
+	t.Helper()
+	var response ports.AuthResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatalf("decode auth response %d %q: %v", recorder.Code, recorder.Body.String(), err)
+	}
+	return response
+}
+
+func decodeWorkspaceSwitchResponse(t *testing.T, recorder *httptest.ResponseRecorder) ports.WorkspaceSwitchResponse {
+	t.Helper()
+	var response ports.WorkspaceSwitchResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatalf("decode workspace switch response %d %q: %v", recorder.Code, recorder.Body.String(), err)
+	}
+	return response
+}
+
+func totpCode(t *testing.T, secret string, now time.Time) string {
+	t.Helper()
+	key, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(secret)
+	if err != nil {
+		t.Fatalf("decode totp secret: %v", err)
+	}
+	var msg [8]byte
+	binary.BigEndian.PutUint64(msg[:], uint64(now.Unix()/30))
+	mac := hmac.New(sha1.New, key)
+	_, _ = mac.Write(msg[:])
+	sum := mac.Sum(nil)
+	offset := sum[len(sum)-1] & 0x0f
+	binCode := (int(sum[offset])&0x7f)<<24 |
+		(int(sum[offset+1])&0xff)<<16 |
+		(int(sum[offset+2])&0xff)<<8 |
+		(int(sum[offset+3]) & 0xff)
+	return fmt.Sprintf("%06d", binCode%1000000)
+}
+
+func hashRefreshTokenForTest(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
+	t.Setenv("JWT_SECRET_KEY", "test-secret-long-enough-for-auth-session-tests")
+	db := openTenantIsolationDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	setTenantForTest(ctx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
+		seedAuthOrganization(ctx, t, tx)
+	})
+	registeredOrgID := ""
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		if registeredOrgID != "" {
+			setTenantForTest(cleanupCtx, t, db, registeredOrgID, func(ctx context.Context, tx pgx.Tx) {
+				if _, err := tx.Exec(ctx, `DELETE FROM organizations WHERE id = $1`, registeredOrgID); err != nil {
+					t.Fatalf("cleanup registered organization: %v", err)
+				}
+			})
+		}
+		setTenantForTest(cleanupCtx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
+			cleanupAuthFixtures(ctx, t, tx)
+		})
+	})
+
+	handler := &ports.AuthHandler{DB: db}
+	observer := observability.NewObserver(observability.Options{})
+	registerRecorder := httptest.NewRecorder()
+	handler.RegisterHandler(registerRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/register", map[string]any{
+		"email":             authUserEmail,
+		"password":          authPassword,
+		"organization_name": "Auth Registration Workspace",
+		"role":              "admin",
+	}, observer))
+	if registerRecorder.Code != http.StatusCreated {
+		t.Fatalf("register status = %d body = %s", registerRecorder.Code, registerRecorder.Body.String())
+	}
+	registered := decodeAuthResponse(t, registerRecorder)
+	registeredOrgID = registered.OrganizationID
+	if registered.Token == "" || registered.RefreshToken == "" || registered.UserID == "" || registeredOrgID == "" || registeredOrgID == authOrgID || registered.Role != "member" {
+		t.Fatalf("register response missing token data: %#v", registered)
+	}
+	testOrgID := registeredOrgID
+
+	claims, err := auth.ValidateToken(registered.Token)
+	if err != nil {
+		t.Fatalf("validate registration access token: %v", err)
+	}
+	if claims.Role != "member" {
+		t.Fatalf("registration role = %q, want forced member", claims.Role)
+	}
+	if ttl := time.Until(claims.ExpiresAt.Time); ttl <= 14*time.Minute || ttl > 16*time.Minute {
+		t.Fatalf("access token ttl = %s, want approximately 15 minutes", ttl)
+	}
+
+	setTenantForTest(ctx, t, db, testOrgID, func(ctx context.Context, tx pgx.Tx) {
+		var role string
+		if err := tx.QueryRow(ctx, `SELECT role FROM users WHERE email = $1 AND organization_id = $2`, authUserEmail, testOrgID).Scan(&role); err != nil {
+			t.Fatalf("query registered role: %v", err)
+		}
+		if role != "member" {
+			t.Fatalf("stored registration role = %q, want member", role)
+		}
+	})
+
+	setTenantForTest(ctx, t, db, testOrgID, func(ctx context.Context, tx pgx.Tx) {
+		if _, err := tx.Exec(ctx, `UPDATE refresh_tokens SET expires_at = CURRENT_TIMESTAMP - INTERVAL '1 minute' WHERE user_id = $1 AND organization_id = $2`, registered.UserID, testOrgID); err != nil {
+			t.Fatalf("expire registration refresh token: %v", err)
+		}
+	})
+	expiredRecorder := httptest.NewRecorder()
+	handler.RefreshHandler(expiredRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
+		"refresh_token":   registered.RefreshToken,
+		"organization_id": testOrgID,
+	}, observer))
+	if expiredRecorder.Code != http.StatusUnauthorized {
+		t.Fatalf("expired refresh token status = %d body = %s, want 401", expiredRecorder.Code, expiredRecorder.Body.String())
+	}
+	expiredLogoutRecorder := httptest.NewRecorder()
+	handler.LogoutHandler(expiredLogoutRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/logout", map[string]any{
+		"refresh_token":   registered.RefreshToken,
+		"organization_id": testOrgID,
+	}, observer))
+	if expiredLogoutRecorder.Code != http.StatusUnauthorized {
+		t.Fatalf("expired logout token status = %d body = %s, want 401 without revocation side effects", expiredLogoutRecorder.Code, expiredLogoutRecorder.Body.String())
+	}
+
+	loginRecorder := httptest.NewRecorder()
+	handler.LoginHandler(loginRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/login", map[string]any{
+		"email":           authUserEmail,
+		"password":        authPassword,
+		"organization_id": testOrgID,
+	}, observer))
+	if loginRecorder.Code != http.StatusOK {
+		t.Fatalf("login status = %d body = %s", loginRecorder.Code, loginRecorder.Body.String())
+	}
+	login := decodeAuthResponse(t, loginRecorder)
+	if login.RefreshToken == "" || login.RefreshToken == registered.RefreshToken || login.Role != "member" {
+		t.Fatalf("login refresh token = %q, want a new opaque token", login.RefreshToken)
+	}
+
+	setTenantForTest(ctx, t, db, testOrgID, func(ctx context.Context, tx pgx.Tx) {
+		if _, err := tx.Exec(ctx, `UPDATE users SET role = 'admin', mfa_secret = $1, mfa_enabled = TRUE WHERE id = $2 AND organization_id = $3`, authMFASecret, registered.UserID, testOrgID); err != nil {
+			t.Fatalf("elevate auth user for refresh MFA test: %v", err)
+		}
+	})
+	elevatedRecorder := httptest.NewRecorder()
+	handler.RefreshHandler(elevatedRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
+		"refresh_token":   login.RefreshToken,
+		"organization_id": testOrgID,
+	}, observer))
+	if elevatedRecorder.Code != http.StatusUnauthorized {
+		t.Fatalf("privilege-elevated refresh status = %d body = %s, want 401", elevatedRecorder.Code, elevatedRecorder.Body.String())
+	}
+	elevated := decodeAuthResponse(t, elevatedRecorder)
+	if !elevated.RequiresMFA || elevated.Token != "" || elevated.RefreshToken != "" || elevated.Role != "admin" {
+		t.Fatalf("privilege-elevated refresh response = %#v, want MFA challenge without tokens", elevated)
+	}
+	setTenantForTest(ctx, t, db, testOrgID, func(ctx context.Context, tx pgx.Tx) {
+		if _, err := tx.Exec(ctx, `UPDATE users SET role = 'member', mfa_secret = NULL, mfa_enabled = FALSE WHERE id = $1 AND organization_id = $2`, registered.UserID, testOrgID); err != nil {
+			t.Fatalf("restore auth user after refresh MFA test: %v", err)
+		}
+	})
+
+	raceLoginRecorder := httptest.NewRecorder()
+	handler.LoginHandler(raceLoginRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/login", map[string]any{
+		"email":           authUserEmail,
+		"password":        authPassword,
+		"organization_id": testOrgID,
+	}, observer))
+	if raceLoginRecorder.Code != http.StatusOK {
+		t.Fatalf("concurrent refresh setup login status = %d body = %s", raceLoginRecorder.Code, raceLoginRecorder.Body.String())
+	}
+	raceLogin := decodeAuthResponse(t, raceLoginRecorder)
+	var refreshWG sync.WaitGroup
+	raceResults := make(chan int, 2)
+	for i := 0; i < 2; i++ {
+		refreshWG.Add(1)
+		go func() {
+			defer refreshWG.Done()
+			recorder := httptest.NewRecorder()
+			handler.RefreshHandler(recorder, authJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
+				"refresh_token":   raceLogin.RefreshToken,
+				"organization_id": testOrgID,
+			}))
+			raceResults <- recorder.Code
+		}()
+	}
+	refreshWG.Wait()
+	close(raceResults)
+	var raceSuccesses, raceDenials int
+	for status := range raceResults {
+		switch status {
+		case http.StatusOK:
+			raceSuccesses++
+		case http.StatusUnauthorized:
+			raceDenials++
+		default:
+			t.Fatalf("concurrent refresh status = %d, want one 200 and one 401", status)
+		}
+	}
+	if raceSuccesses != 1 || raceDenials != 1 {
+		t.Fatalf("concurrent refresh results successes=%d denials=%d, want 1/1", raceSuccesses, raceDenials)
+	}
+
+	refreshRecorder := httptest.NewRecorder()
+	handler.RefreshHandler(refreshRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
+		"refresh_token":   login.RefreshToken,
+		"organization_id": testOrgID,
+	}, observer))
+	if refreshRecorder.Code != http.StatusOK {
+		t.Fatalf("refresh status = %d body = %s", refreshRecorder.Code, refreshRecorder.Body.String())
+	}
+	refreshed := decodeAuthResponse(t, refreshRecorder)
+	if refreshed.RefreshToken == "" || refreshed.RefreshToken == login.RefreshToken || refreshed.Role != "member" {
+		t.Fatalf("rotated refresh token = %q, want replacement for old token", refreshed.RefreshToken)
+	}
+
+	oldTokenRecorder := httptest.NewRecorder()
+	handler.RefreshHandler(oldTokenRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
+		"refresh_token":   login.RefreshToken,
+		"organization_id": testOrgID,
+	}, observer))
+	if oldTokenRecorder.Code != http.StatusUnauthorized {
+		t.Fatalf("old refresh token status = %d body = %s, want 401", oldTokenRecorder.Code, oldTokenRecorder.Body.String())
+	}
+
+	descendantRecorder := httptest.NewRecorder()
+	handler.RefreshHandler(descendantRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
+		"refresh_token":   refreshed.RefreshToken,
+		"organization_id": testOrgID,
+	}, observer))
+	if descendantRecorder.Code != http.StatusUnauthorized {
+		t.Fatalf("descendant refresh token status = %d body = %s, want 401 after parent replay", descendantRecorder.Code, descendantRecorder.Body.String())
+	}
+
+	crossTenantRecorder := httptest.NewRecorder()
+	handler.RefreshHandler(crossTenantRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
+		"refresh_token":   refreshed.RefreshToken,
+		"organization_id": tenantOrgB,
+	}, observer))
+	if crossTenantRecorder.Code != http.StatusUnauthorized {
+		t.Fatalf("cross-tenant refresh status = %d body = %s, want 401", crossTenantRecorder.Code, crossTenantRecorder.Body.String())
+	}
+
+	logoutLoginRecorder := httptest.NewRecorder()
+	handler.LoginHandler(logoutLoginRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/login", map[string]any{
+		"email":           authUserEmail,
+		"password":        authPassword,
+		"organization_id": testOrgID,
+	}, observer))
+	if logoutLoginRecorder.Code != http.StatusOK {
+		t.Fatalf("logout setup login status = %d body = %s", logoutLoginRecorder.Code, logoutLoginRecorder.Body.String())
+	}
+	logoutLogin := decodeAuthResponse(t, logoutLoginRecorder)
+	if logoutLogin.RefreshToken == "" {
+		t.Fatal("logout setup login did not return a refresh token")
+	}
+	if logoutLogin.RefreshToken == refreshed.RefreshToken {
+		t.Fatal("logout setup login did not rotate the refresh token")
+	}
+
+	independentLoginRecorder := httptest.NewRecorder()
+	handler.LoginHandler(independentLoginRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/login", map[string]any{
+		"email":           authUserEmail,
+		"password":        authPassword,
+		"organization_id": testOrgID,
+	}, observer))
+	if independentLoginRecorder.Code != http.StatusOK {
+		t.Fatalf("independent logout-session setup login status = %d body = %s", independentLoginRecorder.Code, independentLoginRecorder.Body.String())
+	}
+	independentLogin := decodeAuthResponse(t, independentLoginRecorder)
+	if independentLogin.RefreshToken == "" || independentLogin.RefreshToken == logoutLogin.RefreshToken {
+		t.Fatal("independent logout-session setup did not return a distinct refresh token")
+	}
+
+	logoutRecorder := httptest.NewRecorder()
+	handler.LogoutHandler(logoutRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/logout", map[string]any{
+		"refresh_token":   logoutLogin.RefreshToken,
+		"organization_id": testOrgID,
+	}, observer))
+	if logoutRecorder.Code != http.StatusNoContent {
+		t.Fatalf("logout status = %d body = %s", logoutRecorder.Code, logoutRecorder.Body.String())
+	}
+
+	independentRefreshRecorder := httptest.NewRecorder()
+	handler.RefreshHandler(independentRefreshRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
+		"refresh_token":   independentLogin.RefreshToken,
+		"organization_id": testOrgID,
+	}, observer))
+	if independentRefreshRecorder.Code != http.StatusUnauthorized {
+		t.Fatalf("independent refresh after logout status = %d body = %s, want 401", independentRefreshRecorder.Code, independentRefreshRecorder.Body.String())
+	}
+
+	oldAccessClaims, err := auth.ValidateToken(registered.Token)
+	if err != nil {
+		t.Fatalf("validate pre-logout access token: %v", err)
+	}
+	if err := handler.ValidateActiveSession(ctx, oldAccessClaims); err == nil {
+		t.Fatal("pre-logout access token remained active after logout")
+	} else if pe, ok := err.(*auth.PlatformException); !ok || pe.Code != http.StatusUnauthorized {
+		t.Fatalf("pre-logout access token validation error = %#v, want unauthorized", err)
+	}
+
+	revokedRecorder := httptest.NewRecorder()
+	handler.RefreshHandler(revokedRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/refresh", map[string]any{
+		"refresh_token":   logoutLogin.RefreshToken,
+		"organization_id": testOrgID,
+	}, observer))
+	if revokedRecorder.Code != http.StatusUnauthorized {
+		t.Fatalf("revoked refresh token status = %d body = %s, want 401", revokedRecorder.Code, revokedRecorder.Body.String())
+	}
+
+	metrics := observer.Snapshot()
+	for _, expected := range []string{
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_register",status="success"} 1`,
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_login",status="success"} 4`,
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_refresh",status="success"} 1`,
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_refresh",status="invalid_or_expired"} 6`,
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_logout",status="success"} 1`,
+	} {
+		if !strings.Contains(metrics, expected) {
+			t.Fatalf("auth/session dependency metrics missing %s:\n%s", expected, metrics)
+		}
+	}
+}
+
+func TestPrivilegedLoginRequiresAndVerifiesMFA(t *testing.T) {
+	t.Setenv("JWT_SECRET_KEY", "test-secret-long-enough-for-auth-mfa-tests")
+	t.Setenv("MFA_ENCRYPTION_KEY", authMFAEncryptionKey)
+	db := openTenantIsolationDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	setTenantForTest(ctx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
+		seedAuthOrganization(ctx, t, tx)
+	})
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		setTenantForTest(cleanupCtx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
+			cleanupAuthFixtures(ctx, t, tx)
+		})
+	})
+
+	passwordHash, err := auth.HashPassword(authPassword, auth.DefaultHashConfig)
+	if err != nil {
+		t.Fatalf("hash admin password: %v", err)
+	}
+	encryptedMFASecret, err := ports.EncryptMFASecret(authMFASecret, []byte(authMFAEncryptionKey))
+	if err != nil {
+		t.Fatalf("encrypt admin MFA secret: %v", err)
+	}
+	setTenantForTest(ctx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
+		if _, err := tx.Exec(
+			ctx,
+			`INSERT INTO users (id, organization_id, email, password_hash, role, mfa_secret, mfa_enabled)
+			 VALUES ($1, $2, $3, $4, 'admin', $5, TRUE)`,
+			authAdminID,
+			authOrgID,
+			authAdminEmail,
+			passwordHash,
+			encryptedMFASecret,
+		); err != nil {
+			t.Fatalf("seed admin user: %v", err)
+		}
+	})
+
+	handler := &ports.AuthHandler{DB: db}
+	observer := observability.NewObserver(observability.Options{})
+	missingMFARecorder := httptest.NewRecorder()
+	handler.LoginHandler(missingMFARecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/login", map[string]any{
+		"email":           authAdminEmail,
+		"password":        authPassword,
+		"organization_id": authOrgID,
+	}, observer))
+	if missingMFARecorder.Code != http.StatusUnauthorized {
+		t.Fatalf("missing MFA login status = %d body = %s, want 401", missingMFARecorder.Code, missingMFARecorder.Body.String())
+	}
+	missingMFA := decodeAuthResponse(t, missingMFARecorder)
+	if !missingMFA.RequiresMFA || missingMFA.Token != "" || missingMFA.RefreshToken != "" || missingMFA.Role != "admin" {
+		t.Fatalf("missing MFA response = %#v, want requires_mfa without tokens", missingMFA)
+	}
+
+	verifiedRecorder := httptest.NewRecorder()
+	handler.LoginHandler(verifiedRecorder, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/login", map[string]any{
+		"email":           authAdminEmail,
+		"password":        authPassword,
+		"organization_id": authOrgID,
+		"mfa_code":        totpCode(t, authMFASecret, time.Now()),
+	}, observer))
+	if verifiedRecorder.Code != http.StatusOK {
+		t.Fatalf("verified MFA login status = %d body = %s", verifiedRecorder.Code, verifiedRecorder.Body.String())
+	}
+	verified := decodeAuthResponse(t, verifiedRecorder)
+	if verified.Token == "" || verified.RefreshToken == "" || verified.Role != "admin" {
+		t.Fatalf("verified MFA response missing tokens: %#v", verified)
+	}
+	setTenantForTest(ctx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
+		var verifiedAt *time.Time
+		if err := tx.QueryRow(ctx, `SELECT mfa_verified_at FROM refresh_tokens WHERE token_hash = $1`, hashRefreshTokenForTest(verified.RefreshToken)).Scan(&verifiedAt); err != nil {
+			t.Fatalf("query MFA refresh assurance: %v", err)
+		}
+		if verifiedAt == nil {
+			t.Fatal("MFA-authenticated refresh token is missing its assurance timestamp")
+		}
+	})
+	claims, err := auth.ValidateToken(verified.Token)
+	if err != nil {
+		t.Fatalf("validate MFA access token: %v", err)
+	}
+	if claims.Role != "admin" || claims.OrganizationID != authOrgID || claims.UserID != authAdminID {
+		t.Fatalf("verified MFA claims = %#v", claims)
+	}
+	metrics := observer.Snapshot()
+	for _, expected := range []string{
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_login",status="mfa_required"} 1`,
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_login",status="success"} 1`,
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_issue_refresh_token",status="success"} 1`,
+	} {
+		if !strings.Contains(metrics, expected) {
+			t.Fatalf("privileged auth dependency metrics missing %s:\n%s", expected, metrics)
+		}
+	}
+}
+
+func TestWorkspaceSwitchRequiresAuthenticatedOrgMatch(t *testing.T) {
+	t.Setenv("JWT_SECRET_KEY", "test-secret-long-enough-for-workspace-switch")
+	token, err := auth.GenerateToken("member-user-id", authOrgID, "member", time.Hour)
+	if err != nil {
+		t.Fatalf("generate token: %v", err)
+	}
+
+	handler := &ports.AuthHandler{}
+	workspaceClaims := &auth.TokenClaims{
+		UserID:         "member-user-id",
+		OrganizationID: authOrgID,
+		Role:           "member",
+	}
+	claimsRequest := httptest.NewRequest(http.MethodPost, "/api/v1/workspaces/switch", strings.NewReader(`{"organization_id":"`+authOrgID+`"}`))
+	claimsRequest.Header.Set("Authorization", "Bearer "+token)
+	claimsRequest = claimsRequest.WithContext(context.WithValue(claimsRequest.Context(), auth.ContextKeyUser, workspaceClaims))
+	allowed := httptest.NewRecorder()
+	handler.WorkspaceSwitchHandler(allowed, claimsRequest)
+	if allowed.Code != http.StatusOK {
+		t.Fatalf("workspace switch status = %d body = %s", allowed.Code, allowed.Body.String())
+	}
+	result := decodeWorkspaceSwitchResponse(t, allowed)
+	if result.OrganizationID != authOrgID {
+		t.Fatalf("workspace switch org = %q, want %q", result.OrganizationID, authOrgID)
+	}
+
+	crossTenantReq := httptest.NewRequest(http.MethodPost, "/api/v1/workspaces/switch", strings.NewReader(`{"organization_id":"55555555-0000-4555-8555-555555555555"}`))
+	crossTenantReq.Header.Set("Authorization", "Bearer "+token)
+	crossTenantReq = crossTenantReq.WithContext(context.WithValue(crossTenantReq.Context(), auth.ContextKeyUser, workspaceClaims))
+	forbidden := httptest.NewRecorder()
+	handler.WorkspaceSwitchHandler(forbidden, crossTenantReq)
+	if forbidden.Code != http.StatusForbidden {
+		t.Fatalf("workspace switch cross-tenant status = %d body = %s", forbidden.Code, forbidden.Body.String())
+	}
+}
+
+func TestMFAEnrollAndVerifyFlowForPrivilegedUsers(t *testing.T) {
+	t.Setenv("JWT_SECRET_KEY", "test-secret-long-enough-for-mfa-flow")
+	t.Setenv("MFA_ENCRYPTION_KEY", authMFAEncryptionKey)
+	db := openTenantIsolationDB(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	setTenantForTest(ctx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
+		seedAuthOrganization(ctx, t, tx)
+		_, _ = tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, authAdminID)
+		passwordHash, err := auth.HashPassword(authPassword, auth.DefaultHashConfig)
+		if err != nil {
+			t.Fatalf("hash admin password: %v", err)
+		}
+		if _, err := tx.Exec(
+			ctx,
+			`INSERT INTO users (id, organization_id, email, password_hash, role)
+			 VALUES ($1, $2, $3, $4, 'admin')`,
+			authAdminID,
+			authOrgID,
+			authAdminEmail,
+			passwordHash,
+		); err != nil {
+			t.Fatalf("seed admin without mfa: %v", err)
+		}
+	})
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		setTenantForTest(cleanupCtx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
+			cleanupAuthFixtures(ctx, t, tx)
+			_, _ = tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, authAdminID)
+		})
+	})
+
+	handler := &ports.AuthHandler{DB: db}
+	observer := observability.NewObserver(observability.Options{})
+	loginRec := httptest.NewRecorder()
+	handler.LoginHandler(loginRec, authObservedJSONRequest(http.MethodPost, "/api/v1/auth/login", map[string]any{
+		"email":           authAdminEmail,
+		"password":        authPassword,
+		"organization_id": authOrgID,
+	}, observer))
+	if loginRec.Code != http.StatusUnauthorized {
+		t.Fatalf("unenrolled admin login status = %d body = %s, want 401", loginRec.Code, loginRec.Body.String())
+	}
+	loginResp := decodeAuthResponse(t, loginRec)
+	if !loginResp.RequiresMFA || !loginResp.MFAEnrollmentRequired || loginResp.MFAEnrollmentToken == "" || loginResp.Token != "" || loginResp.RefreshToken != "" {
+		t.Fatalf("unenrolled admin login response = %#v, want restricted enrollment token without session tokens", loginResp)
+	}
+	adminClaims, err := auth.ValidateToken(loginResp.MFAEnrollmentToken)
+	if err != nil {
+		t.Fatalf("validate MFA enrollment token: %v", err)
+	}
+	if !adminClaims.MFAEnrollmentOnly {
+		t.Fatal("login returned a normal access token for MFA enrollment")
+	}
+
+	enrollReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/mfa/enroll", strings.NewReader(`{}`))
+	enrollReq = enrollReq.WithContext(context.WithValue(enrollReq.Context(), auth.ContextKeyUser, adminClaims))
+	enrollReq = enrollReq.WithContext(observability.WithObserver(enrollReq.Context(), observer))
+	enrollRec := httptest.NewRecorder()
+	handler.MFAEnrollHandler(enrollRec, enrollReq)
+	if enrollRec.Code != http.StatusOK {
+		t.Fatalf("mfa enroll status = %d body = %s", enrollRec.Code, enrollRec.Body.String())
+	}
+	if enrollRec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("mfa enroll cache policy = %q, want no-store", enrollRec.Header().Get("Cache-Control"))
+	}
+	var enrollResp map[string]any
+	if err := json.NewDecoder(enrollRec.Body).Decode(&enrollResp); err != nil {
+		t.Fatalf("decode enroll response: %v", err)
+	}
+	rawSecret := fmt.Sprintf("%v", enrollResp["secret"])
+	if rawSecret == "" || rawSecret == "<nil>" {
+		t.Fatalf("enroll response missing secret: %#v", enrollResp)
+	}
+	var stagedEnabled bool
+	setTenantForTest(ctx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
+		if err := tx.QueryRow(ctx, `SELECT mfa_enabled FROM users WHERE id = $1`, authAdminID).Scan(&stagedEnabled); err != nil {
+			t.Fatalf("query staged MFA state: %v", err)
+		}
+	})
+	if stagedEnabled {
+		t.Fatal("MFA enrollment enabled the factor before TOTP possession was verified")
+	}
+
+	verifyWrongReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/mfa/verify", strings.NewReader(`{"mfa_code":"000000"}`))
+	verifyWrongReq = verifyWrongReq.WithContext(context.WithValue(verifyWrongReq.Context(), auth.ContextKeyUser, adminClaims))
+	verifyWrongReq = verifyWrongReq.WithContext(observability.WithObserver(verifyWrongReq.Context(), observer))
+	verifyWrongRec := httptest.NewRecorder()
+	handler.MFAVerifyHandler(verifyWrongRec, verifyWrongReq)
+	if verifyWrongRec.Code != http.StatusUnauthorized {
+		t.Fatalf("mfa verify wrong-code status = %d body = %s", verifyWrongRec.Code, verifyWrongRec.Body.String())
+	}
+
+	currentCode := totpCode(t, rawSecret, time.Now())
+	verifyReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/mfa/verify", strings.NewReader(`{"mfa_code":"`+currentCode+`"}`))
+	verifyReq = verifyReq.WithContext(context.WithValue(verifyReq.Context(), auth.ContextKeyUser, adminClaims))
+	verifyReq = verifyReq.WithContext(observability.WithObserver(verifyReq.Context(), observer))
+	verifyRec := httptest.NewRecorder()
+	handler.MFAVerifyHandler(verifyRec, verifyReq)
+	if verifyRec.Code != http.StatusOK {
+		t.Fatalf("mfa verify status = %d body = %s", verifyRec.Code, verifyRec.Body.String())
+	}
+	if verifyRec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("mfa verify cache policy = %q, want no-store", verifyRec.Header().Get("Cache-Control"))
+	}
+	var verifyResp map[string]any
+	if err := json.NewDecoder(verifyRec.Body).Decode(&verifyResp); err != nil {
+		t.Fatalf("decode verify response: %v", err)
+	}
+	if verified, ok := verifyResp["verified"].(bool); !ok || !verified {
+		t.Fatalf("expected verified=true, got %#v", verifyResp["verified"])
+	}
+	setTenantForTest(ctx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {
+		if err := tx.QueryRow(ctx, `SELECT mfa_enabled FROM users WHERE id = $1`, authAdminID).Scan(&stagedEnabled); err != nil {
+			t.Fatalf("query activated MFA state: %v", err)
+		}
+	})
+	if !stagedEnabled {
+		t.Fatal("valid TOTP did not activate the staged MFA factor")
+	}
+	replayReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/mfa/verify", strings.NewReader(`{"mfa_code":"`+currentCode+`"}`))
+	replayReq = replayReq.WithContext(context.WithValue(replayReq.Context(), auth.ContextKeyUser, adminClaims))
+	replayReq = replayReq.WithContext(observability.WithObserver(replayReq.Context(), observer))
+	replayRec := httptest.NewRecorder()
+	handler.MFAVerifyHandler(replayRec, replayReq)
+	if replayRec.Code != http.StatusConflict {
+		t.Fatalf("replayed MFA enrollment token status = %d body = %s, want 409", replayRec.Code, replayRec.Body.String())
+	}
+	reenrollReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/mfa/enroll", strings.NewReader(`{}`))
+	reenrollReq = reenrollReq.WithContext(context.WithValue(reenrollReq.Context(), auth.ContextKeyUser, adminClaims))
+	reenrollReq = reenrollReq.WithContext(observability.WithObserver(reenrollReq.Context(), observer))
+	reenrollRec := httptest.NewRecorder()
+	handler.MFAEnrollHandler(reenrollRec, reenrollReq)
+	if reenrollRec.Code != http.StatusConflict {
+		t.Fatalf("re-enroll enabled MFA status = %d body = %s, want 409", reenrollRec.Code, reenrollRec.Body.String())
+	}
+
+	memberClaims := &auth.TokenClaims{
+		UserID:         "33333333-3333-4333-8333-333333333333",
+		OrganizationID: authOrgID,
+		Role:           "member",
+	}
+	memberVerifyReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/mfa/verify", strings.NewReader(`{"mfa_code":"`+currentCode+`"}`))
+	memberVerifyReq = memberVerifyReq.WithContext(context.WithValue(memberVerifyReq.Context(), auth.ContextKeyUser, memberClaims))
+	memberVerifyReq = memberVerifyReq.WithContext(observability.WithObserver(memberVerifyReq.Context(), observer))
+	memberVerifyRec := httptest.NewRecorder()
+	handler.MFAVerifyHandler(memberVerifyRec, memberVerifyReq)
+	if memberVerifyRec.Code != http.StatusForbidden {
+		t.Fatalf("member mfa verify status = %d body = %s, want 403", memberVerifyRec.Code, memberVerifyRec.Body.String())
+	}
+	metrics := observer.Snapshot()
+	for _, expected := range []string{
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_mfa_enroll",status="success"} 1`,
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_mfa_verify",status="invalid_code"} 1`,
+		`scriptureforge_dependency_operations_total{dependency="postgres",operation="auth_mfa_verify",status="success"} 1`,
+	} {
+		if !strings.Contains(metrics, expected) {
+			t.Fatalf("MFA dependency metrics missing %s:\n%s", expected, metrics)
+		}
+	}
+}

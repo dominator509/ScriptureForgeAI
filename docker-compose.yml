@@ -1,21 +1,25 @@
-version: '3.8'
+# Local development stack only. Production workloads use the Terraform/Kubernetes
+# skeleton and inject secrets through AWS Secrets Manager and the CSI driver.
 services:
   postgres:
-    image: postgres:15
+    image: pgvector/pgvector@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b
     environment:
-      POSTGRES_USER: testuser
-      POSTGRES_PASSWORD: testpassword
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: scriptureforge-dev-root
       POSTGRES_DB: scriptureforge
     ports:
       - "5432:5432"
+    volumes:
+      # Disposable local databases apply every checked-in up migration in order.
+      - ./migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U testuser -d scriptureforge"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d scriptureforge"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   redis:
-    image: redis:7
+    image: redis:7@sha256:71da9275c5f3fcb97d0fa0c8c5b36cc995327265420f17a04bfd544f458059f7
     ports:
       - "6379:6379"
     healthcheck:
@@ -26,16 +30,17 @@ services:
 
   platform-engine:
     build:
-      context: ./services/platform-engine
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/platform-engine/Dockerfile
     environment:
-      DB_HOST: postgres
-      DB_USER: testuser
-      DB_PASS: testpassword
-      DB_NAME: scriptureforge
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      JWT_SECRET_KEY: testing-secret-key-123
+      DATABASE_URL: postgres://postgres:scriptureforge-dev-root@postgres:5432/scriptureforge?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      DEPLOYMENT_ENVIRONMENT: development
+      JWT_SECRET_KEY: scriptureforge-development-jwt-secret-0123456789
+      JOURNAL_SALT_SECRET: scriptureforge-development-journal-salt-0123456789
+      MFA_ENCRYPTION_KEY: scriptureforge-development-mfa-key-0123456789
+      ALLOWED_WS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      GRPC_ENGINE_ADDRESS: scripture-engine:50051
     ports:
       - "8080:8080"
     depends_on:
@@ -43,18 +48,21 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      scripture-engine:
+        condition: service_started
 
   scripture-engine:
     build:
-      context: ./services/scripture-engine
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/scripture-engine/Dockerfile
     environment:
-      DB_HOST: postgres
-      DB_USER: testuser
-      DB_PASS: testpassword
-      DB_NAME: scriptureforge
+      DATABASE_URL: postgres://postgres:scriptureforge-dev-root@postgres:5432/scriptureforge?sslmode=disable
+      DEPLOYMENT_ENVIRONMENT: development
+      RUST_ENGINE_BIND_ADDRESS: 0.0.0.0:50051
+      RUST_ENGINE_METRICS_ADDRESS: 0.0.0.0:9102
     ports:
       - "50051:50051"
+      - "9102:9102"
     depends_on:
       postgres:
         condition: service_healthy
