@@ -284,11 +284,11 @@ Add environment-driven API base URLs, auth screens, room creation/listing, activ
 
 ## Additional Gaps
 
-- API versioning is inconsistent: docs use `/api/v1/*`, code uses `/api/auth/*`, `/api/ai/curriculum`, `/api/webhooks/zoom`, and `/ws/room`.
-- Database schema differs from architecture: docs define `doctrinal_profile`, `live_rooms`, `room_participants`, and `journal_entries`; migration only includes `organizations`, `users`, and `scripture_texts`.
-- `scripture_texts` schema differs between docs and code: docs use translation/book_number/text_content/text_vector; migration/code use organization_id/book/content/embedding.
+- Historical route-versioning gap: canonical `/api/v1/*` routes now cover auth, journal, AI, rooms, and workspaces; `/api/auth/register`, `/api/auth/login`, and `/api/ai/curriculum` remain explicit compatibility aliases, while `/api/webhooks/zoom` is intentionally a public webhook boundary. The retired `/ws/room` echo path is no longer mounted.
+- Historical schema gap: migrations now include the tenant-scoped `refresh_tokens`, `journal_entries`, `live_rooms`, `room_participants`, `ai_request_logs`, and `citation_trails` entities alongside `organizations`, `users`, and `scripture_texts`. `TheologicalProfile`/`doctrinal_profile` remains a conceptual product entity and is not a current production-readiness manifest requirement.
+- Schema names are aligned across the implemented migration, Rust SQL, and architecture model: `scripture_texts` uses `organization_id`, `book`, `chapter`, `verse`, `content`, and `embedding vector(1536)`.
 - The architecture requires audit logs and telemetry. Backend trace IDs, structured HTTP logs, `/metrics`, deployable dashboards/alerts, and env-driven OpenTelemetry OTLP trace exporter bootstrap now exist, but deployed collector/backend proof, staging telemetry proof, and broader persistent audit-log coverage remain incomplete.
-- Existing `FUNCTIONAL_COVERAGE_REPORT.md` and `audit_report.txt` overstate completion relative to current runnable evidence.
+- `FUNCTIONAL_COVERAGE_REPORT.md` and `audit_report.txt` are historical artifacts; current runnable evidence is maintained by the local/hosted gate reports and the ignored environment-specific staging manifest.
 
 ## Recommended Next Work Sequence
 

@@ -221,7 +221,7 @@ Phase 03: Rust Scripture Engine
 2.	Author core scripture.proto contract definitions mapping structural parameters for textual queries, morphologic tracking variables, and multi-dimensional vector inputs.
 3.	Initialize the dedicated Rust compilation workspace, configuring framework extensions and mapping automated gRPC code injection profiles.
 4.	Build the core text handling modules in Rust executing direct retrieval procedures against target multi-tenant persistent storage infrastructures.
-5.	Implement internal text ingestion routines utilizing the explicit text_vector vector(1536) database definition format.
+5.	Implement internal text ingestion routines using the explicit `embedding vector(1536)` database definition format shared by the migration and Rust SQL layer.
 6.	Code high-performance morphological comparison algorithms evaluating original lemmas and linguistic markers using direct CPU data allocation optimizations.
 • Acceptance Criteria: The compiled Rust processing runtime initialises and accepts concurrent request interactions over local network interfaces. The core Go service successfully dispatches network requests to the Rust application container using gRPC communication lines, completing query lookups within expected performance constraints.
 • Automated Validation & Tests: Integrate comprehensive memory safety test blocks inside the Rust workspace executing parallel data extraction operations against complex morphological text variations.
