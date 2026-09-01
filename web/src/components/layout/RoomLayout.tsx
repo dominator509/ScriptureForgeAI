@@ -4,6 +4,8 @@ import { useAppStore } from '../../lib/store';
 
 export const RoomLayout: React.FC = () => {
   const { currentRole, activeRoomId, setActiveRoom, token } = useAppStore();
+  const normalizedRole = currentRole.trim().toLowerCase();
+  const canManageRooms = normalizedRole === 'admin' || normalizedRole === 'moderator';
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [title, setTitle] = useState('Bible Study Room');
   const [status, setStatus] = useState('');
@@ -20,7 +22,7 @@ export const RoomLayout: React.FC = () => {
   };
 
   const createRoom = async () => {
-    if (!token) return;
+    if (!token || !canManageRooms) return;
     try {
       const room = await createRoomRequest(token, title);
       setRooms((current) => [room, ...current]);
@@ -124,7 +126,7 @@ export const RoomLayout: React.FC = () => {
       </header>
       <main className="flex-grow p-4">
         {!token && <div className="text-red-600 text-sm">Sign in to create or join rooms.</div>}
-        {token && (
+        {token && canManageRooms && (
           <div className="mb-4 flex gap-2">
             <input className="border rounded p-2 flex-1" value={title} onChange={(event) => setTitle(event.target.value)} />
             <button className="px-3 py-2 bg-indigo-600 text-white rounded" onClick={() => void createRoom()}>Create</button>
@@ -144,7 +146,7 @@ export const RoomLayout: React.FC = () => {
             <h2 className="text-lg mb-4">Active Session: {activeRoomId}</h2>
             <p className="text-xs text-gray-500 mb-4">{streamStatus}</p>
             {latestEvent && <p className="text-xs text-gray-600 mb-4">Latest event: {latestEvent.type} #{latestEvent.sequence}</p>}
-            {currentRole === 'admin' ? (
+            {canManageRooms ? (
               <p>You have presenter controls.</p>
             ) : (
               <p>You are viewing the live synchronized presentation.</p>

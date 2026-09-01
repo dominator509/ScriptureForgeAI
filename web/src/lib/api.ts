@@ -139,6 +139,7 @@ export interface AuthSession {
   refresh_token?: string;
   user_id: string;
   organization_id: string;
+  role?: string;
   requires_mfa?: boolean;
   mfa_enrollment_token?: string;
   mfa_enrollment_required?: boolean;
@@ -207,6 +208,7 @@ export interface ApiErrorBody {
   requires_mfa?: boolean;
   user_id?: string;
   organization_id?: string;
+  role?: string;
   mfa_enrollment_token?: string;
   mfa_enrollment_required?: boolean;
 }
@@ -397,6 +399,7 @@ export function login(credentials: AuthCredentials): Promise<AuthSession> {
         refresh_token: '',
         user_id: error.body.user_id ?? '',
         organization_id: error.body.organization_id ?? credentials.organization_id,
+        role: error.body.role,
         requires_mfa: true,
         mfa_enrollment_token: error.body.mfa_enrollment_token,
         mfa_enrollment_required: error.body.mfa_enrollment_required,

@@ -1,6 +1,10 @@
 import { create } from 'zustand'
 import { type AuthSession, configureSessionBridge, refreshSession } from './api.ts'
 
+function normalizeRole(role: string | undefined): string {
+  return role?.trim().toLowerCase() || 'member'
+}
+
 if (typeof window !== 'undefined') {
   window.localStorage.removeItem('auth_token')
   window.localStorage.removeItem('refresh_token')
@@ -20,7 +24,7 @@ interface AppState {
 
 export const useAppStore = create<AppState>()((set) => ({
   currentRole: 'member',
-  setRole: (role) => set({ currentRole: role }),
+  setRole: (role) => set({ currentRole: normalizeRole(role) }),
   activeRoomId: null,
   setActiveRoom: (id) => set({ activeRoomId: id }),
   token: null,
@@ -32,20 +36,20 @@ export const useAppStore = create<AppState>()((set) => ({
       window.localStorage.removeItem('refresh_token')
       window.localStorage.removeItem('user_id')
       window.localStorage.removeItem('organization_id')
-      set({ token: null, userId: null, organizationId: null, activeRoomId: null })
+      set({ token: null, userId: null, organizationId: null, activeRoomId: null, currentRole: 'member' })
       return
     }
     window.localStorage.removeItem('refresh_token')
     window.localStorage.setItem('user_id', session.user_id)
     window.localStorage.setItem('organization_id', session.organization_id)
-    set({ token: session.token, userId: session.user_id, organizationId: session.organization_id })
+    set({ token: session.token, userId: session.user_id, organizationId: session.organization_id, currentRole: normalizeRole(session.role) })
   },
   clearSession: () => {
     window.localStorage.removeItem('auth_token')
     window.localStorage.removeItem('refresh_token')
     window.localStorage.removeItem('user_id')
     window.localStorage.removeItem('organization_id')
-    set({ token: null, userId: null, organizationId: null, activeRoomId: null })
+    set({ token: null, userId: null, organizationId: null, activeRoomId: null, currentRole: 'member' })
   },
 }))
 
@@ -81,6 +85,7 @@ configureSessionBridge({
       token: state.token,
       user_id: state.userId,
       organization_id: state.organizationId,
+      role: state.currentRole,
     }
   },
   onSessionChange: (session) => useAppStore.getState().setSession(session),

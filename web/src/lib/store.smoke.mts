@@ -35,9 +35,11 @@ test('web session store keeps access and refresh tokens out of localStorage', ()
     refresh_token: 'refresh-token',
     user_id: 'user-1',
     organization_id: 'org-1',
+    role: 'moderator',
   });
 
   assert.equal(useAppStore.getState().token, 'access-token');
+  assert.equal(useAppStore.getState().currentRole, 'moderator');
   assert.equal(localStorage.getItem('auth_token'), null);
   assert.equal(localStorage.getItem('refresh_token'), null);
   assert.equal(localStorage.getItem('organization_id'), 'org-1');
@@ -50,7 +52,7 @@ test('web bootstrap single-flights cookie refresh into memory', async () => {
   const calls: RequestInit[] = [];
   globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
     calls.push(init ?? {});
-    return new Response(JSON.stringify({ token: 'fresh-token', user_id: 'user-1', organization_id: 'org-1' }), {
+    return new Response(JSON.stringify({ token: 'fresh-token', user_id: 'user-1', organization_id: 'org-1', role: 'admin' }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -66,6 +68,7 @@ test('web bootstrap single-flights cookie refresh into memory', async () => {
   assert.equal(calls[0]?.credentials, 'include');
   assert.equal(new Headers(calls[0]?.headers).get('X-ScriptureForge-Client'), 'web');
   assert.equal(useAppStore.getState().token, 'fresh-token');
+  assert.equal(useAppStore.getState().currentRole, 'admin');
   assert.equal(localStorage.getItem('auth_token'), null);
 });
 
@@ -80,5 +83,6 @@ test('web bootstrap clears stale local principal when cookie refresh is rejected
   assert.equal(useAppStore.getState().token, null);
   assert.equal(useAppStore.getState().userId, null);
   assert.equal(useAppStore.getState().organizationId, null);
+  assert.equal(useAppStore.getState().currentRole, 'member');
   assert.equal(localStorage.getItem('organization_id'), null);
 });

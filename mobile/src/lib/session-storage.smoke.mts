@@ -30,6 +30,7 @@ const session: AuthSession = {
   refresh_token: 'refresh-token',
   user_id: 'user-1',
   organization_id: 'org-1',
+  role: 'moderator',
   mfa_enrollment_token: 'must-not-persist',
 };
 
@@ -37,7 +38,7 @@ beforeEach(() => {
   storedValue = null;
   deleteCalls = 0;
   setSecureStoreAdapterForTesting(adapter);
-  useAppStore.setState({ session: null, sessionHydrated: false, activeRoomId: null, rooms: [] });
+  useAppStore.setState({ session: null, sessionHydrated: false, activeRoomId: null, rooms: [], currentRole: 'member' });
 });
 
 afterEach(() => {
@@ -58,6 +59,14 @@ test('mobile sessions persist in the secure adapter without MFA enrollment mater
     user_id: 'user-1',
     organization_id: 'org-1',
   });
+});
+
+test('mobile session store applies the verified role to room controls without persisting it', async () => {
+  useAppStore.getState().setSession(session);
+  assert.equal(useAppStore.getState().currentRole, 'moderator');
+  await clearPersistedAuthSession();
+  useAppStore.getState().setSession(null);
+  assert.equal(useAppStore.getState().currentRole, 'member');
 });
 
 test('mobile session persistence serializes writes so logout cannot be overwritten by an earlier login write', async () => {

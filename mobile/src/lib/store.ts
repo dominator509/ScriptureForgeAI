@@ -3,6 +3,10 @@ import { configureSessionBridge, refreshSession } from './api.ts'
 import type { AuthSession, RoomSummary } from './api.ts'
 import { loadPersistedAuthSession, persistAuthSession } from './session-storage.ts'
 
+function normalizeRole(role: string | undefined): string {
+  return role?.trim().toLowerCase() || 'member'
+}
+
 interface AppState {
   currentRole: string
   setRole: (role: string) => void
@@ -20,7 +24,7 @@ let bootstrapInFlight: Promise<void> | null = null
 
 export const useAppStore = create<AppState>()((set, get) => ({
   currentRole: 'member',
-  setRole: (role) => set({ currentRole: role }),
+  setRole: (role) => set({ currentRole: normalizeRole(role) }),
   activeRoomId: null,
   setActiveRoom: (id) => set({ activeRoomId: id }),
   session: null,
@@ -61,6 +65,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
       )
       return {
         session,
+        currentRole: normalizeRole(session?.role),
         activeRoomId: sameWorkspace ? state.activeRoomId : null,
         rooms: sameWorkspace ? state.rooms : [],
       }

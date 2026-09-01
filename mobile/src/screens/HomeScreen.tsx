@@ -6,6 +6,7 @@ import { useAppStore } from '../lib/store';
 
 export const HomeScreen: React.FC = () => {
   const session = useAppStore((state) => state.session);
+  const currentRole = useAppStore((state) => state.currentRole);
   const sessionHydrated = useAppStore((state) => state.sessionHydrated);
   const setSession = useAppStore((state) => state.setSession);
   const rooms = useAppStore((state) => state.rooms);
@@ -24,6 +25,7 @@ export const HomeScreen: React.FC = () => {
   const [status, setStatus] = useState('Restoring secure session.');
   const [streamStatus, setStreamStatus] = useState('No room selected.');
   const [latestEvent, setLatestEvent] = useState<RoomEvent | null>(null);
+  const canManageRooms = ['admin', 'moderator'].includes(currentRole.trim().toLowerCase());
 
   const syncRooms = async (token: string) => {
     const nextRooms = await listActiveRooms(token);
@@ -120,7 +122,7 @@ export const HomeScreen: React.FC = () => {
   };
 
   const handleCreateRoom = async () => {
-    if (!session || !roomTitle.trim()) return;
+    if (!session || !canManageRooms || !roomTitle.trim()) return;
     try {
       const room = await createRoom(session.token, roomTitle.trim());
       const nextRooms = [room, ...rooms.filter((candidate) => candidate.id !== room.id)];
@@ -285,12 +287,14 @@ export const HomeScreen: React.FC = () => {
             <Text style={[styles.link, !session && styles.disabledText]}>Refresh</Text>
           </TouchableOpacity>
         </View>
-        <View style={styles.row}>
-          <TextInput style={[styles.input, styles.roomInput]} placeholder="Room title" value={roomTitle} onChangeText={setRoomTitle} />
-          <TouchableOpacity style={[styles.button, (!session || !roomTitle.trim()) && styles.disabled]} onPress={() => void handleCreateRoom()} disabled={!session || !roomTitle.trim()}>
-            <Text style={styles.buttonText}>Create</Text>
-          </TouchableOpacity>
-        </View>
+        {canManageRooms && (
+          <View style={styles.row}>
+            <TextInput style={[styles.input, styles.roomInput]} placeholder="Room title" value={roomTitle} onChangeText={setRoomTitle} />
+            <TouchableOpacity style={[styles.button, (!session || !roomTitle.trim()) && styles.disabled]} onPress={() => void handleCreateRoom()} disabled={!session || !roomTitle.trim()}>
+              <Text style={styles.buttonText}>Create</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         {rooms.length === 0 ? (
           <Text style={styles.empty}>No active rooms loaded.</Text>
         ) : (

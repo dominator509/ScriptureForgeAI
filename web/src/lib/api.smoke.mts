@@ -57,6 +57,7 @@ beforeEach(() => {
         refresh_token: 'refresh-token',
         user_id: 'user-1',
         organization_id: 'org-1',
+        role: 'member',
       });
     }
     if (url.endsWith('/api/v1/auth/logout')) return new Response(null, { status: 204 });
@@ -82,9 +83,9 @@ beforeEach(() => {
 test('auth helpers use canonical v1 routes and bearer logout revocation', async () => {
   const credentials = { email: 'reader@example.com', password: 'correct horse', organization_id: 'org-1' };
 
-  assert.equal((await register({ email: credentials.email, password: credentials.password, organization_name: 'Reader Workspace' })).token, 'access-token');
-  assert.equal((await login(credentials)).refresh_token, 'refresh-token');
-  assert.equal((await refreshSession('old-refresh', 'org-1')).organization_id, 'org-1');
+  assert.equal((await register({ email: credentials.email, password: credentials.password, organization_name: 'Reader Workspace' })).role, 'member');
+  assert.equal((await login(credentials)).role, 'member');
+  assert.equal((await refreshSession('old-refresh', 'org-1')).role, 'member');
   await logout('access-token', null, 'org-1');
 
   assert.deepEqual(
@@ -144,6 +145,7 @@ test('web authenticated requests rotate an expired access token and retry once',
     refresh_token: 'refresh-token',
     user_id: 'user-1',
     organization_id: 'org-1',
+    role: 'admin',
   };
   const requestTokens: string[] = [];
   let refreshCalls = 0;
@@ -177,6 +179,7 @@ test('web login exposes the privileged MFA challenge without storing an empty se
     requires_mfa: true,
     user_id: 'admin-1',
     organization_id: 'org-1',
+    role: 'admin',
     mfa_enrollment_required: true,
     mfa_enrollment_token: 'enrollment-token',
   }, 401);
@@ -185,6 +188,7 @@ test('web login exposes the privileged MFA challenge without storing an empty se
   assert.equal(session.requires_mfa, true);
   assert.equal(session.token, '');
   assert.equal(session.user_id, 'admin-1');
+  assert.equal(session.role, 'admin');
   assert.equal(session.mfa_enrollment_required, true);
   assert.equal(session.mfa_enrollment_token, 'enrollment-token');
 });

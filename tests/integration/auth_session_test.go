@@ -140,7 +140,7 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 	}
 	registered := decodeAuthResponse(t, registerRecorder)
 	registeredOrgID = registered.OrganizationID
-	if registered.Token == "" || registered.RefreshToken == "" || registered.UserID == "" || registeredOrgID == "" || registeredOrgID == authOrgID {
+	if registered.Token == "" || registered.RefreshToken == "" || registered.UserID == "" || registeredOrgID == "" || registeredOrgID == authOrgID || registered.Role != "member" {
 		t.Fatalf("register response missing token data: %#v", registered)
 	}
 	testOrgID := registeredOrgID
@@ -198,7 +198,7 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 		t.Fatalf("login status = %d body = %s", loginRecorder.Code, loginRecorder.Body.String())
 	}
 	login := decodeAuthResponse(t, loginRecorder)
-	if login.RefreshToken == "" || login.RefreshToken == registered.RefreshToken {
+	if login.RefreshToken == "" || login.RefreshToken == registered.RefreshToken || login.Role != "member" {
 		t.Fatalf("login refresh token = %q, want a new opaque token", login.RefreshToken)
 	}
 
@@ -216,7 +216,7 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 		t.Fatalf("privilege-elevated refresh status = %d body = %s, want 401", elevatedRecorder.Code, elevatedRecorder.Body.String())
 	}
 	elevated := decodeAuthResponse(t, elevatedRecorder)
-	if !elevated.RequiresMFA || elevated.Token != "" || elevated.RefreshToken != "" {
+	if !elevated.RequiresMFA || elevated.Token != "" || elevated.RefreshToken != "" || elevated.Role != "admin" {
 		t.Fatalf("privilege-elevated refresh response = %#v, want MFA challenge without tokens", elevated)
 	}
 	setTenantForTest(ctx, t, db, testOrgID, func(ctx context.Context, tx pgx.Tx) {
@@ -275,7 +275,7 @@ func TestAuthRegisterLoginRefreshRotationAndLogout(t *testing.T) {
 		t.Fatalf("refresh status = %d body = %s", refreshRecorder.Code, refreshRecorder.Body.String())
 	}
 	refreshed := decodeAuthResponse(t, refreshRecorder)
-	if refreshed.RefreshToken == "" || refreshed.RefreshToken == login.RefreshToken {
+	if refreshed.RefreshToken == "" || refreshed.RefreshToken == login.RefreshToken || refreshed.Role != "member" {
 		t.Fatalf("rotated refresh token = %q, want replacement for old token", refreshed.RefreshToken)
 	}
 
@@ -441,7 +441,7 @@ func TestPrivilegedLoginRequiresAndVerifiesMFA(t *testing.T) {
 		t.Fatalf("missing MFA login status = %d body = %s, want 401", missingMFARecorder.Code, missingMFARecorder.Body.String())
 	}
 	missingMFA := decodeAuthResponse(t, missingMFARecorder)
-	if !missingMFA.RequiresMFA || missingMFA.Token != "" || missingMFA.RefreshToken != "" {
+	if !missingMFA.RequiresMFA || missingMFA.Token != "" || missingMFA.RefreshToken != "" || missingMFA.Role != "admin" {
 		t.Fatalf("missing MFA response = %#v, want requires_mfa without tokens", missingMFA)
 	}
 
@@ -456,7 +456,7 @@ func TestPrivilegedLoginRequiresAndVerifiesMFA(t *testing.T) {
 		t.Fatalf("verified MFA login status = %d body = %s", verifiedRecorder.Code, verifiedRecorder.Body.String())
 	}
 	verified := decodeAuthResponse(t, verifiedRecorder)
-	if verified.Token == "" || verified.RefreshToken == "" {
+	if verified.Token == "" || verified.RefreshToken == "" || verified.Role != "admin" {
 		t.Fatalf("verified MFA response missing tokens: %#v", verified)
 	}
 	setTenantForTest(ctx, t, db, authOrgID, func(ctx context.Context, tx pgx.Tx) {

@@ -73,6 +73,7 @@ type AuthResponse struct {
 	MFAEnrollmentToken    string `json:"mfa_enrollment_token,omitempty"`
 	UserID                string `json:"user_id,omitempty"`
 	OrganizationID        string `json:"organization_id,omitempty"`
+	Role                  string `json:"role,omitempty"`
 	RequiresMFA           bool   `json:"requires_mfa,omitempty"`
 	MFAEnrollmentRequired bool   `json:"mfa_enrollment_required,omitempty"`
 }
@@ -572,7 +573,7 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	metricStatus = "success"
-	writeAuthResponse(w, r, AuthResponse{Token: token, RefreshToken: refreshToken, UserID: newUserID, OrganizationID: organizationID}, http.StatusCreated)
+	writeAuthResponse(w, r, AuthResponse{Token: token, RefreshToken: refreshToken, UserID: newUserID, OrganizationID: organizationID, Role: forcedRole}, http.StatusCreated)
 }
 
 func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
@@ -654,7 +655,7 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			metricStatus = "mfa_required"
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
-			_ = json.NewEncoder(w).Encode(AuthResponse{UserID: userID, OrganizationID: orgID, RequiresMFA: true})
+			_ = json.NewEncoder(w).Encode(AuthResponse{UserID: userID, OrganizationID: orgID, Role: role, RequiresMFA: true})
 			return
 		}
 	}
@@ -669,6 +670,7 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			MFAEnrollmentToken:    enrollmentToken,
 			UserID:                userID,
 			OrganizationID:        orgID,
+			Role:                  role,
 			RequiresMFA:           true,
 			MFAEnrollmentRequired: true,
 		})
@@ -699,7 +701,7 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	metricStatus = "success"
-	writeAuthResponse(w, r, AuthResponse{Token: token, RefreshToken: refreshToken, UserID: userID, OrganizationID: orgID}, http.StatusOK)
+	writeAuthResponse(w, r, AuthResponse{Token: token, RefreshToken: refreshToken, UserID: userID, OrganizationID: orgID, Role: role}, http.StatusOK)
 }
 
 // ValidateActiveSession enforces the user-wide logout cutoff for protected
@@ -818,7 +820,7 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 		metricStatus = "mfa_required"
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		_ = json.NewEncoder(w).Encode(AuthResponse{UserID: userID, OrganizationID: orgID, RequiresMFA: true})
+		_ = json.NewEncoder(w).Encode(AuthResponse{UserID: userID, OrganizationID: orgID, Role: role, RequiresMFA: true})
 		return
 	}
 	if privilegedRole(role) {
@@ -857,7 +859,7 @@ func (h *AuthHandler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	metricStatus = "success"
-	writeAuthResponse(w, r, AuthResponse{Token: token, RefreshToken: refreshToken, UserID: userID, OrganizationID: orgID}, http.StatusOK)
+	writeAuthResponse(w, r, AuthResponse{Token: token, RefreshToken: refreshToken, UserID: userID, OrganizationID: orgID, Role: role}, http.StatusOK)
 }
 
 func (h *AuthHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
